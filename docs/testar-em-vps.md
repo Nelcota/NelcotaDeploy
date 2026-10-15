@@ -65,13 +65,18 @@ SIGNING_PUBLIC="$HOME/.config/nelcota-release/minisign.pub"
 # Gere somente na primeira vez. Guarde a chave privada e sua senha fora das VPS.
 minisign -G -p "$SIGNING_PUBLIC" -s "$SIGNING_SECRET"
 SIGNING_KEY=$(sed -n '2p' "$SIGNING_PUBLIC")
-BUILDKIT_AMD64=/caminho/verificado/amd64/buildkitd
-BUILDKIT_ARM64=/caminho/verificado/arm64/buildkitd
+# Receita local identificada, com Go 1.26.9, x/net 0.61.0 e go-archive 0.3.0.
+# Precisa de govulncheck no PATH; instala-se com:
+go install golang.org/x/vuln/cmd/govulncheck@v1.9.0
+BUILDKIT_LOCAL="$PWD/.local/buildkit-homologacao"
+bash scripts/buildkit-homologacao.sh "$BUILDKIT_LOCAL"
+BUILDKIT_AMD64="$BUILDKIT_LOCAL/amd64/buildkitd"
+BUILDKIT_ARM64="$BUILDKIT_LOCAL/arm64/buildkitd"
 HML_RELEASE_DIR="$HOME/nelcota-releases-hml"
 install -d -m 0700 "$HML_RELEASE_DIR"
 for version in v1.0.0 v1.0.1 v1.0.2; do
   test ! -e "$HML_RELEASE_DIR/$version" || exit 1
-  bash scripts/release.sh "$version" "$SIGNING_SECRET" "$BUILDKIT_AMD64" "$BUILDKIT_ARM64"
+  bash scripts/release.sh "$version" "$SIGNING_SECRET" "$BUILDKIT_AMD64" "$BUILDKIT_ARM64" "$BUILDKIT_LOCAL"
   install -d -m 0755 "$HML_RELEASE_DIR/$version"
   install -m 0644 "dist/$version/"* "$HML_RELEASE_DIR/$version/"
   minisign -Vm "$HML_RELEASE_DIR/$version/checksums.txt" -P "$SIGNING_KEY"
@@ -80,7 +85,7 @@ done
 
 As versões podem usar o mesmo commit neste laboratório: o objetivo é testar a troca dos executáveis e seus números de versão. Em releases reais, revise também migrações e compatibilidade de protocolo/estado.
 
-O script exige checkout limpo, cria cada release em `dist/VERSÃO/` e recusa sobrescrevê-lo. `build-info.json`, incluído no manifesto assinado, registra commit, toolchain e hashes dos dois BuildKit. Os pacotes já preparados neste ambiente são descritos em [Releases de homologação](releases-homologacao.md).
+O script exige checkout limpo, cria cada release em `dist/VERSÃO/` e recusa sobrescrevê-lo. `build-info.json`, incluído no manifesto assinado, registra commit, toolchain e hashes dos dois BuildKit; `buildkit-build-info.txt` registra os módulos e toolchains desses daemons. Verifique também vulnerabilidades: os binários oficiais v0.34.0 foram compilados antes das correções Go de outubro. Os pacotes já preparados neste ambiente usam uma recompilação com essas correções, descrita em [Releases de homologação](releases-homologacao.md).
 
 Publique **todos** os arquivos de cada diretório em `$RELEASE_BASE/v1.0.0/`, `/v1.0.1/` e `/v1.0.2/`, preservando nomes e conteúdo. O endpoint precisa servir HTTPS diretamente, sem redirecionar os downloads do updater. Não sobrescreva versões publicadas. Exemplo para um host de publicação HTTPS já configurado, cujo usuário tenha permissão nesse diretório:
 
