@@ -16,6 +16,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 )
 
@@ -59,7 +60,7 @@ func TestMinisignAuthenticatesContentAndTrustedComment(t *testing.T) {
 	}
 }
 func TestApplyIsAtomicRejectsTamperingAndRollsBack(t *testing.T) {
-	for _, mode := range []string{"success", "tampered", "restart_failure", "downgrade", "cancelled"} {
+	for _, mode := range []string{"success", "tampered", "restart_failure", "downgrade", "cancelled", "request_changed", "state_failure", "state_unreadable"} {
 		t.Run(mode, func(t *testing.T) {
 			trust, files := signedFixture(t)
 			server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -91,9 +92,28 @@ func TestApplyIsAtomicRejectsTamperingAndRollsBack(t *testing.T) {
 			if mode == "downgrade" {
 				_ = os.WriteFile(filepath.Join(state, "version"), []byte("v2.0.0"), 0600)
 			}
+			if mode == "state_unreadable" {
+				_ = os.Mkdir(filepath.Join(state, "version"), 0700)
+			}
 			calls := 0
-			restart := func(context.Context) error {
+			restart := func(_ context.Context, expected string) error {
 				calls++
+				want := "v1.2.3"
+				if calls == 2 {
+					want = Version
+				}
+				if expected != want {
+					t.Fatalf("readiness expected %q, want validated %q", expected, want)
+				}
+				if mode == "request_changed" {
+					removeRequest(data, "update/request.json")
+					if e := Queue(data, Request{Version: "v9.9.9", ID: "replaced"}); e != nil {
+						t.Fatal(e)
+					}
+				}
+				if mode == "state_failure" && calls == 1 {
+					_ = os.Mkdir(filepath.Join(state, "version"), 0700)
+				}
 				if mode == "restart_failure" && calls == 1 {
 					return errors.New("startup failed")
 				}
@@ -109,7 +129,7 @@ func TestApplyIsAtomicRejectsTamperingAndRollsBack(t *testing.T) {
 			resultBytes, _ := os.ReadFile(filepath.Join(data, "update", "result.json"))
 			var result Result
 			_ = json.Unmarshal(resultBytes, &result)
-			if mode == "success" {
+			if mode == "success" || mode == "request_changed" {
 				if e != nil || string(got) != "new signed binary" || calls != 1 || result.Status != "applied" {
 					t.Fatal(e, string(got), calls, result)
 				}
@@ -117,7 +137,7 @@ func TestApplyIsAtomicRejectsTamperingAndRollsBack(t *testing.T) {
 				if e == nil || string(got) != "old binary" {
 					t.Fatal("modified binary on failed update", e, string(got))
 				}
-				if mode == "restart_failure" && (calls != 2 || result.Status != "rolled_back") {
+				if (mode == "restart_failure" || mode == "state_failure") && (calls != 2 || result.Status != "rolled_back") {
 					t.Fatal(calls, result)
 				}
 			}
@@ -197,5 +217,47 @@ func TestAgentHealthAndPendingRequestVersions(t *testing.T) {
 	removeRequest(data, "update/request.json")
 	if PendingFor(data, "v1.2.2") {
 		t.Fatal("rollback remained blocked")
+	}
+}
+
+func TestTrustAndHealthEndpointAreBoundedAndLocal(t *testing.T) {
+	trust, _ := signedFixture(t)
+	trust.BaseURL = "https://releases.example.com"
+	for _, endpoint := range []string{"http://127.0.0.1:9090/healthz", "http://[::1]:8080/healthz"} {
+		trust.HealthURL = endpoint
+		if e := trust.validate(); e != nil {
+			t.Fatal(endpoint, e)
+		}
+	}
+	for _, endpoint := range []string{"https://127.0.0.1:8080/healthz", "http://example.com:8080/healthz", "http://10.77.0.1:8080/healthz", "http://127.0.0.1:8080/healthz?token=secret", "http://127.0.0.1:8080/other", "http://127.0.0.1:99999/healthz", "http://user@127.0.0.1:8080/healthz"} {
+		trust.HealthURL = endpoint
+		if e := trust.validate(); e == nil {
+			t.Fatal("accepted unsafe health URL", endpoint)
+		}
+	}
+	trust.HealthURL = ""
+	path := filepath.Join(t.TempDir(), "trust.json")
+	b, _ := json.Marshal(trust)
+	if e := os.WriteFile(path, b, 0644); e != nil {
+		t.Fatal(e)
+	}
+	if _, e := LoadTrust(path); e != nil {
+		t.Fatal(e)
+	}
+	link := filepath.Join(t.TempDir(), "link")
+	_ = os.Symlink(path, link)
+	if _, e := LoadTrust(link); e == nil {
+		t.Fatal("followed a trust symlink")
+	}
+	_ = os.Truncate(path, (16<<10)+1)
+	if _, e := LoadTrust(path); e == nil {
+		t.Fatal("accepted an oversized trust file")
+	}
+	_ = os.Remove(path)
+	if e := syscall.Mkfifo(path, 0600); e != nil {
+		t.Fatal(e)
+	}
+	if _, e := LoadTrust(path); e == nil {
+		t.Fatal("accepted a trust FIFO")
 	}
 }

@@ -48,12 +48,8 @@ func Commands(component string, data *string) []*cobra.Command {
 		}
 		ctx, cancel := context.WithTimeout(c.Context(), 8*time.Minute)
 		defer cancel()
-		return trust.Apply(ctx, *data, "/var/lib/nelcota-updater/"+component, "/usr/local/bin/nelcota-"+component, component, func(ctx context.Context) error {
-			expected := Version
-			if r, e := readDataRequest(*data, "update/request.json"); e == nil {
-				expected = r.Version
-			}
-			return restartService(ctx, component, *data, expected)
+		return trust.Apply(ctx, *data, "/var/lib/nelcota-updater/"+component, "/usr/local/bin/nelcota-"+component, component, func(ctx context.Context, expected string) error {
+			return restartService(ctx, component, *data, expected, trust.HealthURL)
 		})
 	}}
 	var purge bool
@@ -68,7 +64,10 @@ func Commands(component string, data *string) []*cobra.Command {
 	uninstall.Flags().BoolVar(&purge, "purge", false, "Remove também dados e chaves Nelcota; preserve um backup antes")
 	return []*cobra.Command{version, update, apply, uninstall}
 }
-func restartService(ctx context.Context, component, data, expected string) error {
+func restartService(ctx context.Context, component, data, expected, healthURL string) error {
+	if healthURL == "" {
+		healthURL = "http://127.0.0.1:8080/healthz"
+	}
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
 	defer cancel()
 	unit := "nelcota-" + component + ".service"
@@ -105,7 +104,7 @@ func restartService(ctx context.Context, component, data, expected string) error
 				}
 			}
 			if good && component == "panel" {
-				req, e := http.NewRequestWithContext(ctx, "GET", "http://127.0.0.1:8080/healthz", nil)
+				req, e := http.NewRequestWithContext(ctx, "GET", healthURL, nil)
 				if e != nil {
 					return e
 				}
