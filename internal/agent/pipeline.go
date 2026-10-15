@@ -19,6 +19,7 @@ import (
 
 type Running struct {
 	AppID      string   `json:"app_id"`
+	DeployID   string   `json:"deploy_id"`
 	SHA        string   `json:"sha"`
 	Image      string   `json:"image"`
 	Containers []string `json:"containers"`
@@ -43,24 +44,27 @@ type active struct {
 	app    string
 }
 type Pipeline struct {
-	Engine  Engine
-	State   *StateStore
-	Root    string
-	Limit   int
-	mu      sync.Mutex
-	active  map[string]active
-	apps    map[string]bool
-	desired map[string]*agentv1.AppConfig
-	running map[string]Running
-	rings   map[string]*events.Ring
-	wg      sync.WaitGroup
+	Engine     Engine
+	State      *StateStore
+	Root       string
+	Limit      int
+	mu         sync.Mutex
+	active     map[string]active
+	apps       map[string]bool
+	desired    map[string]*agentv1.AppConfig
+	running    map[string]Running
+	pending    map[string]Running
+	rings      map[string]*events.Ring
+	wg         sync.WaitGroup
+	logCancels map[string]context.CancelFunc
+	Stats      func(context.Context) *agentv1.Metrics
 }
 
 func NewPipeline(engine Engine, state *StateStore, root string, limit int) (*Pipeline, error) {
 	if limit < 1 {
 		limit = 1
 	}
-	p := &Pipeline{Engine: engine, State: state, Root: root, Limit: limit, active: map[string]active{}, apps: map[string]bool{}, desired: map[string]*agentv1.AppConfig{}, running: map[string]Running{}, rings: map[string]*events.Ring{}}
+	p := &Pipeline{Engine: engine, State: state, Root: root, Limit: limit, active: map[string]active{}, apps: map[string]bool{}, desired: map[string]*agentv1.AppConfig{}, running: map[string]Running{}, pending: map[string]Running{}, rings: map[string]*events.Ring{}, logCancels: map[string]context.CancelFunc{}}
 	if e := p.load(); e != nil {
 		return nil, e
 	}
@@ -80,6 +84,7 @@ func (p *Pipeline) Active() []string {
 	return ids
 }
 func (p *Pipeline) Run(ctx context.Context) error {
+	p.reconcile(ctx)
 	tick := time.NewTicker(10 * time.Second)
 	defer tick.Stop()
 	defer func() {
@@ -148,22 +153,41 @@ func (p *Pipeline) Handle(ctx context.Context, c *agentv1.Command, emit func(*ag
 		e := p.saveLocked()
 		p.mu.Unlock()
 		return e
+
 	case *agentv1.Command_Logs:
 		p.mu.Lock()
 		r := p.running[a.Logs.AppId]
 		cfg := p.desired[a.Logs.AppId]
-		p.mu.Unlock()
-		if cfg == nil {
-			return errors.New("unknown app")
+		if cancel, exists := p.logCancels[a.Logs.AppId]; exists {
+			if !a.Logs.Follow {
+				cancel()
+			}
+			p.mu.Unlock()
+			return nil
 		}
+		if cfg == nil {
+			p.mu.Unlock()
+			return nil
+		}
+		logCtx, cancel := context.WithCancel(ctx)
+		p.logCancels[a.Logs.AppId] = cancel
+		p.mu.Unlock()
 		p.wg.Go(func() {
-			_ = p.Engine.Logs(ctx, r, a.Logs.SinceUnix, a.Logs.Follow, func(b []byte) {
-				_ = emit(&agentv1.Event{Payload: &agentv1.Event_DeployLog{DeployLog: &agentv1.DeployLog{AppId: cfg.AppId, Line: []byte(redactor(cfg, "").Mask(string(b))), Runtime: true}}})
+			defer cancel()
+			defer func() { p.mu.Lock(); delete(p.logCancels, a.Logs.AppId); p.mu.Unlock() }()
+			masker := security.NewLineMasker(redactor(cfg, ""), func(b []byte) {
+				_ = emit(&agentv1.Event{Payload: &agentv1.Event_DeployLog{DeployLog: &agentv1.DeployLog{AppId: cfg.AppId, Line: append([]byte(nil), b...), Runtime: true}}})
 			})
+			defer masker.Flush()
+			_ = p.Engine.Logs(logCtx, r, a.Logs.SinceUnix, a.Logs.Follow, func(b []byte) { _, _ = masker.Write(b) })
 		})
+
 	case *agentv1.Command_Prune:
 		return p.Engine.Prune(ctx, a.Prune.Scope)
 	case *agentv1.Command_Stats:
+		if p.Stats != nil {
+			return emit(&agentv1.Event{Payload: &agentv1.Event_Metrics{Metrics: p.Stats(ctx)}})
+		}
 	case nil:
 	default:
 		return errors.New("unsupported typed action")
@@ -249,14 +273,17 @@ func (p *Pipeline) deploy(ctx context.Context, d *agentv1.Deploy, emit func(*age
 	p.mu.Unlock()
 	mask := redactor(d.App, d.GithubToken)
 	log := func(b []byte) {
-		line := []byte(mask.Mask(string(b)))
+		line := append([]byte(nil), b...)
 		seq := ring.Append(line)
 		_ = emit(&agentv1.Event{Payload: &agentv1.Event_DeployLog{DeployLog: &agentv1.DeployLog{DeployId: d.DeployId, AppId: d.App.AppId, Sequence: seq, Line: line}}})
 	}
-	if e = p.Engine.Clone(ctx, d, dir, log); e != nil {
+	masker := security.NewLineMasker(mask, log)
+	defer masker.Flush()
+	safeLog := func(b []byte) { _, _ = masker.Write(b) }
+	if e = p.Engine.Clone(ctx, d, dir, safeLog); e != nil {
 		return
 	}
-	image, e := p.Engine.Build(ctx, d, dir, log)
+	image, e := p.Engine.Build(ctx, d, dir, safeLog)
 	if e != nil {
 		return
 	}
@@ -275,6 +302,7 @@ func (p *Pipeline) deploy(ctx context.Context, d *agentv1.Deploy, emit func(*age
 		return
 	}
 	fresh.SHA = d.Sha
+	fresh.DeployID = d.DeployId
 	fresh.Revision = d.App.Revision
 	if e = p.Engine.Health(ctx, d.App, fresh); e != nil {
 		return
@@ -282,30 +310,75 @@ func (p *Pipeline) deploy(ctx context.Context, d *agentv1.Deploy, emit func(*age
 	if e = ctx.Err(); e != nil {
 		return
 	}
-	if e = p.Engine.Route(ctx, d.App, fresh); e != nil {
-		return
-	}
-	// Route is the commit point: a cancellation after it must not remove the live version.
-	committed = true
+	// Persist the intended switch before touching the route, so restart recovery is deterministic.
 	p.mu.Lock()
-	p.running[d.App.AppId] = fresh
+	prior := p.desired[d.App.AppId]
 	cfg := proto.Clone(d.App).(*agentv1.AppConfig)
 	cfg.DesiredSha = d.Sha
+	p.running[d.App.AppId] = fresh
 	p.desired[d.App.AppId] = cfg
+	p.pending[d.App.AppId] = old
 	e = p.saveLocked()
+	if e != nil {
+		p.running[d.App.AppId] = old
+		if prior != nil {
+			p.desired[d.App.AppId] = prior
+		} else {
+			delete(p.desired, d.App.AppId)
+		}
+		delete(p.pending, d.App.AppId)
+	}
 	p.mu.Unlock()
 	if e != nil {
-		log([]byte("state persistence failed; live route retained\n"))
+		return
 	}
+	if e = p.Engine.Route(ctx, d.App, fresh); e != nil {
+		p.mu.Lock()
+		p.running[d.App.AppId] = old
+		if prior != nil {
+			p.desired[d.App.AppId] = prior
+		} else {
+			delete(p.desired, d.App.AppId)
+		}
+		delete(p.pending, d.App.AppId)
+		_ = p.saveLocked()
+		p.mu.Unlock()
+		return
+	}
+	// Route is the commit point; cancellation after this cannot delete the live version.
+	committed = true
 	cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), 45*time.Second)
 	defer cancel()
-	if len(old.Containers) > 0 {
-		_ = p.Engine.Remove(cleanup, old)
+	if len(old.Containers) == 0 || p.Engine.Remove(cleanup, old) == nil {
+		p.mu.Lock()
+		delete(p.pending, d.App.AppId)
+		_ = p.saveLocked()
+		p.mu.Unlock()
 	}
+
 	success = true
 	status("success")
 }
 func (p *Pipeline) reconcile(ctx context.Context) {
+	p.mu.Lock()
+	orphans := []Running{}
+	for id, r := range p.running {
+		if _, ok := p.desired[id]; !ok && !p.apps[id] {
+			orphans = append(orphans, r)
+		}
+	}
+	p.mu.Unlock()
+	for _, r := range orphans {
+		c, cancel := context.WithTimeout(ctx, 30*time.Second)
+		if p.Engine.Stop(c, r) == nil && p.Engine.Remove(c, r) == nil {
+			p.mu.Lock()
+			delete(p.running, r.AppID)
+			delete(p.pending, r.AppID)
+			_ = p.saveLocked()
+			p.mu.Unlock()
+		}
+		cancel()
+	}
 	p.mu.Lock()
 	desired := make([]*agentv1.AppConfig, 0, len(p.desired))
 	for _, a := range p.desired {
@@ -340,6 +413,7 @@ func (p *Pipeline) reconcile(ctx context.Context) {
 					return
 				}
 				fresh.SHA = r.SHA
+				fresh.DeployID = r.DeployID
 				fresh.Revision = cfg.Revision
 				if e = p.Engine.Health(c, cfg, fresh); e != nil {
 					_ = p.Engine.Remove(c, fresh)
@@ -355,7 +429,17 @@ func (p *Pipeline) reconcile(ctx context.Context) {
 				p.mu.Unlock()
 				_ = p.Engine.Remove(c, r)
 			} else {
-				_ = p.Engine.Route(c, cfg, r)
+				if p.Engine.Health(c, cfg, r) == nil && p.Engine.Route(c, cfg, r) == nil {
+					p.mu.Lock()
+					old, pending := p.pending[cfg.AppId]
+					p.mu.Unlock()
+					if pending && (len(old.Containers) == 0 || p.Engine.Remove(c, old) == nil) {
+						p.mu.Lock()
+						delete(p.pending, cfg.AppId)
+						_ = p.saveLocked()
+						p.mu.Unlock()
+					}
+				}
 			}
 		}()
 	}
@@ -368,13 +452,14 @@ type StateStore struct {
 type persisted struct {
 	Desired map[string]*agentv1.AppConfig `json:"desired"`
 	Running map[string]Running            `json:"running"`
+	Pending map[string]Running            `json:"pending"`
 }
 
 func (p *Pipeline) saveLocked() error {
 	if p.State == nil {
 		return nil
 	}
-	return p.State.Save(persisted{p.desired, p.running})
+	return p.State.Save(persisted{Desired: p.desired, Running: p.running, Pending: p.pending})
 }
 func (p *Pipeline) load() error {
 	if p.State == nil {
@@ -386,6 +471,9 @@ func (p *Pipeline) load() error {
 	}
 	if s.Desired != nil {
 		p.desired = s.Desired
+	}
+	if s.Pending != nil {
+		p.pending = s.Pending
 	}
 	if s.Running != nil {
 		p.running = s.Running
@@ -425,4 +513,17 @@ func (s *StateStore) Save(v persisted) error {
 		return e
 	}
 	return os.Rename(tmp.Name(), s.Path)
+}
+
+func (p *Pipeline) Observed() []*agentv1.ObservedApp {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	out := make([]*agentv1.ObservedApp, 0, len(p.running))
+	for _, r := range p.running {
+		if p.apps[r.AppID] {
+			continue
+		}
+		out = append(out, &agentv1.ObservedApp{AppId: r.AppID, DeployId: r.DeployID, Sha: r.SHA, Revision: r.Revision})
+	}
+	return out
 }

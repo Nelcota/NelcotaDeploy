@@ -7,8 +7,11 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
+	"net/url"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -90,6 +93,8 @@ type Verifier struct {
 	seen     map[string]int64
 	Key      ed25519.PublicKey
 	ServerID string
+	Path     string
+	loaded   bool
 }
 
 func (v *Verifier) Verify(c *agentv1.Command, now time.Time) error {
@@ -108,6 +113,18 @@ func (v *Verifier) Verify(c *agentv1.Command, now time.Time) error {
 	if v.seen == nil {
 		v.seen = make(map[string]int64)
 	}
+	if !v.loaded && v.Path != "" {
+		b, e := os.ReadFile(v.Path)
+		if e != nil && !errors.Is(e, os.ErrNotExist) {
+			return errors.New("replay journal unavailable")
+		}
+		if len(b) > 0 {
+			if e = json.Unmarshal(b, &v.seen); e != nil {
+				return errors.New("invalid replay journal")
+			}
+		}
+		v.loaded = true
+	}
 	for id, expiry := range v.seen {
 		if expiry < now.Unix() {
 			delete(v.seen, id)
@@ -120,6 +137,36 @@ func (v *Verifier) Verify(c *agentv1.Command, now time.Time) error {
 		return errors.New("command rate exceeded")
 	}
 	v.seen[c.Id] = c.ExpiresUnix
+	if v.Path != "" {
+		b, e := json.Marshal(v.seen)
+		if e != nil {
+			return e
+		}
+		if e = os.MkdirAll(filepath.Dir(v.Path), 0700); e != nil {
+			return e
+		}
+		f, e := os.CreateTemp(filepath.Dir(v.Path), ".replay-")
+		if e != nil {
+			return e
+		}
+		defer os.Remove(f.Name())
+		if e = f.Chmod(0600); e == nil {
+			_, e = f.Write(b)
+		}
+		if e == nil {
+			e = f.Sync()
+		}
+		closeErr := f.Close()
+		if e != nil {
+			return e
+		}
+		if closeErr != nil {
+			return closeErr
+		}
+		if e = os.Rename(f.Name(), v.Path); e != nil {
+			return e
+		}
+	}
 	return nil
 }
 
@@ -130,7 +177,7 @@ func NewRedactor(values []string) *Redactor {
 	r := &Redactor{}
 	for _, s := range values {
 		if s != "" {
-			r.secrets = append(r.secrets, s)
+			r.secrets = append(r.secrets, s, url.QueryEscape(s), url.PathEscape(s), base64.StdEncoding.EncodeToString([]byte(s)), base64.RawURLEncoding.EncodeToString([]byte(s)))
 		}
 	}
 	return r

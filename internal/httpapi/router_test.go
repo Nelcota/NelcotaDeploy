@@ -1,0 +1,92 @@
+package httpapi
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"github.com/nelcota/nelcota-deploy/internal/service"
+	"net/http"
+	"net/http/httptest"
+	"testing"
+	"time"
+)
+
+type authStub struct{ service.Auth }
+
+func (authStub) Session(context.Context, string) (service.Principal, error) {
+	return service.Principal{ID: "admin", Role: "admin"}, nil
+}
+func (authStub) FinishLogin(context.Context, service.FinishInput) (service.LoginResult, error) {
+	return service.LoginResult{Token: "opaque-session-token", ExpiresAt: time.Now().Add(time.Hour)}, nil
+}
+func (authStub) Logout(context.Context, string) error { return nil }
+func testAPI() http.Handler {
+	return New(Config{Origin: "https://panel.example.com", CSRFKey: bytes.Repeat([]byte{1}, 32), Services: service.Services{Auth: authStub{}}})
+}
+func TestSessionRequired(t *testing.T) {
+	r := httptest.NewRequest("GET", "/api/apps", nil)
+	w := httptest.NewRecorder()
+	testAPI().ServeHTTP(w, r)
+	if w.Code != 401 {
+		t.Fatal(w.Code)
+	}
+}
+func TestCSRFAndStrictCookie(t *testing.T) {
+	h := testAPI()
+	r := httptest.NewRequest("POST", "/api/auth/login/finish", bytes.NewBufferString(`{"ceremony_id":"x","credential":{}}`))
+	r.Header.Set("Origin", "https://panel.example.com")
+	r.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+	if w.Code != 200 {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	cookies := w.Result().Cookies()
+	if len(cookies) != 1 || !cookies[0].Secure || !cookies[0].HttpOnly || cookies[0].SameSite != http.SameSiteStrictMode || cookies[0].Name != "__Host-nelcota" {
+		t.Fatal(cookies)
+	}
+	get := httptest.NewRequest("GET", "/api/session", nil)
+	get.AddCookie(cookies[0])
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, get)
+	var session struct {
+		CSRF string `json:"csrf_token"`
+	}
+	if e := json.Unmarshal(w.Body.Bytes(), &session); e != nil {
+		t.Fatal(e)
+	}
+	for _, row := range []struct {
+		origin, csrf string
+		want         int
+	}{{"https://evil.example", session.CSRF, 403}, {"https://panel.example.com", "", 403}, {"https://panel.example.com", session.CSRF, 200}} {
+		r = httptest.NewRequest("POST", "/api/auth/logout", nil)
+		r.Header.Set("Origin", row.origin)
+		r.Header.Set("X-CSRF-Token", row.csrf)
+		r.AddCookie(cookies[0])
+		w = httptest.NewRecorder()
+		h.ServeHTTP(w, r)
+		if w.Code != row.want {
+			t.Fatal(row, w.Code)
+		}
+	}
+}
+func TestNoDevEndpointInProduction(t *testing.T) {
+	r := httptest.NewRequest("POST", "/api/dev/session", bytes.NewBufferString("{}"))
+	r.Header.Set("Origin", "https://panel.example.com")
+	w := httptest.NewRecorder()
+	testAPI().ServeHTTP(w, r)
+	if w.Code != 404 {
+		t.Fatal(w.Code)
+	}
+}
+func TestJSONRejectsTrailingData(t *testing.T) {
+	h := testAPI()
+	r := httptest.NewRequest("POST", "/api/auth/login/finish", bytes.NewBufferString(`{} {}`))
+	r.Header.Set("Origin", "https://panel.example.com")
+	r.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+	if w.Code != 400 {
+		t.Fatal(w.Code)
+	}
+}
