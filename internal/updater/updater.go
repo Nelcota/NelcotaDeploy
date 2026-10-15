@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -55,19 +56,28 @@ type Trust struct {
 	PublicKey string       `json:"public_key"`
 	Target    string       `json:"target"`
 	Client    *http.Client `json:"-"`
+	HealthURL string       `json:"health_url,omitempty"`
 }
 
 func LoadTrust(p string) (Trust, error) {
-	st, e := os.Lstat(p)
+	f, e := os.OpenFile(p, os.O_RDONLY|sysNoFollow, 0)
 	if e != nil {
 		return Trust{}, e
 	}
-	if !st.Mode().IsRegular() || st.Mode().Perm()&0022 != 0 {
+	defer f.Close()
+	st, e := f.Stat()
+	if e != nil {
+		return Trust{}, e
+	}
+	if !st.Mode().IsRegular() || st.Mode().Perm()&0022 != 0 || st.Size() > 16<<10 {
 		return Trust{}, errors.New("release trust must be a protected regular file")
 	}
-	b, e := os.ReadFile(p)
+	b, e := io.ReadAll(io.LimitReader(f, (16<<10)+1))
 	if e != nil {
 		return Trust{}, e
+	}
+	if len(b) > 16<<10 {
+		return Trust{}, errors.New("release trust file too large")
 	}
 	var t Trust
 	if e = json.Unmarshal(b, &t); e != nil {
@@ -82,6 +92,17 @@ func (t Trust) validate() error {
 	}
 	if t.Target != "amd64_v1" && t.Target != "amd64_v3" && t.Target != "arm64" {
 		return errors.New("invalid update target")
+	}
+	if t.HealthURL != "" {
+		health, e := url.Parse(t.HealthURL)
+		if e != nil || health.Scheme != "http" || health.User != nil || health.RawQuery != "" || health.Fragment != "" || health.Path != "/healthz" {
+			return errors.New("update health URL must be a loopback HTTP healthz endpoint")
+		}
+		ip := net.ParseIP(health.Hostname())
+		port, e := strconv.Atoi(health.Port())
+		if ip == nil || !ip.IsLoopback() || e != nil || port < 1 || port > 65535 {
+			return errors.New("update health URL must be a loopback HTTP healthz endpoint")
+		}
 	}
 	return nil
 }
@@ -189,7 +210,7 @@ func Queue(data string, r Request) error { return queueFile(RequestPath(data), d
 
 // Apply is called by a fixed root-owned systemd helper. Revalidation and downloads
 // happen here, never trusting a service-writable staged executable.
-func (t Trust) Apply(ctx context.Context, data, state, destination, component string, restart func(context.Context) error) (err error) {
+func (t Trust) Apply(ctx context.Context, data, state, destination, component string, restart func(context.Context, string) error) (err error) {
 	if component != "panel" && component != "agent" {
 		return errors.New("invalid update component")
 	}
@@ -211,7 +232,9 @@ func (t Trust) Apply(ctx context.Context, data, state, destination, component st
 		removeRequest(data, "update/request.json")
 	}()
 	current := Version
+	var savedVersion []byte
 	if b, e := os.ReadFile(filepath.Join(state, "version")); e == nil {
+		savedVersion = b
 		saved := strings.TrimSpace(string(b))
 		if !ValidVersion(saved) {
 			return errors.New("invalid installed release state")
@@ -219,6 +242,8 @@ func (t Trust) Apply(ctx context.Context, data, state, destination, component st
 		if Newer(saved, current) {
 			current = saved
 		}
+	} else if !os.IsNotExist(e) {
+		return errors.New("installed release state unavailable")
 	}
 	if !Newer(r.Version, current) {
 		return errors.New("update must be newer than installed release")
@@ -274,10 +299,7 @@ func (t Trust) Apply(ctx context.Context, data, state, destination, component st
 	if e = os.Rename(out.Name(), destination); e != nil {
 		return e
 	}
-	if e = syncDirectory(filepath.Dir(destination)); e != nil {
-		return e
-	}
-	if e = restart(ctx); e != nil {
+	rollback := func(restoreState bool) error {
 		removeRequest(data, "update/request.json")
 		rollback, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
 		defer cancel()
@@ -285,14 +307,41 @@ func (t Trust) Apply(ctx context.Context, data, state, destination, component st
 			return errors.New("update failed; binary rollback requires repair")
 		}
 		_ = syncDirectory(filepath.Dir(destination))
-		if re := restart(rollback); re != nil {
+		if re := restart(rollback, current); re != nil {
 			return errors.New("update failed; previous binary restored but service requires repair")
 		}
 		result.Status = "rolled_back"
+		if restoreState {
+			var re error
+			if savedVersion != nil {
+				re = atomicFile(filepath.Join(state, "version"), savedVersion, 0600)
+			} else if st, e := os.Lstat(filepath.Join(state, "version")); e == nil {
+				if st.Mode().IsRegular() {
+					re = os.Remove(filepath.Join(state, "version"))
+					if re == nil {
+						re = syncDirectory(state)
+					}
+				} else {
+					re = errors.New("invalid release state")
+				}
+			} else if !os.IsNotExist(e) {
+				re = e
+			}
+			if re != nil {
+				return errors.New("previous binary restored; release state requires repair")
+			}
+		}
 		return errors.New("update failed; previous binary restored")
 	}
+	if e = syncDirectory(filepath.Dir(destination)); e != nil {
+		return rollback(false)
+	}
+	// Bind readiness to the validated release, never to the mutable request file.
+	if e = restart(ctx, r.Version); e != nil {
+		return rollback(false)
+	}
 	if e = atomicFile(filepath.Join(state, "version"), []byte(r.Version+"\n"), 0600); e != nil {
-		return e
+		return rollback(true)
 	}
 	result.Status = "applied"
 	return nil
