@@ -433,6 +433,9 @@ func (a *AuthService) create(ctx context.Context, in UserInput, first bool) (Enr
 	return Enrollment{id, token, expires}, e
 }
 func (a *AuthService) Cleanup(ctx context.Context) error {
+	if _, e := a.Core.DB.Write.ExecContext(ctx, "UPDATE servers SET pending_certificate=NULL,previous_fingerprint='',previous_cert_until=0 WHERE previous_cert_until>0 AND previous_cert_until<?", time.Now().Unix()); e != nil {
+		return e
+	}
 	for _, table := range []string{"challenges", "sessions", "api_tokens"} {
 		if _, e := a.Core.DB.Write.ExecContext(ctx, "DELETE FROM "+table+" WHERE expires_at<?", time.Now().Unix()); e != nil {
 			return e

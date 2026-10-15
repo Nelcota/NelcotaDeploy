@@ -131,6 +131,8 @@ type DeployInput struct {
 	Clean   bool   `json:"clean"`
 }
 type Server struct {
+	Ready       bool   `json:"ready"`
+	Version     string `json:"version"`
 	ID          string `json:"id"`
 	Name        string `json:"name"`
 	WireGuardIP string `json:"wireguard_ip"`
@@ -138,6 +140,10 @@ type Server struct {
 	HeartbeatAt int64  `json:"heartbeat_at"`
 	BuildLimit  int64  `json:"build_limit"`
 	CacheBytes  int64  `json:"cache_bytes"`
+}
+type ServerLimitsInput struct {
+	BuildLimit int   `json:"build_limit"`
+	CacheBytes int64 `json:"cache_bytes"`
 }
 type ServerInput struct {
 	Name        string `json:"name"`
@@ -181,6 +187,7 @@ type Deploys interface {
 	Rollback(context.Context, string, string) (Deployment, error)
 }
 type Servers interface {
+	UpdateLimits(context.Context, string, ServerLimitsInput) (Server, error)
 	List(context.Context) ([]Server, error)
 	Invite(context.Context, ServerInput) (Invitation, error)
 	Prune(context.Context, string, string, bool) error

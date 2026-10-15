@@ -84,10 +84,19 @@ func Diagnostics(ctx context.Context, address, device string) error {
 	if e := recorder.Start(); e != nil {
 		return e
 	}
-	defer recorder.Stop()
+	state := &flight{recorder: recorder}
+	currentFlight.Store(state)
+	defer func() {
+		currentFlight.CompareAndSwap(state, nil)
+		state.mu.Lock()
+		defer state.mu.Unlock()
+		recorder.Stop()
+	}()
 	r := http.NewServeMux()
 	r.HandleFunc("/debug/flightrecorder", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/octet-stream")
+		state.mu.Lock()
+		defer state.mu.Unlock()
 		_, _ = recorder.WriteTo(w)
 	})
 	r.HandleFunc("/debug/pprof/", pprof.Index)
@@ -97,7 +106,8 @@ func Diagnostics(ctx context.Context, address, device string) error {
 	r.HandleFunc("/metrics", func(w http.ResponseWriter, r *http.Request) { metrics.WritePrometheus(w, true) })
 	return Serve(ctx, Server(address, r), false)
 }
-func Metrics(ctx context.Context) *agentv1.Metrics {
+func Metrics(ctx context.Context) *agentv1.Metrics { return MetricsAt(ctx, "/var/lib/nelcota") }
+func MetricsAt(ctx context.Context, data string) *agentv1.Metrics {
 	m := &agentv1.Metrics{}
 	if v, e := cpu.PercentWithContext(ctx, 0, false); e == nil && len(v) > 0 {
 		m.CpuPercent = v[0]
@@ -106,7 +116,7 @@ func Metrics(ctx context.Context) *agentv1.Metrics {
 		m.MemoryUsed = v.Used
 		m.MemoryTotal = v.Total
 	}
-	if v, e := disk.UsageWithContext(ctx, "/var/lib/nelcota"); e == nil {
+	if v, e := disk.UsageWithContext(ctx, data); e == nil {
 		m.DiskUsed = v.Used
 		m.DiskTotal = v.Total
 	}

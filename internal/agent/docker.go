@@ -16,6 +16,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/moby/moby/api/types/container"
@@ -34,12 +35,17 @@ import (
 )
 
 type DockerEngine struct {
-	Docker       *client.Client
-	BuildKit     *bk.Client
-	Caddy        *Caddy
-	CacheBytes   int64
-	Drain        time.Duration
-	CgroupParent string
+	baseMu         sync.Mutex
+	BaseImagesPath string
+	cacheMu        sync.RWMutex
+	statsMu        sync.Mutex
+	previousStats  map[string]container.CPUStats
+	Docker         *client.Client
+	BuildKit       *bk.Client
+	Caddy          *Caddy
+	CacheBytes     int64
+	Drain          time.Duration
+	CgroupParent   string
 }
 
 func NewDockerEngine(ctx context.Context, buildkit, caddy string, cache int64) (*DockerEngine, error) {
@@ -112,7 +118,7 @@ func (d *DockerEngine) Build(ctx context.Context, dep *agentv1.Deploy, dir strin
 	name := tar.Name()
 	_ = tar.Close()
 	defer os.Remove(name)
-	attrs := map[string]string{"filename": dockerfile, "cgroup-parent": d.CgroupParent, "force-network-mode": "sandbox", "label:nelcota.managed": "true", "label:nelcota.app": dep.App.AppId, "build-arg:BUILDKIT_CACHE_MOUNT_NS": key(dep.App.AppId)}
+	attrs := map[string]string{"image-resolve-mode": "pull", "filename": dockerfile, "cgroup-parent": d.CgroupParent, "force-network-mode": "sandbox", "label:nelcota.managed": "true", "label:nelcota.app": dep.App.AppId, "build-arg:BUILDKIT_CACHE_MOUNT_NS": key(dep.App.AppId)}
 	if dep.Clean || !dep.App.CacheEnabled {
 		attrs["no-cache"] = ""
 		attrs["build-arg:BUILDKIT_CACHE_MOUNT_NS"] = key(dep.DeployId)
@@ -162,6 +168,9 @@ func (d *DockerEngine) Build(ctx context.Context, dep *agentv1.Deploy, dir strin
 	if e = d.gc(ctx); e != nil {
 		_, _ = d.Docker.ImageRemove(context.WithoutCancel(ctx), tag, client.ImageRemoveOptions{PruneChildren: true})
 		return "", e
+	}
+	if e = d.recordBases(ctx, dir, dockerfile); e != nil {
+		log([]byte("[maintenance] não foi possível registrar imagens base\n"))
 	}
 	return tag, nil
 }
@@ -435,5 +444,14 @@ func (d *DockerEngine) gc(ctx context.Context) error {
 	if e := d.BuildKit.Prune(ctx, nil, bk.WithKeepOpt(7*24*time.Hour, 0, 0, 0)); e != nil {
 		return e
 	}
-	return d.BuildKit.Prune(ctx, nil, bk.WithKeepOpt(0, 0, d.CacheBytes, 0))
+	d.cacheMu.RLock()
+	cache := d.CacheBytes
+	d.cacheMu.RUnlock()
+	return d.BuildKit.Prune(ctx, nil, bk.WithKeepOpt(0, 0, cache, 0))
+}
+
+func (d *DockerEngine) SetCacheLimit(bytes int64) {
+	d.cacheMu.Lock()
+	d.CacheBytes = bytes
+	d.cacheMu.Unlock()
 }

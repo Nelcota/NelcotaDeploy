@@ -3,13 +3,12 @@
 set -euo pipefail
 umask 077
 fail() { printf 'Erro: %s\n' "$1" >&2; exit 1; }
-usage() { printf '%s\n' 'agent.sh --panel-url HTTPS_URL --join-file FILE --release-url HTTPS_URL --signing-key PUBLIC_KEY [--join TOKEN]'; }
-panel='' token_file='' token='' release='' signing_key=''
+usage() { printf '%s\n' 'agent.sh --panel-url HTTPS_URL --join-file FILE --release-url HTTPS_URL --signing-key PUBLIC_KEY'; }
+panel='' token_file='' release='' signing_key=''
 while (($#)); do
  case "$1" in
  --panel-url) panel=${2:?}; shift 2;;
  --join-file) token_file=${2:?}; shift 2;;
- --join) token=${2:?}; shift 2;;
  --release-url) release=${2:?}; shift 2;;
  --signing-key) signing_key=${2:?}; shift 2;;
  --help) usage; exit 0;;
@@ -21,7 +20,7 @@ release_base=${release%/*}
 [[ ${release##*/} =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || fail 'Use uma URL imutável terminada em /vMAJOR.MINOR.PATCH'
 [[ $EUID == 0 ]] || fail 'Execute como root'
 [[ $panel == https://* && $panel != *[$'\n\r ']* && $release == https://* && $release != *[$'\n\r ']* && -n $signing_key ]] || fail 'URLs HTTPS e chave pública confiável obrigatórias'
-[[ -n $token || -f $token_file ]] || fail 'Convite obrigatório'
+[[ -f $token_file ]] || fail 'Convite obrigatório'
 [[ ! -e /etc/nelcota-agent/join.json && ! -e /etc/wireguard/wg0.conf ]] || fail 'Agent ou wg0 já configurados'
 [[ ! -e /etc/caddy/Caddyfile ]] || fail 'Caddy existente: preserve a configuração e instale manualmente'
 # shellcheck source=/dev/null
@@ -73,7 +72,6 @@ usermod -aG docker nelcota-agent
 install -d -o nelcota-agent -g nelcota-agent -m 0700 /etc/nelcota-agent /var/lib/nelcota-agent
 wg genkey > "$work/wg.key"
 wg pubkey < "$work/wg.key" > "$work/wg.pub"
-if [[ -n $token ]]; then printf '%s' "$token" > "$work/join-token"; unset token; token_file="$work/join-token"; fi
 /usr/local/bin/nelcota-agent join --panel-url "$panel" --join-token-file "$token_file" --wg-public-key-file "$work/wg.pub"
 join=/etc/nelcota-agent/join.json
 address=$(jq -er '.address' "$join")
@@ -163,6 +161,7 @@ User=nelcota-agent
 Group=nelcota-agent
 SupplementaryGroups=docker
 ExecStart=/usr/local/bin/nelcota-agent serve
+Environment=GODEBUG=disablethp=1
 Environment=GOMEMLIMIT=80MiB
 MemoryMax=100M
 Restart=on-failure

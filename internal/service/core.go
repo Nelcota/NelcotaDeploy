@@ -14,6 +14,7 @@ import (
 
 	"github.com/nelcota/nelcota-deploy/internal/events"
 	agentv1 "github.com/nelcota/nelcota-deploy/internal/gen/agent/v1"
+	"github.com/nelcota/nelcota-deploy/internal/maintenance"
 	"github.com/nelcota/nelcota-deploy/internal/security"
 	"github.com/nelcota/nelcota-deploy/internal/store"
 	"github.com/nelcota/nelcota-deploy/internal/store/dbgen"
@@ -368,7 +369,7 @@ func (s *serversService) List(ctx context.Context) ([]Server, error) {
 	rows, e := s.c.DB.Queries.ListServers(ctx)
 	out := make([]Server, 0, len(rows))
 	for _, r := range rows {
-		out = append(out, Server{r.ID, r.Name, r.WireguardIp, r.Status, r.HeartbeatAt, r.BuildLimit, r.CacheBytes})
+		out = append(out, Server{ID: r.ID, Name: r.Name, WireGuardIP: r.WireguardIp, Status: r.Status, HeartbeatAt: r.HeartbeatAt, BuildLimit: r.BuildLimit, CacheBytes: r.CacheBytes, Version: r.AgentVersion, Ready: r.AgentReady != 0})
 	}
 	return out, dbError(e)
 }
@@ -457,6 +458,13 @@ func (s *settingsService) Set(ctx context.Context, key, value string) error {
 		return e
 	}
 	switch key {
+	case "backup.s3":
+		if value != "" {
+			var cfg maintenance.S3
+			if json.Unmarshal([]byte(value), &cfg) != nil || cfg.Validate() != nil {
+				return fail(Validation, "Configuração S3 inválida")
+			}
+		}
 	case "github.app_id", "github.private_key", "github.webhook_secret", "github.client_id", "github.client_secret":
 	default:
 		return fail(Validation, "Ajuste desconhecido")

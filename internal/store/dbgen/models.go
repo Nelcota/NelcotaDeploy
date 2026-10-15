@@ -124,16 +124,21 @@ type RecoveryCode struct {
 }
 
 type Server struct {
-	ID           string `json:"id"`
-	Name         string `json:"name"`
-	WireguardIp  string `json:"wireguard_ip"`
-	Fingerprint  string `json:"fingerprint"`
-	Status       string `json:"status"`
-	HeartbeatAt  int64  `json:"heartbeat_at"`
-	BuildLimit   int64  `json:"build_limit"`
-	CacheBytes   int64  `json:"cache_bytes"`
-	WgPublicKey  string `json:"wg_public_key"`
-	AgentVersion string `json:"agent_version"`
+	ID                  string `json:"id"`
+	Name                string `json:"name"`
+	WireguardIp         string `json:"wireguard_ip"`
+	Fingerprint         string `json:"fingerprint"`
+	Status              string `json:"status"`
+	HeartbeatAt         int64  `json:"heartbeat_at"`
+	BuildLimit          int64  `json:"build_limit"`
+	CacheBytes          int64  `json:"cache_bytes"`
+	WgPublicKey         string `json:"wg_public_key"`
+	AgentVersion        string `json:"agent_version"`
+	PreviousFingerprint string `json:"previous_fingerprint"`
+	PreviousCertUntil   int64  `json:"previous_cert_until"`
+	CertExpiresAt       int64  `json:"cert_expires_at"`
+	PendingCertificate  []byte `json:"pending_certificate"`
+	AgentReady          int64  `json:"agent_ready"`
 }
 
 type Session struct {

@@ -1368,6 +1368,106 @@ func (x *ContainerEvent) GetStatus() string {
 	return ""
 }
 
+type ContainerMetrics struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	AppId         string                 `protobuf:"bytes,1,opt,name=app_id,json=appId,proto3" json:"app_id,omitempty"`
+	ContainerId   string                 `protobuf:"bytes,2,opt,name=container_id,json=containerId,proto3" json:"container_id,omitempty"`
+	CpuPercent    float64                `protobuf:"fixed64,3,opt,name=cpu_percent,json=cpuPercent,proto3" json:"cpu_percent,omitempty"`
+	MemoryUsed    uint64                 `protobuf:"varint,4,opt,name=memory_used,json=memoryUsed,proto3" json:"memory_used,omitempty"`
+	MemoryLimit   uint64                 `protobuf:"varint,5,opt,name=memory_limit,json=memoryLimit,proto3" json:"memory_limit,omitempty"`
+	NetworkRx     uint64                 `protobuf:"varint,6,opt,name=network_rx,json=networkRx,proto3" json:"network_rx,omitempty"`
+	NetworkTx     uint64                 `protobuf:"varint,7,opt,name=network_tx,json=networkTx,proto3" json:"network_tx,omitempty"`
+	Pids          uint64                 `protobuf:"varint,8,opt,name=pids,proto3" json:"pids,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ContainerMetrics) Reset() {
+	*x = ContainerMetrics{}
+	mi := &file_agent_v1_agent_proto_msgTypes[17]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ContainerMetrics) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ContainerMetrics) ProtoMessage() {}
+
+func (x *ContainerMetrics) ProtoReflect() protoreflect.Message {
+	mi := &file_agent_v1_agent_proto_msgTypes[17]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ContainerMetrics.ProtoReflect.Descriptor instead.
+func (*ContainerMetrics) Descriptor() ([]byte, []int) {
+	return file_agent_v1_agent_proto_rawDescGZIP(), []int{17}
+}
+
+func (x *ContainerMetrics) GetAppId() string {
+	if x != nil {
+		return x.AppId
+	}
+	return ""
+}
+
+func (x *ContainerMetrics) GetContainerId() string {
+	if x != nil {
+		return x.ContainerId
+	}
+	return ""
+}
+
+func (x *ContainerMetrics) GetCpuPercent() float64 {
+	if x != nil {
+		return x.CpuPercent
+	}
+	return 0
+}
+
+func (x *ContainerMetrics) GetMemoryUsed() uint64 {
+	if x != nil {
+		return x.MemoryUsed
+	}
+	return 0
+}
+
+func (x *ContainerMetrics) GetMemoryLimit() uint64 {
+	if x != nil {
+		return x.MemoryLimit
+	}
+	return 0
+}
+
+func (x *ContainerMetrics) GetNetworkRx() uint64 {
+	if x != nil {
+		return x.NetworkRx
+	}
+	return 0
+}
+
+func (x *ContainerMetrics) GetNetworkTx() uint64 {
+	if x != nil {
+		return x.NetworkTx
+	}
+	return 0
+}
+
+func (x *ContainerMetrics) GetPids() uint64 {
+	if x != nil {
+		return x.Pids
+	}
+	return 0
+}
+
 type Metrics struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	CpuPercent    float64                `protobuf:"fixed64,1,opt,name=cpu_percent,json=cpuPercent,proto3" json:"cpu_percent,omitempty"`
@@ -1377,13 +1477,14 @@ type Metrics struct {
 	DiskTotal     uint64                 `protobuf:"varint,5,opt,name=disk_total,json=diskTotal,proto3" json:"disk_total,omitempty"`
 	NetworkRx     uint64                 `protobuf:"varint,6,opt,name=network_rx,json=networkRx,proto3" json:"network_rx,omitempty"`
 	NetworkTx     uint64                 `protobuf:"varint,7,opt,name=network_tx,json=networkTx,proto3" json:"network_tx,omitempty"`
+	Containers    []*ContainerMetrics    `protobuf:"bytes,8,rep,name=containers,proto3" json:"containers,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *Metrics) Reset() {
 	*x = Metrics{}
-	mi := &file_agent_v1_agent_proto_msgTypes[17]
+	mi := &file_agent_v1_agent_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1395,7 +1496,7 @@ func (x *Metrics) String() string {
 func (*Metrics) ProtoMessage() {}
 
 func (x *Metrics) ProtoReflect() protoreflect.Message {
-	mi := &file_agent_v1_agent_proto_msgTypes[17]
+	mi := &file_agent_v1_agent_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1408,7 +1509,7 @@ func (x *Metrics) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Metrics.ProtoReflect.Descriptor instead.
 func (*Metrics) Descriptor() ([]byte, []int) {
-	return file_agent_v1_agent_proto_rawDescGZIP(), []int{17}
+	return file_agent_v1_agent_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *Metrics) GetCpuPercent() float64 {
@@ -1460,6 +1561,13 @@ func (x *Metrics) GetNetworkTx() uint64 {
 	return 0
 }
 
+func (x *Metrics) GetContainers() []*ContainerMetrics {
+	if x != nil {
+		return x.Containers
+	}
+	return nil
+}
+
 type ObservedApp struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	AppId         string                 `protobuf:"bytes,1,opt,name=app_id,json=appId,proto3" json:"app_id,omitempty"`
@@ -1472,7 +1580,7 @@ type ObservedApp struct {
 
 func (x *ObservedApp) Reset() {
 	*x = ObservedApp{}
-	mi := &file_agent_v1_agent_proto_msgTypes[18]
+	mi := &file_agent_v1_agent_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1484,7 +1592,7 @@ func (x *ObservedApp) String() string {
 func (*ObservedApp) ProtoMessage() {}
 
 func (x *ObservedApp) ProtoReflect() protoreflect.Message {
-	mi := &file_agent_v1_agent_proto_msgTypes[18]
+	mi := &file_agent_v1_agent_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1497,7 +1605,7 @@ func (x *ObservedApp) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ObservedApp.ProtoReflect.Descriptor instead.
 func (*ObservedApp) Descriptor() ([]byte, []int) {
-	return file_agent_v1_agent_proto_rawDescGZIP(), []int{18}
+	return file_agent_v1_agent_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *ObservedApp) GetAppId() string {
@@ -1542,7 +1650,7 @@ type Heartbeat struct {
 
 func (x *Heartbeat) Reset() {
 	*x = Heartbeat{}
-	mi := &file_agent_v1_agent_proto_msgTypes[19]
+	mi := &file_agent_v1_agent_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1554,7 +1662,7 @@ func (x *Heartbeat) String() string {
 func (*Heartbeat) ProtoMessage() {}
 
 func (x *Heartbeat) ProtoReflect() protoreflect.Message {
-	mi := &file_agent_v1_agent_proto_msgTypes[19]
+	mi := &file_agent_v1_agent_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1567,7 +1675,7 @@ func (x *Heartbeat) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Heartbeat.ProtoReflect.Descriptor instead.
 func (*Heartbeat) Descriptor() ([]byte, []int) {
-	return file_agent_v1_agent_proto_rawDescGZIP(), []int{19}
+	return file_agent_v1_agent_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *Heartbeat) GetRequestState() bool {
@@ -1631,7 +1739,7 @@ type Event struct {
 
 func (x *Event) Reset() {
 	*x = Event{}
-	mi := &file_agent_v1_agent_proto_msgTypes[20]
+	mi := &file_agent_v1_agent_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1643,7 +1751,7 @@ func (x *Event) String() string {
 func (*Event) ProtoMessage() {}
 
 func (x *Event) ProtoReflect() protoreflect.Message {
-	mi := &file_agent_v1_agent_proto_msgTypes[20]
+	mi := &file_agent_v1_agent_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1656,7 +1764,7 @@ func (x *Event) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Event.ProtoReflect.Descriptor instead.
 func (*Event) Descriptor() ([]byte, []int) {
-	return file_agent_v1_agent_proto_rawDescGZIP(), []int{20}
+	return file_agent_v1_agent_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *Event) GetServerId() string {
@@ -1893,7 +2001,20 @@ const file_agent_v1_agent_proto_rawDesc = "" +
 	"\x0eContainerEvent\x12\x15\n" +
 	"\x06app_id\x18\x01 \x01(\tR\x05appId\x12!\n" +
 	"\fcontainer_id\x18\x02 \x01(\tR\vcontainerId\x12\x16\n" +
-	"\x06status\x18\x03 \x01(\tR\x06status\"\xe8\x01\n" +
+	"\x06status\x18\x03 \x01(\tR\x06status\"\x83\x02\n" +
+	"\x10ContainerMetrics\x12\x15\n" +
+	"\x06app_id\x18\x01 \x01(\tR\x05appId\x12!\n" +
+	"\fcontainer_id\x18\x02 \x01(\tR\vcontainerId\x12\x1f\n" +
+	"\vcpu_percent\x18\x03 \x01(\x01R\n" +
+	"cpuPercent\x12\x1f\n" +
+	"\vmemory_used\x18\x04 \x01(\x04R\n" +
+	"memoryUsed\x12!\n" +
+	"\fmemory_limit\x18\x05 \x01(\x04R\vmemoryLimit\x12\x1d\n" +
+	"\n" +
+	"network_rx\x18\x06 \x01(\x04R\tnetworkRx\x12\x1d\n" +
+	"\n" +
+	"network_tx\x18\a \x01(\x04R\tnetworkTx\x12\x12\n" +
+	"\x04pids\x18\b \x01(\x04R\x04pids\"\xa4\x02\n" +
 	"\aMetrics\x12\x1f\n" +
 	"\vcpu_percent\x18\x01 \x01(\x01R\n" +
 	"cpuPercent\x12\x1f\n" +
@@ -1906,7 +2027,10 @@ const file_agent_v1_agent_proto_rawDesc = "" +
 	"\n" +
 	"network_rx\x18\x06 \x01(\x04R\tnetworkRx\x12\x1d\n" +
 	"\n" +
-	"network_tx\x18\a \x01(\x04R\tnetworkTx\"o\n" +
+	"network_tx\x18\a \x01(\x04R\tnetworkTx\x12:\n" +
+	"\n" +
+	"containers\x18\b \x03(\v2\x1a.agent.v1.ContainerMetricsR\n" +
+	"containers\"o\n" +
 	"\vObservedApp\x12\x15\n" +
 	"\x06app_id\x18\x01 \x01(\tR\x05appId\x12\x1b\n" +
 	"\tdeploy_id\x18\x02 \x01(\tR\bdeployId\x12\x10\n" +
@@ -1947,36 +2071,37 @@ func file_agent_v1_agent_proto_rawDescGZIP() []byte {
 }
 
 var file_agent_v1_agent_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_agent_v1_agent_proto_msgTypes = make([]protoimpl.MessageInfo, 23)
+var file_agent_v1_agent_proto_msgTypes = make([]protoimpl.MessageInfo, 24)
 var file_agent_v1_agent_proto_goTypes = []any{
-	(Prune_Scope)(0),        // 0: agent.v1.Prune.Scope
-	(*AppConfig)(nil),       // 1: agent.v1.AppConfig
-	(*Deploy)(nil),          // 2: agent.v1.Deploy
-	(*Cancel)(nil),          // 3: agent.v1.Cancel
-	(*Rollback)(nil),        // 4: agent.v1.Rollback
-	(*AppAction)(nil),       // 5: agent.v1.AppAction
-	(*Scale)(nil),           // 6: agent.v1.Scale
-	(*Logs)(nil),            // 7: agent.v1.Logs
-	(*Stats)(nil),           // 8: agent.v1.Stats
-	(*Prune)(nil),           // 9: agent.v1.Prune
-	(*ServerLimits)(nil),    // 10: agent.v1.ServerLimits
-	(*Update)(nil),          // 11: agent.v1.Update
-	(*OperationResult)(nil), // 12: agent.v1.OperationResult
-	(*Snapshot)(nil),        // 13: agent.v1.Snapshot
-	(*Command)(nil),         // 14: agent.v1.Command
-	(*DeployLog)(nil),       // 15: agent.v1.DeployLog
-	(*DeployStatus)(nil),    // 16: agent.v1.DeployStatus
-	(*ContainerEvent)(nil),  // 17: agent.v1.ContainerEvent
-	(*Metrics)(nil),         // 18: agent.v1.Metrics
-	(*ObservedApp)(nil),     // 19: agent.v1.ObservedApp
-	(*Heartbeat)(nil),       // 20: agent.v1.Heartbeat
-	(*Event)(nil),           // 21: agent.v1.Event
-	nil,                     // 22: agent.v1.AppConfig.EnvEntry
-	nil,                     // 23: agent.v1.AppConfig.BuildSecretsEntry
+	(Prune_Scope)(0),         // 0: agent.v1.Prune.Scope
+	(*AppConfig)(nil),        // 1: agent.v1.AppConfig
+	(*Deploy)(nil),           // 2: agent.v1.Deploy
+	(*Cancel)(nil),           // 3: agent.v1.Cancel
+	(*Rollback)(nil),         // 4: agent.v1.Rollback
+	(*AppAction)(nil),        // 5: agent.v1.AppAction
+	(*Scale)(nil),            // 6: agent.v1.Scale
+	(*Logs)(nil),             // 7: agent.v1.Logs
+	(*Stats)(nil),            // 8: agent.v1.Stats
+	(*Prune)(nil),            // 9: agent.v1.Prune
+	(*ServerLimits)(nil),     // 10: agent.v1.ServerLimits
+	(*Update)(nil),           // 11: agent.v1.Update
+	(*OperationResult)(nil),  // 12: agent.v1.OperationResult
+	(*Snapshot)(nil),         // 13: agent.v1.Snapshot
+	(*Command)(nil),          // 14: agent.v1.Command
+	(*DeployLog)(nil),        // 15: agent.v1.DeployLog
+	(*DeployStatus)(nil),     // 16: agent.v1.DeployStatus
+	(*ContainerEvent)(nil),   // 17: agent.v1.ContainerEvent
+	(*ContainerMetrics)(nil), // 18: agent.v1.ContainerMetrics
+	(*Metrics)(nil),          // 19: agent.v1.Metrics
+	(*ObservedApp)(nil),      // 20: agent.v1.ObservedApp
+	(*Heartbeat)(nil),        // 21: agent.v1.Heartbeat
+	(*Event)(nil),            // 22: agent.v1.Event
+	nil,                      // 23: agent.v1.AppConfig.EnvEntry
+	nil,                      // 24: agent.v1.AppConfig.BuildSecretsEntry
 }
 var file_agent_v1_agent_proto_depIdxs = []int32{
-	22, // 0: agent.v1.AppConfig.env:type_name -> agent.v1.AppConfig.EnvEntry
-	23, // 1: agent.v1.AppConfig.build_secrets:type_name -> agent.v1.AppConfig.BuildSecretsEntry
+	23, // 0: agent.v1.AppConfig.env:type_name -> agent.v1.AppConfig.EnvEntry
+	24, // 1: agent.v1.AppConfig.build_secrets:type_name -> agent.v1.AppConfig.BuildSecretsEntry
 	1,  // 2: agent.v1.Deploy.app:type_name -> agent.v1.AppConfig
 	2,  // 3: agent.v1.Rollback.deploy:type_name -> agent.v1.Deploy
 	0,  // 4: agent.v1.Prune.scope:type_name -> agent.v1.Prune.Scope
@@ -1995,21 +2120,22 @@ var file_agent_v1_agent_proto_depIdxs = []int32{
 	9,  // 17: agent.v1.Command.prune:type_name -> agent.v1.Prune
 	11, // 18: agent.v1.Command.update:type_name -> agent.v1.Update
 	13, // 19: agent.v1.Command.desired:type_name -> agent.v1.Snapshot
-	19, // 20: agent.v1.Heartbeat.apps:type_name -> agent.v1.ObservedApp
-	12, // 21: agent.v1.Heartbeat.update_result:type_name -> agent.v1.OperationResult
-	15, // 22: agent.v1.Event.deploy_log:type_name -> agent.v1.DeployLog
-	16, // 23: agent.v1.Event.deploy_status:type_name -> agent.v1.DeployStatus
-	17, // 24: agent.v1.Event.container_event:type_name -> agent.v1.ContainerEvent
-	18, // 25: agent.v1.Event.metrics:type_name -> agent.v1.Metrics
-	20, // 26: agent.v1.Event.heartbeat:type_name -> agent.v1.Heartbeat
-	12, // 27: agent.v1.Event.operation_result:type_name -> agent.v1.OperationResult
-	21, // 28: agent.v1.AgentService.Connect:input_type -> agent.v1.Event
-	14, // 29: agent.v1.AgentService.Connect:output_type -> agent.v1.Command
-	29, // [29:30] is the sub-list for method output_type
-	28, // [28:29] is the sub-list for method input_type
-	28, // [28:28] is the sub-list for extension type_name
-	28, // [28:28] is the sub-list for extension extendee
-	0,  // [0:28] is the sub-list for field type_name
+	18, // 20: agent.v1.Metrics.containers:type_name -> agent.v1.ContainerMetrics
+	20, // 21: agent.v1.Heartbeat.apps:type_name -> agent.v1.ObservedApp
+	12, // 22: agent.v1.Heartbeat.update_result:type_name -> agent.v1.OperationResult
+	15, // 23: agent.v1.Event.deploy_log:type_name -> agent.v1.DeployLog
+	16, // 24: agent.v1.Event.deploy_status:type_name -> agent.v1.DeployStatus
+	17, // 25: agent.v1.Event.container_event:type_name -> agent.v1.ContainerEvent
+	19, // 26: agent.v1.Event.metrics:type_name -> agent.v1.Metrics
+	21, // 27: agent.v1.Event.heartbeat:type_name -> agent.v1.Heartbeat
+	12, // 28: agent.v1.Event.operation_result:type_name -> agent.v1.OperationResult
+	22, // 29: agent.v1.AgentService.Connect:input_type -> agent.v1.Event
+	14, // 30: agent.v1.AgentService.Connect:output_type -> agent.v1.Command
+	30, // [30:31] is the sub-list for method output_type
+	29, // [29:30] is the sub-list for method input_type
+	29, // [29:29] is the sub-list for extension type_name
+	29, // [29:29] is the sub-list for extension extendee
+	0,  // [0:29] is the sub-list for field type_name
 }
 
 func init() { file_agent_v1_agent_proto_init() }
@@ -2031,7 +2157,7 @@ func file_agent_v1_agent_proto_init() {
 		(*Command_Prune)(nil),
 		(*Command_Update)(nil),
 	}
-	file_agent_v1_agent_proto_msgTypes[20].OneofWrappers = []any{
+	file_agent_v1_agent_proto_msgTypes[21].OneofWrappers = []any{
 		(*Event_DeployLog)(nil),
 		(*Event_DeployStatus)(nil),
 		(*Event_ContainerEvent)(nil),
@@ -2045,7 +2171,7 @@ func file_agent_v1_agent_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_agent_v1_agent_proto_rawDesc), len(file_agent_v1_agent_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   23,
+			NumMessages:   24,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

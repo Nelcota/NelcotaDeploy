@@ -38,6 +38,9 @@ func TestServerInvitationSingleUse(t *testing.T) {
 	if peers.count != 1 {
 		t.Fatal(peers.count)
 	}
+	if e = s.SyncPeers(ctx); e != nil || peers.count != 2 {
+		t.Fatal("stored WireGuard peers were not restored", peers.count, e)
+	}
 	expired, e := (&serversService{c}).Invite(ctx, ServerInput{Name: "expired", WireGuardIP: "10.77.0.10"})
 	if e != nil {
 		t.Fatal(e)

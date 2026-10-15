@@ -51,7 +51,13 @@ func ParseAuthority(certPEM, keyPEM []byte) (*Authority, error) {
 		return nil, e
 	}
 	key, e := x509.ParseECPrivateKey(k.Bytes)
-	return &Authority{cert, key}, e
+	if e != nil {
+		return nil, e
+	}
+	if !cert.IsCA || !key.PublicKey.Equal(cert.PublicKey) || cert.CheckSignatureFrom(cert) != nil {
+		return nil, errors.New("invalid CA identity")
+	}
+	return &Authority{cert, key}, nil
 }
 func (a *Authority) PEM() ([]byte, []byte, error) {
 	k, e := x509.MarshalECPrivateKey(a.Key)
@@ -72,6 +78,12 @@ func (a *Authority) Issue(id string, server bool, now time.Time) ([]byte, []byte
 		}
 	} else {
 		t.URIs = []*url.URL{{Scheme: "spiffe", Host: "nelcota", Path: "/agents/" + id}}
+	}
+	if t.NotAfter.After(a.Cert.NotAfter) {
+		t.NotAfter = a.Cert.NotAfter
+	}
+	if t.NotAfter.Before(now.Add(24 * time.Hour)) {
+		return nil, nil, errors.New("certificate authority expires too soon")
 	}
 	b, e := x509.CreateCertificate(rand.Reader, t, a.Cert, &k.PublicKey, a.Key)
 	if e != nil {

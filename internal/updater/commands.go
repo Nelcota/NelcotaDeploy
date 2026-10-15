@@ -8,6 +8,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -26,7 +28,7 @@ func Commands(component string, data *string) []*cobra.Command {
 		if !Newer(args[0], Version) {
 			return errors.New("release must be newer than current version")
 		}
-		return Queue(*data, Request{Version: args[0], ID: security.Token()})
+		return RequestUpgrade(*data, Request{Version: args[0], ID: security.Token()})
 	}}
 	apply := &cobra.Command{Use: "apply-update", Hidden: true, Args: cobra.NoArgs, RunE: func(c *cobra.Command, _ []string) error {
 		if os.Geteuid() != 0 {
@@ -46,7 +48,13 @@ func Commands(component string, data *string) []*cobra.Command {
 		}
 		ctx, cancel := context.WithTimeout(c.Context(), 8*time.Minute)
 		defer cancel()
-		return trust.Apply(ctx, *data, "/var/lib/nelcota-updater/"+component, "/usr/local/bin/nelcota-"+component, component, func(ctx context.Context) error { return restartService(ctx, component) })
+		return trust.Apply(ctx, *data, "/var/lib/nelcota-updater/"+component, "/usr/local/bin/nelcota-"+component, component, func(ctx context.Context) error {
+			expected := Version
+			if r, e := readDataRequest(*data, "update/request.json"); e == nil {
+				expected = r.Version
+			}
+			return restartService(ctx, component, *data, expected)
+		})
 	}}
 	var purge bool
 	uninstall := &cobra.Command{Use: "uninstall", Short: "Remove o serviço e binário, conservando dados por padrão", Args: cobra.NoArgs, RunE: func(c *cobra.Command, _ []string) error {
@@ -60,10 +68,20 @@ func Commands(component string, data *string) []*cobra.Command {
 	uninstall.Flags().BoolVar(&purge, "purge", false, "Remove também dados e chaves Nelcota; preserve um backup antes")
 	return []*cobra.Command{version, update, apply, uninstall}
 }
-func restartService(ctx context.Context, component string) error {
-	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+func restartService(ctx context.Context, component, data, expected string) error {
+	ctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
 	defer cancel()
 	unit := "nelcota-" + component + ".service"
+	b, e := exec.CommandContext(ctx, "/usr/local/bin/nelcota-"+component, "version").Output()
+	if e != nil {
+		return errors.New("installed executable version check failed")
+	}
+	var version struct {
+		Version string `json:"version"`
+	}
+	if json.Unmarshal(b, &version) != nil || version.Version != expected {
+		return errors.New("installed executable does not match release version")
+	}
 	if e := exec.CommandContext(ctx, "/usr/bin/systemctl", "restart", unit).Run(); e != nil {
 		return errors.New("service restart failed")
 	}
@@ -77,6 +95,15 @@ func restartService(ctx context.Context, component string) error {
 			return errors.New("updated service did not become ready")
 		case <-tick.C:
 			good := exec.CommandContext(ctx, "/usr/bin/systemctl", "is-active", "--quiet", unit).Run() == nil
+			if good && component == "agent" {
+				b, e := exec.CommandContext(ctx, "/usr/bin/systemctl", "show", "--property=MainPID", "--value", unit).Output()
+				if e != nil {
+					good = false
+				} else {
+					pid, _ := strconv.Atoi(strings.TrimSpace(string(b)))
+					good = pid > 0 && healthyAgent(data, expected, pid)
+				}
+			}
 			if good && component == "panel" {
 				req, e := http.NewRequestWithContext(ctx, "GET", "http://127.0.0.1:8080/healthz", nil)
 				if e != nil {
@@ -107,12 +134,25 @@ func Uninstall(ctx context.Context, root, component string, purge bool, systemct
 		return errors.New("invalid component")
 	}
 	units := []string{"nelcota-" + component + "-update.path", "nelcota-" + component + "-update.service", "nelcota-" + component + ".service"}
-	if e := systemctl(ctx, append([]string{"stop"}, units...)...); e != nil {
-		return errors.New("could not stop Nelcota services")
+	installed := []string{}
+	enabled := []string{}
+	for _, unit := range units {
+		if _, e := os.Stat(filepath.Join(root, "etc/systemd/system", unit)); e == nil {
+			installed = append(installed, unit)
+			if unit != units[1] {
+				enabled = append(enabled, unit)
+			}
+		}
 	}
-	// Static oneshot units cannot be disabled; only installed units are enabled.
-	if e := systemctl(ctx, "disable", units[0], units[2]); e != nil {
-		return e
+	if len(installed) > 0 {
+		if e := systemctl(ctx, append([]string{"stop"}, installed...)...); e != nil {
+			return errors.New("could not stop Nelcota services")
+		}
+	}
+	if len(enabled) > 0 {
+		if e := systemctl(ctx, append([]string{"disable"}, enabled...)...); e != nil {
+			return e
+		}
 	}
 	for _, unit := range units {
 		if e := os.Remove(filepath.Join(root, "etc/systemd/system", unit)); e != nil && !os.IsNotExist(e) {

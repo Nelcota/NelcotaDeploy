@@ -80,7 +80,7 @@ func (s *EnrollmentService) Join(ctx context.Context, in JoinInput) (JoinResult,
 				return fail(Unavailable, "Não foi possível configurar WireGuard")
 			}
 		}
-		if _, e = tx.ExecContext(ctx, "UPDATE servers SET fingerprint=?,wg_public_key=? WHERE id=?", hex.EncodeToString(fingerprint[:]), in.WireGuardPublicKey, id); e != nil {
+		if _, e = tx.ExecContext(ctx, "UPDATE servers SET fingerprint=?,wg_public_key=?,cert_expires_at=? WHERE id=?", hex.EncodeToString(fingerprint[:]), in.WireGuardPublicKey, parsed.NotAfter.Unix(), id); e != nil {
 			return e
 		}
 		if _, e = tx.ExecContext(ctx, "UPDATE invitations SET consumed_at=? WHERE token_hash=? AND consumed_at=0", time.Now().Unix(), security.Hash(in.Token)); e != nil {
@@ -94,4 +94,22 @@ func (s *EnrollmentService) Join(ctx context.Context, in JoinInput) (JoinResult,
 		return s.Core.audit(systemContext(ctx), tx, "server.enroll", id)
 	})
 	return result, e
+}
+
+func (s *EnrollmentService) SyncPeers(ctx context.Context) error {
+	if s.Peers == nil {
+		return nil
+	}
+	servers, e := s.Core.DB.Queries.ListServers(ctx)
+	if e != nil {
+		return e
+	}
+	for _, server := range servers {
+		if server.WgPublicKey != "" {
+			if e = s.Peers.AddPeer(ctx, server.WgPublicKey, server.WireguardIp); e != nil {
+				return e
+			}
+		}
+	}
+	return nil
 }

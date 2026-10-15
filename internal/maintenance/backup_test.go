@@ -84,8 +84,13 @@ func TestOnlineBackupRestoreAndOfflineLock(t *testing.T) {
 		t.Fatal("restored secret mismatch", e)
 	}
 	_ = restored.Close()
-	if _, e = os.Stat(filepath.Join(target.Config, "backup.key")); !os.IsNotExist(e) {
-		t.Fatal("backup key archived")
+	restoredBackupKey, e := security.LoadKey(filepath.Join(target.Config, "backup.key"))
+	sourceKey, _ := security.LoadKey(b.KeyFile)
+	if e != nil || !bytes.Equal(restoredBackupKey, sourceKey) {
+		t.Fatal("operator backup key was not preserved", e)
+	}
+	if e = (Backup{Data: target.Data, Config: target.Config, KeyFile: filepath.Join(target.Config, "backup.key")}).Create(ctx, filepath.Join(t.TempDir(), "after-restore.nbk")); e != nil {
+		t.Fatal("backups did not work after restore", e)
 	}
 	if e = target.Restore(ctx, out, false); e == nil {
 		t.Fatal("replaced without flag")
@@ -206,5 +211,37 @@ func TestStreamHasBoundedFramesAndRejectsReorder(t *testing.T) {
 	sr, _ = newUnsealer(bytes.NewReader(data), key)
 	if _, e = io.ReadAll(sr); e == nil {
 		t.Fatal("accepted reordered frame")
+	}
+}
+
+func TestRestoreChecksMasterKeyAndInterruptedMarker(t *testing.T) {
+	b, db, out := backupFixture(t)
+	wrong := make([]byte, 32)
+	_, _ = rand.Read(wrong)
+	_ = os.WriteFile(filepath.Join(b.Config, "master.key"), wrong, 0600)
+	if e := b.Create(t.Context(), out); e != nil {
+		t.Fatal(e)
+	}
+	target := Backup{Data: filepath.Join(t.TempDir(), "data"), Config: filepath.Join(t.TempDir(), "config"), KeyFile: b.KeyFile}
+	if e := target.Restore(t.Context(), out, false); e == nil {
+		t.Fatal("restored wrong master key")
+	}
+	_ = db.Close()
+	marker := filepath.Join(b.Data, "restore-in-progress")
+	_ = os.WriteFile(marker, []byte("interrupted"), 0600)
+	if opened, e := store.Open(t.Context(), filepath.Join(b.Data, "panel.db")); e == nil {
+		_ = opened.Close()
+		t.Fatal("started with interrupted restore")
+	}
+	protected := filepath.Join(t.TempDir(), "protected")
+	_ = os.WriteFile(protected, []byte("keep"), 0600)
+	_ = os.Remove(marker)
+	_ = os.Symlink(protected, marker)
+	if e := writeMarker(marker); e != nil {
+		t.Fatal(e)
+	}
+	got, _ := os.ReadFile(protected)
+	if string(got) != "keep" {
+		t.Fatal("restore marker followed a symlink")
 	}
 }

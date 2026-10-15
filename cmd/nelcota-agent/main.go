@@ -24,12 +24,17 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"runtime/debug"
 	"strings"
 	"syscall"
 	"time"
 )
 
 func main() {
+	// Prefer the measured small working set; explicit GOGC remains authoritative.
+	if os.Getenv("GOGC") == "" {
+		debug.SetGCPercent(50)
+	}
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
 	if e := command().ExecuteContext(ctx); e != nil && !errors.Is(e, context.Canceled) {
@@ -83,6 +88,12 @@ func command() *cobra.Command {
 		if e != nil {
 			return e
 		}
+		certificates, e := security.NewCertificates(filepath.Join(data, "client-certificate.json"), join.ServerID, false, []byte(join.CA), security.CertificateBundle{Certificate: join.Certificate, PrivateKey: join.PrivateKey})
+		if e != nil {
+			return e
+		}
+		tls.Certificates = nil
+		tls.GetClientCertificate = certificates.GetClientCertificate
 		sign, e := base64.RawStdEncoding.DecodeString(join.SigningKey)
 		if e != nil || len(sign) != ed25519.PublicKeySize {
 			return errors.New("invalid signing key")
@@ -92,20 +103,46 @@ func command() *cobra.Command {
 			return e
 		}
 		defer engine.Close()
+		engine.BaseImagesPath = filepath.Join(data, "base-images.json")
 		pipeline, e := agent.NewPipeline(engine, &agent.StateStore{Path: filepath.Join(data, "state.bin"), Vault: vault}, filepath.Join(data, "builds"), int(join.BuildLimit))
 		if e != nil {
 			return e
 		}
-		pipeline.Stats = host.Metrics
+		stats := func(ctx context.Context) *agentv1.Metrics { return engine.Metrics(ctx, data) }
+		pipeline.Stats = stats
+		pipeline.OnDeployFinished = func(id string, elapsed time.Duration) {
+			host.CaptureSlow(filepath.Join(data, "traces"), id, elapsed, 2*time.Minute)
+		}
 		pipeline.QueueUpdate = func(id, version string) error { return updater.Queue(data, updater.Request{ID: id, Version: version}) }
-		pipeline.UpdatePending = func() bool { return updater.Pending(data) }
+		pipeline.UpdatePending = func() bool { return updater.PendingFor(data, updater.Version) }
 		g, gctx := errgroup.WithContext(ctx)
-		rpc := &transport.AgentClient{Version: updater.Version, UpdateResult: func() *agentv1.OperationResult {
+		rpc := &transport.AgentClient{HeartbeatSent: func(ready bool) { _ = updater.WriteHealth(data, updater.Version, ready) }, Version: updater.Version, UpdateResult: func() *agentv1.OperationResult {
 			r := updater.ReadResult(data)
 			return &agentv1.OperationResult{Id: r.ID, Status: r.Status}
-		}, URL: join.ControlURL, ServerID: join.ServerID, TLS: tls, Verifier: &security.Verifier{Key: ed25519.PublicKey(sign), ServerID: join.ServerID, Path: filepath.Join(data, "replay.json")}, Handler: pipeline, Metrics: host.Metrics, Active: pipeline.Active, Observed: pipeline.Observed, Ready: pipeline.Ready, Events: engine.Watch}
+		}, URL: join.ControlURL, ServerID: join.ServerID, TLS: tls, Verifier: &security.Verifier{Key: ed25519.PublicKey(sign), ServerID: join.ServerID, Path: filepath.Join(data, "replay.json")}, Handler: pipeline, Metrics: stats, Active: pipeline.Active, Observed: pipeline.Observed, Ready: pipeline.Ready, Events: engine.Watch}
+		// Warm telemetry descriptors once, then discard startup scratch pages.
+		_ = stats(ctx)
+		// Discard the bounded startup working set before entering the steady loop.
+		debug.FreeOSMemory()
 		g.Go(func() error { return pipeline.Run(gctx) })
+		g.Go(func() error {
+			return updater.RunRequests(gctx, data, func(_ context.Context, r updater.Request) (bool, error) {
+				if e := transport.PrepareAgentUpdate(gctx, join.ControlURL, tls, r); e != nil {
+					if errors.Is(e, transport.ErrAgentRejected) {
+						return false, e
+					}
+					return false, nil
+				}
+				return true, nil
+			}, func(error) { slog.Warn("solicitação local de atualização não concluída") })
+		})
+		g.Go(func() error {
+			return engine.RunMaintenance(gctx, func() bool { return pipeline.Ready() && len(pipeline.Active()) == 0 && !updater.Pending(data) }, func(error) { slog.Warn("atualização de imagens base não concluída") })
+		})
 		g.Go(func() error { return rpc.Run(gctx) })
+		g.Go(func() error {
+			return transport.RunCertificateRenewal(gctx, join.ControlURL, tls, certificates, func(error) { slog.Warn("renovação do certificado não concluída") })
+		})
 		g.Go(func() error { return host.Diagnostics(gctx, diag, wg) })
 		return g.Wait()
 	}})
@@ -117,7 +154,7 @@ func enroll(ctx context.Context, dir, panel, tokenFile, pubFile string) error {
 	if e != nil || u.Scheme != "https" || u.User != nil || u.RawQuery != "" || u.Fragment != "" {
 		return errors.New("HTTPS panel URL required")
 	}
-	token, e := os.ReadFile(tokenFile)
+	token, e := host.ReadSecret(tokenFile)
 	if e != nil {
 		return e
 	}

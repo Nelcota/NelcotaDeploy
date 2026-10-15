@@ -3,14 +3,11 @@ package transport
 import (
 	"context"
 	"crypto/ed25519"
-	"crypto/sha256"
 	"crypto/tls"
-	"encoding/hex"
 	"errors"
 	"io"
 	"math/rand/v2"
 	"net/http"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -156,23 +153,12 @@ func (b *Broker) Connect(ctx context.Context, stream *connect.BidiStream[agentv1
 func (b *Broker) Handler() (string, http.Handler) {
 	path, h := agentv1connect.NewAgentServiceHandler(b, connect.WithReadMaxBytes(1<<20), connect.WithCodec(VTCodec{}))
 	return path, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.TLS == nil || len(r.TLS.VerifiedChains) == 0 || len(r.TLS.PeerCertificates) == 0 {
+		peer, e := tlsPeer(r)
+		if e != nil {
 			http.Error(w, "mTLS required", 401)
 			return
 		}
-		c := r.TLS.PeerCertificates[0]
-		id := ""
-		for _, u := range c.URIs {
-			if u.Scheme == "spiffe" && u.Host == "nelcota" && strings.HasPrefix(u.Path, "/agents/") {
-				id = strings.TrimPrefix(u.Path, "/agents/")
-			}
-		}
-		if id == "" {
-			http.Error(w, "invalid agent identity", 403)
-			return
-		}
-		sum := sha256.Sum256(c.Raw)
-		ctx, cancel := context.WithCancel(context.WithValue(r.Context(), peerKey{}, Peer{id, hex.EncodeToString(sum[:])}))
+		ctx, cancel := context.WithCancel(context.WithValue(r.Context(), peerKey{}, peer))
 		defer cancel()
 		stop := context.AfterFunc(ctx, func() { _ = r.Body.Close() })
 		defer stop()
@@ -188,6 +174,7 @@ type AgentClient struct {
 	URL, ServerID string
 	Version       string
 	UpdateResult  func() *agentv1.OperationResult
+	HeartbeatSent func(bool)
 	TLS           *tls.Config
 	Verifier      *security.Verifier
 	Handler       CommandHandler
@@ -286,9 +273,15 @@ func (a *AgentClient) runOnce(ctx context.Context) error {
 				if err := stream.Send(e); err != nil {
 					return err
 				}
+				if h := e.GetHeartbeat(); h != nil && a.HeartbeatSent != nil {
+					a.HeartbeatSent(h.Ready)
+				}
 			case e := <-out:
 				if err := stream.Send(e); err != nil {
 					return err
+				}
+				if h := e.GetHeartbeat(); h != nil && a.HeartbeatSent != nil {
+					a.HeartbeatSent(h.Ready)
 				}
 			case <-heartbeat.C:
 				var active []string

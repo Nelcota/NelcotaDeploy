@@ -44,23 +44,24 @@ type active struct {
 	app    string
 }
 type Pipeline struct {
-	Engine        Engine
-	State         *StateStore
-	Root          string
-	Limit         int
-	mu            sync.Mutex
-	active        map[string]active
-	apps          map[string]bool
-	desired       map[string]*agentv1.AppConfig
-	running       map[string]Running
-	pending       map[string]Running
-	rings         map[string]*events.Ring
-	wg            sync.WaitGroup
-	logCancels    map[string]context.CancelFunc
-	Stats         func(context.Context) *agentv1.Metrics
-	ready         bool
-	QueueUpdate   func(string, string) error
-	UpdatePending func() bool
+	OnDeployFinished func(string, time.Duration)
+	Engine           Engine
+	State            *StateStore
+	Root             string
+	Limit            int
+	mu               sync.Mutex
+	active           map[string]active
+	apps             map[string]bool
+	desired          map[string]*agentv1.AppConfig
+	running          map[string]Running
+	pending          map[string]Running
+	rings            map[string]*events.Ring
+	wg               sync.WaitGroup
+	logCancels       map[string]context.CancelFunc
+	Stats            func(context.Context) *agentv1.Metrics
+	ready            bool
+	QueueUpdate      func(string, string) error
+	UpdatePending    func() bool
 }
 
 func NewPipeline(engine Engine, state *StateStore, root string, limit int) (*Pipeline, error) {
@@ -109,6 +110,17 @@ func (p *Pipeline) Run(ctx context.Context) error {
 }
 func (p *Pipeline) Handle(ctx context.Context, c *agentv1.Command, emit func(*agentv1.Event) error) error {
 	if c.Desired != nil {
+		if limits := c.Desired.Limits; limits != nil {
+			if limits.BuildLimit < 1 || limits.BuildLimit > 8 || limits.CacheBytes < 64<<20 || limits.CacheBytes > 100<<30 {
+				return errors.New("invalid server limits")
+			}
+			p.mu.Lock()
+			p.Limit = int(limits.BuildLimit)
+			p.mu.Unlock()
+			if configurable, ok := p.Engine.(interface{ SetCacheLimit(int64) }); ok {
+				configurable.SetCacheLimit(limits.CacheBytes)
+			}
+		}
 		p.mu.Lock()
 		p.desired = map[string]*agentv1.AppConfig{}
 		for _, a := range c.Desired.Apps {
@@ -123,14 +135,7 @@ func (p *Pipeline) Handle(ctx context.Context, c *agentv1.Command, emit func(*ag
 	}
 	switch a := c.Action.(type) {
 	case *agentv1.Command_Update:
-		p.mu.Lock()
-		status := "queued"
-		if len(p.active) > 0 || len(p.apps) > 0 {
-			status = "busy"
-		} else if p.QueueUpdate == nil || p.QueueUpdate(a.Update.Id, a.Update.Version) != nil {
-			status = "failed"
-		}
-		p.mu.Unlock()
+		status := p.RequestUpdate(a.Update.Id, a.Update.Version)
 		return emit(&agentv1.Event{Payload: &agentv1.Event_OperationResult{OperationResult: &agentv1.OperationResult{Id: a.Update.Id, Status: status}}})
 	case *agentv1.Command_Deploy:
 		return p.launch(ctx, a.Deploy, emit)
@@ -258,6 +263,12 @@ func (p *Pipeline) launch(ctx context.Context, d *agentv1.Deploy, emit func(*age
 	return nil
 }
 func (p *Pipeline) deploy(ctx context.Context, d *agentv1.Deploy, emit func(*agentv1.Event) error) {
+	deployStarted := time.Now()
+	defer func() {
+		if p.OnDeployFinished != nil {
+			p.OnDeployFinished(d.DeployId, time.Since(deployStarted))
+		}
+	}()
 	status := func(s string) {
 		_ = emit(&agentv1.Event{Payload: &agentv1.Event_DeployStatus{DeployStatus: &agentv1.DeployStatus{DeployId: d.DeployId, AppId: d.App.AppId, Status: s}}})
 	}
@@ -399,6 +410,10 @@ func (p *Pipeline) reconcile(ctx context.Context) {
 	}
 	defer func() { p.mu.Lock(); p.ready = true; p.mu.Unlock() }()
 	p.mu.Lock()
+	if p.UpdatePending != nil && p.UpdatePending() {
+		p.mu.Unlock()
+		return
+	}
 	orphans := []Running{}
 	for id, r := range p.running {
 		if _, ok := p.desired[id]; !ok && !p.apps[id] {
@@ -570,3 +585,21 @@ func (p *Pipeline) Observed() []*agentv1.ObservedApp {
 }
 
 func (p *Pipeline) Ready() bool { p.mu.Lock(); defer p.mu.Unlock(); return p.ready }
+
+func (p *Pipeline) RequestUpdate(id, version string) string {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if len(p.active) > 0 || len(p.apps) > 0 {
+		return "busy"
+	}
+	if p.QueueUpdate == nil || p.QueueUpdate(id, version) != nil {
+		return "failed"
+	}
+	return "queued"
+}
+
+func (p *Pipeline) Idle() bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return len(p.active) == 0 && len(p.apps) == 0
+}

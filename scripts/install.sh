@@ -57,6 +57,7 @@ install -d -m 0700 /etc/wireguard
 [[ ! -e /etc/wireguard/wg0.conf ]] || fail 'wg0 já configurada; configuração manual necessária'
 wg genkey > "$work/wg.key"
 wg pubkey < "$work/wg.key" > /etc/nelcota/wg.pub
+install -o nelcota -g nelcota -m 0600 "$work/wg.key" /etc/nelcota/wg.key
 private=$(cat "$work/wg.key")
 cat > /etc/wireguard/wg0.conf <<WG
 [Interface]
@@ -99,6 +100,7 @@ Requires=wg-quick@wg0.service
 User=nelcota
 Group=nelcota
 EnvironmentFile=/etc/nelcota/panel.env
+Environment=GODEBUG=disablethp=1
 Environment=GOMEMLIMIT=200MiB
 ExecStart=/usr/local/bin/nelcota-panel serve
 Restart=on-failure
