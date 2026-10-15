@@ -8,8 +8,11 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/nelcota/nelcota-deploy/internal/host"
 )
 
 type CertificateBundle struct {
@@ -21,6 +24,7 @@ type Certificates struct {
 	server   bool
 	roots    *x509.CertPool
 	pair     atomic.Pointer[tls.Certificate]
+	mu       sync.Mutex
 }
 
 func NewCertificates(path, id string, server bool, ca []byte, initial CertificateBundle) (*Certificates, error) {
@@ -29,8 +33,8 @@ func NewCertificates(path, id string, server bool, ca []byte, initial Certificat
 		return nil, errors.New("invalid certificate authority")
 	}
 	m := &Certificates{path: path, id: id, server: server, roots: roots}
-	if b, e := os.ReadFile(path); e == nil {
-		if len(b) > 32<<10 || json.Unmarshal(b, &initial) != nil {
+	if b, e := host.ReadPrivate(path, 32<<10); e == nil {
+		if json.Unmarshal(b, &initial) != nil {
 			return nil, errors.New("invalid persisted certificate")
 		}
 	} else if !os.IsNotExist(e) {
@@ -91,6 +95,8 @@ func (m *Certificates) Due(now time.Time) bool {
 	return m.pair.Load().Leaf.NotAfter.Before(now.Add(30 * 24 * time.Hour))
 }
 func (m *Certificates) Update(bundle CertificateBundle) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	pair, e := m.parse(bundle, true)
 	if e != nil {
 		return e

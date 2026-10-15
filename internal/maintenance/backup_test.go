@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -243,5 +244,112 @@ func TestRestoreChecksMasterKeyAndInterruptedMarker(t *testing.T) {
 	got, _ := os.ReadFile(protected)
 	if string(got) != "keep" {
 		t.Fatal("restore marker followed a symlink")
+	}
+}
+
+func TestRestoreRejectsFutureSchemaAndUnreadableCertificateSecrets(t *testing.T) {
+	for _, kind := range []string{"future_schema", "pending_certificate"} {
+		t.Run(kind, func(t *testing.T) {
+			b, db, out := backupFixture(t)
+			if kind == "future_schema" {
+				_, e := db.Write.ExecContext(t.Context(), "INSERT INTO goose_db_version(version_id,is_applied) VALUES(?,1)", store.LatestSchemaVersion()+1)
+				if e != nil {
+					t.Fatal(e)
+				}
+			} else {
+				if _, e := db.Write.ExecContext(t.Context(), "INSERT INTO servers(id,name,wireguard_ip,pending_certificate) VALUES('peer','Peer','10.77.0.2',?)", []byte("invalid encrypted certificate")); e != nil {
+					t.Fatal(e)
+				}
+			}
+			if e := b.Create(t.Context(), out); e != nil {
+				t.Fatal(e)
+			}
+			target := Backup{Data: filepath.Join(t.TempDir(), "data"), Config: filepath.Join(t.TempDir(), "config"), KeyFile: b.KeyFile}
+			if e := target.Restore(t.Context(), out, false); e == nil {
+				t.Fatal("installed incompatible backup", kind)
+			}
+			if _, e := os.Stat(filepath.Join(target.Data, "panel.db")); !os.IsNotExist(e) {
+				t.Fatal("modified database before full validation")
+			}
+		})
+	}
+}
+
+func TestRestoreInstallerIsConfinedAndDoesNotFollowSpecialSources(t *testing.T) {
+	dir, outside := t.TempDir(), t.TempDir()
+	root, e := os.OpenRoot(dir)
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer root.Close()
+	if e = os.Symlink(outside, filepath.Join(dir, "nested")); e != nil {
+		t.Fatal(e)
+	}
+	source := filepath.Join(t.TempDir(), "source")
+	_ = os.WriteFile(source, []byte("secret"), 0600)
+	if e = installFile(t.Context(), root, "nested/key", source, true); e == nil {
+		t.Fatal("restore escaped its configured root")
+	}
+	if entries, _ := os.ReadDir(outside); len(entries) != 0 {
+		t.Fatal("wrote files outside the config directory")
+	}
+	_ = os.WriteFile(filepath.Join(dir, "existing"), []byte("keep"), 0600)
+	if e = installFile(t.Context(), root, "existing", source, false); e == nil {
+		t.Fatal("replaced an existing file without --replace")
+	}
+	if b, _ := os.ReadFile(filepath.Join(dir, "existing")); string(b) != "keep" {
+		t.Fatal("existing destination was modified")
+	}
+	_ = os.Remove(source)
+	if e = syscall.Mkfifo(source, 0600); e != nil {
+		t.Fatal(e)
+	}
+	if e = installFile(t.Context(), root, "key", source, true); e == nil {
+		t.Fatal("installed a FIFO as a private key")
+	}
+}
+
+func TestArchiveWriterEnforcesRestoreSizeLimit(t *testing.T) {
+	var buf bytes.Buffer
+	w, e := newSealer(&buf, make([]byte, 32))
+	if e != nil {
+		t.Fatal(e)
+	}
+	w.total = maxArchive - 1
+	if _, e = w.Write([]byte("xx")); e == nil {
+		t.Fatal("created a backup larger than restore accepts")
+	}
+}
+
+func TestRestoreInheritsOwnerForNewDirectories(t *testing.T) {
+	dir := t.TempDir()
+	uid, gid := os.Getuid(), os.Getgid()
+	if os.Geteuid() == 0 {
+		uid, gid = 12345, 12346
+		if e := os.Chown(dir, uid, gid); e != nil {
+			t.Fatal(e)
+		}
+	}
+	root, e := os.OpenRoot(dir)
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer root.Close()
+	source := filepath.Join(t.TempDir(), "source")
+	if e = os.WriteFile(source, []byte("private"), 0600); e != nil {
+		t.Fatal(e)
+	}
+	if e = installFile(t.Context(), root, "nested/child/key", source, true); e != nil {
+		t.Fatal(e)
+	}
+	for _, name := range []string{"nested", "nested/child", "nested/child/key"} {
+		st, e := root.Stat(name)
+		if e != nil {
+			t.Fatal(e)
+		}
+		owner := st.Sys().(*syscall.Stat_t)
+		if int(owner.Uid) != uid || int(owner.Gid) != gid {
+			t.Fatalf("%s owner %d:%d, want %d:%d", name, owner.Uid, owner.Gid, uid, gid)
+		}
 	}
 }

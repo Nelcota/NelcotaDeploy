@@ -11,6 +11,8 @@ import (
 	"path/filepath"
 	"runtime"
 	"runtime/debug"
+	"strconv"
+	"strings"
 	"sync"
 
 	_ "github.com/ncruces/go-sqlite3/driver"
@@ -26,6 +28,18 @@ var migrations embed.FS
 // Compilation of SQLite leaves a large one-time WASM compiler working set.
 // Return those idle pages once, never in the query path.
 var releaseCompilerMemory sync.Once
+
+// LatestSchemaVersion is derived from the embedded migrations, including in
+// release builds, so offline restore can reject a database from a newer binary.
+func LatestSchemaVersion() int64 {
+	entries, _ := fs.ReadDir(migrations, "migrations")
+	var latest int64
+	for _, entry := range entries {
+		version, _ := strconv.ParseInt(strings.SplitN(entry.Name(), "_", 2)[0], 10, 64)
+		latest = max(latest, version)
+	}
+	return latest
+}
 
 type Store struct {
 	Write, Read *sql.DB

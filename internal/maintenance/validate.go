@@ -24,7 +24,15 @@ func validateSecrets(ctx context.Context, stage string) error {
 		return e
 	}
 	defer db.Close()
-	for _, query := range []string{"SELECT encrypted,app_id||':'||key FROM env_vars", "SELECT encrypted,'setting:'||key FROM settings", "SELECT data,'totp:'||user_id FROM credentials WHERE kind='totp'"} {
+	queries := []string{"SELECT encrypted,app_id||':'||key FROM env_vars", "SELECT encrypted,'setting:'||key FROM settings", "SELECT data,'totp:'||user_id FROM credentials WHERE kind='totp'"}
+	var pendingCertificates int
+	if e = db.QueryRowContext(ctx, "SELECT count(*) FROM pragma_table_info('servers') WHERE name='pending_certificate'").Scan(&pendingCertificates); e != nil {
+		return e
+	}
+	if pendingCertificates != 0 {
+		queries = append(queries, "SELECT pending_certificate,'certificate:'||id FROM servers WHERE pending_certificate IS NOT NULL")
+	}
+	for _, query := range queries {
 		rows, e := db.QueryContext(ctx, query)
 		if e != nil {
 			return e

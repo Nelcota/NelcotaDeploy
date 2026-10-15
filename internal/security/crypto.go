@@ -17,6 +17,7 @@ import (
 	"time"
 
 	agentv1 "github.com/nelcota/nelcota-deploy/internal/gen/agent/v1"
+	"github.com/nelcota/nelcota-deploy/internal/host"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -29,14 +30,7 @@ func Token() string {
 }
 func Hash(token string) []byte { h := sha256.Sum256([]byte(token)); return h[:] }
 func LoadKey(path string) ([]byte, error) {
-	st, err := os.Stat(path)
-	if err != nil {
-		return nil, err
-	}
-	if st.Mode().Perm()&0077 != 0 {
-		return nil, errors.New("master key permissions must be 0600")
-	}
-	b, err := os.ReadFile(path)
+	b, err := host.ReadPrivate(path, 32)
 	if err != nil {
 		return nil, err
 	}

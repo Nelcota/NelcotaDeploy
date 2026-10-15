@@ -23,11 +23,13 @@ import (
 
 	"github.com/nelcota/nelcota-deploy/internal/host"
 	"github.com/nelcota/nelcota-deploy/internal/security"
+	"github.com/nelcota/nelcota-deploy/internal/store"
 )
 
 const magic = "NELCOTA-BACKUP\x01"
 const chunkSize = 32 << 10
 const maxArchive = int64(4 << 30)
+const maxEntries = 4096
 
 type Backup struct{ Data, Config, KeyFile string }
 
@@ -75,24 +77,35 @@ func (b Backup) Create(ctx context.Context, output string) (err error) {
 	if err = addFile(ctx, tw, snapshot, "panel.db", 2<<30); err != nil {
 		return err
 	}
-	err = filepath.WalkDir(b.Config, func(p string, d fs.DirEntry, e error) error {
+	entries := 1 // the SQLite snapshot
+	configRoot, err := os.OpenRoot(b.Config)
+	if err != nil {
+		return err
+	}
+	defer configRoot.Close()
+	err = fs.WalkDir(configRoot.FS(), ".", func(rel string, d fs.DirEntry, e error) error {
 		if e != nil {
 			return e
 		}
 		if d.IsDir() {
 			return nil
 		}
-		rel, e := filepath.Rel(b.Config, p)
-		if e != nil {
-			return e
-		}
 		// Backup credentials must live separately, even if configured under Config.
-		same, _ := filepath.Abs(p)
+		same, _ := filepath.Abs(filepath.Join(b.Config, rel))
 		keyAbs, _ := filepath.Abs(b.KeyFile)
 		if same == keyAbs || rel == "backup.key" || strings.HasSuffix(rel, ".lock") || strings.HasSuffix(rel, ".before-restore") {
 			return nil
 		}
-		return addFile(ctx, tw, p, "config/"+filepath.ToSlash(rel), 32<<20)
+		entries++
+		if entries > maxEntries {
+			return errors.New("too many backup entries")
+		}
+		file, e := configRoot.OpenFile(rel, os.O_RDONLY|sysNoFollow, 0)
+		if e != nil {
+			return e
+		}
+		defer file.Close()
+		return addOpenFile(ctx, tw, file, "config/"+filepath.ToSlash(rel), 32<<20)
 	})
 	if err != nil {
 		return err
@@ -124,6 +137,9 @@ func addFile(ctx context.Context, tw *tar.Writer, p, name string, max int64) err
 		return err
 	}
 	defer f.Close()
+	return addOpenFile(ctx, tw, f, name, max)
+}
+func addOpenFile(ctx context.Context, tw *tar.Writer, f *os.File, name string, max int64) error {
 	st, err := f.Stat()
 	if err != nil {
 		return err
@@ -157,6 +173,7 @@ type sealer struct {
 	a      cipher.AEAD
 	prefix []byte
 	index  uint32
+	total  int64
 }
 
 func newSealer(w io.Writer, key []byte) (*sealer, error) {
@@ -191,6 +208,9 @@ func (s *sealer) frame(p []byte) error {
 	return e
 }
 func (s *sealer) Write(p []byte) (int, error) {
+	if int64(len(p)) > maxArchive-s.total {
+		return 0, errors.New("backup too large")
+	}
 	n := 0
 	for len(p) > 0 {
 		size := min(len(p), chunkSize)
@@ -198,6 +218,7 @@ func (s *sealer) Write(p []byte) (int, error) {
 			return n, e
 		}
 		n += size
+		s.total += int64(size)
 		p = p[size:]
 	}
 	return n, nil
@@ -299,18 +320,18 @@ func (b Backup) Restore(ctx context.Context, input string, replace bool) error {
 	if err != nil {
 		return err
 	}
-	st, err := os.Stat(input)
+	in, err := os.OpenFile(input, os.O_RDONLY|sysNoFollow, 0)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+	st, err := in.Stat()
 	if err != nil {
 		return err
 	}
 	if !st.Mode().IsRegular() || st.Size() > maxArchive+(16<<20) {
 		return errors.New("invalid backup file")
 	}
-	in, err := os.Open(input)
-	if err != nil {
-		return err
-	}
-	defer in.Close()
 	sr, err := newUnsealer(&contextReader{ctx, in}, key)
 	if err != nil {
 		return err
@@ -343,6 +364,9 @@ func (b Backup) Restore(ctx context.Context, input string, replace bool) error {
 			return errors.New("archive too large")
 		}
 		seen[name] = true
+		if len(seen) > maxEntries {
+			return errors.New("too many backup entries")
+		}
 		dest := filepath.Join(stage, filepath.FromSlash(name))
 		if e = os.MkdirAll(filepath.Dir(dest), 0700); e != nil {
 			return e
@@ -391,6 +415,7 @@ func (b Backup) Restore(ctx context.Context, input string, replace bool) error {
 		for name, dest := range targets {
 			if name == "config/backup.key" {
 				if existing, e := security.LoadKey(dest); e == nil && bytes.Equal(existing, key) {
+					delete(targets, name)
 					continue
 				}
 			}
@@ -399,68 +424,157 @@ func (b Backup) Restore(ctx context.Context, input string, replace bool) error {
 			}
 		}
 	}
-	marker := filepath.Join(b.Data, "restore-in-progress")
-	if err = writeMarker(marker); err != nil {
+	if err = safeParents(b.Config); err != nil {
 		return err
 	}
-	if err = syncDir(b.Data); err != nil {
+	dataRoot, err := os.OpenRoot(b.Data)
+	if err != nil {
 		return err
 	}
-	// Never follow destination directory symlinks; paths are bounded by the archive.
-	for name, dest := range targets {
-		if err = safeParents(filepath.Dir(dest)); err != nil {
+	defer dataRoot.Close()
+	configRoot, err := os.OpenRoot(b.Config)
+	if err != nil {
+		return err
+	}
+	defer configRoot.Close()
+	if err = writeMarkerIn(dataRoot, "restore-in-progress"); err != nil {
+		return err
+	}
+	if err = syncRoot(dataRoot); err != nil {
+		return err
+	}
+	// Pin each destination directory. os.Root confines every operation even if
+	// another process replaces an ancestor after path validation.
+	for name := range targets {
+		root, relative := dataRoot, name
+		if strings.HasPrefix(name, "config/") {
+			root, relative = configRoot, strings.TrimPrefix(name, "config/")
+		}
+		if err = installFile(ctx, root, relative, filepath.Join(stage, filepath.FromSlash(name)), replace); err != nil {
 			return err
-		}
-		if st, e := os.Lstat(dest); e == nil && !st.Mode().IsRegular() {
-			return errors.New("restore target is not regular")
-		}
-		if _, e := os.Stat(dest + ".before-restore"); errors.Is(e, os.ErrNotExist) {
-			if _, e = os.Stat(dest); e == nil {
-				if e = os.Link(dest, dest+".before-restore"); e != nil {
-					return e
-				}
-			}
-		}
-		// A cross-filesystem config directory requires a local temporary file.
-		tmp, e := os.CreateTemp(filepath.Dir(dest), ".restore-")
-		if e != nil {
-			return e
-		}
-		src, e := os.Open(filepath.Join(stage, filepath.FromSlash(name)))
-		if e != nil {
-			_ = tmp.Close()
-			_ = os.Remove(tmp.Name())
-			return e
-		}
-		_, e = io.Copy(tmp, &contextReader{ctx, src})
-		_ = src.Close()
-		if e == nil {
-			e = host.InheritOwner(tmp, filepath.Dir(dest))
-		}
-		if e == nil {
-			e = tmp.Sync()
-		}
-		_ = tmp.Close()
-		if e == nil {
-			e = os.Rename(tmp.Name(), dest)
-		}
-		_ = os.Remove(tmp.Name())
-		if e != nil {
-			return e
-		}
-		if e = syncDir(filepath.Dir(dest)); e != nil {
-			return e
 		}
 	}
 	for _, suffix := range []string{"-wal", "-shm"} {
-		if e := os.Remove(filepath.Join(b.Data, "panel.db") + suffix); e != nil && !errors.Is(e, os.ErrNotExist) {
+		if e := dataRoot.Remove("panel.db" + suffix); e != nil && !errors.Is(e, os.ErrNotExist) {
 			return e
 		}
 	}
-	if err = os.Remove(marker); err != nil {
+	if err = dataRoot.Remove("restore-in-progress"); err != nil {
 		return err
 	}
-	return syncDir(b.Data)
+	return syncRoot(dataRoot)
+}
+
+func installFile(ctx context.Context, root *os.Root, relative, source string, replace bool) error {
+	dir, e := restoreParent(root, filepath.Dir(relative))
+	if e != nil {
+		return e
+	}
+	defer dir.Close()
+	base := filepath.Base(relative)
+	if st, e := dir.Lstat(base); e == nil {
+		if !st.Mode().IsRegular() {
+			return errors.New("restore target is not regular")
+		}
+		if e = dir.Link(base, base+".before-restore"); e != nil && !errors.Is(e, os.ErrExist) {
+			return e
+		}
+	} else if !errors.Is(e, os.ErrNotExist) {
+		return e
+	}
+	name := ".restore-" + rand.Text()
+	tmp, e := dir.OpenFile(name, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
+	if e != nil {
+		return e
+	}
+	defer func() { _ = tmp.Close(); _ = dir.Remove(name) }()
+	src, e := os.OpenFile(source, os.O_RDONLY|sysNoFollow, 0)
+	if e != nil {
+		return e
+	}
+	defer src.Close()
+	st, e := src.Stat()
+	if e != nil {
+		return e
+	}
+	if !st.Mode().IsRegular() {
+		return errors.New("restore source is not regular")
+	}
+	if _, e = io.Copy(tmp, &contextReader{ctx, src}); e != nil {
+		return e
+	}
+	if e = host.InheritOwner(tmp, dir); e != nil {
+		return e
+	}
+	if e = tmp.Sync(); e != nil {
+		return e
+	}
+	if e = tmp.Close(); e != nil {
+		return e
+	}
+	if replace {
+		e = dir.Rename(name, base)
+	} else {
+		// Link provides no-replace semantics even if a destination appears after
+		// the initial --replace check.
+		e = dir.Link(name, base)
+	}
+	if e != nil {
+		return e
+	}
+	return syncRoot(dir)
+}
+
+// Newly created directories inherit the existing parent's service account, so a
+// root-run restore does not leave a private subtree unreadable by the daemon.
+func restoreParent(root *os.Root, relative string) (*os.Root, error) {
+	dir, e := root.OpenRoot(".")
+	if e != nil {
+		return nil, e
+	}
+	for _, part := range strings.Split(relative, string(filepath.Separator)) {
+		if part == "." {
+			continue
+		}
+		e := dir.Mkdir(part, 0700)
+		if e != nil && !errors.Is(e, os.ErrExist) {
+			_ = dir.Close()
+			return nil, e
+		}
+		if e == nil {
+			file, err := dir.OpenFile(part, os.O_RDONLY|sysNoFollow|sysDirectory, 0)
+			if err == nil {
+				err = host.InheritOwner(file, dir)
+				_ = file.Close()
+			}
+			if err != nil {
+				_ = dir.Close()
+				return nil, err
+			}
+		}
+		next, err := dir.OpenRoot(part)
+		if err == nil {
+			err = syncRoot(dir)
+		}
+		_ = dir.Close()
+		if err != nil {
+			if next != nil {
+				_ = next.Close()
+			}
+			return nil, err
+		}
+		dir = next
+	}
+	return dir, nil
+}
+
+func syncRoot(root *os.Root) error {
+	dir, e := root.Open(".")
+	if e != nil {
+		return e
+	}
+	defer dir.Close()
+	return dir.Sync()
 }
 func safeParents(path string) error {
 	abs, e := filepath.Abs(path)
@@ -495,8 +609,19 @@ func checkDatabase(ctx context.Context, path string) error {
 		return errors.New("backup database integrity failed")
 	}
 	var version int64
-	if e = db.QueryRowContext(ctx, "SELECT max(version_id) FROM goose_db_version WHERE is_applied=1").Scan(&version); e != nil || version < 1 {
+	if e = db.QueryRowContext(ctx, "SELECT max(version_id) FROM goose_db_version WHERE is_applied=1").Scan(&version); e != nil || version < 1 || version > store.LatestSchemaVersion() {
 		return errors.New("invalid backup schema")
+	}
+	rows, e := db.QueryContext(ctx, "PRAGMA foreign_key_check")
+	if e != nil {
+		return e
+	}
+	defer rows.Close()
+	if rows.Next() {
+		return errors.New("backup database has broken references")
+	}
+	if e = rows.Err(); e != nil {
+		return e
 	}
 	return nil
 }
@@ -569,11 +694,20 @@ func archiveAEAD(key, salt []byte) (cipher.AEAD, error) {
 }
 
 func writeMarker(path string) error {
-	f, e := os.CreateTemp(filepath.Dir(path), ".restore-marker-")
+	dir, e := os.OpenRoot(filepath.Dir(path))
 	if e != nil {
 		return e
 	}
-	defer func() { _ = f.Close(); _ = os.Remove(f.Name()) }()
+	defer dir.Close()
+	return writeMarkerIn(dir, filepath.Base(path))
+}
+func writeMarkerIn(dir *os.Root, base string) error {
+	name := ".restore-marker-" + rand.Text()
+	f, e := dir.OpenFile(name, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
+	if e != nil {
+		return e
+	}
+	defer func() { _ = f.Close(); _ = dir.Remove(name) }()
 	if _, e = f.WriteString("Repeat restore before starting the panel.\n"); e != nil {
 		return e
 	}
@@ -583,5 +717,5 @@ func writeMarker(path string) error {
 	if e = f.Close(); e != nil {
 		return e
 	}
-	return os.Rename(f.Name(), path)
+	return dir.Rename(name, base)
 }
