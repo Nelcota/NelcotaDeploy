@@ -73,12 +73,14 @@ for version in v1.0.0 v1.0.1 v1.0.2; do
   test ! -e "$HML_RELEASE_DIR/$version" || exit 1
   bash scripts/release.sh "$version" "$SIGNING_SECRET" "$BUILDKIT_AMD64" "$BUILDKIT_ARM64"
   install -d -m 0755 "$HML_RELEASE_DIR/$version"
-  install -m 0644 dist/* "$HML_RELEASE_DIR/$version/"
+  install -m 0644 "dist/$version/"* "$HML_RELEASE_DIR/$version/"
   minisign -Vm "$HML_RELEASE_DIR/$version/checksums.txt" -P "$SIGNING_KEY"
 done
 ```
 
 As versões podem usar o mesmo commit neste laboratório: o objetivo é testar a troca dos executáveis e seus números de versão. Em releases reais, revise também migrações e compatibilidade de protocolo/estado.
+
+O script exige checkout limpo, cria cada release em `dist/VERSÃO/` e recusa sobrescrevê-lo. `build-info.json`, incluído no manifesto assinado, registra commit, toolchain e hashes dos dois BuildKit. Os pacotes já preparados neste ambiente são descritos em [Releases de homologação](releases-homologacao.md).
 
 Publique **todos** os arquivos de cada diretório em `$RELEASE_BASE/v1.0.0/`, `/v1.0.1/` e `/v1.0.2/`, preservando nomes e conteúdo. O endpoint precisa servir HTTPS diretamente, sem redirecionar os downloads do updater. Não sobrescreva versões publicadas. Exemplo para um host de publicação HTTPS já configurado, cujo usuário tenha permissão nesse diretório:
 
