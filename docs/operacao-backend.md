@@ -39,7 +39,7 @@ A API usa `POST /api/operations/update` com `{"version":"v1.2.3"}`: verifica o r
 
 `POST /api/operations/backup` também cria um job durável. Operações de manutenção exigem administrador com autenticação interativa nos últimos cinco minutos. Tokens de API não podem solicitar backup, atualização ou cancelamento. Snapshots manuais são conservados até remoção administrativa; a retenção automática de sete dias é dos backups diários.
 
-Empacotamento sem publicação: `scripts/release.sh v1.2.3 CHAVE_MINISIGN BUILDKITD_AMD64 BUILDKITD_ARM64`. Inclui versão nos executáveis, `release.json` e checksums assinados. A identidade e os releases oficiais ainda precisam ser configurados pelo mantenedor.
+Empacotamento sem publicação: `scripts/release.sh v1.2.3 CHAVE_MINISIGN BUILDKITD_AMD64 BUILDKITD_ARM64`. Exige checkout limpo e cria `dist/v1.2.3/`, recusando sobrescrever versões existentes. Inclui versão nos executáveis, `release.json`, `build-info.json` com commit/toolchain/hashes BuildKit e checksums assinados. A identidade e os releases de produção ainda precisam ser configurados pelo mantenedor. Veja [Releases de homologação](releases-homologacao.md) para os pacotes locais de teste.
 
 `nelcota-panel uninstall` / `nelcota-agent uninstall` exigem root, param e removem os serviços e executáveis Nelcota. Os dados são mantidos. `--purge` remove também os diretórios padrão de dados, chaves e estado do updater. Docker, Caddy, WireGuard, firewall, hardening SSH e containers das aplicações permanecem para migração ou remoção explícita. A operação não remove recursos compartilhados do host.
 
