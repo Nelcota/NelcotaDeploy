@@ -1,32 +1,26 @@
 # Pendências e validações externas
 
-- Docker/BuildKit/Caddy reais: **resolvido nesta sessão**. O daemon ficou disponível e `make test-integration` passou; ver atualização abaixo.
-- VPS Debian/Ubuntu, domínio, WireGuard real e GitHub App de produção exigem recursos externos.
-- Publicação, assinatura de releases e identidade do mantenedor dependem de configuração do repositório oficial.
+## Implementação local concluída em 2026-10-15
 
-## Resultado confirmado em 2026-10-15
+- Memória investigada com perfis: liberação única do espaço temporário do compilador SQLite e do startup do agent; GOGC=50 no agent (respeita override) e THP desabilitado apenas nos processos dos serviços.
+- Backup diário e manual, snapshot WAL consistente, criptografia independente, retenção local e S3; restore offline com lock, autenticação completa, verificação da master key e proteção contra interrupção.
+- Atualização assinada por CLI/API, helper fixo do systemd, fila durável de agents um por vez e painel por último, verificação de prontidão/confirmação e volta ao executável anterior em falha; uninstall mantém dados por padrão.
+- Renovação automática dos certificados, grace/retry de fingerprint e reposição dos peers WireGuard pelo banco.
+- Recovery codes e reset de TOTP, limites/cache editáveis pela API, métricas por container, atualização semanal das bases no BuildKit e captura automática de trace de deploy lento (quando diagnóstico está habilitado).
 
-Na primeira tentativa, `make test-integration` compilou a suíte e falhou no pré-requisito: `Cannot connect to the Docker daemon at unix:///var/run/docker.sock`. Nenhum teste foi pulado. A suíte usa testcontainers para BuildKit privilegiado, Caddy, build de imagem, rede e inspeção de hardening. Cgroups/systemd, firewall/WireGuard, TLS público e instalação Debian/Ubuntu ainda precisam de VPS descartável. O host é CachyOS e `sudo` está indisponível por `NoNewPrivileges`.
+O [guia de operação](operacao-backend.md) documenta comandos, formatos, configuração e limites. O [contrato do frontend](contrato-frontend.md) inclui as rotas novas. Não há pendência de implementação local nessa lista.
 
-## O que ainda precisa de aceitação real
+## Aceitação que exige infraestrutura ou credenciais
 
-- GitHub App criado/instalado e webhook entregue em domínio público. JWT, token de instalação e check runs são cobertos com transporte HTTP simulado; provar também no GitHub real.
-- Passkeys em browsers/dispositivos reais. Registro/login ECDSA, origem inválida, replay de cerimônia e TOTP foram testados com autenticador virtual e SQLite reais.
-- Releases oficiais assinados, chave pública distribuída e executáveis buildkitd auditados, necessários para executar os instaladores.
-- Instalação/reboot Debian/Ubuntu, firewall IPv4/IPv6 e DOCKER-USER, cgroups CPU/IO/RAM, WireGuard real e persistência de peers.
-- Homologação de produção: cancelamento de processos reais de Git/build, falta de espaço, crash durante swap e carga representativa com requests longos/streaming. BuildKit/Docker/Caddy, bridge da app, saúde, troca de upstream com tráfego e remoção de imagem/container antigos passaram em integração real local.
-- Todas as metas de performance em VPS representativa, incluindo RAM do agent, builds Go/Node com cache e zero requests perdidos. RSS do painel dev: 42,8 MiB em repouso inicial e 125,3 MiB após uso; ainda falta demonstrar retorno ao alvo depois do aquecimento.
+- Executar instalação, update/rollback e reboot em VPS Debian/Ubuntu descartável com systemd, firewall IPv4/IPv6, WireGuard, cgroups e SSH reais. Sintaxe dos instaladores e lógica do helper foram testadas localmente; não houve instalação root no host de trabalho.
+- Escolher repositório/domínio e identidade do mantenedor, publicar releases oficiais assinados e distribuir a chave pública. Nenhum release foi publicado nesta sessão.
+- Configurar GitHub App real, webhook público e credenciais de S3 de produção. API GitHub usa transporte simulado nos testes; upload S3 tem TLS real local, teste de redirecionamento e vetor oficial SigV4. Minisign produzido pelo utilitário oficial em Debian foi verificado pela implementação Go.
+- Validar passkeys em browsers/dispositivos reais; o fluxo foi testado com autenticador virtual ECDSA.
+- Provar todas as metas em VPS representativa, com builds Go/Node, carga longa, streaming, crash, disco cheio e reboot. Docker/BuildKit/Caddy locais passaram sob tráfego. Memória local final e condições estão no relatório; isso não é homologação da VPS.
+- Exercitar recuperação completa numa VPS nova, incluindo reconfigurar a interface WireGuard com a chave protegida do backup e ajustar domínio/endereço e donos dos arquivos ao destino.
 
-## Operação além dos oito marcos
+## Fora da fase atual
 
-Ainda não foram implementados: backup diário/S3 e CLI de restore/uninstall/update; rotação automática de certificados (validade de três meses); recuperação/reset de TOTP e recovery codes; atualização semanal automática de imagens base; ajuste posterior dos limites/cache do server pela API; telemetria por container. Não há rotas placeholder que anunciem essas operações como disponíveis. Previews, notificações externas, scale-to-zero, Trivy e Litestream continuam na fase 2.
+Previews, notificações externas, scale-to-zero, Trivy e Litestream continuam na fase 2. PGO permanece em auto, sem perfil artificial; coletar perfil representativo de produção antes de versionar default.pgo. A CA interna de cinco anos exige renovação/migração de confiança antes do vencimento; a rotação automática implementada cobre os certificados de serviço de três meses.
 
-O flight recorder é opcional junto ao listener de diagnóstico e permite snapshot manual; ainda não existe disparo automático ao detectar deploy lento. PGO está habilitado em auto, sem perfil artificial: coletar um perfil representativo antes de versionar `default.pgo`.
-
-## Aviso de módulo da análise de vulnerabilidades
-
-Govulncheck v1.9.0, após atualização das dependências: zero vulnerabilidades em símbolos chamados e em pacotes importados. Um aviso de módulo requerido permanece: GO-2026-5932 (`golang.org/x/crypto/openpgp`, obsoleto). O backend não importa nem usa OpenPGP. Manter o scanner no CI e verificar as versões dos daemons Docker/BuildKit/Caddy distribuídos separadamente.
-
-## Atualização: Docker e containers disponíveis
-
-A limitação inicial do Docker foi resolvida durante a sessão. A suíte completa passou com Docker real, BuildKit v0.34.0 e Caddy v2.10.2. O teste usa o proxy na rede do host e as apps em bridge própria sem portas publicadas; a API BuildKit de teste fica somente em loopback. Foram verificados healthcheck inválido preservando versão anterior, swap sob carga local sem requests perdidos e remoção de imagem/container anteriores. A sintaxe de todos os scripts passou em Debian 12 e Ubuntu 22.04. Isso não substitui executar os instaladores com serviços systemd, firewall e WireGuard numa VPS descartável.
+Govulncheck v1.9.0: zero vulnerabilidades em símbolos chamados e pacotes importados. Permanece um aviso de módulo requerido para OpenPGP não importado (GO-2026-5932). Manter o scanner no CI e verificar separadamente as versões dos daemons distribuídos.
