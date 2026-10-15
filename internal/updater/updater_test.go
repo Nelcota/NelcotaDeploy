@@ -155,3 +155,47 @@ func TestVersionAndUninstallBoundaries(t *testing.T) {
 		t.Fatal("removed unrelated file")
 	}
 }
+
+func TestRequestsAndHelperResultsStayInsideData(t *testing.T) {
+	data, outside := t.TempDir(), t.TempDir()
+	if e := os.Symlink(outside, filepath.Join(data, "update")); e != nil {
+		t.Fatal(e)
+	}
+	if e := Queue(data, Request{ID: "u", Version: "v1.0.0"}); e == nil {
+		t.Fatal("queued outside data root")
+	}
+	if e := writeResult(data, Result{ID: "u", Status: "failed"}); e == nil {
+		t.Fatal("wrote privileged result outside data root")
+	}
+	entries, _ := os.ReadDir(outside)
+	if len(entries) != 0 {
+		t.Fatal(entries)
+	}
+	if e := RequestUpgrade(data, Request{ID: "cli", Version: "v1.0.0"}); e != nil {
+		t.Fatal(e)
+	}
+	r, e := readDataRequest(data, "admin-update.json")
+	if e != nil || r.ID != "cli" {
+		t.Fatal(r, e)
+	}
+}
+
+func TestAgentHealthAndPendingRequestVersions(t *testing.T) {
+	data := t.TempDir()
+	if e := WriteHealth(data, "v1.2.3", true); e != nil {
+		t.Fatal(e)
+	}
+	if !healthyAgent(data, "v1.2.3", os.Getpid()) || healthyAgent(data, "v1.2.4", os.Getpid()) || healthyAgent(data, "v1.2.3", os.Getpid()+1) {
+		t.Fatal("agent readiness identity check")
+	}
+	if e := Queue(data, Request{ID: "request", Version: "v1.2.3"}); e != nil {
+		t.Fatal(e)
+	}
+	if !PendingFor(data, "v1.2.2") || PendingFor(data, "v1.2.3") {
+		t.Fatal("candidate cannot become ready during helper verification")
+	}
+	removeRequest(data, "update/request.json")
+	if PendingFor(data, "v1.2.2") {
+		t.Fatal("rollback remained blocked")
+	}
+}

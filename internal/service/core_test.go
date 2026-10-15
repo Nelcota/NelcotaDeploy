@@ -38,7 +38,7 @@ func fixture(t testing.TB) (*Core, context.Context, App) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	_, e = db.Write.ExecContext(ctx, "UPDATE servers SET status='online',heartbeat_at=? WHERE id=?", time.Now().Unix(), invite.ServerID)
+	_, e = db.Write.ExecContext(ctx, "UPDATE servers SET status='online',agent_ready=1,heartbeat_at=? WHERE id=?", time.Now().Unix(), invite.ServerID)
 	if e != nil {
 		t.Fatal(e)
 	}

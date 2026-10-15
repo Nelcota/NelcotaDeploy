@@ -149,3 +149,5 @@ func s3Encode(s string) string {
 	}
 	return b.String()
 }
+
+func (s *S3) Validate() error { return s.validate() }

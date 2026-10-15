@@ -4,12 +4,14 @@ import (
 	"context"
 	"crypto/ed25519"
 	"crypto/rand"
+	"database/sql"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
 	"net"
+	"net/http"
 	"net/url"
 	"os"
 	"os/signal"
@@ -224,14 +226,7 @@ func open(ctx context.Context, c config) (*service.Core, *service.AuthService, e
 				return e
 			}
 		}
-		if p := env("NELCOTA_BACKUP_S3_CONFIG", ""); p != "" {
-			s, e := maintenance.LoadS3(p)
-			if e != nil {
-				return e
-			}
-			return s.Upload(ctx, output)
-		}
-		return nil
+		return uploadBackup(ctx, core, output)
 	}
 	if trust, e := updater.LoadTrust(updater.TrustPath("panel")); e == nil {
 		ops.VerifyRelease = trust.Check
@@ -314,16 +309,44 @@ func serve(ctx context.Context, c config, dev bool) error {
 		broker := transport.NewBroker(ed25519.PrivateKey(sign))
 		broker.Sink = core
 		core.Control = broker
-		_, handler := broker.Handler()
-		control := host.Server(c.control, handler)
-		control.TLSConfig = tlsConfig
-		g.Go(func() error { return host.Serve(gctx, control, true) })
 		authority, e := security.ParseAuthority(caPEM, caKey)
 		if e != nil {
 			return e
 		}
 		panelIP, _, _ := net.SplitHostPort(c.control)
+		certificates, e := security.NewCertificates(filepath.Join(c.data, "control-certificate.json"), panelIP, true, caPEM, security.CertificateBundle{Certificate: string(cert), PrivateKey: string(tlsKey)})
+		if e != nil {
+			return e
+		}
+		// Renew an expired server certificate before accepting connections as well.
+		if certificates.Due(time.Now()) {
+			cert, key, e := authority.Issue(panelIP, true, time.Now())
+			if e != nil {
+				return e
+			}
+			if e = certificates.Update(security.CertificateBundle{Certificate: string(cert), PrivateKey: string(key)}); e != nil {
+				return e
+			}
+		}
+		tlsConfig.Certificates = nil
+		tlsConfig.GetCertificate = certificates.GetCertificate
 		api.Enrollment = &service.EnrollmentService{Core: core, CA: authority, Peers: service.WireGuard{Device: c.wg}, PanelAddress: panelIP, PanelEndpoint: c.endpoint, PanelWireGuardKey: c.wgPublic, SigningKey: base64.RawStdEncoding.EncodeToString(ed25519.PrivateKey(sign).Public().(ed25519.PublicKey)), ControlURL: "https://" + c.control}
+		path, handler := broker.Handler()
+		mux := http.NewServeMux()
+		mux.Handle(path, handler)
+		mux.Handle(transport.CertificatePath, transport.CertificateHandler(api.Enrollment.Renew))
+		mux.Handle(transport.AgentUpdatePath, transport.AgentUpdateHandler(core.PrepareAgentUpdate))
+		peersCtx, peersCancel := context.WithTimeout(gctx, 10*time.Second)
+		e = api.Enrollment.SyncPeers(peersCtx)
+		peersCancel()
+		if e != nil {
+			return e
+		}
+		control := host.Server(c.control, mux)
+		control.TLSConfig = tlsConfig
+		g.Go(func() error { return host.Serve(gctx, control, true) })
+		g.Go(func() error { return certificates.RunLocal(gctx, authority) })
+
 		gh := &service.GitHubService{Core: core}
 		core.GitHub = gh
 		api.GitHub = gh
@@ -332,20 +355,19 @@ func serve(ctx context.Context, c config, dev bool) error {
 	if !dev {
 		b := maintenance.Backup{Data: c.data, Config: c.keys, KeyFile: env("NELCOTA_BACKUP_KEY_FILE", filepath.Join(c.keys, "backup.key"))}
 		g.Go(func() error {
-			var upload func(context.Context, string) error
-			if p := env("NELCOTA_BACKUP_S3_CONFIG", ""); p != "" {
-				s, e := maintenance.LoadS3(p)
-				if e != nil {
-					return e
-				}
-				upload = s.Upload
-			}
-			return b.Run(gctx, upload, func(error) { slog.Error("backup não concluído; nova tentativa em uma hora") })
+			return b.Run(gctx, func(ctx context.Context, p string) error { return uploadBackup(ctx, core, p) }, func(error) { slog.Error("backup não concluído; nova tentativa em uma hora") })
 		})
 	}
 	g.Go(func() error { return core.RunScheduler(gctx) })
 	g.Go(func() error { return core.RunChecks(gctx) })
 	g.Go(func() error { return core.Operations.Run(gctx) })
+	g.Go(func() error {
+		return updater.RunRequests(gctx, c.data, func(ctx context.Context, r updater.Request) (bool, error) {
+			ctx = service.WithPrincipal(ctx, service.Principal{ID: "system", Role: "admin", TwoFactorAt: time.Now().Unix()})
+			_, e := core.Operations.Update(ctx, r.Version)
+			return e == nil, e
+		}, func(error) { slog.Warn("solicitação local de atualização não concluída") })
+	})
 	g.Go(func() error {
 		tick := time.NewTicker(time.Minute)
 		defer tick.Stop()
@@ -365,4 +387,26 @@ func serve(ctx context.Context, c config, dev bool) error {
 	g.Go(func() error { return host.Serve(gctx, public, false) })
 	fmt.Printf("Nelcota Deploy: %s\n", c.origin)
 	return g.Wait()
+}
+
+func uploadBackup(ctx context.Context, core *service.Core, path string) error {
+	if p := env("NELCOTA_BACKUP_S3_CONFIG", ""); p != "" {
+		cfg, e := maintenance.LoadS3(p)
+		if e != nil {
+			return e
+		}
+		return cfg.Upload(ctx, path)
+	}
+	value, e := core.Setting(ctx, "backup.s3")
+	if errors.Is(e, sql.ErrNoRows) || (e == nil && value == "") {
+		return nil
+	}
+	if e != nil {
+		return e
+	}
+	var cfg maintenance.S3
+	if json.Unmarshal([]byte(value), &cfg) != nil {
+		return errors.New("invalid S3 configuration")
+	}
+	return cfg.Upload(ctx, path)
 }

@@ -36,7 +36,8 @@ message Command {
 message DeployLog { string deploy_id = 1; string app_id = 2; uint64 sequence = 3; bytes line = 4; bool runtime = 5; }
 message DeployStatus { string deploy_id = 1; string app_id = 2; string status = 3; string error_code = 4; string stage = 5; int64 duration_ms = 6; }
 message ContainerEvent { string app_id = 1; string container_id = 2; string status = 3; }
-message Metrics { double cpu_percent = 1; uint64 memory_used = 2; uint64 memory_total = 3; uint64 disk_used = 4; uint64 disk_total = 5; uint64 network_rx = 6; uint64 network_tx = 7; }
+message ContainerMetrics { string app_id = 1; string container_id = 2; double cpu_percent = 3; uint64 memory_used = 4; uint64 memory_limit = 5; uint64 network_rx = 6; uint64 network_tx = 7; uint64 pids = 8; }
+message Metrics { double cpu_percent = 1; uint64 memory_used = 2; uint64 memory_total = 3; uint64 disk_used = 4; uint64 disk_total = 5; uint64 network_rx = 6; uint64 network_tx = 7; repeated ContainerMetrics containers = 8; }
 message ObservedApp { string app_id = 1; string deploy_id = 2; string sha = 3; uint64 revision = 4; }
 message Heartbeat { bool request_state = 1; repeated string active_deploys = 2; repeated ObservedApp apps = 3; bool ready = 4; string version = 5; OperationResult update_result = 6; }
 message Event {

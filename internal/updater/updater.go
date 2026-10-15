@@ -15,12 +15,17 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/nelcota/nelcota-deploy/internal/host"
 )
 
 var Version = "v0.0.0-dev"
+var requestIDRE = regexp.MustCompile(`^[a-zA-Z0-9_-]{1,128}$`)
+
+const sysNoFollow = syscall.O_NOFOLLOW | syscall.O_NONBLOCK
+
 var versionRE = regexp.MustCompile(`^v(0|[1-9][0-9]{0,8})\.(0|[1-9][0-9]{0,8})\.(0|[1-9][0-9]{0,8})$`)
 
 func ValidVersion(v string) bool { return versionRE.MatchString(v) }
@@ -180,37 +185,7 @@ type Result struct {
 	At      int64  `json:"at"`
 }
 
-func Queue(data string, r Request) error {
-	if !ValidVersion(r.Version) || !regexp.MustCompile(`^[a-zA-Z0-9_-]{1,128}$`).MatchString(r.ID) {
-		return errors.New("invalid update request")
-	}
-	p := RequestPath(data)
-	b, e := json.Marshal(r)
-	if e != nil {
-		return e
-	}
-	if e = os.MkdirAll(filepath.Dir(p), 0700); e != nil {
-		return e
-	}
-	f, e := os.CreateTemp(filepath.Dir(p), ".request-")
-	if e != nil {
-		return e
-	}
-	defer func() { _ = f.Close(); _ = os.Remove(f.Name()) }()
-	if _, e = f.Write(b); e != nil {
-		return e
-	}
-	if e = f.Sync(); e != nil {
-		return e
-	}
-	if e = f.Close(); e != nil {
-		return e
-	}
-	if e = os.Link(f.Name(), p); e != nil {
-		return errors.New("an update is already requested")
-	}
-	return syncDirectory(filepath.Dir(p))
-}
+func Queue(data string, r Request) error { return queueFile(RequestPath(data), data, r) }
 
 // Apply is called by a fixed root-owned systemd helper. Revalidation and downloads
 // happen here, never trusting a service-writable staged executable.
@@ -226,27 +201,24 @@ func (t Trust) Apply(ctx context.Context, data, state, destination, component st
 		return e
 	}
 	defer lock.Close()
-	st, e := os.Lstat(RequestPath(data))
-	if e != nil || !st.Mode().IsRegular() || st.Size() > 4096 {
-		return errors.New("invalid update request file")
-	}
-	b, e := host.ReadSecret(RequestPath(data))
+	r, e := readDataRequest(data, "update/request.json")
 	if e != nil {
 		return e
 	}
-	var r Request
-	if e = json.Unmarshal(b, &r); e != nil || !ValidVersion(r.Version) {
-		return errors.New("invalid update request")
-	}
 	result := Result{Version: r.Version, ID: r.ID, Status: "failed", At: time.Now().Unix()}
 	defer func() {
-		encoded, _ := json.Marshal(result)
-		_ = atomicFile(filepath.Join(data, "update", "result.json"), encoded, 0644)
-		_ = os.Remove(RequestPath(data))
+		_ = writeResult(data, result)
+		removeRequest(data, "update/request.json")
 	}()
 	current := Version
-	if b, e = os.ReadFile(filepath.Join(state, "version")); e == nil {
-		current = strings.TrimSpace(string(b))
+	if b, e := os.ReadFile(filepath.Join(state, "version")); e == nil {
+		saved := strings.TrimSpace(string(b))
+		if !ValidVersion(saved) {
+			return errors.New("invalid installed release state")
+		}
+		if Newer(saved, current) {
+			current = saved
+		}
 	}
 	if !Newer(r.Version, current) {
 		return errors.New("update must be newer than installed release")
@@ -288,7 +260,7 @@ func (t Trust) Apply(ctx context.Context, data, state, destination, component st
 		return e
 	}
 	// Fail closed on non-regular destinations, including symlinks.
-	st, e = os.Lstat(destination)
+	st, e := os.Lstat(destination)
 	if e != nil || !st.Mode().IsRegular() {
 		return errors.New("invalid installed binary")
 	}
@@ -306,6 +278,7 @@ func (t Trust) Apply(ctx context.Context, data, state, destination, component st
 		return e
 	}
 	if e = restart(ctx); e != nil {
+		removeRequest(data, "update/request.json")
 		rollback, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
 		defer cancel()
 		if re := os.Rename(previous, destination); re != nil {
@@ -360,13 +333,18 @@ func syncDirectory(path string) error {
 }
 
 func ReadResult(data string) Result {
-	p := filepath.Join(data, "update", "result.json")
-	st, e := os.Lstat(p)
-	if e != nil || !st.Mode().IsRegular() || st.Size() > 4096 {
+	root, e := os.OpenRoot(data)
+	if e != nil {
 		return Result{}
 	}
-	b, e := os.ReadFile(p)
+	defer root.Close()
+	f, e := root.OpenFile("update/result.json", os.O_RDONLY|sysNoFollow, 0)
 	if e != nil {
+		return Result{}
+	}
+	defer f.Close()
+	b, e := io.ReadAll(io.LimitReader(f, 4097))
+	if e != nil || len(b) > 4096 {
 		return Result{}
 	}
 	var r Result
@@ -375,4 +353,5 @@ func ReadResult(data string) Result {
 	}
 	return r
 }
+
 func Pending(data string) bool { _, e := os.Stat(RequestPath(data)); return e == nil }

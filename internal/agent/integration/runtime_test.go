@@ -73,7 +73,9 @@ func TestDockerBuildKitCaddy(t *testing.T) {
 		t.Fatal(e)
 	}
 	defer engine.Close()
+	verifyAgentMemory(t, ctx, buildURL, "http://"+adminAddr)
 	engine.Drain = 0
+	engine.BaseImagesPath = filepath.Join(t.TempDir(), "bases.json")
 	id := "integration-" + security.Token()
 	app := &agentv1.AppConfig{AppId: id, Domains: []string{"integration.example.test"}, Port: 8080, MemoryBytes: 64 << 20, NanoCpus: 1e9, Replicas: 1, HealthPath: "/", HealthTimeoutSeconds: 20, Dockerfile: "Dockerfile", CacheEnabled: true}
 	defer func() {
@@ -108,6 +110,19 @@ func TestDockerBuildKitCaddy(t *testing.T) {
 		}
 	}
 	oldImage := build("one")
+	if e = engine.RefreshBases(ctx, time.Now(), nil); e != nil {
+		t.Fatal(e)
+	}
+	catalog, e := os.ReadFile(engine.BaseImagesPath)
+	if e != nil {
+		t.Fatal(e)
+	}
+	var bases map[string]struct {
+		Refreshed int64 `json:"refreshed"`
+	}
+	if e = json.Unmarshal(catalog, &bases); e != nil || bases["docker.io/library/busybox:1.37.0"].Refreshed == 0 {
+		t.Fatal("BuildKit base was not prewarmed", string(catalog), e)
+	}
 	old, e := engine.Start(ctx, app, oldImage)
 	if e != nil {
 		t.Fatal(e)
@@ -122,6 +137,19 @@ func TestDockerBuildKitCaddy(t *testing.T) {
 		if h.Privileged || len(h.PortBindings) != 0 || v.Container.Config.User != "65532:65532" || !h.ReadonlyRootfs || len(h.CapDrop) != 1 || h.CapDrop[0] != "ALL" || len(h.SecurityOpt) == 0 || h.Memory != 64<<20 || h.NanoCPUs != 1e9 {
 			t.Fatal("container hardening mismatch")
 		}
+	}
+	metrics := engine.Metrics(ctx, dir)
+	found := false
+	for _, m := range metrics.Containers {
+		if m.AppId == app.AppId {
+			found = true
+			if m.MemoryLimit != 64<<20 || m.Pids < 1 {
+				t.Fatal("invalid real container metrics", m)
+			}
+		}
+	}
+	if !found {
+		t.Fatal("managed container stats missing")
 	}
 	if e = engine.Health(ctx, app, old); e != nil {
 		t.Fatal(e)

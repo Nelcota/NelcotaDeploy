@@ -122,7 +122,7 @@ func (s *deploysService) Rollback(ctx context.Context, app, sha string) (Deploym
 func (c *Core) Claim(ctx context.Context) (Deployment, error) {
 	var id string
 	e := c.mutate(ctx, func(tx *sql.Tx) error {
-		e := tx.QueryRowContext(ctx, `SELECT d.id FROM deployments d JOIN apps a ON a.id=d.app_id JOIN servers s ON s.id=a.server_id WHERE d.status='queued' AND NOT EXISTS(SELECT 1 FROM maintenance_jobs m WHERE m.kind='update' AND m.status='waiting' AND (m.target=s.id OR m.target='panel')) AND s.status='online' AND s.heartbeat_at>? AND NOT EXISTS(SELECT 1 FROM deployments x WHERE x.app_id=d.app_id AND x.status IN ('building','starting')) AND (SELECT count(*) FROM deployments x JOIN apps ax ON ax.id=x.app_id WHERE ax.server_id=s.id AND x.status IN ('building','starting'))<s.build_limit ORDER BY CASE WHEN d.origin='push' THEN 1 ELSE 0 END,d.queued_at,d.rowid LIMIT 1`, time.Now().Add(-20*time.Second).Unix()).Scan(&id)
+		e := tx.QueryRowContext(ctx, `SELECT d.id FROM deployments d JOIN apps a ON a.id=d.app_id JOIN servers s ON s.id=a.server_id WHERE d.status='queued' AND NOT EXISTS(SELECT 1 FROM maintenance_jobs m WHERE m.kind='update' AND (m.status='waiting' OR (m.status='queued' AND m.ordinal=(SELECT min(ordinal) FROM maintenance_jobs WHERE kind='update' AND status IN ('queued','waiting')))) AND (m.target=s.id OR m.target='panel')) AND s.status='online' AND s.agent_ready=1 AND s.heartbeat_at>? AND NOT EXISTS(SELECT 1 FROM deployments x WHERE x.app_id=d.app_id AND x.status IN ('building','starting')) AND (SELECT count(*) FROM deployments x JOIN apps ax ON ax.id=x.app_id WHERE ax.server_id=s.id AND x.status IN ('building','starting'))<s.build_limit ORDER BY CASE WHEN d.origin='push' THEN 1 ELSE 0 END,d.queued_at,d.rowid LIMIT 1`, time.Now().Add(-20*time.Second).Unix()).Scan(&id)
 		if errors.Is(e, sql.ErrNoRows) {
 			return fail(NotFound, "Fila vazia")
 		}
@@ -225,7 +225,7 @@ func (c *Core) agentConfig(ctx context.Context, a App) (*agentv1.AppConfig, erro
 	return p, nil
 }
 func (c *Core) AgentConnected(ctx context.Context, p transport.Peer) error {
-	r, e := c.DB.Write.ExecContext(ctx, "UPDATE servers SET status='online',heartbeat_at=? WHERE id=? AND fingerprint=?", time.Now().Unix(), p.ID, p.Fingerprint)
+	r, e := c.DB.Write.ExecContext(ctx, "UPDATE servers SET status='online',agent_ready=0,heartbeat_at=? WHERE id=? AND (fingerprint=? OR (previous_fingerprint=? AND previous_cert_until>?))", time.Now().Unix(), p.ID, p.Fingerprint, p.Fingerprint, time.Now().Unix())
 	if e != nil {
 		return e
 	}
@@ -236,7 +236,7 @@ func (c *Core) AgentConnected(ctx context.Context, p transport.Peer) error {
 	return nil
 }
 func (c *Core) AgentDisconnected(ctx context.Context, p transport.Peer) {
-	_, _ = c.DB.Write.ExecContext(ctx, "UPDATE servers SET status='offline' WHERE id=?", p.ID)
+	_, _ = c.DB.Write.ExecContext(ctx, "UPDATE servers SET status='offline',agent_ready=0 WHERE id=?", p.ID)
 	c.publish("servers", "server.offline", map[string]string{"id": p.ID})
 }
 func (c *Core) AgentEvent(ctx context.Context, p transport.Peer, e *agentv1.Event) error {
@@ -244,10 +244,10 @@ func (c *Core) AgentEvent(ctx context.Context, p transport.Peer, e *agentv1.Even
 	case *agentv1.Event_OperationResult:
 		return c.operationResult(ctx, p.ID, v.OperationResult)
 	case *agentv1.Event_Heartbeat:
-		if err := c.operationResult(ctx, p.ID, v.Heartbeat.UpdateResult); err != nil {
+		if _, err := c.DB.Write.ExecContext(ctx, "UPDATE servers SET heartbeat_at=?,status='online',agent_version=?,agent_ready=? WHERE id=?", time.Now().Unix(), v.Heartbeat.Version, v.Heartbeat.Ready, p.ID); err != nil {
 			return err
 		}
-		if _, err := c.DB.Write.ExecContext(ctx, "UPDATE servers SET heartbeat_at=?,status='online',agent_version=? WHERE id=?", time.Now().Unix(), v.Heartbeat.Version, p.ID); err != nil {
+		if err := c.operationResult(ctx, p.ID, v.Heartbeat.UpdateResult); err != nil {
 			return err
 		}
 		if err := func() error {
@@ -366,6 +366,27 @@ func (c *Core) AgentEvent(ctx context.Context, p transport.Peer, e *agentv1.Even
 		}
 		c.publish("servers", "container.event", v.ContainerEvent)
 	case *agentv1.Event_Metrics:
+		if len(v.Metrics.Containers) > 256 {
+			return fail(Validation, "Métricas excedem limite")
+		}
+		ownedMetrics := make([]*agentv1.ContainerMetrics, 0, len(v.Metrics.Containers))
+		for _, metric := range v.Metrics.Containers {
+			if metric == nil {
+				return fail(Validation, "Métrica inválida")
+			}
+			app, err := c.DB.Queries.GetApp(ctx, metric.AppId)
+			if errors.Is(err, sql.ErrNoRows) {
+				continue
+			}
+			if err != nil {
+				return err
+			}
+			if app.ServerID != p.ID {
+				return fail(Forbidden, "Métrica não pertence ao server")
+			}
+			ownedMetrics = append(ownedMetrics, metric)
+		}
+		v.Metrics.Containers = ownedMetrics
 		c.publish("servers", "server.metrics", map[string]any{"server_id": p.ID, "metrics": v.Metrics})
 	default:
 		return fail(Validation, "Evento desconhecido")
@@ -386,7 +407,11 @@ func (c *Core) sendSnapshot(ctx context.Context, server string) error {
 	if e != nil {
 		return e
 	}
-	snapshot := &agentv1.Snapshot{}
+	serverConfig, e := c.DB.Queries.GetServer(ctx, server)
+	if e != nil {
+		return e
+	}
+	snapshot := &agentv1.Snapshot{Limits: &agentv1.ServerLimits{BuildLimit: uint32(serverConfig.BuildLimit), CacheBytes: serverConfig.CacheBytes}}
 	for _, r := range rows {
 		if r.ServerID != server {
 			continue

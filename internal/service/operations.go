@@ -207,7 +207,7 @@ func (s *OperationsService) step(ctx context.Context) error {
 	}
 	if o.Status == "waiting" {
 		if o.Target == "panel" {
-			if s.Version == o.Version {
+			if s.Version == o.Version && (s.PanelResult == nil || (s.PanelResult().ID == o.ID && s.PanelResult().Status == "applied")) {
 				return s.finish(ctx, o, "applied", "")
 			}
 			if s.PanelResult != nil {
@@ -215,11 +215,6 @@ func (s *OperationsService) step(ctx context.Context) error {
 				if r.ID == o.ID && (r.Status == "failed" || r.Status == "rolled_back") {
 					return s.finish(ctx, o, "failed", "update_"+r.Status)
 				}
-			}
-		} else {
-			var current string
-			if e = s.Core.DB.Read.QueryRowContext(ctx, "SELECT agent_version FROM servers WHERE id=? AND heartbeat_at>=?", o.Target, o.StartedAt).Scan(&current); e == nil && current == o.Version {
-				return s.finish(ctx, o, "applied", "")
 			}
 		}
 		if time.Now().Unix()-o.StartedAt > 12*60 {
@@ -290,6 +285,17 @@ func (s *OperationsService) step(ctx context.Context) error {
 		return s.finish(ctx, o, "applied", "")
 	}
 	if o.Target == "panel" {
+		if s.CreateBackup != nil {
+			run, cancel := context.WithTimeout(ctx, 15*time.Minute)
+			e := s.CreateBackup(run, "pre-update-"+o.ID)
+			cancel()
+			if e != nil {
+				return s.finish(ctx, o, "failed", "pre_update_backup_failed")
+			}
+		}
+		if _, e := s.Core.DB.Write.ExecContext(ctx, "UPDATE maintenance_jobs SET started_at=? WHERE id=? AND status='waiting'", time.Now().Unix(), o.ID); e != nil {
+			return e
+		}
 		if s.QueuePanel == nil || s.QueuePanel(o.ID, o.Version) != nil {
 			return s.finish(ctx, o, "failed", "update_unavailable")
 		}
@@ -318,12 +324,23 @@ func (c *Core) operationResult(ctx context.Context, server string, result *agent
 		return nil
 	}
 	var o Operation
-	e := c.DB.Read.QueryRowContext(ctx, "SELECT id,batch,target FROM maintenance_jobs WHERE id=? AND target=? AND status='waiting' AND kind='update'", result.Id, server).Scan(&o.ID, &o.Batch, &o.Target)
+	e := c.DB.Read.QueryRowContext(ctx, "SELECT id,batch,target,version,started_at FROM maintenance_jobs WHERE id=? AND target=? AND status='waiting' AND kind='update'", result.Id, server).Scan(&o.ID, &o.Batch, &o.Target, &o.Version, &o.StartedAt)
 	if errors.Is(e, sql.ErrNoRows) {
 		return nil
 	}
 	if e != nil {
 		return e
+	}
+	if result.Status == "applied" {
+		var ready int
+		e := c.DB.Read.QueryRowContext(ctx, "SELECT count(*) FROM servers WHERE id=? AND agent_ready=1 AND agent_version=? AND heartbeat_at>=?", server, o.Version, o.StartedAt).Scan(&ready)
+		if e != nil {
+			return e
+		}
+		if ready == 1 {
+			return (&OperationsService{Core: c}).finish(ctx, o, "applied", "")
+		}
+		return nil
 	}
 	if result.Status == "busy" {
 		_, e = c.DB.Write.ExecContext(ctx, "UPDATE maintenance_jobs SET status='queued',started_at=0,next_at=? WHERE id=? AND status='waiting'", time.Now().Add(10*time.Second).Unix(), o.ID)

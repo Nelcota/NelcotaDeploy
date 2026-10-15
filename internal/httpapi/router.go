@@ -276,6 +276,14 @@ func New(cfg Config) http.Handler {
 			respond(w, map[string]string{"text": string(v)}, e)
 		})
 		r.Get("/api/events", a.sse)
+		r.Patch("/api/servers/{id}/limits", func(w http.ResponseWriter, r *http.Request) {
+			var in service.ServerLimitsInput
+			if !read(w, r, &in) {
+				return
+			}
+			v, e := cfg.Services.Servers.UpdateLimits(r.Context(), chi.URLParam(r, "id"), in)
+			respond(w, v, e)
+		})
 		r.Get("/api/servers", func(w http.ResponseWriter, r *http.Request) {
 			v, e := cfg.Services.Servers.List(r.Context())
 			respond(w, v, e)

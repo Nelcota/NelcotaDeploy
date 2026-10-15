@@ -25,7 +25,7 @@ func (c *Core) Seed(ctx context.Context) error {
 		cfg := AppConfig{Domains: []string{name + ".example.test"}, MemoryBytes: 256 << 20, NanoCPUs: 1e9, Port: 8080, HealthPath: "/", HealthTimeout: 60, Replicas: 1, CacheEnabled: true, Dockerfile: "Dockerfile"}
 		b, _ := json.Marshal(cfg)
 		e = c.mutate(ctx, func(tx *sql.Tx) error {
-			if _, e := tx.ExecContext(ctx, "INSERT INTO servers(id,name,wireguard_ip,status,heartbeat_at,fingerprint) VALUES(?,?,?,'online',?,'development') ON CONFLICT DO NOTHING", server, "Servidor "+name, "10.77.0."+string(rune('2'+i)), time.Now().Unix()); e != nil {
+			if _, e := tx.ExecContext(ctx, "INSERT INTO servers(id,name,wireguard_ip,status,heartbeat_at,fingerprint,agent_ready) VALUES(?,?,?,'online',?,'development',1) ON CONFLICT DO NOTHING", server, "Servidor "+name, "10.77.0."+string(rune('2'+i)), time.Now().Unix()); e != nil {
 				return e
 			}
 			if _, e := tx.ExecContext(ctx, "INSERT INTO apps(id,name,server_id,repository,branch,config) VALUES(?,?,?,?,'main',?) ON CONFLICT DO NOTHING", app, name, server, "https://github.com/example/"+name, string(b)); e != nil {
@@ -137,7 +137,7 @@ func (d *DevDispatcher) Run(ctx context.Context) error {
 		case <-tick.C:
 			servers, _ := d.Core.DB.Queries.ListServers(ctx)
 			for _, s := range servers {
-				_, _ = d.Core.DB.Write.ExecContext(ctx, "UPDATE servers SET heartbeat_at=?,status='online' WHERE id=?", time.Now().Unix(), s.ID)
+				_, _ = d.Core.DB.Write.ExecContext(ctx, "UPDATE servers SET heartbeat_at=?,status='online',agent_ready=1 WHERE id=?", time.Now().Unix(), s.ID)
 				d.Core.publish("servers", "server.metrics", map[string]any{"server_id": s.ID, "metrics": map[string]any{"cpu_percent": 12, "memory_used": 128 << 20, "memory_total": 4 << 30, "disk_used": 2 << 30, "disk_total": 40 << 30}})
 			}
 			apps, _ := d.Core.DB.Queries.ListApps(ctx)

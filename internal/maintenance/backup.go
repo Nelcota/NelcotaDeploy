@@ -3,6 +3,7 @@ package maintenance
 
 import (
 	"archive/tar"
+	"bytes"
 	"context"
 	"crypto/aes"
 	"crypto/cipher"
@@ -88,7 +89,7 @@ func (b Backup) Create(ctx context.Context, output string) (err error) {
 		// Backup credentials must live separately, even if configured under Config.
 		same, _ := filepath.Abs(p)
 		keyAbs, _ := filepath.Abs(b.KeyFile)
-		if same == keyAbs || rel == "backup.key" || strings.HasSuffix(rel, ".lock") {
+		if same == keyAbs || rel == "backup.key" || strings.HasSuffix(rel, ".lock") || strings.HasSuffix(rel, ".before-restore") {
 			return nil
 		}
 		return addFile(ctx, tw, p, "config/"+filepath.ToSlash(rel), 32<<20)
@@ -331,7 +332,7 @@ func (b Backup) Restore(ctx context.Context, input string, replace bool) error {
 			return e
 		}
 		name := h.Name
-		if h.Typeflag != tar.TypeReg || name != filepath.ToSlash(filepath.Clean(name)) || strings.Contains(name, "\\") || (name != "panel.db" && !strings.HasPrefix(name, "config/")) || strings.HasPrefix(name, "/") || strings.Contains("/"+name+"/", "/../") || seen[name] {
+		if h.Typeflag != tar.TypeReg || name == "config/backup.key" || name != filepath.ToSlash(filepath.Clean(name)) || strings.Contains(name, "\\") || (name != "panel.db" && !strings.HasPrefix(name, "config/")) || strings.HasPrefix(name, "/") || strings.Contains("/"+name+"/", "/../") || seen[name] {
 			return errors.New("invalid archive path or entry")
 		}
 		if h.Size < 0 || h.Size > 2<<30 || (name != "panel.db" && h.Size > 32<<20) {
@@ -372,6 +373,14 @@ func (b Backup) Restore(ctx context.Context, input string, replace bool) error {
 	if err = checkDatabase(ctx, filepath.Join(stage, "panel.db")); err != nil {
 		return err
 	}
+	if err = validateSecrets(ctx, stage); err != nil {
+		return err
+	}
+	// Recreate the backup key from the operator-supplied copy, never from tar.
+	if err = os.WriteFile(filepath.Join(stage, "config/backup.key"), key, 0600); err != nil {
+		return err
+	}
+	seen["config/backup.key"] = true
 	targets := map[string]string{"panel.db": filepath.Join(b.Data, "panel.db")}
 	for name := range seen {
 		if strings.HasPrefix(name, "config/") {
@@ -379,14 +388,19 @@ func (b Backup) Restore(ctx context.Context, input string, replace bool) error {
 		}
 	}
 	if !replace {
-		for _, dest := range targets {
+		for name, dest := range targets {
+			if name == "config/backup.key" {
+				if existing, e := security.LoadKey(dest); e == nil && bytes.Equal(existing, key) {
+					continue
+				}
+			}
 			if _, e := os.Lstat(dest); !errors.Is(e, os.ErrNotExist) {
 				return errors.New("restore destination exists; use --replace with stopped panel")
 			}
 		}
 	}
 	marker := filepath.Join(b.Data, "restore-in-progress")
-	if err = os.WriteFile(marker, []byte("Repeat restore before starting the panel.\n"), 0600); err != nil {
+	if err = writeMarker(marker); err != nil {
 		return err
 	}
 	if err = syncDir(b.Data); err != nil {
@@ -420,6 +434,9 @@ func (b Backup) Restore(ctx context.Context, input string, replace bool) error {
 		}
 		_, e = io.Copy(tmp, &contextReader{ctx, src})
 		_ = src.Close()
+		if e == nil {
+			e = host.InheritOwner(tmp, filepath.Dir(dest))
+		}
 		if e == nil {
 			e = tmp.Sync()
 		}
@@ -529,7 +546,7 @@ func (b Backup) daily(ctx context.Context, upload func(context.Context, string) 
 	if e != nil {
 		return e
 	}
-	cutoff := time.Now().UTC().AddDate(0, 0, -7).Format("2006-01-02")
+	cutoff := time.Now().UTC().AddDate(0, 0, -6).Format("2006-01-02")
 	for _, entry := range entries {
 		n := entry.Name()
 		if len(n) == len(name) && strings.HasPrefix(n, "nelcota-") && strings.HasSuffix(n, ".nbk") && n[8:18] < cutoff {
@@ -549,4 +566,22 @@ func archiveAEAD(key, salt []byte) (cipher.AEAD, error) {
 		return nil, e
 	}
 	return cipher.NewGCM(c)
+}
+
+func writeMarker(path string) error {
+	f, e := os.CreateTemp(filepath.Dir(path), ".restore-marker-")
+	if e != nil {
+		return e
+	}
+	defer func() { _ = f.Close(); _ = os.Remove(f.Name()) }()
+	if _, e = f.WriteString("Repeat restore before starting the panel.\n"); e != nil {
+		return e
+	}
+	if e = f.Sync(); e != nil {
+		return e
+	}
+	if e = f.Close(); e != nil {
+		return e
+	}
+	return os.Rename(f.Name(), path)
 }

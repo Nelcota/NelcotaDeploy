@@ -5,6 +5,7 @@ import (
 	"errors"
 	agentv1 "github.com/nelcota/nelcota-deploy/internal/gen/agent/v1"
 	"github.com/nelcota/nelcota-deploy/internal/transport"
+	"github.com/nelcota/nelcota-deploy/internal/updater"
 	"strings"
 	"testing"
 	"time"
@@ -29,7 +30,7 @@ func TestOrderedUpdatesPauseDeploysWaitForVersionAndPanelLast(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	_, _ = c.DB.Write.ExecContext(ctx, "UPDATE servers SET status='online',heartbeat_at=?,agent_version='v1.0.0'", time.Now().Unix())
+	_, _ = c.DB.Write.ExecContext(ctx, "UPDATE servers SET status='online',agent_ready=1,heartbeat_at=?,agent_version='v1.0.0'", time.Now().Unix())
 	dispatcher := &operationDispatcher{}
 	c.Control = dispatcher
 	panelRequested := false
@@ -65,9 +66,16 @@ func TestOrderedUpdatesPauseDeploysWaitForVersionAndPanelLast(t *testing.T) {
 	if e = s.step(ctx); e != nil || len(dispatcher.commands) != 1 || panelRequested {
 		t.Fatal("advanced before heartbeat", e)
 	}
+	// Version alone must not finish the rollout before helper confirmation.
+	if e = c.AgentEvent(ctx, transport.Peer{ID: jobs[0].Target}, &agentv1.Event{Payload: &agentv1.Event_Heartbeat{Heartbeat: &agentv1.Heartbeat{Ready: true, Version: "v1.1.0"}}}); e != nil {
+		t.Fatal(e)
+	}
+	if e = s.step(ctx); e != nil || len(dispatcher.commands) != 1 {
+		t.Fatal("advanced before helper confirmation", e)
+	}
 	for i := 0; i < 2; i++ {
 		id := jobs[i].Target
-		if e = c.AgentEvent(ctx, transport.Peer{ID: id}, &agentv1.Event{Payload: &agentv1.Event_Heartbeat{Heartbeat: &agentv1.Heartbeat{Version: "v1.1.0"}}}); e != nil {
+		if e = c.AgentEvent(ctx, transport.Peer{ID: id}, &agentv1.Event{Payload: &agentv1.Event_Heartbeat{Heartbeat: &agentv1.Heartbeat{Ready: true, Version: "v1.1.0", UpdateResult: &agentv1.OperationResult{Id: jobs[i].ID, Status: "applied"}}}}); e != nil {
 			t.Fatal(e)
 		}
 		if e = s.step(ctx); e != nil {
@@ -149,5 +157,61 @@ func TestOperationsAuthorizationBackupRetryAndStopOnFailure(t *testing.T) {
 	list, _ = s.List(ctx)
 	if list[0].ID != o.ID || list[0].ErrorCode != "backup_failed" {
 		t.Fatal(list)
+	}
+}
+
+func TestAgentCLIReservesMaintenanceBeforeHelperStarts(t *testing.T) {
+	c, ctx, a := fixture(t)
+	_, _ = c.DB.Write.ExecContext(ctx, "UPDATE servers SET fingerprint='known',agent_version='v1.0.0' WHERE id=?", a.ServerID)
+	request := updater.Request{ID: "local-agent-update", Version: "v1.1.0"}
+	peer := transport.Peer{ID: a.ServerID, Fingerprint: "wrong"}
+	if e := c.PrepareAgentUpdate(ctx, peer, request); !Is(e, Forbidden) {
+		t.Fatal(e)
+	}
+	peer.Fingerprint = "known"
+	if e := c.PrepareAgentUpdate(ctx, peer, request); e != nil {
+		t.Fatal(e)
+	}
+	if e := c.PrepareAgentUpdate(ctx, peer, request); e != nil {
+		t.Fatal("request retry", e)
+	}
+	_, e := (&deploysService{c}).Enqueue(ctx, DeployInput{AppID: a.ID, SHA: strings.Repeat("a", 40)})
+	if e != nil {
+		t.Fatal(e)
+	}
+	if _, e = c.Claim(ctx); !Is(e, NotFound) {
+		t.Fatal("new build raced CLI update", e)
+	}
+}
+
+func TestQueuedUpdateDrainsWithoutAllowingNewBuildClaims(t *testing.T) {
+	c, ctx, a := fixture(t)
+	p, _ := CurrentUser(ctx)
+	p.TwoFactorAt = time.Now().Unix()
+	ctx = WithPrincipal(ctx, p)
+	if _, e := (&serversService{c}).UpdateLimits(ctx, a.ServerID, ServerLimitsInput{BuildLimit: 2, CacheBytes: 1 << 30}); e != nil {
+		t.Fatal(e)
+	}
+	_, e := (&deploysService{c}).Enqueue(ctx, DeployInput{AppID: a.ID, SHA: strings.Repeat("a", 40)})
+	if e != nil {
+		t.Fatal(e)
+	}
+	if _, e = c.Claim(ctx); e != nil {
+		t.Fatal(e)
+	}
+	second, e := (&appsService{c}).Create(ctx, AppInput{Name: "second", ServerID: a.ServerID, Repository: "https://github.com/example/second", Branch: "main"})
+	if e != nil {
+		t.Fatal(e)
+	}
+	_, e = (&deploysService{c}).Enqueue(ctx, DeployInput{AppID: second.ID, SHA: strings.Repeat("b", 40)})
+	if e != nil {
+		t.Fatal(e)
+	}
+	ops := &OperationsService{Core: c, Version: "v1.0.0", VerifyRelease: func(context.Context, string) error { return nil }, QueuePanel: func(string, string) error { return nil }}
+	if _, e = ops.Update(ctx, "v1.1.0"); e != nil {
+		t.Fatal(e)
+	}
+	if _, e = c.Claim(ctx); !Is(e, NotFound) {
+		t.Fatal("queued maintenance did not drain existing work", e)
 	}
 }
