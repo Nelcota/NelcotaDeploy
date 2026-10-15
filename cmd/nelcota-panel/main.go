@@ -20,6 +20,7 @@ import (
 	"github.com/nelcota/nelcota-deploy/internal/events"
 	"github.com/nelcota/nelcota-deploy/internal/host"
 	"github.com/nelcota/nelcota-deploy/internal/httpapi"
+	"github.com/nelcota/nelcota-deploy/internal/maintenance"
 	"github.com/nelcota/nelcota-deploy/internal/security"
 	"github.com/nelcota/nelcota-deploy/internal/service"
 	"github.com/nelcota/nelcota-deploy/internal/store"
@@ -102,6 +103,7 @@ func command() *cobra.Command {
 		defer c.DB.Close()
 		return c.Seed(cmd.Context())
 	}})
+	root.AddCommand(maintenanceCommands(&cfg)...)
 	return root
 }
 func env(key, fallback string) string {
@@ -126,6 +128,18 @@ func initialize(ctx context.Context, c config) error {
 	}
 	if e := os.MkdirAll(c.keys, 0700); e != nil {
 		return e
+	}
+	for _, name := range []string{"backup.key"} {
+		path := filepath.Join(c.keys, name)
+		if _, e := os.Stat(path); errors.Is(e, os.ErrNotExist) {
+			key := make([]byte, 32)
+			if _, e = rand.Read(key); e != nil {
+				return e
+			}
+			if e = host.WriteExclusive(path, key); e != nil {
+				return e
+			}
+		}
 	}
 	keyPath := filepath.Join(c.keys, "master.key")
 	if _, e := os.Stat(keyPath); errors.Is(e, os.ErrNotExist) {
@@ -286,7 +300,21 @@ func serve(ctx context.Context, c config, dev bool) error {
 		gh := &service.GitHubService{Core: core}
 		core.GitHub = gh
 		api.GitHub = gh
-		g.Go(func() error { return host.Diagnostics(gctx, c.diagnostics, c.wg) })
+	}
+	g.Go(func() error { return host.Diagnostics(gctx, c.diagnostics, c.wg) })
+	if !dev {
+		b := maintenance.Backup{Data: c.data, Config: c.keys, KeyFile: env("NELCOTA_BACKUP_KEY_FILE", filepath.Join(c.keys, "backup.key"))}
+		g.Go(func() error {
+			var upload func(context.Context, string) error
+			if p := env("NELCOTA_BACKUP_S3_CONFIG", ""); p != "" {
+				s, e := maintenance.LoadS3(p)
+				if e != nil {
+					return e
+				}
+				upload = s.Upload
+			}
+			return b.Run(gctx, upload, func(error) { slog.Error("backup não concluído; nova tentativa em uma hora") })
+		})
 	}
 	g.Go(func() error { return core.RunScheduler(gctx) })
 	g.Go(func() error { return core.RunChecks(gctx) })
