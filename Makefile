@@ -15,8 +15,9 @@ test:
 test-integration:
 	$(GO) test -tags=integration -count=1 -timeout=10m ./...
 lint:
-	@test -z "$$($(GO) fmt ./...)" || { echo 'Execute go fmt ./...'; exit 1; }
+	@test -z "$$(gofmt -l cmd internal web scripts)" || { echo 'Execute go fmt ./...'; exit 1; }
 	$(GO) vet ./...
+	$(GO) vet -tags=integration ./...
 	$(TOOLS)/golangci-lint run
 	shellcheck scripts/*.sh
 proto:

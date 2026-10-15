@@ -193,6 +193,8 @@ func (a *AuthService) FinishRegistration(ctx context.Context, in FinishInput) er
 	if e != nil {
 		return e
 	}
+	requestActor, _ := CurrentUser(ctx)
+	u.Principal.IP = requestActor.IP
 	ctx = WithPrincipal(ctx, u.Principal)
 	return a.Core.mutate(ctx, func(tx *sql.Tx) error {
 		if data.Enrollment != "" {
@@ -275,7 +277,8 @@ func (a *AuthService) issueSession(ctx context.Context, user string) (LoginResul
 		if _, e := tx.ExecContext(ctx, "INSERT INTO sessions(token_hash,user_id,expires_at,two_factor_at) VALUES(?,?,?,?)", security.Hash(token), user, expires.Unix(), time.Now().Unix()); e != nil {
 			return e
 		}
-		return a.Core.audit(WithPrincipal(ctx, Principal{ID: user}), tx, "auth.login", user)
+		requestActor, _ := CurrentUser(ctx)
+		return a.Core.audit(WithPrincipal(ctx, Principal{ID: user, IP: requestActor.IP}), tx, "auth.login", user)
 	})
 	return LoginResult{Token: token, ExpiresAt: expires}, e
 }

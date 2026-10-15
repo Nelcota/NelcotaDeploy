@@ -119,9 +119,14 @@ func TestWebAuthnVirtualAuthenticator(t *testing.T) {
 		t.Fatal(e)
 	}
 	assertion := key.assertion(t, login)
-	result, e := auth.FinishLogin(ctx, FinishInput{login.ID, assertion})
+	loginCtx := WithPrincipal(context.Background(), Principal{IP: "192.0.2.10"})
+	result, e := auth.FinishLogin(loginCtx, FinishInput{login.ID, assertion})
 	if e != nil || result.Token == "" {
 		t.Fatal(result, e)
+	}
+	var auditIP string
+	if e := core.DB.Read.QueryRowContext(ctx, "SELECT ip FROM audit_log WHERE action='auth.login' AND user_id=?", en.UserID).Scan(&auditIP); e != nil || auditIP != "192.0.2.10" {
+		t.Fatal("login audit IP missing", e)
 	}
 	p, e := auth.Session(ctx, result.Token)
 	if e != nil || p.ID != en.UserID {
