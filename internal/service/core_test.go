@@ -18,7 +18,7 @@ import (
 )
 
 func TestMain(m *testing.M) { goleak.VerifyTestMain(m) }
-func fixture(t *testing.T) (*Core, context.Context, App) {
+func fixture(t testing.TB) (*Core, context.Context, App) {
 	t.Helper()
 	ctx := WithPrincipal(context.Background(), Principal{ID: "admin", Role: "admin"})
 	db, e := store.Open(ctx, filepath.Join(t.TempDir(), "test.db"))
@@ -162,15 +162,14 @@ func TestTransitions(t *testing.T) {
 	}
 }
 func BenchmarkQueue(b *testing.B) {
-	b.StopTimer()
-	ctx := context.Background()
-	db, e := store.Open(ctx, filepath.Join(b.TempDir(), "bench.db"))
-	if e != nil {
-		b.Fatal(e)
-	}
-	defer db.Close()
-	b.StartTimer()
+	c, ctx, app := fixture(b)
+	s := &deploysService{c}
+	input := DeployInput{AppID: app.ID, SHA: strings.Repeat("a", 40), Origin: "push"}
+	b.ReportAllocs()
+	b.ResetTimer()
 	for b.Loop() {
-		_, _ = db.Write.ExecContext(ctx, "INSERT INTO webhook_deliveries(id,received_at) VALUES(?,?)", security.Token(), time.Now().Unix())
+		if _, e := s.Enqueue(ctx, input); e != nil {
+			b.Fatal(e)
+		}
 	}
 }

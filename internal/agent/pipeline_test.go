@@ -4,8 +4,10 @@ import (
 	"context"
 	"errors"
 	agentv1 "github.com/nelcota/nelcota-deploy/internal/gen/agent/v1"
+	"github.com/nelcota/nelcota-deploy/internal/security"
 	"go.uber.org/goleak"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -117,5 +119,34 @@ func TestHardening(t *testing.T) {
 	}
 	if host.SecurityOpt[0] != "no-new-privileges:true" {
 		t.Fatal(host.SecurityOpt)
+	}
+}
+
+func TestEncryptedStateAndPendingRecovery(t *testing.T) {
+	vault, e := security.NewVault(make([]byte, 32))
+	if e != nil {
+		t.Fatal(e)
+	}
+	state := &StateStore{Path: filepath.Join(t.TempDir(), "state.bin"), Vault: vault}
+	v := persisted{Desired: map[string]*agentv1.AppConfig{"app": {AppId: "app", Replicas: 1, Env: map[string]string{"TOKEN": "private-test-value"}}}, Running: map[string]Running{"app": {AppID: "app", Image: "new-image", Containers: []string{"new"}}}, Pending: map[string]Running{"app": {AppID: "app", Image: "old-image", Containers: []string{"old"}}}}
+	if e = state.Save(v); e != nil {
+		t.Fatal(e)
+	}
+	raw, e := os.ReadFile(state.Path)
+	if e != nil || strings.Contains(string(raw), "private-test-value") {
+		t.Fatal("state not encrypted", e)
+	}
+	engine := &fakeEngine{}
+	p, e := NewPipeline(engine, state, t.TempDir(), 1)
+	if e != nil {
+		t.Fatal(e)
+	}
+	p.reconcile(context.Background())
+	if !engine.routed || len(engine.removed) != 1 || engine.removed[0] != "old" || !p.Ready() {
+		t.Fatal("pending switch not recovered")
+	}
+	after, e := state.Load()
+	if e != nil || len(after.Pending) != 0 {
+		t.Fatal("pending record not cleared", e)
 	}
 }

@@ -8,6 +8,16 @@ import (
 	"database/sql"
 )
 
+type ApiToken struct {
+	ID        string `json:"id"`
+	UserID    string `json:"user_id"`
+	Name      string `json:"name"`
+	TokenHash []byte `json:"token_hash"`
+	Scopes    string `json:"scopes"`
+	ExpiresAt int64  `json:"expires_at"`
+	CreatedAt int64  `json:"created_at"`
+}
+
 type App struct {
 	ID         string `json:"id"`
 	Name       string `json:"name"`
@@ -37,6 +47,13 @@ type Challenge struct {
 	ExpiresAt int64  `json:"expires_at"`
 }
 
+type CheckJob struct {
+	DeploymentID  string `json:"deployment_id"`
+	DesiredStatus string `json:"desired_status"`
+	Attempts      int64  `json:"attempts"`
+	NextAt        int64  `json:"next_at"`
+}
+
 type Credential struct {
 	ID       string `json:"id"`
 	UserID   string `json:"user_id"`
@@ -61,6 +78,7 @@ type Deployment struct {
 	Clean           int64  `json:"clean"`
 	CheckID         int64  `json:"check_id"`
 	CancelRequested int64  `json:"cancel_requested"`
+	Timings         string `json:"timings"`
 }
 
 type Domain struct {

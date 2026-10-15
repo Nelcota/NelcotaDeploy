@@ -46,8 +46,11 @@ func decodeApp(v dbgen.App) App {
 	return a
 }
 func decodeDeploy(v dbgen.Deployment) Deployment {
-	return Deployment{v.ID, v.AppID, v.Sha, v.Message, v.Author, v.Origin, v.Status, v.QueuedAt, v.StartedAt, v.FinishedAt, v.ErrorCode, v.Clean != 0}
+	d := Deployment{ID: v.ID, AppID: v.AppID, SHA: v.Sha, Message: v.Message, Author: v.Author, Origin: v.Origin, Status: v.Status, QueuedAt: v.QueuedAt, StartedAt: v.StartedAt, FinishedAt: v.FinishedAt, ErrorCode: v.ErrorCode, Clean: v.Clean != 0, Timings: map[string]int64{}, CancelRequested: v.CancelRequested != 0}
+	_ = json.Unmarshal([]byte(v.Timings), &d.Timings)
+	return d
 }
+
 func dbError(e error) error {
 	if errors.Is(e, sql.ErrNoRows) {
 		return fail(NotFound, "Recurso não encontrado")
@@ -149,7 +152,7 @@ func validateApp(in *AppInput) error {
 type appsService struct{ c *Core }
 
 func (s *appsService) List(ctx context.Context) ([]App, error) {
-	if _, e := require(ctx, false); e != nil {
+	if _, e := authorize(ctx, "apps:read", false); e != nil {
 		return nil, e
 	}
 	rows, e := s.c.DB.Queries.ListApps(ctx)
@@ -163,7 +166,7 @@ func (s *appsService) List(ctx context.Context) ([]App, error) {
 	return out, nil
 }
 func (s *appsService) Get(ctx context.Context, id string) (App, error) {
-	if _, e := require(ctx, false); e != nil {
+	if _, e := authorize(ctx, "apps:read", false); e != nil {
 		return App{}, e
 	}
 	r, e := s.c.DB.Queries.GetApp(ctx, id)
@@ -176,7 +179,7 @@ func (s *appsService) Update(ctx context.Context, id string, in AppInput) (App, 
 	return s.save(ctx, id, in)
 }
 func (s *appsService) save(ctx context.Context, id string, in AppInput) (App, error) {
-	if _, e := require(ctx, true); e != nil {
+	if _, e := authorize(ctx, "apps:write", true); e != nil {
 		return App{}, e
 	}
 	if e := validateApp(&in); e != nil {
@@ -221,7 +224,7 @@ func (s *appsService) save(ctx context.Context, id string, in AppInput) (App, er
 	return a, e
 }
 func (s *appsService) Delete(ctx context.Context, id string, confirmed bool) error {
-	if _, e := require(ctx, true); e != nil {
+	if _, e := authorize(ctx, "apps:write", true); e != nil {
 		return e
 	}
 	if !confirmed {
@@ -252,7 +255,7 @@ func (s *appsService) Delete(ctx context.Context, id string, confirmed bool) err
 	})
 }
 func (s *appsService) Environment(ctx context.Context, id string) ([]EnvInfo, error) {
-	if _, e := require(ctx, true); e != nil {
+	if _, e := authorize(ctx, "apps:write", true); e != nil {
 		return nil, e
 	}
 	if _, e := s.Get(ctx, id); e != nil {
@@ -266,7 +269,7 @@ func (s *appsService) Environment(ctx context.Context, id string) ([]EnvInfo, er
 	return out, dbError(e)
 }
 func (s *appsService) SetEnvironment(ctx context.Context, id string, vars []EnvInput) error {
-	if _, e := require(ctx, true); e != nil {
+	if _, e := authorize(ctx, "apps:write", true); e != nil {
 		return e
 	}
 	if _, e := s.Get(ctx, id); e != nil {
@@ -289,22 +292,32 @@ func (s *appsService) SetEnvironment(ctx context.Context, id string, vars []EnvI
 		}
 	}
 	return s.c.mutate(ctx, func(tx *sql.Tx) error {
-		if _, e := tx.ExecContext(ctx, "DELETE FROM env_vars WHERE app_id=?", id); e != nil {
-			return e
-		}
 		for i, v := range vars {
-			if _, e := tx.ExecContext(ctx, "INSERT INTO env_vars(app_id,key,encrypted,build) VALUES(?,?,?,?)", id, v.Key, encrypted[i], v.Build); e != nil {
+			if v.Delete {
+				if _, e := tx.ExecContext(ctx, "DELETE FROM env_vars WHERE app_id=? AND key=?", id, v.Key); e != nil {
+					return e
+				}
+				continue
+			}
+			if _, e := tx.ExecContext(ctx, "INSERT INTO env_vars(app_id,key,encrypted,build) VALUES(?,?,?,?) ON CONFLICT(app_id,key) DO UPDATE SET encrypted=excluded.encrypted,build=excluded.build", id, v.Key, encrypted[i], v.Build); e != nil {
 				return e
 			}
 		}
 		if _, e := tx.ExecContext(ctx, "UPDATE apps SET revision=revision+1 WHERE id=?", id); e != nil {
 			return e
 		}
-		return s.c.audit(ctx, tx, "env.replace", id)
+		var total, count int64
+		if e := tx.QueryRowContext(ctx, "SELECT COALESCE(sum(length(encrypted)),0),count(*) FROM env_vars WHERE app_id=?", id).Scan(&total, &count); e != nil {
+			return e
+		}
+		if total > 512<<10 || count > 200 {
+			return fail(Validation, "Limite de variáveis excedido")
+		}
+		return s.c.audit(ctx, tx, "env.patch", id)
 	})
 }
 func (s *appsService) Action(ctx context.Context, id, action string, replicas uint32, confirmed bool) error {
-	if _, e := require(ctx, true); e != nil {
+	if _, e := authorize(ctx, "apps:write", true); e != nil {
 		return e
 	}
 	a, e := s.Get(ctx, id)
@@ -336,7 +349,7 @@ func (s *appsService) Action(ctx context.Context, id, action string, replicas ui
 		if s.c.Control == nil {
 			return fail(Unavailable, "Agent indisponível")
 		}
-		return s.c.Control.Send(ctx, a.ServerID, &agentv1.Command{Action: &agentv1.Command_Restart{Restart: &agentv1.AppAction{AppId: id}}})
+		return s.c.send(ctx, a.ServerID, &agentv1.Command{Action: &agentv1.Command_Restart{Restart: &agentv1.AppAction{AppId: id}}})
 	}
 	return nil
 }
@@ -344,7 +357,7 @@ func (s *appsService) Action(ctx context.Context, id, action string, replicas ui
 type serversService struct{ c *Core }
 
 func (s *serversService) List(ctx context.Context) ([]Server, error) {
-	if _, e := require(ctx, false); e != nil {
+	if _, e := authorize(ctx, "servers:read", false); e != nil {
 		return nil, e
 	}
 	rows, e := s.c.DB.Queries.ListServers(ctx)
@@ -355,7 +368,7 @@ func (s *serversService) List(ctx context.Context) ([]Server, error) {
 	return out, dbError(e)
 }
 func (s *serversService) Invite(ctx context.Context, in ServerInput) (Invitation, error) {
-	if _, e := require(ctx, true); e != nil {
+	if _, e := authorize(ctx, "servers:write", true); e != nil {
 		return Invitation{}, e
 	}
 	ip := net.ParseIP(in.WireGuardIP)
@@ -389,7 +402,7 @@ func (s *serversService) Invite(ctx context.Context, in ServerInput) (Invitation
 	return Invitation{id, token, expires}, e
 }
 func (s *serversService) Prune(ctx context.Context, id, scope string, confirmed bool) error {
-	if _, e := require(ctx, true); e != nil {
+	if _, e := authorize(ctx, "servers:write", true); e != nil {
 		return e
 	}
 	if !confirmed {
@@ -410,13 +423,13 @@ func (s *serversService) Prune(ctx context.Context, id, scope string, confirmed 
 	if e := s.c.mutate(ctx, func(tx *sql.Tx) error { return s.c.audit(ctx, tx, "server.prune."+scope, id) }); e != nil {
 		return e
 	}
-	return s.c.Control.Send(ctx, id, &agentv1.Command{Action: &agentv1.Command_Prune{Prune: &agentv1.Prune{Scope: v}}})
+	return s.c.send(ctx, id, &agentv1.Command{Action: &agentv1.Command_Prune{Prune: &agentv1.Prune{Scope: v}}})
 }
 
 type settingsService struct{ c *Core }
 
 func (s *settingsService) Get(ctx context.Context) (SettingsView, error) {
-	if _, e := require(ctx, true); e != nil {
+	if _, e := authorize(ctx, "settings:write", true); e != nil {
 		return SettingsView{}, e
 	}
 	r, e := s.c.DB.Read.QueryContext(ctx, "SELECT key FROM settings ORDER BY key")
@@ -435,7 +448,7 @@ func (s *settingsService) Get(ctx context.Context) (SettingsView, error) {
 	return out, r.Err()
 }
 func (s *settingsService) Set(ctx context.Context, key, value string) error {
-	if _, e := require(ctx, true); e != nil {
+	if _, e := authorize(ctx, "settings:write", true); e != nil {
 		return e
 	}
 	switch key {
@@ -469,7 +482,7 @@ func (c *Core) Setting(ctx context.Context, key string) (string, error) {
 type auditService struct{ c *Core }
 
 func (s *auditService) List(ctx context.Context, limit int) ([]AuditEntry, error) {
-	if _, e := require(ctx, true); e != nil {
+	if _, e := authorize(ctx, "audit:read", true); e != nil {
 		return nil, e
 	}
 	if limit < 1 || limit > 1000 {
@@ -486,7 +499,7 @@ func (s *auditService) List(ctx context.Context, limit int) ([]AuditEntry, error
 type logsService struct{ c *Core }
 
 func (s *logsService) Read(ctx context.Context, id string) ([]byte, error) {
-	if _, e := require(ctx, false); e != nil {
+	if _, e := authorize(ctx, "logs:read", false); e != nil {
 		return nil, e
 	}
 	if _, e := (&deploysService{s.c}).Get(ctx, id); e != nil {
@@ -495,7 +508,7 @@ func (s *logsService) Read(ctx context.Context, id string) ([]byte, error) {
 	return s.c.LogStore.Read(ctx, id, 4<<20)
 }
 func (s *logsService) Subscribe(ctx context.Context, topic string) (events.Subscription, error) {
-	if _, e := require(ctx, false); e != nil {
+	if _, e := authorize(ctx, "logs:read", false); e != nil {
 		return events.Subscription{}, e
 	}
 	switch {
@@ -561,4 +574,14 @@ func (s *auditService) RecordRequest(ctx context.Context, method, route string, 
 	details, _ := json.Marshal(map[string]any{"method": method, "status": status})
 	_, e = s.c.DB.Write.ExecContext(ctx, "INSERT INTO audit_log(user_id,action,target,details,ip,created_at) VALUES(?,'http.request',?,?,?,?)", p.ID, route, string(details), p.IP, time.Now().Unix())
 	return e
+}
+
+func (c *Core) send(ctx context.Context, server string, command *agentv1.Command) error {
+	if c.Control == nil {
+		return fail(Unavailable, "Agent indisponível")
+	}
+	if e := c.Control.Send(ctx, server, command); e != nil {
+		return fail(Unavailable, "Agent indisponível")
+	}
+	return nil
 }

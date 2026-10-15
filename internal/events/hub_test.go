@@ -83,3 +83,19 @@ func BenchmarkLogStore(b *testing.B) {
 		}
 	}
 }
+
+func TestRingHasByteBudget(t *testing.T) {
+	r := NewRing(1024)
+	line := make([]byte, 16384)
+	for range 200 {
+		r.Append(line)
+	}
+	snapshot := r.Snapshot()
+	bytes := 0
+	for _, line := range snapshot {
+		bytes += len(line)
+	}
+	if bytes > 1<<20 || len(snapshot) != 64 {
+		t.Fatal("ring exceeded byte budget", bytes, len(snapshot))
+	}
+}

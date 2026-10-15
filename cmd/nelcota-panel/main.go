@@ -250,7 +250,7 @@ func serve(ctx context.Context, c config, dev bool) error {
 		if e != nil {
 			return e
 		}
-		tlsKey, e := host.Read(filepath.Join(c.keys, "control.key"))
+		tlsKey, e := host.ReadSecret(filepath.Join(c.keys, "control.key"))
 		if e != nil {
 			return e
 		}
@@ -258,7 +258,7 @@ func serve(ctx context.Context, c config, dev bool) error {
 		if e != nil {
 			return e
 		}
-		caKey, e := host.Read(filepath.Join(c.keys, "ca.key"))
+		caKey, e := host.ReadSecret(filepath.Join(c.keys, "ca.key"))
 		if e != nil {
 			return e
 		}
@@ -266,7 +266,7 @@ func serve(ctx context.Context, c config, dev bool) error {
 		if e != nil {
 			return e
 		}
-		sign, e := host.Read(filepath.Join(c.keys, "signing.key"))
+		sign, e := host.ReadSecret(filepath.Join(c.keys, "signing.key"))
 		if e != nil || len(sign) != ed25519.PrivateKeySize {
 			return errors.New("invalid signing key")
 		}
@@ -289,6 +289,7 @@ func serve(ctx context.Context, c config, dev bool) error {
 		g.Go(func() error { return host.Diagnostics(gctx, c.diagnostics, c.wg) })
 	}
 	g.Go(func() error { return core.RunScheduler(gctx) })
+	g.Go(func() error { return core.RunChecks(gctx) })
 	g.Go(func() error {
 		tick := time.NewTicker(time.Minute)
 		defer tick.Stop()

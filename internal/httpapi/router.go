@@ -303,6 +303,22 @@ func New(cfg Config) http.Handler {
 			v, e := cfg.Services.Audit.List(r.Context(), 100)
 			respond(w, v, e)
 		})
+		r.Get("/api/tokens", func(w http.ResponseWriter, r *http.Request) {
+			v, e := cfg.Services.Auth.Tokens(r.Context())
+			respond(w, v, e)
+		})
+		r.Post("/api/tokens", func(w http.ResponseWriter, r *http.Request) {
+			var in service.TokenInput
+			if !read(w, r, &in) {
+				return
+			}
+			v, e := cfg.Services.Auth.CreateToken(r.Context(), in)
+			respond(w, v, e)
+		})
+		r.Delete("/api/tokens/{id}", func(w http.ResponseWriter, r *http.Request) {
+			e := cfg.Services.Auth.RevokeToken(r.Context(), chi.URLParam(r, "id"))
+			respond(w, map[string]bool{"ok": e == nil}, e)
+		})
 		r.Get("/api/users", func(w http.ResponseWriter, r *http.Request) {
 			v, e := cfg.Services.Users.List(r.Context())
 			respond(w, v, e)
@@ -352,6 +368,21 @@ func (a *API) cookie(w http.ResponseWriter, v service.LoginResult) {
 }
 func (a *API) session(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if authorization := r.Header.Get("Authorization"); authorization != "" {
+			if !strings.HasPrefix(authorization, "Bearer ") || a.cfg.Services.Auth == nil {
+				respond(w, nil, &service.Error{Kind: service.Unauthenticated, Message: "Token inválido"})
+				return
+			}
+			p, e := a.cfg.Services.Auth.AuthenticateToken(r.Context(), strings.TrimPrefix(authorization, "Bearer "))
+			if e != nil {
+				respond(w, nil, e)
+				return
+			}
+			p.IP = clientIP(r)
+			r = r.WithContext(service.WithPrincipal(r.Context(), p))
+			next.ServeHTTP(w, r)
+			return
+		}
 		if c, e := r.Cookie(a.cookieName()); e == nil && a.cfg.Services.Auth != nil {
 			if p, e := a.cfg.Services.Auth.Session(r.Context(), c.Value); e == nil {
 				p.IP = clientIP(r)
@@ -378,6 +409,10 @@ func (a *API) csrfToken(token string) string {
 func (a *API) csrf(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == "GET" || r.Method == "HEAD" || r.Method == "OPTIONS" || r.URL.Path == "/api/webhooks/github" || r.URL.Path == "/api/servers/join" {
+			next.ServeHTTP(w, r)
+			return
+		}
+		if p, e := service.CurrentUser(r.Context()); e == nil && p.Scopes != nil {
 			next.ServeHTTP(w, r)
 			return
 		}

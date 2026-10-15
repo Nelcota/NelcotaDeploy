@@ -7,6 +7,7 @@ import (
 	agentv1 "github.com/nelcota/nelcota-deploy/internal/gen/agent/v1"
 	"github.com/nelcota/nelcota-deploy/internal/transport"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -82,26 +83,57 @@ func (d *DevDispatcher) Send(ctx context.Context, server string, c *agentv1.Comm
 func (d *DevDispatcher) Run(ctx context.Context) error {
 	tick := time.NewTicker(2 * time.Second)
 	defer tick.Stop()
+	var mu sync.Mutex
+	var wg sync.WaitGroup
+	jobs := map[string]context.CancelFunc{}
+	defer func() {
+		mu.Lock()
+		for _, cancel := range jobs {
+			cancel()
+		}
+		mu.Unlock()
+		wg.Wait()
+	}()
+	emitStatus := func(server string, dep *agentv1.Deploy, status string) {
+		_ = d.Core.AgentEvent(ctx, transport.Peer{ID: server}, &agentv1.Event{Payload: &agentv1.Event_DeployStatus{DeployStatus: &agentv1.DeployStatus{DeployId: dep.DeployId, AppId: dep.App.AppId, Status: status}}})
+	}
 	for {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
 		case item := <-d.queue:
+			if cancelCommand := item.command.GetCancel(); cancelCommand != nil {
+				mu.Lock()
+				if cancel := jobs[cancelCommand.DeployId]; cancel != nil {
+					cancel()
+				}
+				mu.Unlock()
+				continue
+			}
 			dep := item.command.GetDeploy()
 			if dep == nil {
 				continue
 			}
-			for i, status := range []string{"building", "starting", "success"} {
-				timer := time.NewTimer(600 * time.Millisecond)
-				select {
-				case <-ctx.Done():
-					timer.Stop()
-					return ctx.Err()
-				case <-timer.C:
+			jobCtx, cancel := context.WithCancel(ctx)
+			mu.Lock()
+			jobs[dep.DeployId] = cancel
+			mu.Unlock()
+			wg.Go(func() {
+				defer cancel()
+				defer func() { mu.Lock(); delete(jobs, dep.DeployId); mu.Unlock() }()
+				for i, status := range []string{"building", "starting", "success"} {
+					timer := time.NewTimer(600 * time.Millisecond)
+					select {
+					case <-jobCtx.Done():
+						timer.Stop()
+						emitStatus(item.server, dep, "cancelled")
+						return
+					case <-timer.C:
+					}
+					_ = d.Core.AgentEvent(ctx, transport.Peer{ID: item.server}, &agentv1.Event{Payload: &agentv1.Event_DeployLog{DeployLog: &agentv1.DeployLog{DeployId: dep.DeployId, AppId: dep.App.AppId, Sequence: uint64(i + 1), Line: []byte("[dev] " + status + "\n")}}})
+					emitStatus(item.server, dep, status)
 				}
-				_ = d.Core.AgentEvent(ctx, transport.Peer{ID: item.server, Fingerprint: "development"}, &agentv1.Event{Payload: &agentv1.Event_DeployLog{DeployLog: &agentv1.DeployLog{DeployId: dep.DeployId, AppId: dep.App.AppId, Sequence: uint64(i + 1), Line: []byte("[dev] " + status + "\n")}}})
-				_ = d.Core.AgentEvent(ctx, transport.Peer{ID: item.server}, &agentv1.Event{Payload: &agentv1.Event_DeployStatus{DeployStatus: &agentv1.DeployStatus{DeployId: dep.DeployId, AppId: dep.App.AppId, Status: status}}})
-			}
+			})
 		case <-tick.C:
 			servers, _ := d.Core.DB.Queries.ListServers(ctx)
 			for _, s := range servers {

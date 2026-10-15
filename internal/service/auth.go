@@ -20,6 +20,10 @@ import (
 )
 
 type Auth interface {
+	CreateToken(context.Context, TokenInput) (APIToken, error)
+	Tokens(context.Context) ([]APIToken, error)
+	RevokeToken(context.Context, string) error
+	AuthenticateToken(context.Context, string) (Principal, error)
 	BeginRegistration(context.Context, RegistrationInput) (Ceremony, error)
 	FinishRegistration(context.Context, FinishInput) error
 	BeginLogin(context.Context, string) (Ceremony, error)
@@ -374,7 +378,7 @@ func (a *AuthService) VerifyTOTP(ctx context.Context, challenge, code string) (L
 	return a.issueSession(ctx, user)
 }
 func (a *AuthService) List(ctx context.Context) ([]Principal, error) {
-	if _, e := require(ctx, true); e != nil {
+	if _, e := authorize(ctx, "users:write", true); e != nil {
 		return nil, e
 	}
 	r, e := a.Core.DB.Queries.ListUsers(ctx)
@@ -385,7 +389,7 @@ func (a *AuthService) List(ctx context.Context) ([]Principal, error) {
 	return out, dbError(e)
 }
 func (a *AuthService) Create(ctx context.Context, in UserInput) (Enrollment, error) {
-	if _, e := require(ctx, true); e != nil {
+	if _, e := authorize(ctx, "users:write", true); e != nil {
 		return Enrollment{}, e
 	}
 	return a.create(ctx, in, false)
@@ -423,7 +427,7 @@ func (a *AuthService) create(ctx context.Context, in UserInput, first bool) (Enr
 	return Enrollment{id, token, expires}, e
 }
 func (a *AuthService) Cleanup(ctx context.Context) error {
-	for _, table := range []string{"challenges", "sessions"} {
+	for _, table := range []string{"challenges", "sessions", "api_tokens"} {
 		if _, e := a.Core.DB.Write.ExecContext(ctx, "DELETE FROM "+table+" WHERE expires_at<?", time.Now().Unix()); e != nil {
 			return e
 		}

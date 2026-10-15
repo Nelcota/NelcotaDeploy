@@ -16,7 +16,7 @@ import (
 type deploysService struct{ c *Core }
 
 func (s *deploysService) List(ctx context.Context, app string) ([]Deployment, error) {
-	if _, e := require(ctx, false); e != nil {
+	if _, e := authorize(ctx, "deploys:read", false); e != nil {
 		return nil, e
 	}
 	if _, e := (&appsService{s.c}).Get(ctx, app); e != nil {
@@ -30,14 +30,14 @@ func (s *deploysService) List(ctx context.Context, app string) ([]Deployment, er
 	return out, dbError(e)
 }
 func (s *deploysService) Get(ctx context.Context, id string) (Deployment, error) {
-	if _, e := require(ctx, false); e != nil {
+	if _, e := authorize(ctx, "deploys:read", false); e != nil {
 		return Deployment{}, e
 	}
 	r, e := s.c.DB.Queries.GetDeployment(ctx, id)
 	return decodeDeploy(r), dbError(e)
 }
 func (s *deploysService) Enqueue(ctx context.Context, in DeployInput) (Deployment, error) {
-	if _, e := require(ctx, false); e != nil {
+	if _, e := authorize(ctx, "deploys:write", false); e != nil {
 		return Deployment{}, e
 	}
 	if !shaPattern.MatchString(in.SHA) {
@@ -75,7 +75,7 @@ func (s *deploysService) enqueue(ctx context.Context, tx *sql.Tx, id string, in 
 	return s.c.audit(ctx, tx, "deploy.enqueue", id)
 }
 func (s *deploysService) Cancel(ctx context.Context, id string) error {
-	if _, e := require(ctx, false); e != nil {
+	if _, e := authorize(ctx, "deploys:write", false); e != nil {
 		return e
 	}
 	d, e := s.Get(ctx, id)
@@ -89,11 +89,19 @@ func (s *deploysService) Cancel(ctx context.Context, id string) error {
 		if _, e := tx.ExecContext(ctx, "UPDATE deployments SET status=CASE WHEN status='queued' THEN 'cancelled' ELSE status END,finished_at=CASE WHEN status='queued' THEN ? ELSE finished_at END,cancel_requested=1 WHERE id=?", time.Now().Unix(), id); e != nil {
 			return e
 		}
+		if d.Status == "queued" && s.c.GitHub != nil {
+			if e := queueCheck(ctx, tx, id, "cancelled"); e != nil {
+				return e
+			}
+		}
 		return s.c.audit(ctx, tx, "deploy.cancel", id)
 	})
 	if e != nil {
 		return e
 	}
+	updated, _ := s.Get(ctx, id)
+	s.c.publish("deployments", "deploy.status", updated)
+	s.c.publish("deploy/"+id, "deploy.status", updated)
 	if d.Status != "queued" {
 		a, e := (&appsService{s.c}).Get(ctx, d.AppID)
 		if e != nil {
@@ -102,7 +110,7 @@ func (s *deploysService) Cancel(ctx context.Context, id string) error {
 		if s.c.Control == nil {
 			return fail(Unavailable, "Cancelamento pendente até agent conectar")
 		}
-		return s.c.Control.Send(ctx, a.ServerID, &agentv1.Command{Action: &agentv1.Command_Cancel{Cancel: &agentv1.Cancel{DeployId: id}}})
+		return s.c.send(ctx, a.ServerID, &agentv1.Command{Action: &agentv1.Command_Cancel{Cancel: &agentv1.Cancel{DeployId: id}}})
 	}
 	return nil
 }
@@ -169,21 +177,33 @@ func (c *Core) RunScheduler(ctx context.Context) error {
 				}
 			}
 			if c.GitHub != nil {
-				check, e := c.GitHub.Check(ctx, a.Repository, d.SHA, "building", 0)
-				if e == nil && check != 0 {
-					_, _ = c.DB.Write.ExecContext(ctx, "UPDATE deployments SET check_id=? WHERE id=?", check, d.ID)
-				}
+				_ = c.mutate(ctx, func(tx *sql.Tx) error { return queueCheck(ctx, tx, d.ID, "building") })
 			}
+
 			e = c.Control.Send(ctx, a.ServerID, &agentv1.Command{Action: &agentv1.Command_Deploy{Deploy: &agentv1.Deploy{DeployId: d.ID, App: cfg, Sha: d.SHA, GithubToken: token, Clean: d.Clean}}})
 			if e != nil {
 				c.failDispatch(ctx, d.ID, "agent_unavailable")
+				continue
 			}
 			c.publish("deployments", "deploy.status", d)
 		}
 	}
 }
 func (c *Core) failDispatch(ctx context.Context, id, code string) {
-	_, _ = c.DB.Write.ExecContext(ctx, "UPDATE deployments SET status='failed',error_code=?,finished_at=? WHERE id=? AND status='building'", code, time.Now().Unix(), id)
+	_ = c.mutate(ctx, func(tx *sql.Tx) error {
+		_, e := tx.ExecContext(ctx, "UPDATE deployments SET status='failed',error_code=?,finished_at=? WHERE id=? AND status='building'", code, time.Now().Unix(), id)
+		if e != nil {
+			return e
+		}
+		if c.GitHub != nil {
+			return queueCheck(ctx, tx, id, "failed")
+		}
+		return nil
+	})
+	if d, e := (&deploysService{c}).Get(systemContext(ctx), id); e == nil {
+		c.publish("deployments", "deploy.status", d)
+		c.publish("deploy/"+id, "deploy.status", d)
+	}
 }
 func (c *Core) agentConfig(ctx context.Context, a App) (*agentv1.AppConfig, error) {
 	p := &agentv1.AppConfig{AppId: a.ID, Repository: a.Repository, Branch: a.Branch, Domains: a.Config.Domains, MemoryBytes: a.Config.MemoryBytes, NanoCpus: a.Config.NanoCPUs, Port: a.Config.Port, HealthPath: a.Config.HealthPath, HealthTimeoutSeconds: a.Config.HealthTimeout, Replicas: a.Config.Replicas, CacheEnabled: a.Config.CacheEnabled, Dockerfile: a.Config.Dockerfile, InstallationId: a.Config.InstallationID, DesiredSha: a.DesiredSHA, Stopped: a.Config.Stopped, Revision: uint64(a.Revision), Env: map[string]string{}, BuildSecrets: map[string]string{}}
@@ -225,7 +245,12 @@ func (c *Core) AgentEvent(ctx context.Context, p transport.Peer, e *agentv1.Even
 		if _, err := c.DB.Write.ExecContext(ctx, "UPDATE servers SET heartbeat_at=?,status='online' WHERE id=?", time.Now().Unix(), p.ID); err != nil {
 			return err
 		}
-		if err := c.observedState(ctx, p.ID, v.Heartbeat); err != nil {
+		if err := func() error {
+			if !v.Heartbeat.Ready {
+				return nil
+			}
+			return c.observedState(ctx, p.ID, v.Heartbeat)
+		}(); err != nil {
 			return err
 		}
 		if v.Heartbeat.RequestState {
@@ -270,6 +295,22 @@ func (c *Core) AgentEvent(ctx context.Context, p transport.Peer, e *agentv1.Even
 		if err != nil || a.ServerID != p.ID || d.AppID != s.AppId {
 			return fail(Forbidden, "Deploy não pertence ao server")
 		}
+		if s.Stage != "" {
+			switch s.Stage {
+			case "clone", "build", "start", "healthcheck", "route":
+			default:
+				return fail(Validation, "Etapa inválida")
+			}
+			if s.DurationMs < 0 {
+				return fail(Validation, "Duração inválida")
+			}
+			_, err = c.DB.Write.ExecContext(ctx, "UPDATE deployments SET timings=json_set(timings,?,?) WHERE id=?", "$."+s.Stage, s.DurationMs, d.ID)
+			if err != nil {
+				return err
+			}
+			c.publish("deploy/"+d.ID, "deploy.stage", map[string]any{"stage": s.Stage, "duration_ms": s.DurationMs})
+			return nil
+		}
 		if !validTransition(d.Status, s.Status) {
 			return nil
 		}
@@ -286,6 +327,11 @@ func (c *Core) AgentEvent(ctx context.Context, p transport.Peer, e *agentv1.Even
 			if _, err := tx.ExecContext(ctx, "UPDATE deployments SET status=?,finished_at=?,error_code=? WHERE id=?", s.Status, finished, code, d.ID); err != nil {
 				return err
 			}
+			if terminal && c.GitHub != nil {
+				if err := queueCheck(ctx, tx, d.ID, s.Status); err != nil {
+					return err
+				}
+			}
 			if s.Status == "success" {
 				_, err := tx.ExecContext(ctx, "UPDATE apps SET desired_sha=? WHERE id=?", d.Sha, d.AppID)
 				return err
@@ -299,9 +345,7 @@ func (c *Core) AgentEvent(ctx context.Context, p transport.Peer, e *agentv1.Even
 		c.publish("deployments", "deploy.status", updated)
 		c.publish("deploy/"+d.ID, "deploy.status", updated)
 		if terminal {
-			if c.GitHub != nil {
-				_, _ = c.GitHub.Check(ctx, a.Repository, d.Sha, s.Status, d.CheckID)
-			}
+
 			_ = c.retainLogs(ctx, a.ID)
 		}
 	case *agentv1.Event_ContainerEvent:

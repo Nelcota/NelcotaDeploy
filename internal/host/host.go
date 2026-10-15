@@ -14,28 +14,36 @@ import (
 	"net/http/pprof"
 	"os"
 	"path/filepath"
+	"runtime/trace"
 	"time"
 )
 
 func Serve(ctx context.Context, server *http.Server, tls bool) error {
+	done := make(chan struct{})
 	stop := context.AfterFunc(ctx, func() {
+		defer close(done)
 		c, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 		_ = server.Shutdown(c)
 		_ = server.Close()
 	})
-	defer stop()
 	var e error
 	if tls {
 		e = server.ListenAndServeTLS("", "")
 	} else {
 		e = server.ListenAndServe()
 	}
+	if stop() {
+		_ = server.Close()
+	} else {
+		<-done
+	}
 	if errors.Is(e, http.ErrServerClosed) {
 		return nil
 	}
 	return e
 }
+
 func Server(address string, handler http.Handler) *http.Server {
 	return &http.Server{Addr: address, Handler: handler, ReadHeaderTimeout: 5 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 32 << 10}
 }
@@ -72,7 +80,16 @@ func Diagnostics(ctx context.Context, address, device string) error {
 	if e := RequireInterface(address, device); e != nil {
 		return e
 	}
+	recorder := trace.NewFlightRecorder(trace.FlightRecorderConfig{MaxBytes: 4 << 20, MinAge: 10 * time.Second})
+	if e := recorder.Start(); e != nil {
+		return e
+	}
+	defer recorder.Stop()
 	r := http.NewServeMux()
+	r.HandleFunc("/debug/flightrecorder", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/octet-stream")
+		_, _ = recorder.WriteTo(w)
+	})
 	r.HandleFunc("/debug/pprof/", pprof.Index)
 	r.HandleFunc("/debug/pprof/profile", pprof.Profile)
 	r.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
@@ -111,4 +128,15 @@ func WriteExclusive(path string, b []byte) error {
 	defer f.Close()
 	_, e = f.Write(b)
 	return e
+}
+
+func ReadSecret(path string) ([]byte, error) {
+	st, e := os.Stat(path)
+	if e != nil {
+		return nil, e
+	}
+	if !st.Mode().IsRegular() || st.Mode().Perm()&0077 != 0 {
+		return nil, errors.New("private file must have mode 0600")
+	}
+	return os.ReadFile(path)
 }

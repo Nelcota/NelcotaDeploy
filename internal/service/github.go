@@ -195,7 +195,7 @@ type GitHubManifest struct {
 }
 
 func (g *GitHubService) BeginManifest(ctx context.Context, origin string) (GitHubManifest, error) {
-	p, e := require(ctx, true)
+	p, e := authorize(ctx, "settings:write", true)
 	if e != nil {
 		return GitHubManifest{}, e
 	}

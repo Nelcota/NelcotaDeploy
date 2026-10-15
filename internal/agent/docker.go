@@ -18,19 +18,18 @@ import (
 	"strings"
 	"time"
 
-	"github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/api/types/filters"
-	"github.com/docker/docker/api/types/image"
-	"github.com/docker/docker/api/types/network"
-	"github.com/docker/docker/client"
-	"github.com/docker/docker/errdefs"
-	"github.com/docker/docker/pkg/stdcopy"
-	"github.com/docker/go-connections/nat"
+	"github.com/moby/moby/api/types/container"
+
+	"github.com/containerd/errdefs"
 	bk "github.com/moby/buildkit/client"
 	"github.com/moby/buildkit/session"
 	"github.com/moby/buildkit/session/secrets/secretsprovider"
+	"github.com/moby/moby/api/pkg/stdcopy"
+	"github.com/moby/moby/api/types/network"
+	"github.com/moby/moby/client"
 	agentv1 "github.com/nelcota/nelcota-deploy/internal/gen/agent/v1"
 	"github.com/nelcota/nelcota-deploy/internal/security"
+	"github.com/tonistiigi/fsutil"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -122,7 +121,11 @@ func (d *DockerEngine) Build(ctx context.Context, dep *agentv1.Deploy, dir strin
 	for k, v := range dep.App.BuildSecrets {
 		secretMap[k] = []byte(v)
 	}
-	options := bk.SolveOpt{Frontend: "dockerfile.v0", LocalDirs: map[string]string{"context": dir, "dockerfile": dir}, FrontendAttrs: attrs, SharedKey: key(dep.App.AppId), Session: []session.Attachable{secretsprovider.FromMap(secretMap)}, Exports: []bk.ExportEntry{{Type: "docker", Attrs: map[string]string{"name": tag}, Output: func(map[string]string) (io.WriteCloser, error) {
+	contextFS, e := fsutil.NewFS(dir)
+	if e != nil {
+		return "", e
+	}
+	options := bk.SolveOpt{Frontend: "dockerfile.v0", LocalMounts: map[string]fsutil.FS{"context": contextFS, "dockerfile": contextFS}, FrontendAttrs: attrs, SharedKey: key(dep.App.AppId), Session: []session.Attachable{secretsprovider.FromMap(secretMap)}, Exports: []bk.ExportEntry{{Type: "docker", Attrs: map[string]string{"name": tag}, Output: func(map[string]string) (io.WriteCloser, error) {
 		return os.OpenFile(name, os.O_WRONLY|os.O_TRUNC, 0600)
 	}}}}
 	status := make(chan *bk.SolveStatus, 32)
@@ -148,27 +151,27 @@ func (d *DockerEngine) Build(ctx context.Context, dep *agentv1.Deploy, dir strin
 	if e != nil {
 		return "", errors.New("image import failed")
 	}
-	defer load.Body.Close()
-	if _, e = io.Copy(io.Discard, load.Body); e != nil {
+	defer load.Close()
+	if _, e = io.Copy(io.Discard, load); e != nil {
 		return "", e
 	}
 	if _, e = d.Docker.ImageInspect(ctx, tag); e != nil {
 		return "", errors.New("image export unavailable")
 	}
-	if e = d.BuildKit.Prune(ctx, nil, bk.WithKeepOpt(7*24*time.Hour, 0, d.CacheBytes, 0)); e != nil {
-		_, _ = d.Docker.ImageRemove(context.WithoutCancel(ctx), tag, image.RemoveOptions{PruneChildren: true})
+	if e = d.gc(ctx); e != nil {
+		_, _ = d.Docker.ImageRemove(context.WithoutCancel(ctx), tag, client.ImageRemoveOptions{PruneChildren: true})
 		return "", e
 	}
 	return tag, nil
 }
 func HardenedConfig(app *agentv1.AppConfig, img string) (*container.Config, *container.HostConfig) {
-	port := nat.Port(strconv.FormatUint(uint64(app.Port), 10) + "/tcp")
+	port := network.MustParsePort(strconv.FormatUint(uint64(app.Port), 10) + "/tcp")
 	env := make([]string, 0, len(app.Env))
 	for k, v := range app.Env {
 		env = append(env, k+"="+v)
 	}
 	pids := int64(128)
-	return &container.Config{Image: img, User: "65532:65532", Env: env, ExposedPorts: nat.PortSet{port: {}}, Labels: map[string]string{"nelcota.managed": "true", "nelcota.app": app.AppId}}, &container.HostConfig{ReadonlyRootfs: true, CapDrop: []string{"ALL"}, SecurityOpt: []string{"no-new-privileges:true"}, Resources: container.Resources{Memory: app.MemoryBytes, NanoCPUs: app.NanoCpus, PidsLimit: &pids}, Tmpfs: map[string]string{"/tmp": "rw,noexec,nosuid,size=64m,uid=65532,gid=65532"}, RestartPolicy: container.RestartPolicy{Name: "unless-stopped"}, LogConfig: container.LogConfig{Type: "json-file", Config: map[string]string{"max-size": "10m", "max-file": "2"}}}
+	return &container.Config{Image: img, User: "65532:65532", Env: env, ExposedPorts: network.PortSet{port: {}}, Labels: map[string]string{"nelcota.managed": "true", "nelcota.app": app.AppId}}, &container.HostConfig{ReadonlyRootfs: true, CapDrop: []string{"ALL"}, SecurityOpt: []string{"no-new-privileges:true"}, Resources: container.Resources{Memory: app.MemoryBytes, NanoCPUs: app.NanoCpus, PidsLimit: &pids}, Tmpfs: map[string]string{"/tmp": "rw,noexec,nosuid,size=64m,uid=65532,gid=65532"}, RestartPolicy: container.RestartPolicy{Name: "unless-stopped"}, LogConfig: container.LogConfig{Type: "json-file", Config: map[string]string{"max-size": "10m", "max-file": "2"}}}
 }
 func (d *DockerEngine) Start(ctx context.Context, app *agentv1.AppConfig, img string) (Running, error) {
 	r := Running{AppID: app.AppId, Image: img, Revision: app.Revision}
@@ -176,34 +179,34 @@ func (d *DockerEngine) Start(ctx context.Context, app *agentv1.AppConfig, img st
 		return r, errors.New("invalid container configuration")
 	}
 	netName := "nelcota-" + key(app.AppId)
-	networks, e := d.Docker.NetworkList(ctx, network.ListOptions{Filters: filters.NewArgs(filters.Arg("name", "^"+netName+"$"))})
+	networks, e := d.Docker.NetworkList(ctx, client.NetworkListOptions{Filters: client.Filters{}.Add("name", "^"+netName+"$")})
 	if e != nil {
 		return r, e
 	}
-	if len(networks) == 0 {
-		if _, e = d.Docker.NetworkCreate(ctx, netName, network.CreateOptions{Driver: "bridge", Labels: map[string]string{"nelcota.managed": "true", "nelcota.app": app.AppId}}); e != nil {
+	if len(networks.Items) == 0 {
+		if _, e = d.Docker.NetworkCreate(ctx, netName, client.NetworkCreateOptions{Driver: "bridge", Labels: map[string]string{"nelcota.managed": "true", "nelcota.app": app.AppId}}); e != nil {
 			return r, e
 		}
 	}
 	for range app.Replicas {
 		cfg, host := HardenedConfig(app, img)
-		resp, e := d.Docker.ContainerCreate(ctx, cfg, host, &network.NetworkingConfig{EndpointsConfig: map[string]*network.EndpointSettings{netName: {}}}, nil, "nelcota-"+key(app.AppId)+"-"+key(security.Token()))
+		resp, e := d.Docker.ContainerCreate(ctx, client.ContainerCreateOptions{Config: cfg, HostConfig: host, NetworkingConfig: &network.NetworkingConfig{EndpointsConfig: map[string]*network.EndpointSettings{netName: {}}}, Name: "nelcota-" + key(app.AppId) + "-" + key(security.Token())})
 		if e != nil {
 			d.cleanupContainers(r)
 			return r, e
 		}
 		r.Containers = append(r.Containers, resp.ID)
-		if e = d.Docker.ContainerStart(ctx, resp.ID, container.StartOptions{}); e != nil {
+		if _, e = d.Docker.ContainerStart(ctx, resp.ID, client.ContainerStartOptions{}); e != nil {
 			d.cleanupContainers(r)
 			return r, e
 		}
-		inspect, e := d.Docker.ContainerInspect(ctx, resp.ID)
+		inspect, e := d.Docker.ContainerInspect(ctx, resp.ID, client.ContainerInspectOptions{})
 		if e != nil {
 			d.cleanupContainers(r)
 			return r, e
 		}
-		address := inspect.NetworkSettings.Networks[netName].IPAddress
-		r.Addresses = append(r.Addresses, net.JoinHostPort(address, strconv.Itoa(int(app.Port))))
+		address := inspect.Container.NetworkSettings.Networks[netName].IPAddress
+		r.Addresses = append(r.Addresses, net.JoinHostPort(address.String(), strconv.Itoa(int(app.Port))))
 	}
 	return r, nil
 }
@@ -211,7 +214,7 @@ func (d *DockerEngine) cleanupContainers(r Running) {
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
 	for _, id := range r.Containers {
-		_ = d.Docker.ContainerRemove(ctx, id, container.RemoveOptions{Force: true, RemoveVolumes: true})
+		_, _ = d.Docker.ContainerRemove(ctx, id, client.ContainerRemoveOptions{Force: true, RemoveVolumes: true})
 	}
 }
 func (d *DockerEngine) Health(ctx context.Context, app *agentv1.AppConfig, r Running) error {
@@ -262,15 +265,15 @@ func (d *DockerEngine) Remove(ctx context.Context, r Running) error {
 		}
 		for _, id := range r.Containers {
 			seconds := int(d.Drain.Seconds())
-			_ = d.Docker.ContainerStop(ctx, id, container.StopOptions{Timeout: &seconds})
-			if e := d.Docker.ContainerRemove(ctx, id, container.RemoveOptions{Force: true, RemoveVolumes: true}); e != nil && !client.IsErrNotFound(e) {
+			_, _ = d.Docker.ContainerStop(ctx, id, client.ContainerStopOptions{Timeout: &seconds})
+			if _, e := d.Docker.ContainerRemove(ctx, id, client.ContainerRemoveOptions{Force: true, RemoveVolumes: true}); e != nil && !errdefs.IsNotFound(e) {
 				return e
 			}
 		}
 	}
 	if r.Image != "" {
-		_, e := d.Docker.ImageRemove(ctx, r.Image, image.RemoveOptions{PruneChildren: true})
-		if e != nil && !client.IsErrNotFound(e) && !errdefs.IsConflict(e) {
+		_, e := d.Docker.ImageRemove(ctx, r.Image, client.ImageRemoveOptions{PruneChildren: true})
+		if e != nil && !errdefs.IsNotFound(e) && !errdefs.IsConflict(e) {
 			return e
 		}
 	}
@@ -278,14 +281,14 @@ func (d *DockerEngine) Remove(ctx context.Context, r Running) error {
 }
 func (d *DockerEngine) Inspect(ctx context.Context, r Running) (bool, error) {
 	for _, id := range r.Containers {
-		v, e := d.Docker.ContainerInspect(ctx, id)
-		if client.IsErrNotFound(e) {
+		v, e := d.Docker.ContainerInspect(ctx, id, client.ContainerInspectOptions{})
+		if errdefs.IsNotFound(e) {
 			return false, nil
 		}
 		if e != nil {
 			return false, e
 		}
-		if !v.State.Running {
+		if !v.Container.State.Running {
 			return false, nil
 		}
 	}
@@ -296,7 +299,7 @@ func (d *DockerEngine) Stop(ctx context.Context, r Running) error {
 		return e
 	}
 	for _, id := range r.Containers {
-		if e := d.Docker.ContainerStop(ctx, id, container.StopOptions{}); e != nil && !client.IsErrNotFound(e) {
+		if _, e := d.Docker.ContainerStop(ctx, id, client.ContainerStopOptions{}); e != nil && !errdefs.IsNotFound(e) {
 			return e
 		}
 	}
@@ -304,7 +307,7 @@ func (d *DockerEngine) Stop(ctx context.Context, r Running) error {
 }
 func (d *DockerEngine) Restart(ctx context.Context, r Running) error {
 	for _, id := range r.Containers {
-		if e := d.Docker.ContainerRestart(ctx, id, container.StopOptions{}); e != nil {
+		if _, e := d.Docker.ContainerRestart(ctx, id, client.ContainerRestartOptions{}); e != nil {
 			return e
 		}
 	}
@@ -318,7 +321,7 @@ func (d *DockerEngine) Logs(ctx context.Context, r Running, since int64, follow 
 	if len(r.Containers) == 0 {
 		return errors.New("app not running")
 	}
-	body, e := d.Docker.ContainerLogs(ctx, r.Containers[0], container.LogsOptions{ShowStdout: true, ShowStderr: true, Follow: follow, Since: strconv.FormatInt(since, 10), Tail: "1000"})
+	body, e := d.Docker.ContainerLogs(ctx, r.Containers[0], client.ContainerLogsOptions{ShowStdout: true, ShowStderr: true, Follow: follow, Since: strconv.FormatInt(since, 10), Tail: "1000"})
 	if e != nil {
 		return e
 	}
@@ -331,7 +334,7 @@ func (d *DockerEngine) Prune(ctx context.Context, scope agentv1.Prune_Scope) err
 	case agentv1.Prune_CACHE:
 		return d.BuildKit.Prune(ctx, nil, bk.PruneAll)
 	case agentv1.Prune_ORPHAN_IMAGES:
-		_, e := d.Docker.ImagesPrune(ctx, filters.NewArgs(filters.Arg("label", "nelcota.managed=true")))
+		_, e := d.Docker.ImagePrune(ctx, client.ImagePruneOptions{Filters: client.Filters{}.Add("label", "nelcota.managed=true")})
 		return e
 	default:
 		return errors.New("unknown prune scope")
@@ -383,7 +386,7 @@ func (c *Caddy) Route(ctx context.Context, id string, domains, addresses []strin
 	for _, a := range addresses {
 		ups = append(ups, map[string]string{"dial": a})
 	}
-	route := map[string]any{"@id": "nelcota-" + key(id), "match": []any{map[string]any{"host": domains}}, "handle": []any{map[string]any{"handler": "reverse_proxy", "upstreams": ups, "flush_interval": -1}}, "terminal": true}
+	route := map[string]any{"@id": "nelcota-" + key(id), "match": []any{map[string]any{"host": domains}}, "handle": []any{map[string]any{"handler": "encode", "encodings": map[string]any{"zstd": map[string]any{}, "gzip": map[string]any{}}}, map[string]any{"handler": "reverse_proxy", "upstreams": ups, "flush_interval": -1}}, "terminal": true}
 	code, e := c.request(ctx, "PATCH", "/id/nelcota-"+key(id), route)
 	if code == 404 {
 		_, e = c.request(ctx, "POST", "/config/apps/http/servers/nelcota/routes", route)
@@ -396,4 +399,40 @@ func (c *Caddy) Delete(ctx context.Context, id string) error {
 		return nil
 	}
 	return e
+}
+
+func (d *DockerEngine) Watch(ctx context.Context, emit func(*agentv1.Event) error) error {
+	for {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		stream := d.Docker.Events(ctx, client.EventsListOptions{Filters: client.Filters{}.Add("type", "container").Add("label", "nelcota.managed=true")})
+		alive := true
+		for alive {
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-stream.Err:
+				alive = false
+			case event := <-stream.Messages:
+				if app := event.Actor.Attributes["nelcota.app"]; app != "" {
+					_ = emit(&agentv1.Event{Payload: &agentv1.Event_ContainerEvent{ContainerEvent: &agentv1.ContainerEvent{AppId: app, ContainerId: event.Actor.ID, Status: string(event.Action)}}})
+				}
+			}
+		}
+		timer := time.NewTimer(time.Second)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return ctx.Err()
+		case <-timer.C:
+		}
+	}
+}
+
+func (d *DockerEngine) gc(ctx context.Context) error {
+	if e := d.BuildKit.Prune(ctx, nil, bk.WithKeepOpt(7*24*time.Hour, 0, 0, 0)); e != nil {
+		return e
+	}
+	return d.BuildKit.Prune(ctx, nil, bk.WithKeepOpt(0, 0, d.CacheBytes, 0))
 }
