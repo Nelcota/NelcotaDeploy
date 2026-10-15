@@ -349,6 +349,16 @@ func (c *Core) AgentEvent(ctx context.Context, p transport.Peer, e *agentv1.Even
 			_ = c.retainLogs(ctx, a.ID)
 		}
 	case *agentv1.Event_ContainerEvent:
+		app, err := c.DB.Queries.GetApp(ctx, v.ContainerEvent.AppId)
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		if app.ServerID != p.ID {
+			return fail(Forbidden, "App não pertence ao server")
+		}
 		c.publish("servers", "container.event", v.ContainerEvent)
 	case *agentv1.Event_Metrics:
 		c.publish("servers", "server.metrics", map[string]any{"server_id": p.ID, "metrics": v.Metrics})
