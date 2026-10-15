@@ -2,14 +2,21 @@
 # Empacota sem publicar. Os buildkitd devem ter origem e hash revisados pelo mantenedor.
 set -euo pipefail
 umask 077
-[[ $# == 4 ]] || { printf '%s\n' 'release.sh VERSION MINISIGN_SECRET_KEY_FILE BUILDKITD_AMD64 BUILDKITD_ARM64' >&2; exit 1; }
+[[ $# == 4 || $# == 5 ]] || { printf '%s\n' 'release.sh VERSION MINISIGN_SECRET_KEY_FILE BUILDKITD_AMD64 BUILDKITD_ARM64 [BUILDKIT_PROVENANCE_DIR]' >&2; exit 1; }
 version=$1 key_file=$2 builder_amd64=$3 builder_arm64=$4
+provenance=${5:-}
 [[ $version =~ ^v(0|[1-9][0-9]{0,8})\.(0|[1-9][0-9]{0,8})\.(0|[1-9][0-9]{0,8})$ ]] || exit 1
 [[ -f $key_file && -x $builder_amd64 && -x $builder_arm64 ]] || exit 1
 command -v minisign >/dev/null
 key_file=$(realpath "$key_file")
 builder_amd64=$(realpath "$builder_amd64")
 builder_arm64=$(realpath "$builder_arm64")
+if [[ -n $provenance ]]; then
+ provenance=$(realpath "$provenance")
+ for name in buildkit-provenance.json buildkit-security.patch buildkit-LICENSE.txt; do
+  [[ -f $provenance/$name && ! -L $provenance/$name ]] || exit 1
+ done
+fi
 cd "$(dirname "$0")/.."
 [[ -z $(git status --porcelain --untracked-files=normal) ]] || { printf '%s\n' 'O código deve estar commitado e limpo antes de empacotar.' >&2; exit 1; }
 [[ ! -e dist/$version && ! -L dist/$version ]] || { printf '%s\n' "Release dist/$version já existe; recusando sobrescrever." >&2; exit 1; }
@@ -34,13 +41,19 @@ amd64_hash=$(sha256sum "$stage/buildkitd_linux_amd64"); amd64_hash=${amd64_hash%
 arm64_hash=$(sha256sum "$stage/buildkitd_linux_arm64"); arm64_hash=${arm64_hash%% *}
 printf '{"version":"%s","source_commit":"%s","source_epoch":%s,"go_version":"%s","buildkitd_sha256":{"amd64":"%s","arm64":"%s"}}\n' \
  "$version" "$source_commit" "$source_epoch" "$go_version" "$amd64_hash" "$arm64_hash" > "$stage/build-info.json"
+extras=()
+if [[ -n $provenance ]]; then
+ extras=(buildkit-provenance.json buildkit-security.patch buildkit-LICENSE.txt)
+ for name in "${extras[@]}"; do install -m 0644 "$provenance/$name" "$stage/$name"; done
+fi
 (
  cd "$stage"
- sha256sum nelcota-panel_linux_{amd64_v1,amd64_v3,arm64} nelcota-agent_linux_{amd64_v1,amd64_v3,arm64} buildkitd_linux_{amd64,arm64} release.json build-info.json > checksums.txt
+ go version -m buildkitd_linux_amd64 buildkitd_linux_arm64 > buildkit-build-info.txt
+ sha256sum nelcota-panel_linux_{amd64_v1,amd64_v3,arm64} nelcota-agent_linux_{amd64_v1,amd64_v3,arm64} buildkitd_linux_{amd64,arm64} release.json build-info.json buildkit-build-info.txt "${extras[@]}" > checksums.txt
 )
 minisign -Sm "$stage/checksums.txt" -s "$key_file" -t "Nelcota Deploy $version; source $source_commit"
 chmod 0755 "$stage" "$stage"/nelcota-* "$stage"/buildkitd_*
-chmod 0644 "$stage"/*.json "$stage"/checksums.txt "$stage"/checksums.txt.minisig
+chmod 0644 "$stage"/*.json "$stage"/*.txt "$stage"/checksums.txt.minisig
 mv -T --no-clobber "$stage" "dist/$version"
 [[ ! -d $stage ]] || { printf '%s\n' 'Destino ocupado durante o empacotamento.' >&2; exit 1; }
 printf 'Release assinado local: dist/%s/\n' "$version"
