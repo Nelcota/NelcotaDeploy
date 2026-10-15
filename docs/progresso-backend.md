@@ -36,10 +36,23 @@ Benchmarks b.Loop, comparação benchstat no CI, script de medição das dez met
 
 Validações adicionais: Caddy nativo v2.10.2 (checksum SHA-512 oficial confirmado) testado de fato: criar/substituir/remover rota e conferir upstream. Race detector passou. Dependências atualizadas após govulncheck; nova análise sem vulnerabilidades alcançáveis. Tokens de API com escopos, expiração e revogação testados; autorização fica nos serviços. O contrato do frontend cobre também esses métodos.
 
-Os checkmarks acima indicam fonte implementada e verificada localmente. Estado de aceitação de cada marco, inclusive os parciais, está no relatório final; as pendências externas e extensões operacionais não implementadas permanecem abertas.
+Os checkmarks acima indicam fonte implementada e verificada localmente. Estado de aceitação de cada marco, inclusive os parciais, está no relatório final; as aceitações externas permanecem abertas; as extensões operacionais foram concluídas na continuação abaixo.
 
 ## Atualização final: gate Docker resolvido
 
 Docker tornou-se disponível durante a sessão. A suíte integration completa passou com recursos reais: BuildKit, imagem endurecida, bridges, Caddy, tráfego durante swap, healthcheck inválido mantendo produção e remoção de container/imagem antigos. Sintaxe dos instaladores passou em containers Debian 12 e Ubuntu 22.04. Nenhum teste foi desativado. Continuam pendentes VPS/WireGuard/firewall/systemd reais e metas de produção. Revisão final também preserva o IP do cliente na auditoria de login.
 
-Memória: o smoke final observou 125,3 MiB após uso, superior à medição inicial de repouso de 42,8 MiB. A meta de memória após aquecimento não está demonstrada; investigar com perfil. Esse resultado está exposto no relatório, sem substituir dados por estimativas.
+## Continuação — pendências locais concluídas
+
+Memória medida com pprof: painel aquecido ~119 → ~50 MiB e 46,7–53,5 MiB após backup pela API; agent real 32 → 24,6–25,0 MiB com startup/GC ajustados e THP desabilitado nos serviços. O cenário e os limites da medição ficam em `operacao-backend.md`.
+
+- [x] Backup diário/manual, S3, retenção e chave independente
+- [x] Restore offline com lock, validação de integridade/master key e recuperação após interrupção
+- [x] Update assinado, helper fixo, fila durável, prontidão/confirmação, rollback e uninstall
+- [x] Recovery codes de uso único e reset de TOTP
+- [x] Renovação de certificados e reposição dos peers WireGuard
+- [x] Limites/cache por API e snapshot do agent
+- [x] Métricas por container e atualização semanal de bases no cache BuildKit
+- [x] Trace automático de deploy lento com diagnóstico habilitado
+
+Build, testes, lint e integração real passaram. Os detalhes das verificações finais ficam no relatório; a aceitação de VPS e dos serviços de produção segue separada em `pendencias.md`.

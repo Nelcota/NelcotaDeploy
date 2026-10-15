@@ -25,6 +25,7 @@ O segundo request retorna o CSRF token usado nos POSTs seguintes. O endpoint dev
 - [Contrato do frontend](docs/contrato-frontend.md): serviços, DTOs, JSON, autenticação e streams.
 - [Guia de VPS](docs/testar-em-vps.md): instalação assinada e aceitação.
 - [Progresso](docs/progresso-backend.md), [decisões](docs/decisoes.md), [pendências](docs/pendencias.md).
+- [Operação](docs/operacao-backend.md): memória, backup/restore, S3, update assinado e recuperação de TOTP.
 - [Relatório](docs/relatorio-backend.md): estado real, verificações e limites.
 
 Produção: `nelcota-panel init --email ...` inicializa chaves e primeiro convite; `nelcota-panel serve` exige origem HTTPS e interface WireGuard. O agent usa `join` com token em arquivo e depois `serve`. Consultar `--help` e o guia antes de executar os instaladores em VPS descartável.

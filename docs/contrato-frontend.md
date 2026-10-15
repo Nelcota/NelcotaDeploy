@@ -177,3 +177,28 @@ Auth também expõe `CreateToken(ctx, TokenInput) APIToken`, `Tokens(ctx) []APIT
 `TokenInput`: name, scopes[], ttl_hours. `APIToken`: id, name, scopes, expires_at (Unix seconds), token (só na criação). Usar `Authorization: Bearer ...`; autenticação explícita por header dispensa cookie/CSRF/Origin. Falha em bearer não faz fallback para o cookie. Nunca colocar token em query string.
 
 Escopos: apps:read, apps:write, deploys:read, deploys:write, servers:read, servers:write, logs:read, users:write, settings:write, audit:read. `:write` inclui a leitura do mesmo domínio. Papéis continuam sendo verificados: um escopo não remove a exigência de admin. A autorização ocorre nos serviços, inclusive chamadas diretas. Operações que consultam outros domínios também exigem o escopo de leitura correspondente; para deploy programático, conceder `apps:read` e `deploys:write`. Para logs de deploy, conceder `deploys:read` e `logs:read`; para runtime, `apps:read` e `logs:read`. `users:write` permite criar contas e deve ser tratado como privilégio administrativo elevado.
+
+## Operações administrativas e recuperação
+
+`Services.Operations` expõe List(ctx), Backup(ctx), Update(ctx,version) e Cancel(ctx,batch). Backup e Update retornam jobs persistidos; a UI deve consultar List para acompanhar o resultado. Não há evento SSE de operação. As mutações exigem admin em sessão interativa reautenticada nos últimos cinco minutos e recusam tokens de API; List admite admin com settings:write.
+
+| Método/rota | Entrada | Saída |
+|---|---|---|
+| GET /api/operations | — | []Operation, últimos 100 |
+| POST /api/operations/backup | — | Operation enfileirada |
+| POST /api/operations/update | version, ex. v1.2.3 | []Operation em ordem; agents e depois panel |
+| POST /api/operations/{batch}/cancel | — | ok; conflito se há etapa em execução |
+| PATCH /api/servers/{id}/limits | build_limit, cache_bytes | Server; admin servers:write |
+| POST /api/auth/recovery-codes | — | codes[], dez códigos mostrados uma vez |
+| POST /api/auth/recovery/verify | challenge, code | LoginResult/cookie; substitui apenas o TOTP após a passkey |
+| POST /api/auth/totp/reset | — | ok; revoga sessões/tokens e exige novo login |
+
+Operation: id, batch, kind (backup/update), target (server ID ou panel), version, status (queued/waiting/applied/failed/cancelled), created_at/started_at/finished_at em segundos Unix, error_code público. waiting indica execução; applied é conclusão. Falha interrompe o restante do lote; server offline aguarda ou permite cancelamento enquanto não começou. A atualização de um agent só termina após helper confirmado, versão nova e ready. O painel vem por último e cria um backup prévio. CLI update participa da mesma política de ociosidade.
+
+Auth adiciona RecoveryCodes(ctx), VerifyRecovery(ctx,challenge,code) e ResetTOTP(ctx). A geração/reset exige sessão interativa recente do próprio usuário, sem bearer. Configure TOTP antes de gerar códigos. Após requires_totp, ofereça a alternativa de código de recuperação mantendo o desafio da passkey; nunca envie um código sem esse desafio. Códigos têm uso único e nova geração invalida os anteriores. Reset revoga a sessão corrente: redirecione para login após sucesso.
+
+Servers adiciona UpdateLimits(ctx,id,ServerLimitsInput) e os campos version e ready em Server. BuildLimit aceita 1–8; cache aceita 64 MiB–100 GiB. Mudança chega no snapshot de até dez segundos; builds ativos continuam. ready=false segura novas claims enquanto o agent recupera o estado.
+
+`server.metrics` mantém server_id e metrics. metrics.containers contém até 256 entradas: app_id, container_id, cpu_percent (100% por core), memory_used (sem cache inativo), memory_limit, network_rx, network_tx, pids. Primeira amostra de CPU pode ser zero; valores são snapshots, não série persistida.
+
+S3: PUT /api/settings/backup.s3 recebe value como string JSON com endpoint HTTPS, region, bucket, prefix, access_key, secret_key e session_token opcional. Get só indica a presença da configuração; nunca preencher inputs com um segredo lido. Arquivo 0600 definido por ambiente tem precedência. Backup não oferece download público nem devolve a chave pela API; operação detalhada em operacao-backend.md.

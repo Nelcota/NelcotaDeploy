@@ -4,7 +4,7 @@
 
 Duas VPS Debian 12+ ou Ubuntu 22.04+, acesso SSH por chave já testado, DNS apontando para os IPs corretos e console de recuperação do provedor. Começar sem Caddy/WireGuard existentes: os scripts recusam sobrescrever essas configurações. A instalação altera firewall, SSH e serviços; realizar o primeiro ensaio numa máquina descartável.
 
-Não há domínio, repositório oficial, chave de assinatura nem release público configurados neste checkout. O mantenedor deve revisar os binários BuildKit oficiais para amd64 e arm64 e executar `scripts/release.sh CHAVE_MINISIGN BUILDKITD_AMD64 BUILDKITD_ARM64`. Publicar os arquivos de `dist/` numa URL HTTPS de versão imutável e distribuir a chave pública minisign por um canal confiável. Os instaladores recusam artefatos sem assinatura válida do checksum.
+Não há domínio, repositório oficial, chave de assinatura nem release público configurados neste checkout. O mantenedor deve revisar os binários BuildKit oficiais para amd64 e arm64 e executar `scripts/release.sh v1.0.0 CHAVE_MINISIGN BUILDKITD_AMD64 BUILDKITD_ARM64`. Publicar os arquivos de `dist/` numa URL HTTPS de versão imutável e distribuir a chave pública minisign por um canal confiável. Os instaladores recusam artefatos sem assinatura válida do checksum.
 
 ## Painel
 
@@ -64,6 +64,8 @@ scripts/performance.sh --panel-pid PID --agent-pid PID \
 
 Os números do último comando são exemplos de formato, não resultados. Substituir por medições reais; argumentos ausentes aparecem como `pending`. Usar o DTO de um deploy success para extrair tempos por etapa. Medir a RAM em repouso antes de ativar pprof/flight recorder. Arquivos de perfil podem revelar estrutura interna: guardar com permissão 0600 e fora do repositório.
 
-## Recuperação e manutenção ainda manual
+## Recuperação e homologação da operação
 
-Conservar `/etc/nelcota/master.key`, CA, chave de assinatura e banco em backup criptografado separado. Para backup consistente, usar SQLite `VACUUM INTO`/API de backup; copiar apenas o `.db` enquanto WAL está ativo não é backup consistente. Não foi implementado upload S3, restore/uninstall/update administrativos nem rotação automática dos certificados (validade: três meses); estas operações permanecem listadas em `pendencias.md`. Não usar esta primeira versão em produção permanente antes da aceitação acima.
+Conservar a chave independente `backup.key` fora do host e do bucket. O backup automático inclui snapshot SQLite e chaves de configuração cifradas. Use os comandos de [operação](operacao-backend.md) para backup, restore, update e uninstall; não copie apenas o `.db` com WAL ativo. As funções estão implementadas e testadas localmente; exercite também o ciclo completo em VPS descartável antes de produção permanente.
+
+Após instalar, conferir `GODEBUG=disablethp=1` nos serviços (heaps pequenos), GOMEMLIMIT e cgroups. Habilitar diagnóstico somente no WireGuard caso queira traces automáticos de deploys acima de dois minutos. Validar uma atualização assinada com um agent ocupado, confirmar que a fila espera, verificar helper/prontidão e provar rollback de um release que não inicia. Restaurar um backup numa instalação vazia, conferir segredos, login, peers, S3 e um backup posterior. Ao migrar de host, reconfigurar wg0 com a chave protegida do backup, conferir endereços/domínio e proprietários dos arquivos; peers são repostos pelo painel ao iniciar.
