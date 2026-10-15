@@ -1,3 +1,4 @@
 #!/usr/bin/env bash
 set -euo pipefail
-make bench
+cd "$(dirname "$0")/.."
+python3 scripts/performance.py "$@"
