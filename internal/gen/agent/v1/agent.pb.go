@@ -1264,17 +1264,86 @@ func (x *Metrics) GetNetworkTx() uint64 {
 	return 0
 }
 
+type ObservedApp struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	AppId         string                 `protobuf:"bytes,1,opt,name=app_id,json=appId,proto3" json:"app_id,omitempty"`
+	DeployId      string                 `protobuf:"bytes,2,opt,name=deploy_id,json=deployId,proto3" json:"deploy_id,omitempty"`
+	Sha           string                 `protobuf:"bytes,3,opt,name=sha,proto3" json:"sha,omitempty"`
+	Revision      uint64                 `protobuf:"varint,4,opt,name=revision,proto3" json:"revision,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ObservedApp) Reset() {
+	*x = ObservedApp{}
+	mi := &file_agent_v1_agent_proto_msgTypes[15]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ObservedApp) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ObservedApp) ProtoMessage() {}
+
+func (x *ObservedApp) ProtoReflect() protoreflect.Message {
+	mi := &file_agent_v1_agent_proto_msgTypes[15]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ObservedApp.ProtoReflect.Descriptor instead.
+func (*ObservedApp) Descriptor() ([]byte, []int) {
+	return file_agent_v1_agent_proto_rawDescGZIP(), []int{15}
+}
+
+func (x *ObservedApp) GetAppId() string {
+	if x != nil {
+		return x.AppId
+	}
+	return ""
+}
+
+func (x *ObservedApp) GetDeployId() string {
+	if x != nil {
+		return x.DeployId
+	}
+	return ""
+}
+
+func (x *ObservedApp) GetSha() string {
+	if x != nil {
+		return x.Sha
+	}
+	return ""
+}
+
+func (x *ObservedApp) GetRevision() uint64 {
+	if x != nil {
+		return x.Revision
+	}
+	return 0
+}
+
 type Heartbeat struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	RequestState  bool                   `protobuf:"varint,1,opt,name=request_state,json=requestState,proto3" json:"request_state,omitempty"`
 	ActiveDeploys []string               `protobuf:"bytes,2,rep,name=active_deploys,json=activeDeploys,proto3" json:"active_deploys,omitempty"`
+	Apps          []*ObservedApp         `protobuf:"bytes,3,rep,name=apps,proto3" json:"apps,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *Heartbeat) Reset() {
 	*x = Heartbeat{}
-	mi := &file_agent_v1_agent_proto_msgTypes[15]
+	mi := &file_agent_v1_agent_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1286,7 +1355,7 @@ func (x *Heartbeat) String() string {
 func (*Heartbeat) ProtoMessage() {}
 
 func (x *Heartbeat) ProtoReflect() protoreflect.Message {
-	mi := &file_agent_v1_agent_proto_msgTypes[15]
+	mi := &file_agent_v1_agent_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1299,7 +1368,7 @@ func (x *Heartbeat) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Heartbeat.ProtoReflect.Descriptor instead.
 func (*Heartbeat) Descriptor() ([]byte, []int) {
-	return file_agent_v1_agent_proto_rawDescGZIP(), []int{15}
+	return file_agent_v1_agent_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *Heartbeat) GetRequestState() bool {
@@ -1312,6 +1381,13 @@ func (x *Heartbeat) GetRequestState() bool {
 func (x *Heartbeat) GetActiveDeploys() []string {
 	if x != nil {
 		return x.ActiveDeploys
+	}
+	return nil
+}
+
+func (x *Heartbeat) GetApps() []*ObservedApp {
+	if x != nil {
+		return x.Apps
 	}
 	return nil
 }
@@ -1334,7 +1410,7 @@ type Event struct {
 
 func (x *Event) Reset() {
 	*x = Event{}
-	mi := &file_agent_v1_agent_proto_msgTypes[16]
+	mi := &file_agent_v1_agent_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1346,7 +1422,7 @@ func (x *Event) String() string {
 func (*Event) ProtoMessage() {}
 
 func (x *Event) ProtoReflect() protoreflect.Message {
-	mi := &file_agent_v1_agent_proto_msgTypes[16]
+	mi := &file_agent_v1_agent_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1359,7 +1435,7 @@ func (x *Event) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Event.ProtoReflect.Descriptor instead.
 func (*Event) Descriptor() ([]byte, []int) {
-	return file_agent_v1_agent_proto_rawDescGZIP(), []int{16}
+	return file_agent_v1_agent_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *Event) GetServerId() string {
@@ -1578,10 +1654,16 @@ const file_agent_v1_agent_proto_rawDesc = "" +
 	"\n" +
 	"network_rx\x18\x06 \x01(\x04R\tnetworkRx\x12\x1d\n" +
 	"\n" +
-	"network_tx\x18\a \x01(\x04R\tnetworkTx\"W\n" +
+	"network_tx\x18\a \x01(\x04R\tnetworkTx\"o\n" +
+	"\vObservedApp\x12\x15\n" +
+	"\x06app_id\x18\x01 \x01(\tR\x05appId\x12\x1b\n" +
+	"\tdeploy_id\x18\x02 \x01(\tR\bdeployId\x12\x10\n" +
+	"\x03sha\x18\x03 \x01(\tR\x03sha\x12\x1a\n" +
+	"\brevision\x18\x04 \x01(\x04R\brevision\"\x82\x01\n" +
 	"\tHeartbeat\x12#\n" +
 	"\rrequest_state\x18\x01 \x01(\bR\frequestState\x12%\n" +
-	"\x0eactive_deploys\x18\x02 \x03(\tR\ractiveDeploys\"\xea\x02\n" +
+	"\x0eactive_deploys\x18\x02 \x03(\tR\ractiveDeploys\x12)\n" +
+	"\x04apps\x18\x03 \x03(\v2\x15.agent.v1.ObservedAppR\x04apps\"\xea\x02\n" +
 	"\x05Event\x12\x1b\n" +
 	"\tserver_id\x18\x01 \x01(\tR\bserverId\x12\x1b\n" +
 	"\ttime_unix\x18\x02 \x01(\x03R\btimeUnix\x124\n" +
@@ -1609,7 +1691,7 @@ func file_agent_v1_agent_proto_rawDescGZIP() []byte {
 }
 
 var file_agent_v1_agent_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_agent_v1_agent_proto_msgTypes = make([]protoimpl.MessageInfo, 19)
+var file_agent_v1_agent_proto_msgTypes = make([]protoimpl.MessageInfo, 20)
 var file_agent_v1_agent_proto_goTypes = []any{
 	(Prune_Scope)(0),       // 0: agent.v1.Prune.Scope
 	(*AppConfig)(nil),      // 1: agent.v1.AppConfig
@@ -1627,14 +1709,15 @@ var file_agent_v1_agent_proto_goTypes = []any{
 	(*DeployStatus)(nil),   // 13: agent.v1.DeployStatus
 	(*ContainerEvent)(nil), // 14: agent.v1.ContainerEvent
 	(*Metrics)(nil),        // 15: agent.v1.Metrics
-	(*Heartbeat)(nil),      // 16: agent.v1.Heartbeat
-	(*Event)(nil),          // 17: agent.v1.Event
-	nil,                    // 18: agent.v1.AppConfig.EnvEntry
-	nil,                    // 19: agent.v1.AppConfig.BuildSecretsEntry
+	(*ObservedApp)(nil),    // 16: agent.v1.ObservedApp
+	(*Heartbeat)(nil),      // 17: agent.v1.Heartbeat
+	(*Event)(nil),          // 18: agent.v1.Event
+	nil,                    // 19: agent.v1.AppConfig.EnvEntry
+	nil,                    // 20: agent.v1.AppConfig.BuildSecretsEntry
 }
 var file_agent_v1_agent_proto_depIdxs = []int32{
-	18, // 0: agent.v1.AppConfig.env:type_name -> agent.v1.AppConfig.EnvEntry
-	19, // 1: agent.v1.AppConfig.build_secrets:type_name -> agent.v1.AppConfig.BuildSecretsEntry
+	19, // 0: agent.v1.AppConfig.env:type_name -> agent.v1.AppConfig.EnvEntry
+	20, // 1: agent.v1.AppConfig.build_secrets:type_name -> agent.v1.AppConfig.BuildSecretsEntry
 	1,  // 2: agent.v1.Deploy.app:type_name -> agent.v1.AppConfig
 	2,  // 3: agent.v1.Rollback.deploy:type_name -> agent.v1.Deploy
 	0,  // 4: agent.v1.Prune.scope:type_name -> agent.v1.Prune.Scope
@@ -1651,18 +1734,19 @@ var file_agent_v1_agent_proto_depIdxs = []int32{
 	8,  // 15: agent.v1.Command.stats:type_name -> agent.v1.Stats
 	9,  // 16: agent.v1.Command.prune:type_name -> agent.v1.Prune
 	10, // 17: agent.v1.Command.desired:type_name -> agent.v1.Snapshot
-	12, // 18: agent.v1.Event.deploy_log:type_name -> agent.v1.DeployLog
-	13, // 19: agent.v1.Event.deploy_status:type_name -> agent.v1.DeployStatus
-	14, // 20: agent.v1.Event.container_event:type_name -> agent.v1.ContainerEvent
-	15, // 21: agent.v1.Event.metrics:type_name -> agent.v1.Metrics
-	16, // 22: agent.v1.Event.heartbeat:type_name -> agent.v1.Heartbeat
-	17, // 23: agent.v1.AgentService.Connect:input_type -> agent.v1.Event
-	11, // 24: agent.v1.AgentService.Connect:output_type -> agent.v1.Command
-	24, // [24:25] is the sub-list for method output_type
-	23, // [23:24] is the sub-list for method input_type
-	23, // [23:23] is the sub-list for extension type_name
-	23, // [23:23] is the sub-list for extension extendee
-	0,  // [0:23] is the sub-list for field type_name
+	16, // 18: agent.v1.Heartbeat.apps:type_name -> agent.v1.ObservedApp
+	12, // 19: agent.v1.Event.deploy_log:type_name -> agent.v1.DeployLog
+	13, // 20: agent.v1.Event.deploy_status:type_name -> agent.v1.DeployStatus
+	14, // 21: agent.v1.Event.container_event:type_name -> agent.v1.ContainerEvent
+	15, // 22: agent.v1.Event.metrics:type_name -> agent.v1.Metrics
+	17, // 23: agent.v1.Event.heartbeat:type_name -> agent.v1.Heartbeat
+	18, // 24: agent.v1.AgentService.Connect:input_type -> agent.v1.Event
+	11, // 25: agent.v1.AgentService.Connect:output_type -> agent.v1.Command
+	25, // [25:26] is the sub-list for method output_type
+	24, // [24:25] is the sub-list for method input_type
+	24, // [24:24] is the sub-list for extension type_name
+	24, // [24:24] is the sub-list for extension extendee
+	0,  // [0:24] is the sub-list for field type_name
 }
 
 func init() { file_agent_v1_agent_proto_init() }
@@ -1683,7 +1767,7 @@ func file_agent_v1_agent_proto_init() {
 		(*Command_Stats)(nil),
 		(*Command_Prune)(nil),
 	}
-	file_agent_v1_agent_proto_msgTypes[16].OneofWrappers = []any{
+	file_agent_v1_agent_proto_msgTypes[17].OneofWrappers = []any{
 		(*Event_DeployLog)(nil),
 		(*Event_DeployStatus)(nil),
 		(*Event_ContainerEvent)(nil),
@@ -1696,7 +1780,7 @@ func file_agent_v1_agent_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_agent_v1_agent_proto_rawDesc), len(file_agent_v1_agent_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   19,
+			NumMessages:   20,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

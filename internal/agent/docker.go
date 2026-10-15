@@ -35,11 +35,12 @@ import (
 )
 
 type DockerEngine struct {
-	Docker     *client.Client
-	BuildKit   *bk.Client
-	Caddy      *Caddy
-	CacheBytes int64
-	Drain      time.Duration
+	Docker       *client.Client
+	BuildKit     *bk.Client
+	Caddy        *Caddy
+	CacheBytes   int64
+	Drain        time.Duration
+	CgroupParent string
 }
 
 func NewDockerEngine(ctx context.Context, buildkit, caddy string, cache int64) (*DockerEngine, error) {
@@ -58,7 +59,7 @@ func NewDockerEngine(ctx context.Context, buildkit, caddy string, cache int64) (
 		_ = b.Close()
 		return nil, e
 	}
-	return &DockerEngine{d, b, proxy, cache, 5 * time.Second}, nil
+	return &DockerEngine{Docker: d, BuildKit: b, Caddy: proxy, CacheBytes: cache, Drain: 5 * time.Second, CgroupParent: "nelcota-builds.slice"}, nil
 }
 func (d *DockerEngine) Close() { _ = d.Docker.Close(); _ = d.BuildKit.Close() }
 func (d *DockerEngine) Clone(ctx context.Context, dep *agentv1.Deploy, dir string, log func([]byte)) error {
@@ -76,10 +77,9 @@ func (d *DockerEngine) Clone(ctx context.Context, dep *agentv1.Deploy, dir strin
 		cmd := exec.CommandContext(ctx, "git", args...)
 		cmd.Env = env
 		cmd.WaitDelay = 2 * time.Second
-		out, e := cmd.CombinedOutput()
-		if len(out) > 0 {
-			log(out)
-		}
+		cmd.Stdout = logWriter{log}
+		cmd.Stderr = logWriter{log}
+		e := cmd.Run()
 		if e != nil {
 			return errors.New("clone failed")
 		}
@@ -113,9 +113,10 @@ func (d *DockerEngine) Build(ctx context.Context, dep *agentv1.Deploy, dir strin
 	name := tar.Name()
 	_ = tar.Close()
 	defer os.Remove(name)
-	attrs := map[string]string{"filename": dockerfile, "cgroup-parent": "nelcota-builds.slice", "force-network-mode": "sandbox"}
+	attrs := map[string]string{"filename": dockerfile, "cgroup-parent": d.CgroupParent, "force-network-mode": "sandbox", "label:nelcota.managed": "true", "label:nelcota.app": dep.App.AppId, "build-arg:BUILDKIT_CACHE_MOUNT_NS": key(dep.App.AppId)}
 	if dep.Clean || !dep.App.CacheEnabled {
 		attrs["no-cache"] = ""
+		attrs["build-arg:BUILDKIT_CACHE_MOUNT_NS"] = key(dep.DeployId)
 	}
 	secretMap := map[string][]byte{}
 	for k, v := range dep.App.BuildSecrets {
@@ -151,7 +152,11 @@ func (d *DockerEngine) Build(ctx context.Context, dep *agentv1.Deploy, dir strin
 	if _, e = io.Copy(io.Discard, load.Body); e != nil {
 		return "", e
 	}
+	if _, e = d.Docker.ImageInspect(ctx, tag); e != nil {
+		return "", errors.New("image export unavailable")
+	}
 	if e = d.BuildKit.Prune(ctx, nil, bk.WithKeepOpt(7*24*time.Hour, 0, d.CacheBytes, 0)); e != nil {
+		_, _ = d.Docker.ImageRemove(context.WithoutCancel(ctx), tag, image.RemoveOptions{PruneChildren: true})
 		return "", e
 	}
 	return tag, nil
@@ -246,6 +251,15 @@ func (d *DockerEngine) Route(ctx context.Context, app *agentv1.AppConfig, r Runn
 }
 func (d *DockerEngine) Remove(ctx context.Context, r Running) error {
 	if len(r.Containers) > 0 {
+		if d.Drain > 0 {
+			timer := time.NewTimer(d.Drain)
+			select {
+			case <-ctx.Done():
+				timer.Stop()
+				return ctx.Err()
+			case <-timer.C:
+			}
+		}
 		for _, id := range r.Containers {
 			seconds := int(d.Drain.Seconds())
 			_ = d.Docker.ContainerStop(ctx, id, container.StopOptions{Timeout: &seconds})

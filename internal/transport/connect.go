@@ -191,6 +191,7 @@ type AgentClient struct {
 	Handler       CommandHandler
 	Metrics       func(context.Context) *agentv1.Metrics
 	Active        func() []string
+	Observed      func() []*agentv1.ObservedApp
 }
 
 func (a *AgentClient) Run(ctx context.Context) error {
@@ -244,6 +245,7 @@ func (a *AgentClient) runOnce(ctx context.Context) error {
 		defer cancel()
 		heartbeat := time.NewTicker(5 * time.Second)
 		metrics := time.NewTicker(15 * time.Second)
+		heartbeatCount := 0
 		defer heartbeat.Stop()
 		defer metrics.Stop()
 		if e := stream.Send(&agentv1.Event{ServerId: a.ServerID, TimeUnix: time.Now().Unix(), Payload: &agentv1.Event_Heartbeat{Heartbeat: &agentv1.Heartbeat{RequestState: true}}}); e != nil {
@@ -262,7 +264,12 @@ func (a *AgentClient) runOnce(ctx context.Context) error {
 				if a.Active != nil {
 					active = a.Active()
 				}
-				if e := emit(&agentv1.Event{Payload: &agentv1.Event_Heartbeat{Heartbeat: &agentv1.Heartbeat{ActiveDeploys: active}}}); e != nil {
+				heartbeatCount++
+				var observed []*agentv1.ObservedApp
+				if a.Observed != nil {
+					observed = a.Observed()
+				}
+				if e := emit(&agentv1.Event{Payload: &agentv1.Event_Heartbeat{Heartbeat: &agentv1.Heartbeat{RequestState: heartbeatCount%2 == 0, ActiveDeploys: active, Apps: observed}}}); e != nil {
 					return e
 				}
 			case <-metrics.C:

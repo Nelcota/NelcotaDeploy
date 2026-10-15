@@ -68,3 +68,32 @@ func BenchmarkVault(b *testing.B) {
 		_, _ = v.Seal([]byte("environment value"), "app:key")
 	}
 }
+
+func TestSplitSecretsMasked(t *testing.T) {
+	var out []byte
+	m := NewLineMasker(NewRedactor([]string{"very-secret-token"}), func(b []byte) { out = append(out, b...) })
+	_, _ = m.Write([]byte("token=very-sec"))
+	_, _ = m.Write([]byte("ret-token\n"))
+	m.Flush()
+	if string(out) != "token=[REDACTED]\n" {
+		t.Fatal(string(out))
+	}
+}
+
+func TestReplaySurvivesRestart(t *testing.T) {
+	pub, key, _ := ed25519.GenerateKey(rand.Reader)
+	now := time.Now()
+	c := &agentv1.Command{Id: Token(), ServerId: "s", IssuedUnix: now.Unix(), ExpiresUnix: now.Unix() + 30, Action: &agentv1.Command_Stats{Stats: &agentv1.Stats{}}}
+	if e := Sign(c, key); e != nil {
+		t.Fatal(e)
+	}
+	path := t.TempDir() + "/replay.json"
+	v := &Verifier{Key: pub, ServerID: "s", Path: path}
+	if e := v.Verify(c, now); e != nil {
+		t.Fatal(e)
+	}
+	restarted := &Verifier{Key: pub, ServerID: "s", Path: path}
+	if e := restarted.Verify(c, now); e == nil {
+		t.Fatal("persisted replay accepted")
+	}
+}
