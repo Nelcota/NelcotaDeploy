@@ -150,7 +150,7 @@ func (q *Queries) GetEnvironment(ctx context.Context, appID string) ([]EnvVar, e
 }
 
 const getServer = `-- name: GetServer :one
-SELECT id, name, wireguard_ip, fingerprint, status, heartbeat_at, build_limit, cache_bytes, wg_public_key FROM servers WHERE id = ?
+SELECT id, name, wireguard_ip, fingerprint, status, heartbeat_at, build_limit, cache_bytes, wg_public_key, agent_version FROM servers WHERE id = ?
 `
 
 func (q *Queries) GetServer(ctx context.Context, id string) (Server, error) {
@@ -166,6 +166,7 @@ func (q *Queries) GetServer(ctx context.Context, id string) (Server, error) {
 		&i.BuildLimit,
 		&i.CacheBytes,
 		&i.WgPublicKey,
+		&i.AgentVersion,
 	)
 	return i, err
 }
@@ -320,7 +321,7 @@ func (q *Queries) ListDeployments(ctx context.Context, appID string) ([]Deployme
 }
 
 const listServers = `-- name: ListServers :many
-SELECT id, name, wireguard_ip, fingerprint, status, heartbeat_at, build_limit, cache_bytes, wg_public_key FROM servers ORDER BY name
+SELECT id, name, wireguard_ip, fingerprint, status, heartbeat_at, build_limit, cache_bytes, wg_public_key, agent_version FROM servers ORDER BY name
 `
 
 func (q *Queries) ListServers(ctx context.Context) ([]Server, error) {
@@ -342,6 +343,7 @@ func (q *Queries) ListServers(ctx context.Context) ([]Server, error) {
 			&i.BuildLimit,
 			&i.CacheBytes,
 			&i.WgPublicKey,
+			&i.AgentVersion,
 		); err != nil {
 			return nil, err
 		}

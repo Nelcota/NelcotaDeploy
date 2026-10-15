@@ -102,16 +102,38 @@ type Invitation struct {
 	ConsumedAt int64          `json:"consumed_at"`
 }
 
+type MaintenanceJob struct {
+	Ordinal    int64  `json:"ordinal"`
+	ID         string `json:"id"`
+	Batch      string `json:"batch"`
+	Kind       string `json:"kind"`
+	Target     string `json:"target"`
+	Version    string `json:"version"`
+	Status     string `json:"status"`
+	CreatedAt  int64  `json:"created_at"`
+	StartedAt  int64  `json:"started_at"`
+	FinishedAt int64  `json:"finished_at"`
+	NextAt     int64  `json:"next_at"`
+	ErrorCode  string `json:"error_code"`
+}
+
+type RecoveryCode struct {
+	UserID   string `json:"user_id"`
+	CodeHash []byte `json:"code_hash"`
+	UsedAt   int64  `json:"used_at"`
+}
+
 type Server struct {
-	ID          string `json:"id"`
-	Name        string `json:"name"`
-	WireguardIp string `json:"wireguard_ip"`
-	Fingerprint string `json:"fingerprint"`
-	Status      string `json:"status"`
-	HeartbeatAt int64  `json:"heartbeat_at"`
-	BuildLimit  int64  `json:"build_limit"`
-	CacheBytes  int64  `json:"cache_bytes"`
-	WgPublicKey string `json:"wg_public_key"`
+	ID           string `json:"id"`
+	Name         string `json:"name"`
+	WireguardIp  string `json:"wireguard_ip"`
+	Fingerprint  string `json:"fingerprint"`
+	Status       string `json:"status"`
+	HeartbeatAt  int64  `json:"heartbeat_at"`
+	BuildLimit   int64  `json:"build_limit"`
+	CacheBytes   int64  `json:"cache_bytes"`
+	WgPublicKey  string `json:"wg_public_key"`
+	AgentVersion string `json:"agent_version"`
 }
 
 type Session struct {

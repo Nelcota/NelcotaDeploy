@@ -20,13 +20,16 @@ message Scale { string app_id = 1; uint32 replicas = 2; }
 message Logs { string app_id = 1; int64 since_unix = 2; bool follow = 3; }
 message Stats {}
 message Prune { enum Scope { SCOPE_UNSPECIFIED = 0; CACHE = 1; ORPHAN_IMAGES = 2; } Scope scope = 1; }
-message Snapshot { repeated AppConfig apps = 1; }
+message ServerLimits { uint32 build_limit = 1; int64 cache_bytes = 2; }
+message Update { string id = 1; string version = 2; }
+message OperationResult { string id = 1; string status = 2; }
+message Snapshot { repeated AppConfig apps = 1; ServerLimits limits = 2; }
 message Command {
   string id = 1; string server_id = 2; int64 issued_unix = 3; int64 expires_unix = 4; bytes signature = 5;
   oneof action {
     Deploy deploy = 10; Cancel cancel = 11; Rollback rollback = 12;
     AppAction start = 13; AppAction stop = 14; AppAction restart = 15;
-    Scale scale = 16; AppConfig set_config = 17; Logs logs = 18; Stats stats = 19; Prune prune = 20;
+    Scale scale = 16; AppConfig set_config = 17; Logs logs = 18; Stats stats = 19; Prune prune = 20; Update update = 22;
   }
   Snapshot desired = 21;
 }
@@ -35,8 +38,8 @@ message DeployStatus { string deploy_id = 1; string app_id = 2; string status = 
 message ContainerEvent { string app_id = 1; string container_id = 2; string status = 3; }
 message Metrics { double cpu_percent = 1; uint64 memory_used = 2; uint64 memory_total = 3; uint64 disk_used = 4; uint64 disk_total = 5; uint64 network_rx = 6; uint64 network_tx = 7; }
 message ObservedApp { string app_id = 1; string deploy_id = 2; string sha = 3; uint64 revision = 4; }
-message Heartbeat { bool request_state = 1; repeated string active_deploys = 2; repeated ObservedApp apps = 3; bool ready = 4; }
+message Heartbeat { bool request_state = 1; repeated string active_deploys = 2; repeated ObservedApp apps = 3; bool ready = 4; string version = 5; OperationResult update_result = 6; }
 message Event {
   string server_id = 1; int64 time_unix = 2;
-  oneof payload { DeployLog deploy_log = 10; DeployStatus deploy_status = 11; ContainerEvent container_event = 12; Metrics metrics = 13; Heartbeat heartbeat = 14; }
+  oneof payload { DeployLog deploy_log = 10; DeployStatus deploy_status = 11; ContainerEvent container_event = 12; Metrics metrics = 13; Heartbeat heartbeat = 14; OperationResult operation_result = 15; }
 }

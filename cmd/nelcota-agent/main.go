@@ -9,10 +9,12 @@ import (
 	"encoding/json"
 	"errors"
 	"github.com/nelcota/nelcota-deploy/internal/agent"
+	agentv1 "github.com/nelcota/nelcota-deploy/internal/gen/agent/v1"
 	"github.com/nelcota/nelcota-deploy/internal/host"
 	"github.com/nelcota/nelcota-deploy/internal/provision"
 	"github.com/nelcota/nelcota-deploy/internal/security"
 	"github.com/nelcota/nelcota-deploy/internal/transport"
+	"github.com/nelcota/nelcota-deploy/internal/updater"
 	"github.com/spf13/cobra"
 	"golang.org/x/sync/errgroup"
 	"io"
@@ -95,13 +97,19 @@ func command() *cobra.Command {
 			return e
 		}
 		pipeline.Stats = host.Metrics
+		pipeline.QueueUpdate = func(id, version string) error { return updater.Queue(data, updater.Request{ID: id, Version: version}) }
+		pipeline.UpdatePending = func() bool { return updater.Pending(data) }
 		g, gctx := errgroup.WithContext(ctx)
-		rpc := &transport.AgentClient{URL: join.ControlURL, ServerID: join.ServerID, TLS: tls, Verifier: &security.Verifier{Key: ed25519.PublicKey(sign), ServerID: join.ServerID, Path: filepath.Join(data, "replay.json")}, Handler: pipeline, Metrics: host.Metrics, Active: pipeline.Active, Observed: pipeline.Observed, Ready: pipeline.Ready, Events: engine.Watch}
+		rpc := &transport.AgentClient{Version: updater.Version, UpdateResult: func() *agentv1.OperationResult {
+			r := updater.ReadResult(data)
+			return &agentv1.OperationResult{Id: r.ID, Status: r.Status}
+		}, URL: join.ControlURL, ServerID: join.ServerID, TLS: tls, Verifier: &security.Verifier{Key: ed25519.PublicKey(sign), ServerID: join.ServerID, Path: filepath.Join(data, "replay.json")}, Handler: pipeline, Metrics: host.Metrics, Active: pipeline.Active, Observed: pipeline.Observed, Ready: pipeline.Ready, Events: engine.Watch}
 		g.Go(func() error { return pipeline.Run(gctx) })
 		g.Go(func() error { return rpc.Run(gctx) })
 		g.Go(func() error { return host.Diagnostics(gctx, diag, wg) })
 		return g.Wait()
 	}})
+	root.AddCommand(updater.Commands("agent", &data)...)
 	return root
 }
 func enroll(ctx context.Context, dir, panel, tokenFile, pubFile string) error {

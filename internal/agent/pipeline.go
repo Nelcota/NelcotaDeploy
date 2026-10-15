@@ -44,21 +44,23 @@ type active struct {
 	app    string
 }
 type Pipeline struct {
-	Engine     Engine
-	State      *StateStore
-	Root       string
-	Limit      int
-	mu         sync.Mutex
-	active     map[string]active
-	apps       map[string]bool
-	desired    map[string]*agentv1.AppConfig
-	running    map[string]Running
-	pending    map[string]Running
-	rings      map[string]*events.Ring
-	wg         sync.WaitGroup
-	logCancels map[string]context.CancelFunc
-	Stats      func(context.Context) *agentv1.Metrics
-	ready      bool
+	Engine        Engine
+	State         *StateStore
+	Root          string
+	Limit         int
+	mu            sync.Mutex
+	active        map[string]active
+	apps          map[string]bool
+	desired       map[string]*agentv1.AppConfig
+	running       map[string]Running
+	pending       map[string]Running
+	rings         map[string]*events.Ring
+	wg            sync.WaitGroup
+	logCancels    map[string]context.CancelFunc
+	Stats         func(context.Context) *agentv1.Metrics
+	ready         bool
+	QueueUpdate   func(string, string) error
+	UpdatePending func() bool
 }
 
 func NewPipeline(engine Engine, state *StateStore, root string, limit int) (*Pipeline, error) {
@@ -120,6 +122,16 @@ func (p *Pipeline) Handle(ctx context.Context, c *agentv1.Command, emit func(*ag
 		p.reconcile(ctx)
 	}
 	switch a := c.Action.(type) {
+	case *agentv1.Command_Update:
+		p.mu.Lock()
+		status := "queued"
+		if len(p.active) > 0 || len(p.apps) > 0 {
+			status = "busy"
+		} else if p.QueueUpdate == nil || p.QueueUpdate(a.Update.Id, a.Update.Version) != nil {
+			status = "failed"
+		}
+		p.mu.Unlock()
+		return emit(&agentv1.Event{Payload: &agentv1.Event_OperationResult{OperationResult: &agentv1.OperationResult{Id: a.Update.Id, Status: status}}})
 	case *agentv1.Command_Deploy:
 		return p.launch(ctx, a.Deploy, emit)
 	case *agentv1.Command_Rollback:
@@ -224,7 +236,7 @@ func (p *Pipeline) launch(ctx context.Context, d *agentv1.Deploy, emit func(*age
 		p.mu.Unlock()
 		return nil
 	}
-	if len(p.active) >= p.Limit || p.apps[d.App.AppId] {
+	if len(p.active) >= p.Limit || p.apps[d.App.AppId] || (p.UpdatePending != nil && p.UpdatePending()) {
 		p.mu.Unlock()
 		return errors.New("build capacity exceeded")
 	}
@@ -382,6 +394,9 @@ func (p *Pipeline) deploy(ctx context.Context, d *agentv1.Deploy, emit func(*age
 	status("success")
 }
 func (p *Pipeline) reconcile(ctx context.Context) {
+	if p.UpdatePending != nil && p.UpdatePending() {
+		return
+	}
 	defer func() { p.mu.Lock(); p.ready = true; p.mu.Unlock() }()
 	p.mu.Lock()
 	orphans := []Running{}

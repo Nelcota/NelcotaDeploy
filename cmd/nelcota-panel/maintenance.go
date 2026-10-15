@@ -1,7 +1,9 @@
 package main
 
 import (
+	"crypto/rand"
 	"encoding/json"
+	"github.com/nelcota/nelcota-deploy/internal/host"
 	"github.com/nelcota/nelcota-deploy/internal/maintenance"
 	"github.com/spf13/cobra"
 	"path/filepath"
@@ -42,5 +44,25 @@ func maintenanceCommands(cfg *config) []*cobra.Command {
 	}}
 	restore.Flags().StringVar(&restoreKey, "key-file", "", "Chave usada para criptografar o backup")
 	restore.Flags().BoolVar(&replace, "replace", false, "Substitui arquivos e mantém cópias .before-restore")
-	return []*cobra.Command{backup, restore}
+	var email string
+	reset := &cobra.Command{Use: "reset-totp", Short: "Recuperação local de TOTP com painel parado", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
+		c, a, e := open(cmd.Context(), *cfg)
+		if e != nil {
+			return e
+		}
+		defer c.DB.Close()
+		return a.ResetTOTPByEmail(cmd.Context(), email)
+	}}
+	reset.Flags().StringVar(&email, "email", "", "E-mail exato do usuário")
+	_ = reset.MarkFlagRequired("email")
+	keygen := &cobra.Command{Use: "backup-keygen", Short: "Gera chave independente de backup sem sobrescrever", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
+		key := make([]byte, 32)
+		if _, e := rand.Read(key); e != nil {
+			return e
+		}
+		return host.WriteExclusive(output, key)
+	}}
+	keygen.Flags().StringVar(&output, "output", "", "Arquivo novo para guardar fora dos backups")
+	_ = keygen.MarkFlagRequired("output")
+	return []*cobra.Command{backup, restore, reset, keygen}
 }

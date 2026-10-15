@@ -122,7 +122,7 @@ func (s *deploysService) Rollback(ctx context.Context, app, sha string) (Deploym
 func (c *Core) Claim(ctx context.Context) (Deployment, error) {
 	var id string
 	e := c.mutate(ctx, func(tx *sql.Tx) error {
-		e := tx.QueryRowContext(ctx, `SELECT d.id FROM deployments d JOIN apps a ON a.id=d.app_id JOIN servers s ON s.id=a.server_id WHERE d.status='queued' AND s.status='online' AND s.heartbeat_at>? AND NOT EXISTS(SELECT 1 FROM deployments x WHERE x.app_id=d.app_id AND x.status IN ('building','starting')) AND (SELECT count(*) FROM deployments x JOIN apps ax ON ax.id=x.app_id WHERE ax.server_id=s.id AND x.status IN ('building','starting'))<s.build_limit ORDER BY CASE WHEN d.origin='push' THEN 1 ELSE 0 END,d.queued_at,d.rowid LIMIT 1`, time.Now().Add(-20*time.Second).Unix()).Scan(&id)
+		e := tx.QueryRowContext(ctx, `SELECT d.id FROM deployments d JOIN apps a ON a.id=d.app_id JOIN servers s ON s.id=a.server_id WHERE d.status='queued' AND NOT EXISTS(SELECT 1 FROM maintenance_jobs m WHERE m.kind='update' AND m.status='waiting' AND (m.target=s.id OR m.target='panel')) AND s.status='online' AND s.heartbeat_at>? AND NOT EXISTS(SELECT 1 FROM deployments x WHERE x.app_id=d.app_id AND x.status IN ('building','starting')) AND (SELECT count(*) FROM deployments x JOIN apps ax ON ax.id=x.app_id WHERE ax.server_id=s.id AND x.status IN ('building','starting'))<s.build_limit ORDER BY CASE WHEN d.origin='push' THEN 1 ELSE 0 END,d.queued_at,d.rowid LIMIT 1`, time.Now().Add(-20*time.Second).Unix()).Scan(&id)
 		if errors.Is(e, sql.ErrNoRows) {
 			return fail(NotFound, "Fila vazia")
 		}
@@ -241,8 +241,13 @@ func (c *Core) AgentDisconnected(ctx context.Context, p transport.Peer) {
 }
 func (c *Core) AgentEvent(ctx context.Context, p transport.Peer, e *agentv1.Event) error {
 	switch v := e.Payload.(type) {
+	case *agentv1.Event_OperationResult:
+		return c.operationResult(ctx, p.ID, v.OperationResult)
 	case *agentv1.Event_Heartbeat:
-		if _, err := c.DB.Write.ExecContext(ctx, "UPDATE servers SET heartbeat_at=?,status='online' WHERE id=?", time.Now().Unix(), p.ID); err != nil {
+		if err := c.operationResult(ctx, p.ID, v.Heartbeat.UpdateResult); err != nil {
+			return err
+		}
+		if _, err := c.DB.Write.ExecContext(ctx, "UPDATE servers SET heartbeat_at=?,status='online',agent_version=? WHERE id=?", time.Now().Unix(), v.Heartbeat.Version, p.ID); err != nil {
 			return err
 		}
 		if err := func() error {

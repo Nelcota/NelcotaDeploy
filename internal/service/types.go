@@ -198,12 +198,13 @@ type Audit interface {
 	List(context.Context, int) ([]AuditEntry, error)
 }
 type Services struct {
-	Apps     Apps
-	Deploys  Deploys
-	Servers  Servers
-	Logs     Logs
-	Auth     Auth
-	Users    Users
-	Settings Settings
-	Audit    Audit
+	Apps       Apps
+	Deploys    Deploys
+	Servers    Servers
+	Logs       Logs
+	Auth       Auth
+	Users      Users
+	Settings   Settings
+	Audit      Audit
+	Operations Operations
 }

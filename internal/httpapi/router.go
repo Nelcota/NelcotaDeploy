@@ -83,6 +83,20 @@ func New(cfg Config) http.Handler {
 	})
 	r.Route("/api/auth", func(r chi.Router) {
 		r.Use(newLimiter(rate.Every(10*time.Second), 8).middleware)
+		r.Post("/recovery/verify", func(w http.ResponseWriter, r *http.Request) {
+			var in struct {
+				Challenge string `json:"challenge"`
+				Code      string `json:"code"`
+			}
+			if !read(w, r, &in) {
+				return
+			}
+			v, e := cfg.Services.Auth.VerifyRecovery(r.Context(), in.Challenge, in.Code)
+			if e == nil {
+				a.cookie(w, v)
+			}
+			respond(w, v, e)
+		})
 		r.Post("/register/begin", func(w http.ResponseWriter, r *http.Request) {
 			var in service.RegistrationInput
 			if !read(w, r, &in) {
@@ -154,6 +168,14 @@ func New(cfg Config) http.Handler {
 			}
 			e := cfg.Services.Auth.Logout(r.Context(), token)
 			http.SetCookie(w, &http.Cookie{Name: a.cookieName(), Value: "", Path: "/", HttpOnly: true, Secure: !cfg.Dev, SameSite: http.SameSiteStrictMode, MaxAge: -1})
+			respond(w, map[string]bool{"ok": e == nil}, e)
+		})
+		r.Post("/api/auth/recovery-codes", func(w http.ResponseWriter, r *http.Request) {
+			v, e := cfg.Services.Auth.RecoveryCodes(r.Context())
+			respond(w, map[string]any{"codes": v}, e)
+		})
+		r.Post("/api/auth/totp/reset", func(w http.ResponseWriter, r *http.Request) {
+			e := cfg.Services.Auth.ResetTOTP(r.Context())
 			respond(w, map[string]bool{"ok": e == nil}, e)
 		})
 		r.Post("/api/auth/totp/begin", func(w http.ResponseWriter, r *http.Request) {
@@ -285,6 +307,30 @@ func New(cfg Config) http.Handler {
 			v, e := cfg.GitHub.BeginManifest(r.Context(), cfg.Origin)
 			respond(w, v, e)
 		})
+		if cfg.Services.Operations != nil {
+			r.Get("/api/operations", func(w http.ResponseWriter, r *http.Request) {
+				v, e := cfg.Services.Operations.List(r.Context())
+				respond(w, v, e)
+			})
+			r.Post("/api/operations/backup", func(w http.ResponseWriter, r *http.Request) {
+				v, e := cfg.Services.Operations.Backup(r.Context())
+				respond(w, v, e)
+			})
+			r.Post("/api/operations/update", func(w http.ResponseWriter, r *http.Request) {
+				var in struct {
+					Version string `json:"version"`
+				}
+				if !read(w, r, &in) {
+					return
+				}
+				v, e := cfg.Services.Operations.Update(r.Context(), in.Version)
+				respond(w, v, e)
+			})
+			r.Post("/api/operations/{batch}/cancel", func(w http.ResponseWriter, r *http.Request) {
+				e := cfg.Services.Operations.Cancel(r.Context(), chi.URLParam(r, "batch"))
+				respond(w, map[string]bool{"ok": e == nil}, e)
+			})
+		}
 		r.Get("/api/settings", func(w http.ResponseWriter, r *http.Request) {
 			v, e := cfg.Services.Settings.Get(r.Context())
 			respond(w, v, e)

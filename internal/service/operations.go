@@ -1,0 +1,336 @@
+package service
+
+import (
+	"context"
+	"database/sql"
+	"errors"
+	"time"
+
+	agentv1 "github.com/nelcota/nelcota-deploy/internal/gen/agent/v1"
+	"github.com/nelcota/nelcota-deploy/internal/security"
+	"github.com/nelcota/nelcota-deploy/internal/updater"
+)
+
+type Operation struct {
+	ID         string `json:"id"`
+	Batch      string `json:"batch"`
+	Kind       string `json:"kind"`
+	Target     string `json:"target"`
+	Version    string `json:"version"`
+	Status     string `json:"status"`
+	CreatedAt  int64  `json:"created_at"`
+	StartedAt  int64  `json:"started_at"`
+	FinishedAt int64  `json:"finished_at"`
+	ErrorCode  string `json:"error_code"`
+}
+type Operations interface {
+	List(context.Context) ([]Operation, error)
+	Backup(context.Context) (Operation, error)
+	Update(context.Context, string) ([]Operation, error)
+	Cancel(context.Context, string) error
+}
+type OperationsService struct {
+	Core          *Core
+	Version       string
+	VerifyRelease func(context.Context, string) error
+	CreateBackup  func(context.Context, string) error
+	QueuePanel    func(string, string) error
+	PanelResult   func() updater.Result
+}
+
+func interactiveAdmin(ctx context.Context) error {
+	p, e := require(ctx, true)
+	if e != nil {
+		return e
+	}
+	if p.Scopes != nil || time.Now().Unix()-p.TwoFactorAt > 300 {
+		return fail(Forbidden, "Reautenticação interativa necessária")
+	}
+	return nil
+}
+func (s *OperationsService) List(ctx context.Context) ([]Operation, error) {
+	if _, e := authorize(ctx, "settings:write", true); e != nil {
+		return nil, e
+	}
+	rows, e := s.Core.DB.Read.QueryContext(ctx, "SELECT id,batch,kind,target,version,status,created_at,started_at,finished_at,error_code FROM maintenance_jobs ORDER BY ordinal DESC LIMIT 100")
+	if e != nil {
+		return nil, e
+	}
+	defer rows.Close()
+	out := []Operation{}
+	for rows.Next() {
+		var o Operation
+		if e = rows.Scan(&o.ID, &o.Batch, &o.Kind, &o.Target, &o.Version, &o.Status, &o.CreatedAt, &o.StartedAt, &o.FinishedAt, &o.ErrorCode); e != nil {
+			return nil, e
+		}
+		out = append(out, o)
+	}
+	return out, rows.Err()
+}
+func (s *OperationsService) Backup(ctx context.Context) (Operation, error) {
+	if e := interactiveAdmin(ctx); e != nil {
+		return Operation{}, e
+	}
+	if s.CreateBackup == nil {
+		return Operation{}, fail(Unavailable, "Backup não configurado")
+	}
+	o := Operation{ID: security.Token(), Kind: "backup", Target: "panel", Status: "queued", CreatedAt: time.Now().Unix()}
+	o.Batch = o.ID
+	e := s.Core.mutate(ctx, func(tx *sql.Tx) error {
+		var n int
+		if e := tx.QueryRowContext(ctx, "SELECT count(*) FROM maintenance_jobs WHERE kind='backup' AND status IN ('queued','waiting')").Scan(&n); e != nil {
+			return e
+		}
+		if n != 0 {
+			return fail(Conflict, "Backup já pendente")
+		}
+		if e := insertOperation(ctx, tx, o); e != nil {
+			return e
+		}
+		return s.Core.audit(ctx, tx, "backup.request", o.ID)
+	})
+	return o, e
+}
+func insertOperation(ctx context.Context, tx *sql.Tx, o Operation) error {
+	_, e := tx.ExecContext(ctx, "INSERT INTO maintenance_jobs(id,batch,kind,target,version,status,created_at) VALUES(?,?,?,?,?,?,?)", o.ID, o.Batch, o.Kind, o.Target, o.Version, o.Status, o.CreatedAt)
+	return e
+}
+func (s *OperationsService) Update(ctx context.Context, version string) ([]Operation, error) {
+	if e := interactiveAdmin(ctx); e != nil {
+		return nil, e
+	}
+	if s.VerifyRelease == nil || s.QueuePanel == nil {
+		return nil, fail(Unavailable, "Identidade de releases não configurada")
+	}
+	if !updater.Newer(version, s.Version) {
+		return nil, fail(Validation, "A versão deve ser posterior à instalada")
+	}
+	check, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	if e := s.VerifyRelease(check, version); e != nil {
+		return nil, fail(Validation, "Release ausente, incompatível ou assinatura inválida")
+	}
+	batch := security.Token()
+	out := []Operation{}
+	e := s.Core.mutate(ctx, func(tx *sql.Tx) error {
+		var n int
+		if e := tx.QueryRowContext(ctx, "SELECT count(*) FROM maintenance_jobs WHERE kind='update' AND status IN ('queued','waiting')").Scan(&n); e != nil {
+			return e
+		}
+		if n != 0 {
+			return fail(Conflict, "Atualização já pendente")
+		}
+		rows, e := tx.QueryContext(ctx, "SELECT id,agent_version FROM servers ORDER BY id")
+		if e != nil {
+			return e
+		}
+		for rows.Next() {
+			var id, current string
+			if e = rows.Scan(&id, &current); e != nil {
+				_ = rows.Close()
+				return e
+			}
+			if current == version {
+				continue
+			}
+			if current != "" && !updater.Newer(version, current) {
+				_ = rows.Close()
+				return fail(Conflict, "Agent possui versão posterior à solicitada")
+			}
+			out = append(out, Operation{ID: security.Token(), Batch: batch, Kind: "update", Target: id, Version: version, Status: "queued", CreatedAt: time.Now().Unix()})
+		}
+		e = rows.Err()
+		_ = rows.Close()
+		if e != nil {
+			return e
+		}
+		out = append(out, Operation{ID: security.Token(), Batch: batch, Kind: "update", Target: "panel", Version: version, Status: "queued", CreatedAt: time.Now().Unix()})
+		for _, o := range out {
+			if e = insertOperation(ctx, tx, o); e != nil {
+				return e
+			}
+		}
+		return s.Core.audit(ctx, tx, "update.request", batch)
+	})
+	return out, e
+}
+func (s *OperationsService) Cancel(ctx context.Context, batch string) error {
+	if e := interactiveAdmin(ctx); e != nil {
+		return e
+	}
+	return s.Core.mutate(ctx, func(tx *sql.Tx) error {
+		var n int
+		if e := tx.QueryRowContext(ctx, "SELECT count(*) FROM maintenance_jobs WHERE batch=? AND status='waiting'", batch).Scan(&n); e != nil {
+			return e
+		}
+		if n != 0 {
+			return fail(Conflict, "Operação já está em execução")
+		}
+		r, e := tx.ExecContext(ctx, "UPDATE maintenance_jobs SET status='cancelled',finished_at=? WHERE batch=? AND status='queued'", time.Now().Unix(), batch)
+		if e != nil {
+			return e
+		}
+		n64, _ := r.RowsAffected()
+		if n64 == 0 {
+			return fail(NotFound, "Operação pendente não encontrada")
+		}
+		return s.Core.audit(ctx, tx, "operation.cancel", batch)
+	})
+}
+func (s *OperationsService) Run(ctx context.Context) error {
+	// A crashed backup is retryable; updates retain their waiting state until the
+	// new version reconnects or the root helper's durable result reports failure.
+	if _, e := s.Core.DB.Write.ExecContext(ctx, "UPDATE maintenance_jobs SET status='queued',started_at=0 WHERE kind='backup' AND status='waiting'"); e != nil {
+		return e
+	}
+	tick := time.NewTicker(time.Second)
+	defer tick.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-tick.C:
+			if e := s.step(ctx); e != nil && ctx.Err() != nil {
+				return nil
+			}
+		}
+	}
+}
+func (s *OperationsService) step(ctx context.Context) error {
+	var o Operation
+	e := s.Core.DB.Read.QueryRowContext(ctx, `SELECT id,batch,kind,target,version,status,created_at,started_at FROM maintenance_jobs WHERE status IN ('queued','waiting') ORDER BY CASE WHEN status='waiting' THEN 0 ELSE 1 END,ordinal LIMIT 1`).Scan(&o.ID, &o.Batch, &o.Kind, &o.Target, &o.Version, &o.Status, &o.CreatedAt, &o.StartedAt)
+	if errors.Is(e, sql.ErrNoRows) {
+		return nil
+	}
+	if e != nil {
+		return e
+	}
+	if o.Status == "waiting" {
+		if o.Target == "panel" {
+			if s.Version == o.Version {
+				return s.finish(ctx, o, "applied", "")
+			}
+			if s.PanelResult != nil {
+				r := s.PanelResult()
+				if r.ID == o.ID && (r.Status == "failed" || r.Status == "rolled_back") {
+					return s.finish(ctx, o, "failed", "update_"+r.Status)
+				}
+			}
+		} else {
+			var current string
+			if e = s.Core.DB.Read.QueryRowContext(ctx, "SELECT agent_version FROM servers WHERE id=? AND heartbeat_at>=?", o.Target, o.StartedAt).Scan(&current); e == nil && current == o.Version {
+				return s.finish(ctx, o, "applied", "")
+			}
+		}
+		if time.Now().Unix()-o.StartedAt > 12*60 {
+			return s.finish(ctx, o, "failed", "update_timeout")
+		}
+		return nil
+	}
+	if o.Kind == "update" {
+		// Respect the ordered rollout even if a server is offline; do not skip it.
+		if s.Core.Control == nil && o.Target != "panel" {
+			return nil
+		}
+		var next int64
+		if e = s.Core.DB.Read.QueryRowContext(ctx, "SELECT next_at FROM maintenance_jobs WHERE id=?", o.ID).Scan(&next); e != nil {
+			return e
+		}
+		if next > time.Now().Unix() {
+			return nil
+		}
+	}
+	claimed := false
+	e = s.Core.mutate(ctx, func(tx *sql.Tx) error {
+		if o.Kind == "update" {
+			var active int
+			query := "SELECT count(*) FROM deployments WHERE status IN ('building','starting')"
+			args := []any{}
+			if o.Target != "panel" {
+				query = "SELECT count(*) FROM deployments d JOIN apps a ON a.id=d.app_id WHERE a.server_id=? AND d.status IN ('building','starting')"
+				args = []any{o.Target}
+				var online int
+				if e := tx.QueryRowContext(ctx, "SELECT count(*) FROM servers WHERE id=? AND status='online' AND heartbeat_at>?", o.Target, time.Now().Add(-20*time.Second).Unix()).Scan(&online); e != nil {
+					return e
+				}
+				if online == 0 {
+					return nil
+				}
+			}
+			if e := tx.QueryRowContext(ctx, query, args...).Scan(&active); e != nil {
+				return e
+			}
+			if active > 0 {
+				return nil
+			}
+		}
+		r, e := tx.ExecContext(ctx, "UPDATE maintenance_jobs SET status='waiting',started_at=? WHERE id=? AND status='queued'", time.Now().Unix(), o.ID)
+		if e != nil {
+			return e
+		}
+		n, _ := r.RowsAffected()
+		claimed = n == 1
+		return nil
+	})
+	if e != nil || !claimed {
+		return e
+	}
+	if o.Kind == "backup" {
+		if s.CreateBackup == nil {
+			return s.finish(ctx, o, "failed", "backup_unavailable")
+		}
+		run, cancel := context.WithTimeout(ctx, 15*time.Minute)
+		defer cancel()
+		if e = s.CreateBackup(run, o.ID); e != nil {
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
+			return s.finish(ctx, o, "failed", "backup_failed")
+		}
+		return s.finish(ctx, o, "applied", "")
+	}
+	if o.Target == "panel" {
+		if s.QueuePanel == nil || s.QueuePanel(o.ID, o.Version) != nil {
+			return s.finish(ctx, o, "failed", "update_unavailable")
+		}
+		return nil
+	}
+	if e = s.Core.send(ctx, o.Target, &agentv1.Command{Action: &agentv1.Command_Update{Update: &agentv1.Update{Id: o.ID, Version: o.Version}}}); e != nil {
+		return s.finish(ctx, o, "failed", "agent_unavailable")
+	}
+	return nil
+}
+func (s *OperationsService) finish(ctx context.Context, o Operation, status, code string) error {
+	return s.Core.mutate(ctx, func(tx *sql.Tx) error {
+		if _, e := tx.ExecContext(ctx, "UPDATE maintenance_jobs SET status=?,finished_at=?,error_code=? WHERE id=? AND status='waiting'", status, time.Now().Unix(), code, o.ID); e != nil {
+			return e
+		}
+		if status == "failed" {
+			if _, e := tx.ExecContext(ctx, "UPDATE maintenance_jobs SET status='cancelled',finished_at=?,error_code='rollout_stopped' WHERE batch=? AND status='queued'", time.Now().Unix(), o.Batch); e != nil {
+				return e
+			}
+		}
+		return s.Core.audit(systemContext(ctx), tx, "operation."+status, o.ID)
+	})
+}
+func (c *Core) operationResult(ctx context.Context, server string, result *agentv1.OperationResult) error {
+	if result == nil || result.Id == "" {
+		return nil
+	}
+	var o Operation
+	e := c.DB.Read.QueryRowContext(ctx, "SELECT id,batch,target FROM maintenance_jobs WHERE id=? AND target=? AND status='waiting' AND kind='update'", result.Id, server).Scan(&o.ID, &o.Batch, &o.Target)
+	if errors.Is(e, sql.ErrNoRows) {
+		return nil
+	}
+	if e != nil {
+		return e
+	}
+	if result.Status == "busy" {
+		_, e = c.DB.Write.ExecContext(ctx, "UPDATE maintenance_jobs SET status='queued',started_at=0,next_at=? WHERE id=? AND status='waiting'", time.Now().Add(10*time.Second).Unix(), o.ID)
+		return e
+	}
+	if result.Status == "failed" || result.Status == "rolled_back" {
+		return (&OperationsService{Core: c}).finish(ctx, o, "failed", "agent_update_"+result.Status)
+	}
+	return nil
+}
