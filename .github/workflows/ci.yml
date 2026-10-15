@@ -12,9 +12,10 @@ jobs:
           go-version: '1.26.9'
           cache: true
       - run: make tools
-      - run: sudo apt-get update && sudo apt-get install -y protobuf-compiler shellcheck
+      - run: sudo apt-get update && sudo apt-get install -y protobuf-compiler shellcheck caddy
       - run: make proto && .tools/sqlc generate && git diff --exit-code
       - run: make build test lint
+      - run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
       - run: CGO_ENABLED=1 go test -race -count=1 ./...
       - run: make test-integration
       - run: make bench
@@ -22,3 +23,18 @@ jobs:
         with:
           name: benchmarks
           path: bench.txt
+
+      - name: Comparar benchmarks com a base do PR
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          git fetch --depth=1 origin "$BASE_REF"
+          if git cat-file -e FETCH_HEAD:internal/events/hub_test.go 2>/dev/null; then
+            git worktree add --detach /tmp/nelcota-baseline FETCH_HEAD
+            (cd /tmp/nelcota-baseline && go test -run='^$' -bench=. -benchmem -count=6 ./internal/... > /tmp/nelcota-base.bench)
+            go test -run='^$' -bench=. -benchmem -count=6 ./internal/... > /tmp/nelcota-current.bench
+            scripts/compare-benchmarks.sh /tmp/nelcota-base.bench /tmp/nelcota-current.bench
+          else
+            echo 'Primeira introdução dos benchmarks: ainda sem base comparável.'
+          fi

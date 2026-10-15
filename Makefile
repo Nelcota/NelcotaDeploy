@@ -27,13 +27,21 @@ tools:
 	$(GO) install github.com/planetscale/vtprotobuf/cmd/protoc-gen-go-vtproto@v0.6.0
 	$(GO) install github.com/sqlc-dev/sqlc/cmd/sqlc@v1.30.0
 	$(GO) install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.11.3
+	$(GO) install golang.org/x/perf/cmd/benchstat@v0.0.0-20261009192801-be2c69fb417e
 dev: build
 	$(BIN)/nelcota-panel dev
 dev-seed:
 	$(GO) run ./cmd/nelcota-panel dev-seed
 bench:
-	$(GO) test -run='^$$' -bench=. -benchmem ./internal/... | tee bench.txt
+	@bash -o pipefail -c "$(GO) test -run='^$$' -bench=. -benchmem ./internal/... | tee bench.txt"
 performance: build
 	./scripts/performance.sh
 clean:
 	rm -rf bin
+
+.PHONY: sqlc generate check-generated
+sqlc:
+	$(TOOLS)/sqlc generate
+generate: proto sqlc
+check-generated: generate
+	git diff --exit-code -- internal/gen internal/store/dbgen
