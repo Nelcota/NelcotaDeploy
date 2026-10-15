@@ -7,8 +7,10 @@ import (
 	"encoding/hex"
 	"fmt"
 	"github.com/nelcota/nelcota-deploy/internal/events"
+	agentv1 "github.com/nelcota/nelcota-deploy/internal/gen/agent/v1"
 	"github.com/nelcota/nelcota-deploy/internal/security"
 	"github.com/nelcota/nelcota-deploy/internal/store"
+	"github.com/nelcota/nelcota-deploy/internal/transport"
 	"go.uber.org/goleak"
 	"path/filepath"
 	"strings"
@@ -171,5 +173,16 @@ func BenchmarkQueue(b *testing.B) {
 		if _, e := s.Enqueue(ctx, input); e != nil {
 			b.Fatal(e)
 		}
+	}
+}
+
+func TestContainerEventsAreBoundToServer(t *testing.T) {
+	c, ctx, app := fixture(t)
+	event := &agentv1.Event{Payload: &agentv1.Event_ContainerEvent{ContainerEvent: &agentv1.ContainerEvent{AppId: app.ID, Status: "start"}}}
+	if e := c.AgentEvent(ctx, transport.Peer{ID: "other-server"}, event); !Is(e, Forbidden) {
+		t.Fatal("cross-server event accepted", e)
+	}
+	if e := c.AgentEvent(ctx, transport.Peer{ID: app.ServerID}, event); e != nil {
+		t.Fatal(e)
 	}
 }
