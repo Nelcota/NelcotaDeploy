@@ -9,3 +9,4 @@
 *.pgo
 coverage.out
 bench.txt
+/dist/
