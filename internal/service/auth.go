@@ -127,14 +127,46 @@ func (a *AuthService) saveChallenge(ctx context.Context, user, purpose string, d
 	_, e = a.Core.DB.Write.ExecContext(ctx, "INSERT INTO challenges(token_hash,user_id,purpose,data,expires_at) VALUES(?,?,?,?,?)", security.Hash(token), user, purpose, b, time.Now().Add(ttl).Unix())
 	return token, e
 }
-func (a *AuthService) takeChallenge(ctx context.Context, token, purpose string) (string, []byte, error) {
-	var user string
-	var data []byte
-	e := a.Core.DB.Write.QueryRowContext(ctx, "DELETE FROM challenges WHERE token_hash=? AND purpose=? AND expires_at>? RETURNING user_id,data", security.Hash(token), purpose, time.Now().Unix()).Scan(&user, &data)
+
+// Keep challenge consumption, credential checks and session creation under the
+// single writer. Resetting credentials cannot interleave with an in-flight login.
+// A failed attempt still consumes its challenge, but rolls back all other writes.
+func (a *AuthService) consumeChallenge(ctx context.Context, token, purpose string, fn func(*sql.Tx, string, []byte) error) error {
+	var rejected error
+	e := a.Core.mutate(ctx, func(tx *sql.Tx) error {
+		var user string
+		var data []byte
+		if e := tx.QueryRowContext(ctx, "DELETE FROM challenges WHERE token_hash=? AND purpose=? AND expires_at>? RETURNING user_id,data", security.Hash(token), purpose, time.Now().Unix()).Scan(&user, &data); e != nil {
+			if e == sql.ErrNoRows {
+				return fail(Unauthenticated, "Desafio inválido ou expirado")
+			}
+			return e
+		}
+		if _, e := tx.ExecContext(ctx, "SAVEPOINT authentication"); e != nil {
+			return e
+		}
+		rejected = fn(tx, user, data)
+		if rejected != nil {
+			if _, e := tx.ExecContext(ctx, "ROLLBACK TO authentication"); e != nil {
+				return e
+			}
+		}
+		_, e := tx.ExecContext(ctx, "RELEASE authentication")
+		return e
+	})
 	if e != nil {
-		return "", nil, fail(Unauthenticated, "Desafio inválido ou expirado")
+		return e
 	}
-	return user, data, nil
+	return rejected
+}
+func saveChallengeTx(ctx context.Context, tx *sql.Tx, user, purpose string, data any, ttl time.Duration) (string, error) {
+	b, e := json.Marshal(data)
+	if e != nil {
+		return "", e
+	}
+	token := security.Token()
+	_, e = tx.ExecContext(ctx, "INSERT INTO challenges(token_hash,user_id,purpose,data,expires_at) VALUES(?,?,?,?,?)", security.Hash(token), user, purpose, b, time.Now().Add(ttl).Unix())
+	return token, e
 }
 func (a *AuthService) BeginRegistration(ctx context.Context, in RegistrationInput) (Ceremony, error) {
 	var id string
@@ -166,40 +198,37 @@ func (a *AuthService) BeginRegistration(ctx context.Context, in RegistrationInpu
 	return Ceremony{token, b, time.Now().Add(5 * time.Minute)}, e
 }
 func (a *AuthService) FinishRegistration(ctx context.Context, in FinishInput) error {
-	id, b, e := a.takeChallenge(ctx, in.CeremonyID, "registration")
-	if e != nil {
-		return e
-	}
-	var data authData
-	if e = json.Unmarshal(b, &data); e != nil {
-		return e
-	}
-	if data.Enrollment == "" {
-		p, e := require(ctx, false)
-		if e != nil || p.ID != id {
-			return fail(Forbidden, "Sessão de registro inválida")
+	return a.consumeChallenge(ctx, in.CeremonyID, "registration", func(tx *sql.Tx, id string, b []byte) error {
+		var e error
+		var data authData
+		if e = json.Unmarshal(b, &data); e != nil {
+			return e
 		}
-	}
-	u, e := a.user(ctx, id)
-	if e != nil {
-		return e
-	}
-	parsed, e := protocol.ParseCredentialCreationResponseBytes(in.Credential)
-	if e != nil {
-		return fail(Validation, "Credencial inválida")
-	}
-	cred, e := a.WebAuthn.CreateCredential(u, data.Session, parsed)
-	if e != nil {
-		return fail(Unauthenticated, "Registro recusado")
-	}
-	b, e = json.Marshal(cred)
-	if e != nil {
-		return e
-	}
-	requestActor, _ := CurrentUser(ctx)
-	u.Principal.IP = requestActor.IP
-	ctx = WithPrincipal(ctx, u.Principal)
-	return a.Core.mutate(ctx, func(tx *sql.Tx) error {
+		if data.Enrollment == "" {
+			p, e := require(ctx, false)
+			if e != nil || p.ID != id {
+				return fail(Forbidden, "Sessão de registro inválida")
+			}
+		}
+		u, e := a.user(ctx, id)
+		if e != nil {
+			return e
+		}
+		parsed, e := protocol.ParseCredentialCreationResponseBytes(in.Credential)
+		if e != nil {
+			return fail(Validation, "Credencial inválida")
+		}
+		cred, e := a.WebAuthn.CreateCredential(u, data.Session, parsed)
+		if e != nil {
+			return fail(Unauthenticated, "Registro recusado")
+		}
+		b, e = json.Marshal(cred)
+		if e != nil {
+			return e
+		}
+		requestActor, _ := CurrentUser(ctx)
+		u.Principal.IP = requestActor.IP
+		ctx = WithPrincipal(ctx, u.Principal)
 		if data.Enrollment != "" {
 			r, e := tx.ExecContext(ctx, "DELETE FROM challenges WHERE token_hash=? AND user_id=? AND purpose='enroll' AND expires_at>?", security.Hash(data.Enrollment), id, time.Now().Unix())
 			if e != nil {
@@ -234,55 +263,68 @@ func (a *AuthService) BeginLogin(ctx context.Context, email string) (Ceremony, e
 	return Ceremony{id, b, time.Now().Add(5 * time.Minute)}, e
 }
 func (a *AuthService) FinishLogin(ctx context.Context, in FinishInput) (LoginResult, error) {
-	id, b, e := a.takeChallenge(ctx, in.CeremonyID, "login")
-	if e != nil {
-		return LoginResult{}, e
-	}
-	var data authData
-	if e = json.Unmarshal(b, &data); e != nil {
-		return LoginResult{}, e
-	}
-	u, e := a.user(ctx, id)
-	if e != nil {
-		return LoginResult{}, e
-	}
-	parsed, e := protocol.ParseCredentialRequestResponseBytes(in.Credential)
-	if e != nil {
-		return LoginResult{}, fail(Validation, "Resposta inválida")
-	}
-	cred, e := a.WebAuthn.ValidateLogin(u, data.Session, parsed)
-	if e != nil || cred.Authenticator.CloneWarning {
-		return LoginResult{}, fail(Unauthenticated, "Login recusado")
-	}
-	b, e = json.Marshal(cred)
-	if e != nil {
-		return LoginResult{}, e
-	}
-	_, e = a.Core.DB.Write.ExecContext(ctx, "UPDATE credentials SET data=?,last_used=? WHERE id=? AND user_id=?", b, time.Now().Unix(), base64.RawURLEncoding.EncodeToString(cred.ID), id)
-	if e != nil {
-		return LoginResult{}, e
-	}
-	var n int
-	e = a.Core.DB.Read.QueryRowContext(ctx, "SELECT count(*) FROM credentials WHERE user_id=? AND kind='totp'", id).Scan(&n)
-	if e != nil {
-		return LoginResult{}, e
-	}
-	if n > 0 {
-		token, e := a.saveChallenge(ctx, id, "two_factor", struct{}{}, 5*time.Minute)
-		return LoginResult{RequiresTOTP: true, Challenge: token}, e
-	}
-	return a.issueSession(ctx, id)
-}
-func (a *AuthService) issueSession(ctx context.Context, user string) (LoginResult, error) {
-	token := security.Token()
-	expires := time.Now().Add(time.Hour)
-	e := a.Core.mutate(ctx, func(tx *sql.Tx) error {
-		if _, e := tx.ExecContext(ctx, "INSERT INTO sessions(token_hash,user_id,expires_at,two_factor_at) VALUES(?,?,?,?)", security.Hash(token), user, expires.Unix(), time.Now().Unix()); e != nil {
+	var result LoginResult
+	e := a.consumeChallenge(ctx, in.CeremonyID, "login", func(tx *sql.Tx, id string, b []byte) error {
+		var data authData
+		if e := json.Unmarshal(b, &data); e != nil {
 			return e
 		}
-		requestActor, _ := CurrentUser(ctx)
-		return a.Core.audit(WithPrincipal(ctx, Principal{ID: user, IP: requestActor.IP}), tx, "auth.login", user)
+		u, e := a.user(ctx, id)
+		if e != nil {
+			return e
+		}
+		parsed, e := protocol.ParseCredentialRequestResponseBytes(in.Credential)
+		if e != nil {
+			return fail(Validation, "Resposta inválida")
+		}
+		cred, e := a.WebAuthn.ValidateLogin(u, data.Session, parsed)
+		if e != nil || cred.Authenticator.CloneWarning {
+			return fail(Unauthenticated, "Login recusado")
+		}
+		b, e = json.Marshal(cred)
+		if e != nil {
+			return e
+		}
+		if _, e = tx.ExecContext(ctx, "UPDATE credentials SET data=?,last_used=? WHERE id=? AND user_id=?", b, time.Now().Unix(), base64.RawURLEncoding.EncodeToString(cred.ID), id); e != nil {
+			return e
+		}
+		var n int
+		if e = tx.QueryRowContext(ctx, "SELECT count(*) FROM credentials WHERE user_id=? AND kind='totp'", id).Scan(&n); e != nil {
+			return e
+		}
+		if n > 0 {
+			token, e := saveChallengeTx(ctx, tx, id, "two_factor", struct{}{}, 5*time.Minute)
+			result = LoginResult{RequiresTOTP: true, Challenge: token}
+			return e
+		}
+		result, e = a.issueSessionTx(ctx, tx, id)
+		return e
 	})
+	if e != nil {
+		return LoginResult{}, e
+	}
+	return result, nil
+}
+func (a *AuthService) issueSession(ctx context.Context, user string) (LoginResult, error) {
+	var result LoginResult
+	e := a.Core.mutate(ctx, func(tx *sql.Tx) error {
+		var e error
+		result, e = a.issueSessionTx(ctx, tx, user)
+		return e
+	})
+	if e != nil {
+		return LoginResult{}, e
+	}
+	return result, nil
+}
+func (a *AuthService) issueSessionTx(ctx context.Context, tx *sql.Tx, user string) (LoginResult, error) {
+	token := security.Token()
+	expires := time.Now().Add(time.Hour)
+	if _, e := tx.ExecContext(ctx, "INSERT INTO sessions(token_hash,user_id,expires_at,two_factor_at) VALUES(?,?,?,?)", security.Hash(token), user, expires.Unix(), time.Now().Unix()); e != nil {
+		return LoginResult{}, e
+	}
+	requestActor, _ := CurrentUser(ctx)
+	e := a.Core.audit(WithPrincipal(ctx, Principal{ID: user, IP: requestActor.IP}), tx, "auth.login", user)
 	return LoginResult{Token: token, ExpiresAt: expires}, e
 }
 func (a *AuthService) Session(ctx context.Context, token string) (Principal, error) {
@@ -328,60 +370,67 @@ func otpCounter(secret, code string, now time.Time) (int64, error) {
 	return 0, fail(Unauthenticated, "Código inválido")
 }
 func (a *AuthService) FinishTOTP(ctx context.Context, id, code string) error {
-	p, e := require(ctx, false)
+	p, e := freshInteractive(ctx)
 	if e != nil {
 		return e
 	}
-	user, b, e := a.takeChallenge(ctx, id, "totp_setup")
-	if e != nil || user != p.ID {
-		return fail(Unauthenticated, "Desafio inválido")
-	}
-	var encrypted []byte
-	if e = json.Unmarshal(b, &encrypted); e != nil {
-		return e
-	}
-	secret, e := a.Core.Vault.Open(encrypted, "totp:"+user)
-	if e != nil {
-		return e
-	}
-	counter, e := otpCounter(string(secret), code, time.Now())
-	if e != nil {
-		return e
-	}
-	return a.Core.mutate(ctx, func(tx *sql.Tx) error {
-		if _, e := tx.ExecContext(ctx, "INSERT INTO credentials(id,user_id,kind,data,last_used) VALUES(?,?,'totp',?,?)", "totp-"+user, user, encrypted, counter); e != nil {
+	return a.consumeChallenge(ctx, id, "totp_setup", func(tx *sql.Tx, user string, b []byte) error {
+		if user != p.ID {
+			return fail(Unauthenticated, "Desafio inválido")
+		}
+		var encrypted []byte
+		if e := json.Unmarshal(b, &encrypted); e != nil {
+			return e
+		}
+		secret, e := a.Core.Vault.Open(encrypted, "totp:"+user)
+		if e != nil {
+			return e
+		}
+		defer clear(secret)
+		counter, e := otpCounter(string(secret), code, time.Now())
+		if e != nil {
+			return e
+		}
+		if _, e = tx.ExecContext(ctx, "INSERT INTO credentials(id,user_id,kind,data,last_used) VALUES(?,?,'totp',?,?)", "totp-"+user, user, encrypted, counter); e != nil {
 			return fail(Conflict, "TOTP já configurado")
+		}
+		// Sessions established before enabling the second factor must not retain
+		// access. Require a new passkey + TOTP login, and discard pending logins.
+		for _, table := range []string{"sessions", "api_tokens", "challenges"} {
+			if _, e = tx.ExecContext(ctx, "DELETE FROM "+table+" WHERE user_id=?", user); e != nil {
+				return e
+			}
 		}
 		return a.Core.audit(ctx, tx, "auth.totp.enable", user)
 	})
 }
 func (a *AuthService) VerifyTOTP(ctx context.Context, challenge, code string) (LoginResult, error) {
-	user, _, e := a.takeChallenge(ctx, challenge, "two_factor")
+	var result LoginResult
+	e := a.consumeChallenge(ctx, challenge, "two_factor", func(tx *sql.Tx, user string, _ []byte) error {
+		var b []byte
+		var last int64
+		if e := tx.QueryRowContext(ctx, "SELECT data,last_used FROM credentials WHERE user_id=? AND kind='totp'", user).Scan(&b, &last); e != nil {
+			return fail(Unauthenticated, "Código inválido")
+		}
+		secret, e := a.Core.Vault.Open(b, "totp:"+user)
+		if e != nil {
+			return e
+		}
+		defer clear(secret)
+		counter, e := otpCounter(string(secret), code, time.Now())
+		if e != nil || counter <= last {
+			return fail(Unauthenticated, "Código inválido ou reutilizado")
+		}
+		if _, e = tx.ExecContext(ctx, "UPDATE credentials SET last_used=? WHERE user_id=? AND kind='totp'", counter, user); e != nil {
+			return e
+		}
+		result, e = a.issueSessionTx(ctx, tx, user)
+		return e
+	})
 	if e != nil {
 		return LoginResult{}, e
 	}
-	var b []byte
-	var last int64
-	if e = a.Core.DB.Read.QueryRowContext(ctx, "SELECT data,last_used FROM credentials WHERE user_id=? AND kind='totp'", user).Scan(&b, &last); e != nil {
-		return LoginResult{}, fail(Unauthenticated, "Código inválido")
-	}
-	secret, e := a.Core.Vault.Open(b, "totp:"+user)
-	if e != nil {
-		return LoginResult{}, e
-	}
-	counter, e := otpCounter(string(secret), code, time.Now())
-	if e != nil || counter <= last {
-		return LoginResult{}, fail(Unauthenticated, "Código inválido ou reutilizado")
-	}
-	r, e := a.Core.DB.Write.ExecContext(ctx, "UPDATE credentials SET last_used=? WHERE user_id=? AND kind='totp' AND last_used<?", counter, user, counter)
-	if e != nil {
-		return LoginResult{}, e
-	}
-	n, _ := r.RowsAffected()
-	if n != 1 {
-		return LoginResult{}, fail(Unauthenticated, "Código reutilizado")
-	}
-	return a.issueSession(ctx, user)
+	return result, nil
 }
 func (a *AuthService) List(ctx context.Context) ([]Principal, error) {
 	if _, e := authorize(ctx, "users:write", true); e != nil {

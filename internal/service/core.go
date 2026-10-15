@@ -390,7 +390,7 @@ func (s *serversService) Invite(ctx context.Context, in ServerInput) (Invitation
 	if in.CacheBytes == 0 {
 		in.CacheBytes = 5 << 30
 	}
-	if in.CacheBytes < 0 || in.CacheBytes > 100<<30 {
+	if in.CacheBytes < 64<<20 || in.CacheBytes > 100<<30 {
 		return Invitation{}, fail(Validation, "Teto de cache inválido")
 	}
 	token := security.Token()
