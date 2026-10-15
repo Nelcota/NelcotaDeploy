@@ -139,14 +139,3 @@ func WriteExclusive(path string, b []byte) error {
 	_, e = f.Write(b)
 	return e
 }
-
-func ReadSecret(path string) ([]byte, error) {
-	st, e := os.Stat(path)
-	if e != nil {
-		return nil, e
-	}
-	if !st.Mode().IsRegular() || st.Mode().Perm()&0077 != 0 {
-		return nil, errors.New("private file must have mode 0600")
-	}
-	return os.ReadFile(path)
-}
