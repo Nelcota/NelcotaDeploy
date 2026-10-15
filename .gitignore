@@ -1,0 +1,11 @@
+/bin/
+/.tools/
+/.local/
+*.db
+*.db-shm
+*.db-wal
+*.key
+*.pem
+*.pgo
+coverage.out
+bench.txt
