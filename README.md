@@ -24,6 +24,7 @@ O segundo request retorna o CSRF token usado nos POSTs seguintes. O endpoint dev
 
 - [Contrato do frontend](docs/contrato-frontend.md): serviços, DTOs, JSON, autenticação e streams.
 - [Roteiro de VPS](docs/testar-em-vps.md): instalação assinada em duas VPS, acesso por passkey, deploy sob tráfego, backup/restore, update e rollback, com comandos e critérios de aprovação.
+- [Releases de homologação](docs/releases-homologacao.md): v1.0.0, v1.0.1 e v1.0.2 assinados localmente, chave pública, BuildKit recompilado com correções e evidências de validação.
 - [Progresso](docs/progresso-backend.md), [decisões](docs/decisoes.md), [pendências](docs/pendencias.md).
 - [Operação](docs/operacao-backend.md): memória, backup/restore, S3, update assinado e recuperação de TOTP.
 - [Relatório](docs/relatorio-backend.md): estado real, verificações e limites.
