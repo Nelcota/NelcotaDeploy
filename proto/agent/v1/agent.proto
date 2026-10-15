@@ -1,0 +1,41 @@
+syntax = "proto3";
+package agent.v1;
+option go_package = "github.com/nelcota/nelcota-deploy/internal/gen/agent/v1;agentv1";
+
+service AgentService { rpc Connect(stream Event) returns (stream Command); }
+message AppConfig {
+  string app_id = 1; string repository = 2; string branch = 3;
+  repeated string domains = 4; map<string,string> env = 5;
+  int64 memory_bytes = 6; int64 nano_cpus = 7; uint32 port = 8;
+  string health_path = 9; uint32 health_timeout_seconds = 10;
+  uint32 replicas = 11; bool cache_enabled = 12; string dockerfile = 13;
+  int64 installation_id = 14; string desired_sha = 15; bool stopped = 16;
+  uint64 revision = 17; map<string,string> build_secrets = 18;
+}
+message Deploy { string deploy_id = 1; AppConfig app = 2; string sha = 3; string github_token = 4; bool clean = 5; }
+message Cancel { string deploy_id = 1; }
+message Rollback { Deploy deploy = 1; }
+message AppAction { string app_id = 1; }
+message Scale { string app_id = 1; uint32 replicas = 2; }
+message Logs { string app_id = 1; int64 since_unix = 2; bool follow = 3; }
+message Stats {}
+message Prune { enum Scope { SCOPE_UNSPECIFIED = 0; CACHE = 1; ORPHAN_IMAGES = 2; } Scope scope = 1; }
+message Snapshot { repeated AppConfig apps = 1; }
+message Command {
+  string id = 1; string server_id = 2; int64 issued_unix = 3; int64 expires_unix = 4; bytes signature = 5;
+  oneof action {
+    Deploy deploy = 10; Cancel cancel = 11; Rollback rollback = 12;
+    AppAction start = 13; AppAction stop = 14; AppAction restart = 15;
+    Scale scale = 16; AppConfig set_config = 17; Logs logs = 18; Stats stats = 19; Prune prune = 20;
+  }
+  Snapshot desired = 21;
+}
+message DeployLog { string deploy_id = 1; string app_id = 2; uint64 sequence = 3; bytes line = 4; bool runtime = 5; }
+message DeployStatus { string deploy_id = 1; string app_id = 2; string status = 3; string error_code = 4; }
+message ContainerEvent { string app_id = 1; string container_id = 2; string status = 3; }
+message Metrics { double cpu_percent = 1; uint64 memory_used = 2; uint64 memory_total = 3; uint64 disk_used = 4; uint64 disk_total = 5; uint64 network_rx = 6; uint64 network_tx = 7; }
+message Heartbeat { bool request_state = 1; repeated string active_deploys = 2; }
+message Event {
+  string server_id = 1; int64 time_unix = 2;
+  oneof payload { DeployLog deploy_log = 10; DeployStatus deploy_status = 11; ContainerEvent container_event = 12; Metrics metrics = 13; Heartbeat heartbeat = 14; }
+}
