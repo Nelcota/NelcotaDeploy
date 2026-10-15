@@ -23,7 +23,7 @@ curl -b /tmp/nelcota-dev-cookies http://127.0.0.1:8080/api/session
 O segundo request retorna o CSRF token usado nos POSTs seguintes. O endpoint dev não existe no modo de produção. Não publicar o processo dev atrás de proxy.
 
 - [Contrato do frontend](docs/contrato-frontend.md): serviços, DTOs, JSON, autenticação e streams.
-- [Guia de VPS](docs/testar-em-vps.md): instalação assinada e aceitação.
+- [Roteiro de VPS](docs/testar-em-vps.md): instalação assinada em duas VPS, acesso por passkey, deploy sob tráfego, backup/restore, update e rollback, com comandos e critérios de aprovação.
 - [Progresso](docs/progresso-backend.md), [decisões](docs/decisoes.md), [pendências](docs/pendencias.md).
 - [Operação](docs/operacao-backend.md): memória, backup/restore, S3, update assinado e recuperação de TOTP.
 - [Relatório](docs/relatorio-backend.md): estado real, verificações e limites.
