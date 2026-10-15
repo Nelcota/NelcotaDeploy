@@ -24,13 +24,35 @@ done
 # shellcheck source=/dev/null
 source /etc/os-release
 case "$ID:$VERSION_ID" in debian:1[2-9]*|ubuntu:2[2468].*) ;; *) fail 'Suporte: Debian 12+ ou Ubuntu 22.04+';; esac
+# Evita desligar o único método de acesso antes de existir uma chave SSH.
+key_found=false
+for authorized in /root/.ssh/authorized_keys /home/*/.ssh/authorized_keys; do
+ if [[ -s $authorized ]]; then key_found=true; break; fi
+done
+[[ $key_found == true ]] || fail 'Configure e teste acesso SSH por chave antes da instalação'
 export DEBIAN_FRONTEND=noninteractive
 apt-get update
-apt-get install -y ca-certificates curl minisign git jq docker.io runc caddy wireguard-tools iptables iptables-persistent unattended-upgrades fail2ban
+apt-get install -y ca-certificates curl gnupg minisign git jq caddy wireguard-tools iptables iptables-persistent unattended-upgrades fail2ban
+# Usa o repositório oficial com pacotes atuais de Engine/containerd e identidade de assinatura fixada.
+install -d -m 0755 /etc/apt/keyrings
+curl --proto '=https' --tlsv1.2 -fsSL "https://download.docker.com/linux/$ID/gpg" -o /etc/apt/keyrings/nelcota-docker.asc
+fingerprint=$(gpg --batch --show-keys --with-colons /etc/apt/keyrings/nelcota-docker.asc | awk -F: '$1=="fpr" {print $10; exit}')
+[[ $fingerprint == 9DC858229FC7DD38854AE2D88D81803C0EBFCD88 ]] || fail 'Chave de assinatura Docker não corresponde à identidade fixada'
+chmod 0644 /etc/apt/keyrings/nelcota-docker.asc
+cat > /etc/apt/sources.list.d/nelcota-docker.sources <<APT
+Types: deb
+URIs: https://download.docker.com/linux/$ID
+Suites: $VERSION_CODENAME
+Components: stable
+Architectures: $(dpkg --print-architecture)
+Signed-By: /etc/apt/keyrings/nelcota-docker.asc
+APT
+apt-get update
+apt-get install -y docker-ce docker-ce-cli containerd.io
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 arch=$(uname -m)
-case "$arch" in x86_64) arch=amd64_v1; if grep -qw avx2 /proc/cpuinfo && grep -qw bmi2 /proc/cpuinfo && grep -qw fma /proc/cpuinfo; then arch=amd64_v3; fi; buildarch=amd64;; aarch64) arch=arm64; buildarch=arm64;; *) fail 'Arquitetura não suportada';; esac
+case "$arch" in x86_64) arch=amd64_v1; if grep -qw avx2 /proc/cpuinfo && grep -qw bmi1 /proc/cpuinfo && grep -qw bmi2 /proc/cpuinfo && grep -qw fma /proc/cpuinfo && grep -qw f16c /proc/cpuinfo && grep -qw movbe /proc/cpuinfo && grep -qw xsave /proc/cpuinfo && grep -qw abm /proc/cpuinfo; then arch=amd64_v3; fi; buildarch=amd64;; aarch64) arch=arm64; buildarch=arm64;; *) fail 'Arquitetura não suportada';; esac
 artifact="nelcota-agent_linux_${arch}"
 # O release do mantenedor precisa conter também o buildkitd auditado e assinado.
 builder="buildkitd_linux_${buildarch}"
@@ -90,6 +112,8 @@ cat > /etc/buildkit/buildkitd.toml <<'TOML'
   [[worker.oci.gcpolicy]]
     keepDuration = 604800
     maxUsedSpace = "5GB"
+  [[worker.oci.gcpolicy]]
+    maxUsedSpace = "5GB"
 [worker.containerd]
   enabled = false
 TOML
@@ -122,7 +146,7 @@ cat > /etc/systemd/system/nelcota-agent.service <<'UNIT'
 [Unit]
 Description=Nelcota Deploy Agent
 After=network-online.target docker.service nelcota-buildkit.service caddy.service wg-quick@wg0.service
-Requires=docker.service nelcota-buildkit.service wg-quick@wg0.service
+Requires=docker.service nelcota-buildkit.service caddy.service wg-quick@wg0.service
 [Service]
 User=nelcota-agent
 Group=nelcota-agent
@@ -132,6 +156,7 @@ Environment=GOMEMLIMIT=80MiB
 MemoryMax=100M
 Restart=on-failure
 RestartSec=3
+LimitCORE=0
 NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=true
@@ -187,6 +212,9 @@ sshd -t
 systemctl reload ssh
 chown -R nelcota-agent:nelcota-agent /etc/nelcota-agent /var/lib/nelcota-agent
 systemctl daemon-reload
-systemctl enable --now nelcota-buildkit nelcota-agent unattended-upgrades fail2ban
+mkdir -p /etc/fail2ban/jail.d
+printf '%s\n' '[sshd]' 'enabled = true' 'backend = systemd' > /etc/fail2ban/jail.d/nelcota.local
+printf '%s\n' 'APT::Periodic::Update-Package-Lists "1";' 'APT::Periodic::Unattended-Upgrade "1";' > /etc/apt/apt.conf.d/20nelcota-upgrades
 systemctl restart caddy
+systemctl enable --now nelcota-buildkit nelcota-agent unattended-upgrades fail2ban
 printf '%s\n' 'Agent instalado; nenhum listener de controle público.'
