@@ -135,9 +135,17 @@ UNIT
 cat > /etc/caddy/nelcota.json <<'CADDY'
 {"admin":{"listen":"127.0.0.1:2019"},"apps":{"http":{"servers":{"nelcota":{"listen":[":443"],"routes":[],"automatic_https":{}}}}}}
 CADDY
+chown root:caddy /etc/caddy/nelcota.json
+chmod 0640 /etc/caddy/nelcota.json
+# O pacote pode ter iniciado o site padrão. Semear autosave antes de usar --resume.
+systemctl stop caddy
+install -d -o caddy -g caddy -m 0700 /var/lib/caddy/.config/caddy
+install -o caddy -g caddy -m 0600 /etc/caddy/nelcota.json /var/lib/caddy/.config/caddy/autosave.json
 mkdir -p /etc/systemd/system/caddy.service.d
 cat > /etc/systemd/system/caddy.service.d/nelcota.conf <<'UNIT'
 [Service]
+Environment=XDG_CONFIG_HOME=/var/lib/caddy/.config
+Environment=XDG_DATA_HOME=/var/lib/caddy/.local/share
 ExecStart=
 ExecStart=/usr/bin/caddy run --environ --resume --config /etc/caddy/nelcota.json
 ExecReload=

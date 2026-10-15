@@ -140,6 +140,7 @@ func (d *DockerEngine) Build(ctx context.Context, dep *agentv1.Deploy, dir strin
 	})
 	g.Go(func() error { _, e := d.BuildKit.Solve(gctx, nil, options, status); return e })
 	if e = g.Wait(); e != nil {
+		log([]byte("[buildkit] " + e.Error() + "\n"))
 		return "", errors.New("build failed")
 	}
 	f, e := os.Open(name)

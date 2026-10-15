@@ -305,6 +305,7 @@ func serve(ctx context.Context, c config, dev bool) error {
 		}
 	})
 	public := host.Server(c.listen, httpapi.New(api))
+	public.ReadTimeout = 15 * time.Second
 	g.Go(func() error { return host.Serve(gctx, public, false) })
 	fmt.Printf("Nelcota Deploy: %s\n", c.origin)
 	return g.Wait()

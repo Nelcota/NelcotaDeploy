@@ -368,6 +368,7 @@ func (a *API) cookie(w http.ResponseWriter, v service.LoginResult) {
 }
 func (a *API) session(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		r = r.WithContext(service.WithPrincipal(r.Context(), service.Principal{IP: clientIP(r)}))
 		if authorization := r.Header.Get("Authorization"); authorization != "" {
 			if !strings.HasPrefix(authorization, "Bearer ") || a.cfg.Services.Auth == nil {
 				respond(w, nil, &service.Error{Kind: service.Unauthenticated, Message: "Token inválido"})

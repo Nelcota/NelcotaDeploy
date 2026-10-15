@@ -61,7 +61,8 @@ func require(ctx context.Context, admin bool) (Principal, error) {
 	return p, nil
 }
 func systemContext(ctx context.Context) context.Context {
-	return WithPrincipal(ctx, Principal{ID: "system", Role: "admin"})
+	p, _ := CurrentUser(ctx)
+	return WithPrincipal(ctx, Principal{ID: "system", Role: "admin", IP: p.IP})
 }
 
 type App struct {

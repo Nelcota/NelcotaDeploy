@@ -83,6 +83,8 @@ $domain {
     reverse_proxy 127.0.0.1:8080
 }
 CADDY
+chown root:caddy /etc/caddy/Caddyfile
+chmod 0640 /etc/caddy/Caddyfile
 caddy validate --config /etc/caddy/Caddyfile
 : > /etc/nelcota/caddy-installed
 cat > /etc/systemd/system/nelcota-panel.service <<'UNIT'

@@ -569,7 +569,7 @@ func (s *logsService) Subscribe(ctx context.Context, topic string) (events.Subsc
 func (s *auditService) RecordRequest(ctx context.Context, method, route string, status int) error {
 	p, e := CurrentUser(ctx)
 	if e != nil {
-		p = Principal{ID: "anonymous"}
+		p = Principal{ID: "anonymous", IP: p.IP}
 	}
 	details, _ := json.Marshal(map[string]any{"method": method, "status": status})
 	_, e = s.c.DB.Write.ExecContext(ctx, "INSERT INTO audit_log(user_id,action,target,details,ip,created_at) VALUES(?,'http.request',?,?,?,?)", p.ID, route, string(details), p.IP, time.Now().Unix())
