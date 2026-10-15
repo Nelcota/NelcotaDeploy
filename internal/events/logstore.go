@@ -13,6 +13,14 @@ import (
 )
 
 var logID = regexp.MustCompile(`^[a-zA-Z0-9_-]{1,128}$`)
+var logEncoders = sync.Pool{New: func() any {
+	z, e := zstd.NewWriter(nil, zstd.WithEncoderConcurrency(1), zstd.WithEncoderLevel(zstd.SpeedFastest))
+	if e != nil {
+		panic(e)
+	}
+	return z
+}}
+var logBuffers = sync.Pool{New: func() any { b := make([]byte, 0, 32768); return &b }}
 
 type LogStore struct {
 	dir string
@@ -46,15 +54,16 @@ func (l *LogStore) Append(ctx context.Context, id string, b []byte) error {
 		return e
 	}
 	defer f.Close()
-	z, e := zstd.NewWriter(f, zstd.WithEncoderConcurrency(1), zstd.WithEncoderLevel(zstd.SpeedFastest))
-	if e != nil {
-		return e
+	enc := logEncoders.Get().(*zstd.Encoder)
+	defer logEncoders.Put(enc)
+	buf := logBuffers.Get().(*[]byte)
+	frame := enc.EncodeAll(b, (*buf)[:0])
+	_, e = f.Write(frame)
+	if cap(frame) <= 65536 {
+		*buf = frame[:0]
+		logBuffers.Put(buf)
 	}
-	if _, e = z.Write(b); e != nil {
-		_ = z.Close()
-		return e
-	}
-	return z.Close()
+	return e
 }
 func (l *LogStore) Read(ctx context.Context, id string, maxBytes int64) ([]byte, error) {
 	if e := ctx.Err(); e != nil {
@@ -82,6 +91,8 @@ func (l *LogStore) Read(ctx context.Context, id string, maxBytes int64) ([]byte,
 	return io.ReadAll(io.LimitReader(z, maxBytes))
 }
 func (l *LogStore) Remove(ctx context.Context, id string) error {
+	l.mu.Lock()
+	defer l.mu.Unlock()
 	if e := ctx.Err(); e != nil {
 		return e
 	}

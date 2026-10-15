@@ -58,7 +58,7 @@ func command() *cobra.Command {
 	root.AddCommand(join)
 	root.AddCommand(&cobra.Command{Use: "serve", RunE: func(cmd *cobra.Command, _ []string) error {
 		ctx := cmd.Context()
-		b, e := os.ReadFile(filepath.Join(dir, "join.json"))
+		b, e := host.ReadSecret(filepath.Join(dir, "join.json"))
 		if e != nil {
 			return e
 		}
@@ -96,7 +96,7 @@ func command() *cobra.Command {
 		}
 		pipeline.Stats = host.Metrics
 		g, gctx := errgroup.WithContext(ctx)
-		rpc := &transport.AgentClient{URL: join.ControlURL, ServerID: join.ServerID, TLS: tls, Verifier: &security.Verifier{Key: ed25519.PublicKey(sign), ServerID: join.ServerID, Path: filepath.Join(data, "replay.json")}, Handler: pipeline, Metrics: host.Metrics, Active: pipeline.Active, Observed: pipeline.Observed}
+		rpc := &transport.AgentClient{URL: join.ControlURL, ServerID: join.ServerID, TLS: tls, Verifier: &security.Verifier{Key: ed25519.PublicKey(sign), ServerID: join.ServerID, Path: filepath.Join(data, "replay.json")}, Handler: pipeline, Metrics: host.Metrics, Active: pipeline.Active, Observed: pipeline.Observed, Ready: pipeline.Ready, Events: engine.Watch}
 		g.Go(func() error { return pipeline.Run(gctx) })
 		g.Go(func() error { return rpc.Run(gctx) })
 		g.Go(func() error { return host.Diagnostics(gctx, diag, wg) })

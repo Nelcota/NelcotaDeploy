@@ -63,7 +63,7 @@ func (q *Queries) GetCredentials(ctx context.Context, userID string) ([]Credenti
 }
 
 const getDeployment = `-- name: GetDeployment :one
-SELECT id, app_id, sha, message, author, origin, status, queued_at, started_at, finished_at, log_ref, error_code, clean, check_id, cancel_requested FROM deployments WHERE id = ?
+SELECT id, app_id, sha, message, author, origin, status, queued_at, started_at, finished_at, log_ref, error_code, clean, check_id, cancel_requested, timings FROM deployments WHERE id = ?
 `
 
 func (q *Queries) GetDeployment(ctx context.Context, id string) (Deployment, error) {
@@ -85,6 +85,7 @@ func (q *Queries) GetDeployment(ctx context.Context, id string) (Deployment, err
 		&i.Clean,
 		&i.CheckID,
 		&i.CancelRequested,
+		&i.Timings,
 	)
 	return i, err
 }
@@ -275,7 +276,7 @@ func (q *Queries) ListAudit(ctx context.Context, limit int64) ([]AuditLog, error
 }
 
 const listDeployments = `-- name: ListDeployments :many
-SELECT id, app_id, sha, message, author, origin, status, queued_at, started_at, finished_at, log_ref, error_code, clean, check_id, cancel_requested FROM deployments WHERE app_id = ? ORDER BY queued_at DESC, rowid DESC LIMIT 100
+SELECT id, app_id, sha, message, author, origin, status, queued_at, started_at, finished_at, log_ref, error_code, clean, check_id, cancel_requested, timings FROM deployments WHERE app_id = ? ORDER BY queued_at DESC, rowid DESC LIMIT 100
 `
 
 func (q *Queries) ListDeployments(ctx context.Context, appID string) ([]Deployment, error) {
@@ -303,6 +304,7 @@ func (q *Queries) ListDeployments(ctx context.Context, appID string) ([]Deployme
 			&i.Clean,
 			&i.CheckID,
 			&i.CancelRequested,
+			&i.Timings,
 		); err != nil {
 			return nil, err
 		}

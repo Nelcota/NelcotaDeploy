@@ -76,6 +76,7 @@ type Ring struct {
 	lines      [][]byte
 	next, size int
 	sequence   uint64
+	bytes      int
 }
 
 func NewRing(capacity int) *Ring {
@@ -90,7 +91,17 @@ func (r *Ring) Append(b []byte) uint64 {
 	if len(b) > 16384 {
 		b = b[:16384]
 	}
+	for r.size > 0 && r.bytes+len(b) > 1<<20 {
+		oldest := (r.next - r.size + len(r.lines)) % len(r.lines)
+		r.bytes -= len(r.lines[oldest])
+		r.lines[oldest] = nil
+		r.size--
+	}
+	if r.size == len(r.lines) {
+		r.bytes -= len(r.lines[r.next])
+	}
 	r.lines[r.next] = append(r.lines[r.next][:0], b...)
+	r.bytes += len(b)
 	r.next = (r.next + 1) % len(r.lines)
 	r.size = min(r.size+1, len(r.lines))
 	r.sequence++

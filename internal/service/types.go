@@ -30,12 +30,13 @@ func fail(kind Kind, message string) error { return &Error{kind, message} }
 func Is(err error, kind Kind) bool         { var e *Error; return errors.As(err, &e) && e.Kind == kind }
 
 type Principal struct {
-	ID          string `json:"id"`
-	Email       string `json:"email"`
-	Name        string `json:"name"`
-	Role        string `json:"role"`
-	TwoFactorAt int64  `json:"-"`
-	IP          string `json:"-"`
+	Scopes      []string `json:"scopes,omitempty"`
+	ID          string   `json:"id"`
+	Email       string   `json:"email"`
+	Name        string   `json:"name"`
+	Role        string   `json:"role"`
+	TwoFactorAt int64    `json:"-"`
+	IP          string   `json:"-"`
 }
 type principalKey struct{}
 
@@ -94,9 +95,10 @@ type AppInput struct {
 	Config     AppConfig `json:"config"`
 }
 type EnvInput struct {
-	Key   string `json:"key"`
-	Value string `json:"value"`
-	Build bool   `json:"build"`
+	Delete bool   `json:"delete"`
+	Key    string `json:"key"`
+	Value  string `json:"value"`
+	Build  bool   `json:"build"`
 }
 type EnvInfo struct {
 	Key        string `json:"key"`
@@ -104,18 +106,20 @@ type EnvInfo struct {
 	Configured bool   `json:"configured"`
 }
 type Deployment struct {
-	ID         string `json:"id"`
-	AppID      string `json:"app_id"`
-	SHA        string `json:"sha"`
-	Message    string `json:"message"`
-	Author     string `json:"author"`
-	Origin     string `json:"origin"`
-	Status     string `json:"status"`
-	QueuedAt   int64  `json:"queued_at"`
-	StartedAt  int64  `json:"started_at"`
-	FinishedAt int64  `json:"finished_at"`
-	ErrorCode  string `json:"error_code"`
-	Clean      bool   `json:"clean"`
+	CancelRequested bool             `json:"cancel_requested"`
+	Timings         map[string]int64 `json:"timings"`
+	ID              string           `json:"id"`
+	AppID           string           `json:"app_id"`
+	SHA             string           `json:"sha"`
+	Message         string           `json:"message"`
+	Author          string           `json:"author"`
+	Origin          string           `json:"origin"`
+	Status          string           `json:"status"`
+	QueuedAt        int64            `json:"queued_at"`
+	StartedAt       int64            `json:"started_at"`
+	FinishedAt      int64            `json:"finished_at"`
+	ErrorCode       string           `json:"error_code"`
+	Clean           bool             `json:"clean"`
 }
 type DeployInput struct {
 	AppID   string `json:"app_id"`

@@ -192,6 +192,8 @@ type AgentClient struct {
 	Metrics       func(context.Context) *agentv1.Metrics
 	Active        func() []string
 	Observed      func() []*agentv1.ObservedApp
+	Ready         func() bool
+	Events        func(context.Context, func(*agentv1.Event) error) error
 }
 
 func (a *AgentClient) Run(ctx context.Context) error {
@@ -227,27 +229,50 @@ func (a *AgentClient) runOnce(ctx context.Context) error {
 	defer stream.CloseRequest()
 	defer stream.CloseResponse()
 	out := make(chan *agentv1.Event, 256)
+	critical := make(chan *agentv1.Event, 32)
 	emit := func(e *agentv1.Event) error {
 		e.ServerId = a.ServerID
 		e.TimeUnix = time.Now().Unix()
+		queue := critical
+		if e.GetDeployLog() != nil || e.GetMetrics() != nil || e.GetContainerEvent() != nil {
+			queue = out
+		}
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
-		case out <- e:
+		case queue <- e:
 			return nil
 		default:
+			if e.GetDeployLog() != nil || e.GetMetrics() != nil || e.GetContainerEvent() != nil {
+				return errors.New("event dropped: backpressure")
+			}
 			cancel()
 			return errors.New("event backpressure")
 		}
 	}
 	g, gctx := errgroup.WithContext(ctx)
+	if a.Events != nil {
+		g.Go(func() error { return a.Events(gctx, emit) })
+	}
+	if a.Metrics != nil {
+		g.Go(func() error {
+			tick := time.NewTicker(15 * time.Second)
+			defer tick.Stop()
+			for {
+				select {
+				case <-gctx.Done():
+					return gctx.Err()
+				case <-tick.C:
+					_ = emit(&agentv1.Event{Payload: &agentv1.Event_Metrics{Metrics: a.Metrics(gctx)}})
+				}
+			}
+		})
+	}
 	g.Go(func() error {
 		defer cancel()
 		heartbeat := time.NewTicker(5 * time.Second)
-		metrics := time.NewTicker(15 * time.Second)
 		heartbeatCount := 0
 		defer heartbeat.Stop()
-		defer metrics.Stop()
 		if e := stream.Send(&agentv1.Event{ServerId: a.ServerID, TimeUnix: time.Now().Unix(), Payload: &agentv1.Event_Heartbeat{Heartbeat: &agentv1.Heartbeat{RequestState: true}}}); e != nil {
 			return e
 		}
@@ -255,6 +280,10 @@ func (a *AgentClient) runOnce(ctx context.Context) error {
 			select {
 			case <-gctx.Done():
 				return gctx.Err()
+			case e := <-critical:
+				if err := stream.Send(e); err != nil {
+					return err
+				}
 			case e := <-out:
 				if err := stream.Send(e); err != nil {
 					return err
@@ -265,16 +294,13 @@ func (a *AgentClient) runOnce(ctx context.Context) error {
 					active = a.Active()
 				}
 				heartbeatCount++
+				ready := a.Ready == nil || a.Ready()
 				var observed []*agentv1.ObservedApp
 				if a.Observed != nil {
 					observed = a.Observed()
 				}
-				if e := emit(&agentv1.Event{Payload: &agentv1.Event_Heartbeat{Heartbeat: &agentv1.Heartbeat{RequestState: heartbeatCount%2 == 0, ActiveDeploys: active, Apps: observed}}}); e != nil {
+				if e := emit(&agentv1.Event{Payload: &agentv1.Event_Heartbeat{Heartbeat: &agentv1.Heartbeat{Ready: ready, RequestState: heartbeatCount%2 == 0, ActiveDeploys: active, Apps: observed}}}); e != nil {
 					return e
-				}
-			case <-metrics.C:
-				if a.Metrics != nil {
-					_ = emit(&agentv1.Event{Payload: &agentv1.Event_Metrics{Metrics: a.Metrics(gctx)}})
 				}
 			}
 		}

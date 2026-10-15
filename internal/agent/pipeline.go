@@ -58,6 +58,7 @@ type Pipeline struct {
 	wg         sync.WaitGroup
 	logCancels map[string]context.CancelFunc
 	Stats      func(context.Context) *agentv1.Metrics
+	ready      bool
 }
 
 func NewPipeline(engine Engine, state *StateStore, root string, limit int) (*Pipeline, error) {
@@ -248,6 +249,9 @@ func (p *Pipeline) deploy(ctx context.Context, d *agentv1.Deploy, emit func(*age
 	status := func(s string) {
 		_ = emit(&agentv1.Event{Payload: &agentv1.Event_DeployStatus{DeployStatus: &agentv1.DeployStatus{DeployId: d.DeployId, AppId: d.App.AppId, Status: s}}})
 	}
+	stage := func(name string, started time.Time) {
+		_ = emit(&agentv1.Event{Payload: &agentv1.Event_DeployStatus{DeployStatus: &agentv1.DeployStatus{DeployId: d.DeployId, AppId: d.App.AppId, Stage: name, DurationMs: time.Since(started).Milliseconds()}}})
+	}
 	success := false
 	defer func() {
 		if !success {
@@ -280,13 +284,17 @@ func (p *Pipeline) deploy(ctx context.Context, d *agentv1.Deploy, emit func(*age
 	masker := security.NewLineMasker(mask, log)
 	defer masker.Flush()
 	safeLog := func(b []byte) { _, _ = masker.Write(b) }
+	started := time.Now()
 	if e = p.Engine.Clone(ctx, d, dir, safeLog); e != nil {
 		return
 	}
+	stage("clone", started)
+	started = time.Now()
 	image, e := p.Engine.Build(ctx, d, dir, safeLog)
 	if e != nil {
 		return
 	}
+	stage("build", started)
 	fresh := Running{Image: image, AppID: d.App.AppId}
 	committed := false
 	defer func() {
@@ -297,16 +305,20 @@ func (p *Pipeline) deploy(ctx context.Context, d *agentv1.Deploy, emit func(*age
 		}
 	}()
 	status("starting")
+	started = time.Now()
 	fresh, e = p.Engine.Start(ctx, d.App, image)
 	if e != nil {
 		return
 	}
+	stage("start", started)
 	fresh.SHA = d.Sha
 	fresh.DeployID = d.DeployId
 	fresh.Revision = d.App.Revision
+	started = time.Now()
 	if e = p.Engine.Health(ctx, d.App, fresh); e != nil {
 		return
 	}
+	stage("healthcheck", started)
 	if e = ctx.Err(); e != nil {
 		return
 	}
@@ -320,7 +332,11 @@ func (p *Pipeline) deploy(ctx context.Context, d *agentv1.Deploy, emit func(*age
 	p.pending[d.App.AppId] = old
 	e = p.saveLocked()
 	if e != nil {
-		p.running[d.App.AppId] = old
+		if old.AppID != "" {
+			p.running[d.App.AppId] = old
+		} else {
+			delete(p.running, d.App.AppId)
+		}
 		if prior != nil {
 			p.desired[d.App.AppId] = prior
 		} else {
@@ -332,9 +348,14 @@ func (p *Pipeline) deploy(ctx context.Context, d *agentv1.Deploy, emit func(*age
 	if e != nil {
 		return
 	}
+	started = time.Now()
 	if e = p.Engine.Route(ctx, d.App, fresh); e != nil {
 		p.mu.Lock()
-		p.running[d.App.AppId] = old
+		if old.AppID != "" {
+			p.running[d.App.AppId] = old
+		} else {
+			delete(p.running, d.App.AppId)
+		}
 		if prior != nil {
 			p.desired[d.App.AppId] = prior
 		} else {
@@ -345,6 +366,7 @@ func (p *Pipeline) deploy(ctx context.Context, d *agentv1.Deploy, emit func(*age
 		p.mu.Unlock()
 		return
 	}
+	stage("route", started)
 	// Route is the commit point; cancellation after this cannot delete the live version.
 	committed = true
 	cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), 45*time.Second)
@@ -360,6 +382,7 @@ func (p *Pipeline) deploy(ctx context.Context, d *agentv1.Deploy, emit func(*age
 	status("success")
 }
 func (p *Pipeline) reconcile(ctx context.Context) {
+	defer func() { p.mu.Lock(); p.ready = true; p.mu.Unlock() }()
 	p.mu.Lock()
 	orphans := []Running{}
 	for id, r := range p.running {
@@ -523,7 +546,12 @@ func (p *Pipeline) Observed() []*agentv1.ObservedApp {
 		if p.apps[r.AppID] {
 			continue
 		}
+		if _, pending := p.pending[r.AppID]; pending {
+			continue
+		}
 		out = append(out, &agentv1.ObservedApp{AppId: r.AppID, DeployId: r.DeployID, Sha: r.SHA, Revision: r.Revision})
 	}
 	return out
 }
+
+func (p *Pipeline) Ready() bool { p.mu.Lock(); defer p.mu.Unlock(); return p.ready }

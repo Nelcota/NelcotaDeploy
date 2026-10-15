@@ -1050,6 +1050,8 @@ type DeployStatus struct {
 	AppId         string                 `protobuf:"bytes,2,opt,name=app_id,json=appId,proto3" json:"app_id,omitempty"`
 	Status        string                 `protobuf:"bytes,3,opt,name=status,proto3" json:"status,omitempty"`
 	ErrorCode     string                 `protobuf:"bytes,4,opt,name=error_code,json=errorCode,proto3" json:"error_code,omitempty"`
+	Stage         string                 `protobuf:"bytes,5,opt,name=stage,proto3" json:"stage,omitempty"`
+	DurationMs    int64                  `protobuf:"varint,6,opt,name=duration_ms,json=durationMs,proto3" json:"duration_ms,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1110,6 +1112,20 @@ func (x *DeployStatus) GetErrorCode() string {
 		return x.ErrorCode
 	}
 	return ""
+}
+
+func (x *DeployStatus) GetStage() string {
+	if x != nil {
+		return x.Stage
+	}
+	return ""
+}
+
+func (x *DeployStatus) GetDurationMs() int64 {
+	if x != nil {
+		return x.DurationMs
+	}
+	return 0
 }
 
 type ContainerEvent struct {
@@ -1337,6 +1353,7 @@ type Heartbeat struct {
 	RequestState  bool                   `protobuf:"varint,1,opt,name=request_state,json=requestState,proto3" json:"request_state,omitempty"`
 	ActiveDeploys []string               `protobuf:"bytes,2,rep,name=active_deploys,json=activeDeploys,proto3" json:"active_deploys,omitempty"`
 	Apps          []*ObservedApp         `protobuf:"bytes,3,rep,name=apps,proto3" json:"apps,omitempty"`
+	Ready         bool                   `protobuf:"varint,4,opt,name=ready,proto3" json:"ready,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1390,6 +1407,13 @@ func (x *Heartbeat) GetApps() []*ObservedApp {
 		return x.Apps
 	}
 	return nil
+}
+
+func (x *Heartbeat) GetReady() bool {
+	if x != nil {
+		return x.Ready
+	}
+	return false
 }
 
 type Event struct {
@@ -1631,13 +1655,16 @@ const file_agent_v1_agent_proto_rawDesc = "" +
 	"\x06app_id\x18\x02 \x01(\tR\x05appId\x12\x1a\n" +
 	"\bsequence\x18\x03 \x01(\x04R\bsequence\x12\x12\n" +
 	"\x04line\x18\x04 \x01(\fR\x04line\x12\x18\n" +
-	"\aruntime\x18\x05 \x01(\bR\aruntime\"y\n" +
+	"\aruntime\x18\x05 \x01(\bR\aruntime\"\xb0\x01\n" +
 	"\fDeployStatus\x12\x1b\n" +
 	"\tdeploy_id\x18\x01 \x01(\tR\bdeployId\x12\x15\n" +
 	"\x06app_id\x18\x02 \x01(\tR\x05appId\x12\x16\n" +
 	"\x06status\x18\x03 \x01(\tR\x06status\x12\x1d\n" +
 	"\n" +
-	"error_code\x18\x04 \x01(\tR\terrorCode\"b\n" +
+	"error_code\x18\x04 \x01(\tR\terrorCode\x12\x14\n" +
+	"\x05stage\x18\x05 \x01(\tR\x05stage\x12\x1f\n" +
+	"\vduration_ms\x18\x06 \x01(\x03R\n" +
+	"durationMs\"b\n" +
 	"\x0eContainerEvent\x12\x15\n" +
 	"\x06app_id\x18\x01 \x01(\tR\x05appId\x12!\n" +
 	"\fcontainer_id\x18\x02 \x01(\tR\vcontainerId\x12\x16\n" +
@@ -1659,11 +1686,12 @@ const file_agent_v1_agent_proto_rawDesc = "" +
 	"\x06app_id\x18\x01 \x01(\tR\x05appId\x12\x1b\n" +
 	"\tdeploy_id\x18\x02 \x01(\tR\bdeployId\x12\x10\n" +
 	"\x03sha\x18\x03 \x01(\tR\x03sha\x12\x1a\n" +
-	"\brevision\x18\x04 \x01(\x04R\brevision\"\x82\x01\n" +
+	"\brevision\x18\x04 \x01(\x04R\brevision\"\x98\x01\n" +
 	"\tHeartbeat\x12#\n" +
 	"\rrequest_state\x18\x01 \x01(\bR\frequestState\x12%\n" +
 	"\x0eactive_deploys\x18\x02 \x03(\tR\ractiveDeploys\x12)\n" +
-	"\x04apps\x18\x03 \x03(\v2\x15.agent.v1.ObservedAppR\x04apps\"\xea\x02\n" +
+	"\x04apps\x18\x03 \x03(\v2\x15.agent.v1.ObservedAppR\x04apps\x12\x14\n" +
+	"\x05ready\x18\x04 \x01(\bR\x05ready\"\xea\x02\n" +
 	"\x05Event\x12\x1b\n" +
 	"\tserver_id\x18\x01 \x01(\tR\bserverId\x12\x1b\n" +
 	"\ttime_unix\x18\x02 \x01(\x03R\btimeUnix\x124\n" +
