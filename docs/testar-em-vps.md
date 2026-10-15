@@ -58,6 +58,7 @@ No checkout do NelcotaDeploy:
 ```bash
 go version
 make tools
+export PATH="$PWD/.tools:$(go env GOPATH)/bin:$PATH"
 make build test lint check-generated
 install -d -m 0700 "$HOME/.config/nelcota-release"
 SIGNING_SECRET="$HOME/.config/nelcota-release/minisign.key"
