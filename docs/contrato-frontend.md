@@ -82,7 +82,7 @@ O frontend deve pedir confirmação humana e enviar `confirmed=true` para exclus
 7. `POST /api/auth/login/finish`: `{ceremony_id, credential}` com rawId, clientDataJSON, authenticatorData, signature, userHandle e extensões serializados em base64url. Origem, RP ID, user verification, assinatura e sign counter são verificados no servidor.
 8. Sem TOTP, a resposta define cookie e retorna expires_at. Com TOTP, retorna `{requires_totp:true, challenge}` sem criar sessão.
 9. `POST /api/auth/totp/verify`: `{challenge, code}`. Só após validação define cookie. Código já usado não pode ser repetido. Buscar `/api/session` e começar navegação autenticada.
-10. Ativar TOTP: sessão recente → `POST /api/auth/totp/begin` retorna `{id,url}` otpauth. Mostrar QR/segredo só nessa etapa. `POST /api/auth/totp/finish`: `{id,code}` confirma antes de persistir. Não há remoção/reset de TOTP nem recovery codes neste núcleo; manter outra passkey e planejar procedimento de recuperação antes de produção.
+10. Ativar TOTP: sessão recente → `POST /api/auth/totp/begin` retorna `{id,url}` otpauth. Mostrar QR/segredo só nessa etapa. `POST /api/auth/totp/finish`: `{id,code}` confirma antes de persistir e revoga sessões, tokens de API e desafios anteriores. Após ativar, fazer novo login com passkey + TOTP; em seguida, gerar recovery codes. Reset e recuperação estão descritos na seção operacional abaixo.
 11. `POST /api/auth/logout` revoga sessão e remove cookie.
 
 Não usar challenge em URL/localStorage; manter em memória durante a cerimônia. Não capturar respostas WebAuthn, tokens, env ou otpauth em logs de frontend. O backend testa as cerimônias com autenticador virtual ECDSA; validar também em browsers e passkeys reais.
@@ -109,7 +109,7 @@ GitHub retorna GET `/api/github/callback?state=...&code=...`. O backend consome 
 | servers | server.offline | `{id}` |
 | servers | container.event | Evento de container quando disponibilizado pelo transporte |
 
-Endpoint pronto: `GET /api/events?topic=...`, com cookie da sessão. Usar EventSource, sem token em query string. Keepalive a cada 15 s; timeout de escrita 5 s. Desconexão é esperada: EventSource reconecta e deve recarregar snapshots de apps/deploys/servers e logs já persistidos. IDs SSE não são persistidos e Last-Event-ID não garante replay. Carregar `Logs.Read(deployID)` inicialmente (limite 4 MiB) e então acompanhar o stream; tratar possível sobreposição. Retenção em disco: últimos 50 deploys finalizados por app, arquivos zstd fora do SQLite.
+Endpoint pronto: `GET /api/events?topic=...`, com cookie da sessão. Usar EventSource, sem token em query string. Keepalive a cada 15 s; timeout de escrita 5 s. A cada keepalive, o backend revalida a sessão ou token e encerra o stream se houver expiração, revogação ou mudança de permissões. Desconexão é esperada: EventSource reconecta e deve recarregar snapshots de apps/deploys/servers e logs já persistidos. IDs SSE não são persistidos e Last-Event-ID não garante replay. Carregar `Logs.Read(deployID)` inicialmente (limite 4 MiB) e então acompanhar o stream; tratar possível sobreposição. Retenção em disco: últimos 50 deploys finalizados por app, arquivos zstd fora do SQLite.
 
 A primeira assinatura de app/ID pede follow dos logs de runtime ao agent; assinaturas compartilham o stream e a última saída cancela o follow. Métricas chegam a cada 15 s. O heartbeat é de cinco segundos e solicita novo estado desejado a cada dez segundos.
 

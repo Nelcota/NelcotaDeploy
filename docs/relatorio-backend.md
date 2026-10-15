@@ -97,3 +97,20 @@ As funcionalidades operacionais antes inventariadas como não implementadas fora
 ## Fechamento das verificações desta continuação
 
 Em 2026-10-15: build estático dos dois executáveis e cross-build Linux arm64, testes unitários, vet/lint/shellcheck, race, geração reproduzível e integração completa passaram. A integração inclui a assinatura produzida pelo Minisign oficial, métricas e prewarm reais, agent executável com telemetria por mTLS, BuildKit/Docker/Caddy e sintaxe Debian/Ubuntu. O smoke final repetiu o ciclo API → backup → recusa de restore online → restore offline → novo backup. Processos de teste foram encerrados. Govulncheck confirmou zero achados em símbolos chamados e pacotes importados, mantendo somente o aviso de módulo não importado já descrito.
+
+## Revisão final de bugs e segurança — 2026-10-15
+
+| Problema encontrado | Correção e regressão local |
+|---|---|
+| Locks aceitavam FIFO, hard link e permissões públicas; leituras privadas podiam seguir symlinks e alocar arquivos sem limite | Validação do descritor aberto, O_NOFOLLOW/O_NONBLOCK, arquivo regular, tamanho limitado e lock com um link. Testes reproduziram as aceitações incorretas antes da correção. |
+| Atualizações concorrentes de certificado podiam deixar memória e disco com pares diferentes | Escrita serializada e teste concorrente de recarregamento; certificado persistido também exige arquivo privado e limitado. |
+| Restore fazia verificações de caminhos separadas das gravações e não verificava schema futuro/certificados cifrados pendentes | Operações confinadas por os.Root, substituição sem overwrite quando ausente --replace, verificação de referências/schema e de todos os campos cifrados. Criação/restore compartilham limites de arquivo, tar e quantidade de entradas. |
+| Restore como root criava subdiretórios 0700 pertencentes a root, inacessíveis ao serviço | Diretórios novos herdam UID/GID do pai. Reproduzido com UID/GID de serviço distintos em Debian 12 local e corrigido; toda a suíte maintenance passou como root dentro do container. |
+| Verificação do update relia versão de solicitação mutável; falha ao salvar estado podia manter binário novo com operação falha | Callback recebe a versão validada, rollback recebe a versão anterior, estado ilegível é recusado e falhas de sincronização/persistência restauram o executável. Healthcheck suporta porta personalizada em configuração protegida, restrita ao loopback. |
+| Verificações de login e emissão de sessão estavam em transações separadas | Desafio, verificação, contador, segundo fator/recovery e sessão ficam na mesma transação. Savepoint desfaz gravações parciais e mantém consumo do desafio em falhas. Testes cobrem contador concorrente, reset intercalado e erro após criar sessão. |
+| Ativar TOTP preservava sessões/tokens emitidos antes do segundo fator; SSE não revalidava credenciais | Ativação revoga acessos anteriores e exige novo login. Streams revalidam sessão/token a cada heartbeat e fecham após revogação/expiração/mudança de permissões. |
+| Enrollment podia reutilizar chave WireGuard e persistir teto de cache recusado pelo agent | Chaves do painel/outro agent são recusadas antes de configurar peer; mínimo inicial de cache alinhado em 64 MiB. |
+
+Validação desta revisão: `make build test lint check-generated`, race detector em todos os pacotes, integração com Docker/BuildKit/Caddy reais, interoperabilidade Minisign e sintaxe Debian/Ubuntu passaram. Smoke API/CLI: backup, recusa de restore ativo, restore offline e outro backup após restaurar passaram. As suítes host, maintenance e updater também passaram como root em containers Debian 12, sem montar os dados de instalação ou modificar serviços do host. Os dois executáveis foram novamente compilados para Linux arm64. O painel ficou em aproximadamente 50 MiB RSS após backup nesse smoke.
+
+Govulncheck v1.9.0 encontrou zero vulnerabilidades em símbolos chamados ou pacotes importados. Permanece o aviso do módulo OpenPGP não importado já registrado nas pendências. Nenhum release foi publicado e nenhuma VPS foi acessada nesta revisão; os gates externos de infraestrutura continuam em `pendencias.md`.

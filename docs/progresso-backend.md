@@ -56,3 +56,14 @@ Memória medida com pprof: painel aquecido ~119 → ~50 MiB e 46,7–53,5 MiB ap
 - [x] Trace automático de deploy lento com diagnóstico habilitado
 
 Build, testes, lint e integração real passaram. Os detalhes das verificações finais ficam no relatório; a aceitação de VPS e dos serviços de produção segue separada em `pendencias.md`.
+
+## Revisão final de bugs e segurança — 2026-10-15
+
+- [x] Leitura privada por descritor, limites de tamanho e recusa de symlinks/FIFOs; locks privados com um único link.
+- [x] Rotação de certificados serializada para manter arquivo e certificado ativo consistentes.
+- [x] Restore confinado aos diretórios de destino, recusa de schema futuro/referências quebradas e validação de certificados cifrados pendentes; limites de criação/restauração alinhados; diretórios novos herdam o usuário do serviço, validado como root em container local.
+- [x] Update verifica prontidão contra a versão validada, recusa estado ilegível e reverte o executável em falha ao persistir a versão.
+- [x] Autenticação transacional: desafio, contador de passkey, uso de TOTP/recovery e sessão; falhas consomem o desafio sem manter gravações parciais.
+- [x] Ativação de TOTP revoga acessos anteriores; SSE revalida credenciais por heartbeat; enrollment não reutiliza chaves WireGuard e não aceita cache incompatível com o agent.
+
+Testes de regressão cobrem arquivos especiais, contenção do lock, escrita fora do restore, schema futuro, certificado cifrado inválido, concorrência de passkeys/certificados, reset durante login, rollback da autenticação e fechamento de SSE após revogação. Verificações completas desta revisão estão no relatório.
