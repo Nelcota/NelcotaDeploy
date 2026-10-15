@@ -186,6 +186,8 @@ type CommandHandler interface {
 }
 type AgentClient struct {
 	URL, ServerID string
+	Version       string
+	UpdateResult  func() *agentv1.OperationResult
 	TLS           *tls.Config
 	Verifier      *security.Verifier
 	Handler       CommandHandler
@@ -273,7 +275,7 @@ func (a *AgentClient) runOnce(ctx context.Context) error {
 		heartbeat := time.NewTicker(5 * time.Second)
 		heartbeatCount := 0
 		defer heartbeat.Stop()
-		if e := stream.Send(&agentv1.Event{ServerId: a.ServerID, TimeUnix: time.Now().Unix(), Payload: &agentv1.Event_Heartbeat{Heartbeat: &agentv1.Heartbeat{RequestState: true}}}); e != nil {
+		if e := stream.Send(&agentv1.Event{ServerId: a.ServerID, TimeUnix: time.Now().Unix(), Payload: &agentv1.Event_Heartbeat{Heartbeat: &agentv1.Heartbeat{RequestState: true, Version: a.Version}}}); e != nil {
 			return e
 		}
 		for {
@@ -299,7 +301,11 @@ func (a *AgentClient) runOnce(ctx context.Context) error {
 				if a.Observed != nil {
 					observed = a.Observed()
 				}
-				if e := emit(&agentv1.Event{Payload: &agentv1.Event_Heartbeat{Heartbeat: &agentv1.Heartbeat{Ready: ready, RequestState: heartbeatCount%2 == 0, ActiveDeploys: active, Apps: observed}}}); e != nil {
+				var result *agentv1.OperationResult
+				if a.UpdateResult != nil {
+					result = a.UpdateResult()
+				}
+				if e := emit(&agentv1.Event{Payload: &agentv1.Event_Heartbeat{Heartbeat: &agentv1.Heartbeat{Version: a.Version, UpdateResult: result, Ready: ready, RequestState: heartbeatCount%2 == 0, ActiveDeploys: active, Apps: observed}}}); e != nil {
 					return e
 				}
 			}

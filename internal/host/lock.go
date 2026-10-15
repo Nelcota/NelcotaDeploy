@@ -1,4 +1,4 @@
-package store
+package host
 
 import (
 	"errors"
@@ -8,7 +8,7 @@ import (
 
 // Lock excludes a running panel and offline maintenance. The lock file stays in
 // place: unlinking it would allow two processes to lock different inodes.
-func Lock(path string) (*os.File, error) {
+func LockFile(path string) (*os.File, error) {
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR|syscall.O_NOFOLLOW, 0600)
 	if err != nil {
 		return nil, err

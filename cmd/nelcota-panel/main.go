@@ -25,6 +25,7 @@ import (
 	"github.com/nelcota/nelcota-deploy/internal/service"
 	"github.com/nelcota/nelcota-deploy/internal/store"
 	"github.com/nelcota/nelcota-deploy/internal/transport"
+	"github.com/nelcota/nelcota-deploy/internal/updater"
 	"github.com/nelcota/nelcota-deploy/scripts"
 	"github.com/spf13/cobra"
 	"golang.org/x/sync/errgroup"
@@ -104,6 +105,7 @@ func command() *cobra.Command {
 		return c.Seed(cmd.Context())
 	}})
 	root.AddCommand(maintenanceCommands(&cfg)...)
+	root.AddCommand(updater.Commands("panel", &cfg.data)...)
 	return root
 }
 func env(key, fallback string) string {
@@ -213,6 +215,31 @@ func open(ctx context.Context, c config) (*service.Core, *service.AuthService, e
 		return nil, nil, e
 	}
 	core := &service.Core{DB: db, Vault: v, Hub: events.NewHub(), LogStore: logs}
+	backup := maintenance.Backup{Data: c.data, Config: c.keys, KeyFile: env("NELCOTA_BACKUP_KEY_FILE", filepath.Join(c.keys, "backup.key"))}
+	ops := &service.OperationsService{Core: core, Version: updater.Version, PanelResult: func() updater.Result { return updater.ReadResult(c.data) }}
+	ops.CreateBackup = func(ctx context.Context, id string) error {
+		output := filepath.Join(c.data, "backups", "manual-"+id+".nbk")
+		if _, e := os.Stat(output); errors.Is(e, os.ErrNotExist) {
+			if e = backup.Create(ctx, output); e != nil {
+				return e
+			}
+		}
+		if p := env("NELCOTA_BACKUP_S3_CONFIG", ""); p != "" {
+			s, e := maintenance.LoadS3(p)
+			if e != nil {
+				return e
+			}
+			return s.Upload(ctx, output)
+		}
+		return nil
+	}
+	if trust, e := updater.LoadTrust(updater.TrustPath("panel")); e == nil {
+		ops.VerifyRelease = trust.Check
+		ops.QueuePanel = func(id, version string) error {
+			return updater.Queue(c.data, updater.Request{ID: id, Version: version})
+		}
+	}
+	core.Operations = ops
 	u, e := url.Parse(c.origin)
 	if e != nil || u.Hostname() == "" {
 		_ = db.Close()
@@ -318,6 +345,7 @@ func serve(ctx context.Context, c config, dev bool) error {
 	}
 	g.Go(func() error { return core.RunScheduler(gctx) })
 	g.Go(func() error { return core.RunChecks(gctx) })
+	g.Go(func() error { return core.Operations.Run(gctx) })
 	g.Go(func() error {
 		tick := time.NewTicker(time.Minute)
 		defer tick.Stop()

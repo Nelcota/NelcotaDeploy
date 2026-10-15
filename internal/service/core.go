@@ -35,10 +35,15 @@ type Core struct {
 	LogStore        *events.LogStore
 	Control         Dispatcher
 	GitHub          GitHub
+	Operations      *OperationsService
 }
 
 func (c *Core) Services(auth *AuthService) Services {
-	return Services{&appsService{c}, &deploysService{c}, &serversService{c}, &logsService{c}, auth, auth, &settingsService{c}, &auditService{c}}
+	ops := c.Operations
+	if ops == nil {
+		ops = &OperationsService{Core: c}
+	}
+	return Services{Apps: &appsService{c}, Deploys: &deploysService{c}, Servers: &serversService{c}, Logs: &logsService{c}, Auth: auth, Users: auth, Settings: &settingsService{c}, Audit: &auditService{c}, Operations: ops}
 }
 func decodeApp(v dbgen.App) App {
 	a := App{ID: v.ID, Name: v.Name, ServerID: v.ServerID, Repository: v.Repository, Branch: v.Branch, DesiredSHA: v.DesiredSha, Revision: v.Revision}

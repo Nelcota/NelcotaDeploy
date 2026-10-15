@@ -15,6 +15,7 @@ import (
 
 	_ "github.com/ncruces/go-sqlite3/driver"
 	_ "github.com/ncruces/go-sqlite3/embed"
+	"github.com/nelcota/nelcota-deploy/internal/host"
 	"github.com/nelcota/nelcota-deploy/internal/store/dbgen"
 	"github.com/pressly/goose/v3"
 )
@@ -37,7 +38,7 @@ func Open(ctx context.Context, path string) (*Store, error) {
 	if e != nil {
 		return nil, e
 	}
-	lock, e := Lock(abs + ".lock")
+	lock, e := host.LockFile(abs + ".lock")
 	if e != nil {
 		return nil, e
 	}

@@ -20,6 +20,9 @@ import (
 )
 
 type Auth interface {
+	RecoveryCodes(context.Context) ([]string, error)
+	VerifyRecovery(context.Context, string, string) (LoginResult, error)
+	ResetTOTP(context.Context) error
 	CreateToken(context.Context, TokenInput) (APIToken, error)
 	Tokens(context.Context) ([]APIToken, error)
 	RevokeToken(context.Context, string) error

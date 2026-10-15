@@ -16,6 +16,9 @@ while (($#)); do
  *) fail 'Argumento desconhecido';;
  esac
 done
+release=${release%/}
+release_base=${release%/*}
+[[ ${release##*/} =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || fail 'Use uma URL imutável terminada em /vMAJOR.MINOR.PATCH'
 [[ $EUID == 0 ]] || fail 'Execute como root'
 [[ $panel == https://* && $panel != *[$'\n\r ']* && $release == https://* && $release != *[$'\n\r ']* && -n $signing_key ]] || fail 'URLs HTTPS e chave pública confiável obrigatórias'
 [[ -n $token || -f $token_file ]] || fail 'Convite obrigatório'
@@ -219,7 +222,36 @@ printf '%s\n' 'PasswordAuthentication no' 'KbdInteractiveAuthentication no' > /e
 sshd -t
 systemctl reload ssh
 chown -R nelcota-agent:nelcota-agent /etc/nelcota-agent /var/lib/nelcota-agent
+# The service user can request a version; only this fixed root helper installs it.
+jq -n --arg base "$release_base" --arg key "$signing_key" --arg target "$arch" '{base_url:$base,public_key:$key,target:$target}' > /etc/nelcota-release-agent.json
+chown root:root /etc/nelcota-release-agent.json
+chmod 0644 /etc/nelcota-release-agent.json
+install -d -m 0700 -o nelcota-agent -g nelcota-agent /var/lib/nelcota-agent/update
+cat > /etc/systemd/system/nelcota-agent-update.path <<'UNIT'
+[Unit]
+Description=Nelcota agent signed update request
+[Path]
+PathExists=/var/lib/nelcota-agent/update/request.json
+Unit=nelcota-agent-update.service
+[Install]
+WantedBy=multi-user.target
+UNIT
+cat > /etc/systemd/system/nelcota-agent-update.service <<'UNIT'
+[Unit]
+Description=Nelcota agent signed update helper
+ConditionPathExists=/var/lib/nelcota-agent/update/request.json
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/nelcota-agent apply-update
+TimeoutStartSec=10min
+UMask=0077
+LimitCORE=0
+PrivateTmp=true
+ProtectHome=true
+NoNewPrivileges=true
+UNIT
 systemctl daemon-reload
+systemctl enable --now nelcota-agent-update.path
 mkdir -p /etc/fail2ban/jail.d
 printf '%s\n' '[sshd]' 'enabled = true' 'backend = systemd' > /etc/fail2ban/jail.d/nelcota.local
 printf '%s\n' 'APT::Periodic::Update-Package-Lists "1";' 'APT::Periodic::Unattended-Upgrade "1";' > /etc/apt/apt.conf.d/20nelcota-upgrades

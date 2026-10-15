@@ -20,8 +20,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/nelcota/nelcota-deploy/internal/host"
 	"github.com/nelcota/nelcota-deploy/internal/security"
-	"github.com/nelcota/nelcota-deploy/internal/store"
 )
 
 const magic = "NELCOTA-BACKUP\x01"
@@ -289,7 +289,7 @@ func (b Backup) Restore(ctx context.Context, input string, replace bool) error {
 	if err := os.MkdirAll(b.Data, 0700); err != nil {
 		return err
 	}
-	lock, err := store.Lock(filepath.Join(b.Data, "panel.db.lock"))
+	lock, err := host.LockFile(filepath.Join(b.Data, "panel.db.lock"))
 	if err != nil {
 		return err
 	}
