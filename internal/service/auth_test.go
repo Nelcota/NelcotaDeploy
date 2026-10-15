@@ -6,11 +6,14 @@ import (
 	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/sha256"
+	"database/sql"
 	"encoding/base64"
 	"encoding/binary"
 	"encoding/json"
+	"errors"
 	"github.com/pquerna/otp/totp"
 	"net/url"
+	"sync"
 	"testing"
 	"time"
 
@@ -211,5 +214,137 @@ func TestTOTPReplayRejected(t *testing.T) {
 	}
 	if _, e = auth.VerifyTOTP(ctx, pending, next); !Is(e, Unauthenticated) {
 		t.Fatal("challenge replay", e)
+	}
+}
+
+func TestEnablingTOTPSuspendsExistingCredentialsAndPendingLogins(t *testing.T) {
+	c, ctx, _ := fixture(t)
+	a, _ := NewAuth(c, "localhost", "http://localhost:8080")
+	en, e := a.Bootstrap(ctx, UserInput{Email: "enable@example.com", Name: "Enable"})
+	if e != nil {
+		t.Fatal(e)
+	}
+	ctx = WithPrincipal(ctx, Principal{ID: en.UserID, Email: "enable@example.com", Role: "admin", TwoFactorAt: time.Now().Unix()})
+	session, e := a.issueSession(ctx, en.UserID)
+	if e != nil {
+		t.Fatal(e)
+	}
+	token, e := a.CreateToken(ctx, TokenInput{Name: "old", Scopes: []string{"apps:read"}})
+	if e != nil {
+		t.Fatal(e)
+	}
+	pending, e := a.saveChallenge(ctx, en.UserID, "login", struct{}{}, time.Minute)
+	if e != nil {
+		t.Fatal(e)
+	}
+	setup, e := a.BeginTOTP(ctx)
+	if e != nil {
+		t.Fatal(e)
+	}
+	u, _ := url.Parse(setup.URL)
+	code, _ := totp.GenerateCode(u.Query().Get("secret"), time.Now())
+	if e = a.FinishTOTP(ctx, setup.ID, code); e != nil {
+		t.Fatal(e)
+	}
+	if _, e = a.Session(ctx, session.Token); !Is(e, Unauthenticated) {
+		t.Fatal("old session survived enabling TOTP", e)
+	}
+	if _, e = a.AuthenticateToken(ctx, token.Token); !Is(e, Unauthenticated) {
+		t.Fatal("old API token survived enabling TOTP", e)
+	}
+	if _, e = a.FinishLogin(ctx, FinishInput{CeremonyID: pending}); !Is(e, Unauthenticated) {
+		t.Fatal("pending login survived enabling TOTP", e)
+	}
+}
+
+func TestChallengeAndSessionCommitAtomicallyWithReset(t *testing.T) {
+	c, ctx, _ := fixture(t)
+	a, _ := NewAuth(c, "localhost", "http://localhost:8080")
+	en, e := a.Bootstrap(ctx, UserInput{Email: "atomic@example.com", Name: "Atomic"})
+	if e != nil {
+		t.Fatal(e)
+	}
+	challenge, _ := a.saveChallenge(ctx, en.UserID, "two_factor", struct{}{}, time.Minute)
+	started, release := make(chan struct{}), make(chan struct{})
+	loginDone, resetDone := make(chan error, 1), make(chan error, 1)
+	go func() {
+		loginDone <- a.consumeChallenge(ctx, challenge, "two_factor", func(tx *sql.Tx, user string, _ []byte) error {
+			close(started)
+			<-release
+			_, e := a.issueSessionTx(ctx, tx, user)
+			return e
+		})
+	}()
+	<-started
+	go func() { resetDone <- a.ResetTOTPByEmail(ctx, "atomic@example.com") }()
+	close(release)
+	if e = <-loginDone; e != nil {
+		t.Fatal(e)
+	}
+	if e = <-resetDone; e != nil {
+		t.Fatal(e)
+	}
+	var n int
+	if e = c.DB.Read.QueryRowContext(ctx, "SELECT count(*) FROM sessions WHERE user_id=?", en.UserID).Scan(&n); e != nil || n != 0 {
+		t.Fatal("in-flight login survived reset", n, e)
+	}
+
+	// Failed finalization burns the challenge and rolls back any partial session.
+	challenge, _ = a.saveChallenge(ctx, en.UserID, "two_factor", struct{}{}, time.Minute)
+	e = a.consumeChallenge(ctx, challenge, "two_factor", func(tx *sql.Tx, user string, _ []byte) error {
+		if _, e := a.issueSessionTx(ctx, tx, user); e != nil {
+			return e
+		}
+		return errors.New("late failure")
+	})
+	if e == nil {
+		t.Fatal("ignored failed login")
+	}
+	if e = c.DB.Read.QueryRowContext(ctx, "SELECT count(*) FROM sessions WHERE user_id=?", en.UserID).Scan(&n); e != nil || n != 0 {
+		t.Fatal("partial session committed", n, e)
+	}
+	if e = a.consumeChallenge(ctx, challenge, "two_factor", func(*sql.Tx, string, []byte) error { return nil }); !Is(e, Unauthenticated) {
+		t.Fatal("failed challenge reusable", e)
+	}
+}
+
+func TestConcurrentPasskeyAssertionsCannotReuseCounter(t *testing.T) {
+	c, ctx, _ := fixture(t)
+	a, _ := NewAuth(c, "localhost", "http://localhost:8080")
+	en, e := a.Bootstrap(ctx, UserInput{Email: "counter@example.com", Name: "Counter"})
+	if e != nil {
+		t.Fatal(e)
+	}
+	key := newVirtualKey(t, en.UserID)
+	registration, _ := a.BeginRegistration(ctx, RegistrationInput{EnrollmentToken: en.Token})
+	if e = a.FinishRegistration(ctx, FinishInput{registration.ID, key.registration(t, registration)}); e != nil {
+		t.Fatal(e)
+	}
+	inputs := make([]FinishInput, 2)
+	for i := range inputs {
+		ceremony, e := a.BeginLogin(ctx, "counter@example.com")
+		if e != nil {
+			t.Fatal(e)
+		}
+		key.counter = 1
+		inputs[i] = FinishInput{ceremony.ID, key.assertion(t, ceremony)}
+	}
+	var wg sync.WaitGroup
+	results := make(chan error, 2)
+	for _, input := range inputs {
+		wg.Go(func() { _, e := a.FinishLogin(ctx, input); results <- e })
+	}
+	wg.Wait()
+	close(results)
+	success := 0
+	for e := range results {
+		if e == nil {
+			success++
+		} else if !Is(e, Unauthenticated) {
+			t.Fatal(e)
+		}
+	}
+	if success != 1 {
+		t.Fatal("reused authenticator counter", success)
 	}
 }

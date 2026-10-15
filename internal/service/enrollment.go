@@ -65,6 +65,13 @@ func (s *EnrollmentService) Join(ctx context.Context, in JoinInput) (JoinResult,
 		if e != nil {
 			return fail(Unauthenticated, "Convite inválido ou utilizado")
 		}
+		var duplicates int
+		if e = tx.QueryRowContext(ctx, "SELECT count(*) FROM servers WHERE wg_public_key=? AND id<>?", in.WireGuardPublicKey, id).Scan(&duplicates); e != nil {
+			return e
+		}
+		if duplicates != 0 || in.WireGuardPublicKey == s.PanelWireGuardKey {
+			return fail(Conflict, "Chave WireGuard já utilizada")
+		}
 		cert, key, e := s.CA.Issue(id, false, time.Now())
 		if e != nil {
 			return e

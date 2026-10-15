@@ -64,15 +64,12 @@ func normalizeRecovery(s string) string {
 	return strings.ToUpper(strings.ReplaceAll(strings.TrimSpace(s), "-", ""))
 }
 func (a *AuthService) VerifyRecovery(ctx context.Context, challenge, code string) (LoginResult, error) {
-	user, _, e := a.takeChallenge(ctx, challenge, "two_factor")
-	if e != nil {
-		return LoginResult{}, e
-	}
-	normalized := normalizeRecovery(code)
-	if len(normalized) != 32 {
-		return LoginResult{}, fail(Unauthenticated, "Código de recuperação inválido")
-	}
-	e = a.Core.mutate(ctx, func(tx *sql.Tx) error {
+	var result LoginResult
+	e := a.consumeChallenge(ctx, challenge, "two_factor", func(tx *sql.Tx, user string, _ []byte) error {
+		normalized := normalizeRecovery(code)
+		if len(normalized) != 32 {
+			return fail(Unauthenticated, "Código de recuperação inválido")
+		}
 		r, e := tx.ExecContext(ctx, "UPDATE recovery_codes SET used_at=? WHERE user_id=? AND code_hash=? AND used_at=0 AND EXISTS(SELECT 1 FROM credentials WHERE user_id=? AND kind='totp')", time.Now().Unix(), user, security.Hash(normalized), user)
 		if e != nil {
 			return e
@@ -81,12 +78,16 @@ func (a *AuthService) VerifyRecovery(ctx context.Context, challenge, code string
 		if n != 1 {
 			return fail(Unauthenticated, "Código de recuperação inválido ou utilizado")
 		}
-		return a.Core.audit(systemContext(ctx), tx, "auth.recovery.use", user)
+		if e = a.Core.audit(systemContext(ctx), tx, "auth.recovery.use", user); e != nil {
+			return e
+		}
+		result, e = a.issueSessionTx(ctx, tx, user)
+		return e
 	})
 	if e != nil {
 		return LoginResult{}, e
 	}
-	return a.issueSession(ctx, user)
+	return result, nil
 }
 func (a *AuthService) ResetTOTP(ctx context.Context) error {
 	p, e := freshInteractive(ctx)

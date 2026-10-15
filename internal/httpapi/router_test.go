@@ -4,9 +4,13 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
+	"github.com/nelcota/nelcota-deploy/internal/events"
 	"github.com/nelcota/nelcota-deploy/internal/service"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -88,5 +92,70 @@ func TestJSONRejectsTrailingData(t *testing.T) {
 	h.ServeHTTP(w, r)
 	if w.Code != 400 {
 		t.Fatal(w.Code)
+	}
+}
+
+type revocableAuth struct {
+	service.Auth
+	revoked atomic.Bool
+	p       service.Principal
+}
+
+func (a *revocableAuth) Session(context.Context, string) (service.Principal, error) {
+	if a.revoked.Load() {
+		return service.Principal{}, errors.New("revoked or expired")
+	}
+	return a.p, nil
+}
+func (a *revocableAuth) AuthenticateToken(ctx context.Context, token string) (service.Principal, error) {
+	return a.Session(ctx, token)
+}
+
+type streamLogs struct {
+	service.Logs
+	cancelled chan struct{}
+}
+
+func (s *streamLogs) Subscribe(context.Context, string) (events.Subscription, error) {
+	return events.Subscription{C: make(chan events.Event), Cancel: func() { close(s.cancelled) }}, nil
+}
+
+func TestEventStreamClosesWhenCredentialsAreRevoked(t *testing.T) {
+	for _, bearer := range []bool{false, true} {
+		t.Run(map[bool]string{false: "session", true: "token"}[bearer], func(t *testing.T) {
+			auth := &revocableAuth{p: service.Principal{ID: "admin", Role: "admin"}}
+			if bearer {
+				auth.p.Scopes = []string{"logs:read"}
+			}
+			logs := &streamLogs{cancelled: make(chan struct{})}
+			a := &API{cfg: Config{Services: service.Services{Auth: auth, Logs: logs}}}
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				r = r.WithContext(service.WithPrincipal(r.Context(), auth.p))
+				a.streamEvents(w, r, 5*time.Millisecond)
+			}))
+			defer server.Close()
+			ctx, cancel := context.WithTimeout(t.Context(), time.Second)
+			defer cancel()
+			r, _ := http.NewRequestWithContext(ctx, "GET", server.URL, nil)
+			if bearer {
+				r.Header.Set("Authorization", "Bearer token")
+			} else {
+				r.AddCookie(&http.Cookie{Name: "__Host-nelcota", Value: "session"})
+			}
+			res, e := server.Client().Do(r)
+			if e != nil {
+				t.Fatal(e)
+			}
+			defer res.Body.Close()
+			auth.revoked.Store(true)
+			if _, e = io.Copy(io.Discard, res.Body); e != nil {
+				t.Fatal("stream did not close after revocation", e)
+			}
+			select {
+			case <-logs.cancelled:
+			default:
+				t.Fatal("stream subscription leaked")
+			}
+		})
 	}
 }

@@ -11,6 +11,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -485,6 +486,9 @@ func (a *API) csrf(next http.Handler) http.Handler {
 	})
 }
 func (a *API) sse(w http.ResponseWriter, r *http.Request) {
+	a.streamEvents(w, r, 15*time.Second)
+}
+func (a *API) streamEvents(w http.ResponseWriter, r *http.Request, interval time.Duration) {
 	sub, e := a.cfg.Services.Logs.Subscribe(r.Context(), r.URL.Query().Get("topic"))
 	if e != nil {
 		respond(w, nil, e)
@@ -494,7 +498,7 @@ func (a *API) sse(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("X-Accel-Buffering", "no")
 	ctrl := http.NewResponseController(w)
-	heartbeat := time.NewTicker(15 * time.Second)
+	heartbeat := time.NewTicker(interval)
 	defer heartbeat.Stop()
 	_, _ = io.WriteString(w, ": connected\n\n")
 	if e = ctrl.Flush(); e != nil {
@@ -505,6 +509,9 @@ func (a *API) sse(w http.ResponseWriter, r *http.Request) {
 		case <-r.Context().Done():
 			return
 		case <-heartbeat.C:
+			if !a.streamAuthorized(r) {
+				return
+			}
 			_ = ctrl.SetWriteDeadline(time.Now().Add(5 * time.Second))
 			if _, e = io.WriteString(w, ": heartbeat\n\n"); e != nil {
 				return
@@ -526,6 +533,31 @@ func (a *API) sse(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
+}
+
+// Long-lived streams must observe logout, credential reset, token revocation and
+// expiry too. Recheck on each heartbeat without querying SQLite per log line.
+func (a *API) streamAuthorized(r *http.Request) bool {
+	initial, e := service.CurrentUser(r.Context())
+	if e != nil || a.cfg.Services.Auth == nil {
+		return false
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
+	defer cancel()
+	var current service.Principal
+	if authorization := r.Header.Get("Authorization"); authorization != "" {
+		if !strings.HasPrefix(authorization, "Bearer ") {
+			return false
+		}
+		current, e = a.cfg.Services.Auth.AuthenticateToken(ctx, strings.TrimPrefix(authorization, "Bearer "))
+	} else {
+		cookie, err := r.Cookie(a.cookieName())
+		if err != nil {
+			return false
+		}
+		current, e = a.cfg.Services.Auth.Session(ctx, cookie.Value)
+	}
+	return e == nil && current.ID == initial.ID && current.Role == initial.Role && slices.Equal(current.Scopes, initial.Scopes)
 }
 func read(w http.ResponseWriter, r *http.Request, v any) bool {
 	if !strings.HasPrefix(r.Header.Get("Content-Type"), "application/json") {

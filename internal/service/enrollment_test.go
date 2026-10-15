@@ -38,6 +38,21 @@ func TestServerInvitationSingleUse(t *testing.T) {
 	if peers.count != 1 {
 		t.Fatal(peers.count)
 	}
+	duplicate, e := (&serversService{c}).Invite(ctx, ServerInput{Name: "duplicate", WireGuardIP: "10.77.0.11"})
+	if e != nil {
+		t.Fatal(e)
+	}
+	join.Token = duplicate.Token
+	if _, e = s.Join(ctx, join); !Is(e, Conflict) || peers.count != 1 {
+		t.Fatal("duplicate key could replace an enrolled WireGuard peer", e, peers.count)
+	}
+	other, _ := wgtypes.GeneratePrivateKey()
+	s.PanelWireGuardKey = other.PublicKey().String()
+	join.WireGuardPublicKey = s.PanelWireGuardKey
+	if _, e = s.Join(ctx, join); !Is(e, Conflict) || peers.count != 1 {
+		t.Fatal("accepted the panel WireGuard identity", e, peers.count)
+	}
+	join.WireGuardPublicKey = private.PublicKey().String()
 	if e = s.SyncPeers(ctx); e != nil || peers.count != 2 {
 		t.Fatal("stored WireGuard peers were not restored", peers.count, e)
 	}
@@ -51,5 +66,12 @@ func TestServerInvitationSingleUse(t *testing.T) {
 	join.Token = expired.Token
 	if _, e = s.Join(ctx, join); !Is(e, Unauthenticated) {
 		t.Fatal(e)
+	}
+}
+
+func TestServerInvitationCannotPersistLimitsRejectedByAgent(t *testing.T) {
+	c, ctx, _ := fixture(t)
+	if _, e := (&serversService{c}).Invite(ctx, ServerInput{Name: "invalid", WireGuardIP: "10.77.0.12", CacheBytes: 1}); !Is(e, Validation) {
+		t.Fatal("accepted cache ceiling below the snapshot minimum", e)
 	}
 }
