@@ -10,6 +10,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -92,6 +93,51 @@ func TestJSONRejectsTrailingData(t *testing.T) {
 	h.ServeHTTP(w, r)
 	if w.Code != 400 {
 		t.Fatal(w.Code)
+	}
+}
+
+type expiredAuth struct{ authStub }
+
+func (expiredAuth) Session(context.Context, string) (service.Principal, error) {
+	return service.Principal{}, errors.New("expired")
+}
+
+func TestExpiredCookieDoesNotBlockNewLogin(t *testing.T) {
+	h := New(Config{Origin: "https://panel.example.com", CSRFKey: bytes.Repeat([]byte{1}, 32), Services: service.Services{Auth: expiredAuth{}}})
+	for _, origin := range []string{"https://panel.example.com", "https://evil.example"} {
+		req := httptest.NewRequest("POST", "/api/auth/login/finish", strings.NewReader(`{"ceremony_id":"x","credential":{}}`))
+		req.Header.Set("Origin", origin)
+		req.Header.Set("Content-Type", "application/json")
+		req.AddCookie(&http.Cookie{Name: "__Host-nelcota", Value: "expired-session"})
+		response := httptest.NewRecorder()
+		h.ServeHTTP(response, req)
+		want := 200
+		if origin != "https://panel.example.com" {
+			want = 403
+		}
+		if response.Code != want {
+			t.Fatalf("expired cookie login: %d %s", response.Code, response.Body.String())
+		}
+	}
+}
+
+func TestJSONMediaTypeAndSize(t *testing.T) {
+	for _, row := range []struct {
+		kind, body string
+		want       int
+	}{
+		{"application/json-evil", `{}`, 415},
+		{"application/json; charset=utf-8", `{"ceremony_id":"x","credential":{}}`, 200},
+		{"application/json", `{"ceremony_id":"` + strings.Repeat("x", 1<<20) + `"}`, 413},
+	} {
+		req := httptest.NewRequest("POST", "/api/auth/login/finish", strings.NewReader(row.body))
+		req.Header.Set("Origin", "https://panel.example.com")
+		req.Header.Set("Content-Type", row.kind)
+		response := httptest.NewRecorder()
+		testAPI().ServeHTTP(response, req)
+		if response.Code != row.want {
+			t.Fatalf("media %s: want %d got %d", row.kind, row.want, response.Code)
+		}
 	}
 }
 

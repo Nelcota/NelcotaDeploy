@@ -73,6 +73,16 @@ func (d *DockerEngine) Clone(ctx context.Context, dep *agentv1.Deploy, dir strin
 		return errors.New("invalid repository or SHA")
 	}
 	env := []string{"PATH=" + os.Getenv("PATH"), "HOME=" + dir, "GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL=/dev/null", "GIT_TERMINAL_PROMPT=0"}
+	// Preserve network routing and trust, but never inherit arbitrary Git config,
+	// hooks, SSH helpers, tracing, or TLS-verification overrides from the runner.
+	for _, name := range []string{"HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY", "http_proxy", "https_proxy", "no_proxy", "SSL_CERT_FILE", "SSL_CERT_DIR", "GIT_SSL_CAINFO"} {
+		if value, ok := os.LookupEnv(name); ok {
+			env = append(env, name+"="+value)
+		}
+	}
+	if os.Getenv("GIT_SSL_CAINFO") == "" && os.Getenv("SSL_CERT_FILE") != "" {
+		env = append(env, "GIT_SSL_CAINFO="+os.Getenv("SSL_CERT_FILE"))
+	}
 	if dep.GithubToken != "" {
 		env = append(env, "GIT_CONFIG_COUNT=1", "GIT_CONFIG_KEY_0=http.https://github.com/.extraHeader", "GIT_CONFIG_VALUE_0=Authorization: Basic "+base64.StdEncoding.EncodeToString([]byte("x-access-token:"+dep.GithubToken)))
 	}
@@ -227,6 +237,14 @@ func (d *DockerEngine) cleanupContainers(r Running) {
 		_, _ = d.Docker.ContainerRemove(ctx, id, client.ContainerRemoveOptions{Force: true, RemoveVolumes: true})
 	}
 }
+
+// Container bridge traffic is local infrastructure traffic. It must never be
+// forwarded through an outbound HTTP proxy (which may reject or log it).
+var healthTransport = &http.Transport{
+	DialContext:  (&net.Dialer{Timeout: 2 * time.Second}).DialContext,
+	MaxIdleConns: 16, MaxIdleConnsPerHost: 2, IdleConnTimeout: 30 * time.Second,
+}
+
 func (d *DockerEngine) Health(ctx context.Context, app *agentv1.AppConfig, r Running) error {
 	timeout := time.Duration(app.HealthTimeoutSeconds) * time.Second
 	if timeout <= 0 {
@@ -234,7 +252,10 @@ func (d *DockerEngine) Health(ctx context.Context, app *agentv1.AppConfig, r Run
 	}
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	client := &http.Client{Timeout: 2 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	if len(r.Addresses) == 0 {
+		return errors.New("healthcheck has no container addresses")
+	}
+	client := &http.Client{Transport: healthTransport, Timeout: 2 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 	for _, addr := range r.Addresses {
 		for {
 			req, e := http.NewRequestWithContext(ctx, "GET", "http://"+addr+app.HealthPath, nil)
@@ -243,6 +264,7 @@ func (d *DockerEngine) Health(ctx context.Context, app *agentv1.AppConfig, r Run
 			}
 			resp, e := client.Do(req)
 			if e == nil {
+				_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
 				_ = resp.Body.Close()
 				if resp.StatusCode >= 200 && resp.StatusCode < 400 {
 					break

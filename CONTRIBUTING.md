@@ -1,6 +1,6 @@
 # Contribuir com o Nelcota Deploy
 
-O projeto está em desenvolvimento. A interface e a homologação em VPS são os próximos marcos; o [relatório do backend](docs/relatorio-backend.md) e as [pendências](docs/pendencias.md) mostram o estado atual.
+O projeto está em desenvolvimento. A interface já está integrada; a homologação em VPS é o próximo gate operacional; o [relatório do backend](docs/relatorio-backend.md) e as [pendências](docs/pendencias.md) mostram o estado atual.
 
 ## Preparar o ambiente
 
@@ -45,3 +45,10 @@ Adicione regressões para correções de comportamento. Não edite manualmente `
 - Alterações de segurança devem considerar [SECURITY.md](SECURITY.md).
 
 Ao contribuir, você concorda em disponibilizar sua contribuição sob a [licença MIT](LICENSE) do projeto.
+
+
+## Interface e QA de navegador
+
+Os assets de `web/assets` são embutidos automaticamente por Go; não há bundler nem dependências JavaScript de produção. Use Node 24, `npm ci` e `npx playwright install --with-deps chromium` para QA; execute `make check-web test-browser` com a porta 8080 livre. A suíte usa banco temporário e autenticador WebAuthn virtual e encerra seus próprios processos. `BROWSER_EXECUTABLE_PATH` permite usar um Chromium já instalado. O CI tem um job separado para esses fluxos.
+
+`make tools` instala protoc 36.1 com checksum publicado verificado. `make check-generated` trabalha em uma cópia temporária dos arquivos atuais, incluindo arquivos novos, e não confunde alterações legítimas não commitadas com geração divergente. Não edite manualmente `dbgen` ou Protobuf.

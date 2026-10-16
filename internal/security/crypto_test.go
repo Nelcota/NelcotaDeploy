@@ -4,6 +4,9 @@ import (
 	"crypto/ed25519"
 	"crypto/rand"
 	agentv1 "github.com/nelcota/nelcota-deploy/internal/gen/agent/v1"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -95,5 +98,50 @@ func TestReplaySurvivesRestart(t *testing.T) {
 	restarted := &Verifier{Key: pub, ServerID: "s", Path: path}
 	if e := restarted.Verify(c, now); e == nil {
 		t.Fatal("persisted replay accepted")
+	}
+}
+
+func TestOverlappingSecretsAreMaskedLongestFirst(t *testing.T) {
+	mask := NewRedactor([]string{"token", "token-with-private-suffix"})
+	if got := mask.Mask("value=token-with-private-suffix"); got != "value=[REDACTED]" {
+		t.Fatal("credential suffix leaked", got)
+	}
+}
+
+func TestReplayJournalRejectsPublicFilesAndLinks(t *testing.T) {
+	pub, key, _ := ed25519.GenerateKey(rand.Reader)
+	now := time.Now()
+	command := &agentv1.Command{Id: Token(), ServerId: "server", IssuedUnix: now.Unix(), ExpiresUnix: now.Unix() + 30, Action: &agentv1.Command_Stats{Stats: &agentv1.Stats{}}}
+	if err := Sign(command, key); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(t.TempDir(), "journal")
+	if err := os.WriteFile(path, []byte(`{}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(path, 0644); err != nil {
+		t.Fatal(err)
+	}
+	v := &Verifier{Key: pub, ServerID: "server", Path: path}
+	if err := v.Verify(command, now); err == nil {
+		t.Fatal("public replay journal accepted")
+	}
+	if err := os.Chmod(path, 0600); err != nil {
+		t.Fatal(err)
+	}
+	link := path + "-link"
+	if err := os.Symlink(path, link); err != nil {
+		t.Fatal(err)
+	}
+	v = &Verifier{Key: pub, ServerID: "server", Path: link}
+	if err := v.Verify(command, now); err == nil {
+		t.Fatal("journal symlink accepted")
+	}
+	command.Id = strings.Repeat("x", 129)
+	if err := Sign(command, key); err != nil {
+		t.Fatal(err)
+	}
+	if err := (&Verifier{Key: pub, ServerID: "server"}).Verify(command, now); err == nil {
+		t.Fatal("unbounded command id accepted")
 	}
 }

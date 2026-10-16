@@ -155,7 +155,7 @@ curl --fail --silent --show-error "$PANEL_URL/healthz"
 
 ## 3. Primeiro acesso, TOTP e token de homologação
 
-A página ainda é um placeholder. Abra **a origem HTTPS do painel** em um navegador com passkeys, abra o console e cole o conteúdo de [`scripts/homologacao/browser.js`](../scripts/homologacao/browser.js). Leia esse helper antes de colá-lo. Ele usa somente APIs da mesma origem; não é necessário frontend externo.
+A interface já oferece login, registro, TOTP e administração. Para os roteiros de API direta abaixo, abra **a origem HTTPS do painel** em um navegador com passkeys, abra o console e cole o conteúdo de [`scripts/homologacao/browser.js`](../scripts/homologacao/browser.js). Leia esse helper antes de colá-lo. Ele usa somente APIs da mesma origem; não é necessário frontend externo. Este helper é opcional para homologar as APIs e não substitui a interface.
 
 Execute no console, em sequência:
 

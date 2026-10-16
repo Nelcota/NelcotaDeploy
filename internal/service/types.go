@@ -180,6 +180,7 @@ type Apps interface {
 	Action(context.Context, string, string, uint32, bool) error
 }
 type Deploys interface {
+	Latest(context.Context) ([]Deployment, error)
 	List(context.Context, string) ([]Deployment, error)
 	Get(context.Context, string) (Deployment, error)
 	Enqueue(context.Context, DeployInput) (Deployment, error)

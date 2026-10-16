@@ -29,7 +29,7 @@ O Nelcota Deploy separa o controle das aplicações em dois componentes: um pain
 SQLite, dois binários Go e serviços conhecidos: Docker, BuildKit e Caddy. A v1 exige um **Dockerfile no repositório da aplicação**.
 
 > [!IMPORTANT]
-> **Backend implementado; interface em construção.** A página web atual é um placeholder. Há testes locais com Docker/BuildKit/Caddy reais, mas a instalação completa e as metas de operação ainda precisam de homologação em VPS. Consulte o [estado das entregas](docs/relatorio-backend.md) e as [pendências](docs/pendencias.md) antes de usar em produção.
+> **Backend e painel web implementados.** A interface cobre aplicações, deploys, logs, servidores, ajustes e segurança da conta. Há testes locais com Docker/BuildKit/Caddy reais, mas a instalação completa e as metas de operação ainda precisam de homologação em VPS. Consulte o [estado das entregas](docs/relatorio-backend.md) e as [pendências](docs/pendencias.md) antes de usar em produção.
 
 ## O que já está implementado
 
@@ -71,14 +71,14 @@ O agent inicia a conexão com o painel. O protocolo tem uma lista fechada de aç
 git clone https://github.com/Nelcota/nelcota-deploy.git
 cd nelcota-deploy
 
-make tools
+make tools # inclui protoc 36.1 com checksum fixado
 make generate
 make build test lint
 make dev-seed
 make dev
 ```
 
-Abra **http://127.0.0.1:8080**. Os dados de exemplo ficam em `.local/dev`, fora do Git. A interface ainda mostra uma página inicial simples; as APIs e os streams já estão disponíveis.
+Abra **http://localhost:8080**. Os dados de exemplo ficam em `.local/dev`, fora do Git. Acesse a interface e use o botão de desenvolvimento para entrar. Em produção, use `/register` com o convite inicial e entre com passkey em `/login`. Use `localhost`, pois WebAuthn recusa RP IDs baseados em endereço IP; o serviço continua escutando somente em loopback.
 
 <details>
 <summary><strong>Usar a API com uma sessão de desenvolvimento</strong></summary>
@@ -87,15 +87,15 @@ Com o processo de desenvolvimento ativo:
 
 ```bash
 curl -c /tmp/nelcota-dev-cookies \
-  -H 'Origin: http://127.0.0.1:8080' \
+  -H 'Origin: http://localhost:8080' \
   -H 'Content-Type: application/json' \
-  -d '{}' http://127.0.0.1:8080/api/dev/session
+  -d '{}' http://localhost:8080/api/dev/session
 
 curl -b /tmp/nelcota-dev-cookies \
-  http://127.0.0.1:8080/api/session
+  http://localhost:8080/api/session
 
 curl -b /tmp/nelcota-dev-cookies \
-  http://127.0.0.1:8080/api/apps
+  http://localhost:8080/api/apps
 ```
 
 `GET /api/session` informa o token CSRF para as próximas mutações. O endpoint de login dev só existe nesse modo. O processo escuta apenas no loopback e deve permanecer local.
@@ -116,6 +116,20 @@ curl -b /tmp/nelcota-dev-cookies \
 
 Os testes de integração falham quando a infraestrutura necessária não está disponível. O [CI](https://github.com/Nelcota/nelcota-deploy/actions) executa as verificações automaticamente em pushes e pull requests.
 
+## Testes de navegador
+
+A interface usa `html/template`, CSS e JavaScript locais embutidos no binário; `make build` não precisa de Node, CDN ou um build de frontend. Node 24 e Playwright são dependências apenas de QA:
+
+```bash
+npm ci
+npx playwright install --with-deps chromium
+make check-web test-browser
+```
+
+Pare o painel dev antes de testar: a suíte inicia uma instância isolada em `localhost:8080`, com banco temporário, e a encerra ao terminar. Se Chromium já está instalado, use `BROWSER_EXECUTABLE_PATH=/usr/bin/chromium make test-browser`. O cenário exercita passkey virtual, TOTP, recuperação, permissões, aplicações, deploys, logs e tokens; não equivale à homologação em dispositivos físicos.
+
+As duas jornadas de revisão, correções e evidências estão no [relatório de entrega](docs/entrega-revisoes.md).
+
 ## Documentação
 
 - [Índice e caminhos de leitura](docs/README.md)
@@ -130,7 +144,7 @@ Os pacotes de homologação descritos na documentação são artefatos locais, i
 
 ## Próximas etapas
 
-- [ ] Interface com templ, Datastar e Tailwind.
+- [x] Interface integrada, responsiva, com tema claro/escuro e assets embutidos.
 - [ ] Homologação de instalação, firewall, WireGuard, reboot e recuperação em VPS.
 - [ ] Validação de GitHub App, passkeys e armazenamento S3 em ambientes reais.
 - [ ] Metas de desempenho comprovadas em infraestrutura representativa.

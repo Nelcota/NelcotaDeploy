@@ -74,7 +74,16 @@ func TestGitHubInstallationAndChecks(t *testing.T) {
 			t.Fatal(got, e)
 		}
 	}
-	if tokens != 2 || checks != 2 {
+	if tokens != 1 || checks != 2 {
 		t.Fatal(tokens, checks)
+	}
+	if e := (&settingsService{c}).Set(ctx, "github.app_id", "124"); e != nil {
+		t.Fatal(e)
+	}
+	if _, e := g.Token(ctx, 42); e != nil {
+		t.Fatal(e)
+	}
+	if tokens != 2 {
+		t.Fatal("credential rotation reused an old installation transport", tokens)
 	}
 }

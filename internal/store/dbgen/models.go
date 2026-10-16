@@ -102,6 +102,10 @@ type Invitation struct {
 	ConsumedAt int64          `json:"consumed_at"`
 }
 
+type LogCleanup struct {
+	DeploymentID string `json:"deployment_id"`
+}
+
 type MaintenanceJob struct {
 	Ordinal    int64  `json:"ordinal"`
 	ID         string `json:"id"`

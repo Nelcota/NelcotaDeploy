@@ -23,6 +23,7 @@ lint:
 proto:
 	PATH="$(TOOLS):$$PATH" protoc -I proto --go_out=. --go_opt=module=github.com/nelcota/nelcota-deploy --connect-go_out=. --connect-go_opt=module=github.com/nelcota/nelcota-deploy --go-vtproto_out=. --go-vtproto_opt=module=github.com/nelcota/nelcota-deploy,features=marshal+unmarshal+size proto/agent/v1/agent.proto
 tools:
+	bash scripts/setup-protoc.sh
 	$(GO) install google.golang.org/protobuf/cmd/protoc-gen-go@v1.36.11
 	$(GO) install connectrpc.com/connect/cmd/protoc-gen-connect-go@v1.19.1
 	$(GO) install github.com/planetscale/vtprotobuf/cmd/protoc-gen-go-vtproto@v0.6.0
@@ -44,5 +45,11 @@ clean:
 sqlc:
 	$(TOOLS)/sqlc generate
 generate: proto sqlc
-check-generated: generate
-	git diff --exit-code -- internal/gen internal/store/dbgen
+check-generated:
+	bash scripts/check-generated.sh
+
+.PHONY: test-browser check-web
+check-web:
+	npm run check
+test-browser: build
+	npm test

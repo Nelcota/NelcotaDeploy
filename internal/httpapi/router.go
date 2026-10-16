@@ -9,8 +9,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"mime"
 	"net"
 	"net/http"
+	"net/url"
 	"slices"
 	"strings"
 	"sync"
@@ -68,6 +70,15 @@ func New(cfg Config) http.Handler {
 			return
 		}
 		v, e := cfg.GitHub.FinishManifest(r.Context(), r.URL.Query().Get("state"), r.URL.Query().Get("code"))
+		if e == nil && strings.Contains(r.Header.Get("Accept"), "text/html") {
+			destination, err := url.Parse(v["installation_url"])
+			if err != nil || destination.Scheme != "https" || destination.Host != "github.com" || destination.User != nil {
+				respond(w, nil, &service.Error{Kind: service.Unavailable, Message: "Destino GitHub inválido"})
+				return
+			}
+			http.Redirect(w, r, destination.String(), http.StatusSeeOther)
+			return
+		}
 		respond(w, v, e)
 	})
 	r.Post("/api/servers/join", func(w http.ResponseWriter, r *http.Request) {
@@ -197,6 +208,20 @@ func New(cfg Config) http.Handler {
 		r.Get("/api/apps", func(w http.ResponseWriter, r *http.Request) {
 			v, e := cfg.Services.Apps.List(r.Context())
 			respond(w, v, e)
+		})
+		r.Get("/api/overview", func(w http.ResponseWriter, r *http.Request) {
+			apps, e := cfg.Services.Apps.List(r.Context())
+			if e != nil {
+				respond(w, nil, e)
+				return
+			}
+			servers, e := cfg.Services.Servers.List(r.Context())
+			if e != nil {
+				respond(w, nil, e)
+				return
+			}
+			deployments, e := cfg.Services.Deploys.Latest(r.Context())
+			respond(w, map[string]any{"apps": apps, "servers": servers, "deployments": deployments}, e)
 		})
 		r.Post("/api/apps", func(w http.ResponseWriter, r *http.Request) {
 			var in service.AppInput
@@ -396,14 +421,14 @@ func New(cfg Config) http.Handler {
 			respond(w, map[string]bool{"ok": e == nil}, e)
 		})
 	}
-	web.Register(r, cfg.Services)
+	web.Register(r, cfg.Services, cfg.Dev)
 	return r
 }
 func (a *API) headers(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("Referrer-Policy", "no-referrer")
-		w.Header().Set("Content-Security-Policy", "default-src 'self'; frame-ancestors 'none'; base-uri 'none'")
+		w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'self' https://github.com")
 		w.Header().Set("Cache-Control", "no-store")
 		if !a.cfg.Dev {
 			w.Header().Set("Strict-Transport-Security", "max-age=31536000")
@@ -423,6 +448,10 @@ func (a *API) cookie(w http.ResponseWriter, v service.LoginResult) {
 }
 func (a *API) session(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if (r.Method == "GET" || r.Method == "HEAD") && strings.HasPrefix(r.URL.Path, "/assets/") {
+			next.ServeHTTP(w, r)
+			return
+		}
 		r = r.WithContext(service.WithPrincipal(r.Context(), service.Principal{IP: clientIP(r)}))
 		if authorization := r.Header.Get("Authorization"); authorization != "" {
 			if !strings.HasPrefix(authorization, "Bearer ") || a.cfg.Services.Auth == nil {
@@ -476,7 +505,12 @@ func (a *API) csrf(next http.Handler) http.Handler {
 			respond(w, nil, &service.Error{Kind: service.Forbidden, Message: "Origem inválida"})
 			return
 		}
-		if c, e := r.Cookie(a.cookieName()); e == nil {
+		if _, authenticated := service.CurrentUser(r.Context()); authenticated == nil {
+			c, e := r.Cookie(a.cookieName())
+			if e != nil {
+				respond(w, nil, &service.Error{Kind: service.Forbidden, Message: "CSRF inválido"})
+				return
+			}
 			if !hmac.Equal([]byte(a.csrfToken(c.Value)), []byte(r.Header.Get("X-CSRF-Token"))) {
 				respond(w, nil, &service.Error{Kind: service.Forbidden, Message: "CSRF inválido"})
 				return
@@ -560,13 +594,19 @@ func (a *API) streamAuthorized(r *http.Request) bool {
 	return e == nil && current.ID == initial.ID && current.Role == initial.Role && slices.Equal(current.Scopes, initial.Scopes)
 }
 func read(w http.ResponseWriter, r *http.Request, v any) bool {
-	if !strings.HasPrefix(r.Header.Get("Content-Type"), "application/json") {
+	mediaType, _, mediaError := mime.ParseMediaType(r.Header.Get("Content-Type"))
+	if mediaError != nil || mediaType != "application/json" {
 		write(w, 415, map[string]string{"code": "unsupported_media_type"})
 		return false
 	}
 	d := json.NewDecoder(r.Body)
 	d.DisallowUnknownFields()
 	if e := d.Decode(v); e != nil {
+		var oversized *http.MaxBytesError
+		if errors.As(e, &oversized) {
+			write(w, http.StatusRequestEntityTooLarge, map[string]string{"code": "request_too_large", "message": "Corpo da requisição excede 1 MiB"})
+			return false
+		}
 		write(w, 400, map[string]string{"code": "validation", "message": "JSON inválido"})
 		return false
 	}
@@ -623,6 +663,10 @@ func newLimiter(limit rate.Limit, burst int) *limiter {
 }
 func (l *limiter) middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if (r.Method == "GET" || r.Method == "HEAD") && !strings.HasPrefix(r.URL.Path, "/api/") {
+			next.ServeHTTP(w, r)
+			return
+		}
 		ip := clientIP(r)
 		now := time.Now()
 		l.mu.Lock()

@@ -1,4 +1,6 @@
-# Relatório do backend — 2026-10-15
+# Relatório histórico do backend — 2026-10-15
+
+> Este documento preserva a execução anterior. O estado atual da interface, correções e novas validações está em [Entrega e revisões](entrega-revisoes.md).
 
 Foi entregue um backend funcional para desenvolvimento do frontend, com dois binários Go e sem implementação de templ/Datastar/Tailwind. Ainda não é uma versão homologada para produção. As pendências locais de operação foram concluídas; os gates de infraestrutura e credenciais estão em `pendencias.md` e os comandos em `operacao-backend.md`.
 
@@ -12,7 +14,7 @@ make dev-seed
 make dev
 ```
 
-Acessar `http://127.0.0.1:8080`. A página é placeholder; APIs e SSE estão disponíveis. POST `/api/dev/session` com Origin `http://127.0.0.1:8080` e JSON `{}` emite a sessão de desenvolvimento. GET `/api/session` fornece o token CSRF para mutações. Há três apps, servers, deploys e logs de exemplo; o agent simulado emite eventos e aceita cancelamento. Dados ficam em `.local/dev`, ignorada pelo Git.
+Acessar `http://localhost:8080`. A página é placeholder; APIs e SSE estão disponíveis. POST `/api/dev/session` com Origin `http://localhost:8080` e JSON `{}` emite a sessão de desenvolvimento. GET `/api/session` fornece o token CSRF para mutações. Há três apps, servers, deploys e logs de exemplo; o agent simulado emite eventos e aceita cancelamento. Dados ficam em `.local/dev`, ignorada pelo Git.
 
 Os binários compilados nesta sessão estão em `bin/`; executar `./bin/nelcota-panel dev` dispensa recompilar. O Go usado nesta máquina foi preparado em `/tmp/nelcota-tools/go`; uma máquina nova deve instalar o toolchain ou usá-lo no PATH. `docs/contrato-frontend.md` documenta métodos, DTOs, permissões, autenticação, tokens, streams e exemplo completo de handler.
 
