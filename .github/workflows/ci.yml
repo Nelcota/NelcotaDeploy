@@ -18,27 +18,31 @@ env:
 
 jobs:
   validate:
-    name: Validação
+    name: Validation
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     steps:
       - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-      - name: Preparar Go
+      - name: Set up Go
         uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
         with:
           go-version: ${{ env.GO_VERSION }}
           cache: true
-      - name: Instalar dependências de desenvolvimento
+      - name: Install development dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y protobuf-compiler shellcheck
+          sudo apt-get install -y shellcheck unzip
+          mkdir -p .tools
+          curl --proto '=https' --tlsv1.2 -fsSL https://github.com/protocolbuffers/protobuf/releases/download/v36.1/protoc-36.1-linux-x86_64.zip -o /tmp/protoc.zip
+          echo 'c4bc672d9d49214dc8cafdceadf4df92182d6ca8e3ec65a56b2d7de5602669b4  /tmp/protoc.zip' | sha256sum --check -
+          unzip -j /tmp/protoc.zip bin/protoc -d .tools
           make tools
-      - name: Conferir geração reproduzível
+      - name: Check reproducible generation
         run: make check-generated
-      - name: Compilar, testar e verificar código
+      - name: Build, test, and lint
         run: make build test lint
-      - name: Analisar vulnerabilidades alcançáveis
+      - name: Scan reachable vulnerabilities
         run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
 
   race:
@@ -48,32 +52,32 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-      - name: Preparar Go
+      - name: Set up Go
         uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
         with:
           go-version: ${{ env.GO_VERSION }}
           cache: true
-      - name: Verificar concorrência
+      - name: Check concurrency
         run: CGO_ENABLED=1 go test -race -count=1 -timeout=180s ./...
 
   integration:
-    name: Integração
+    name: Integration
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-      - name: Preparar Go
+      - name: Set up Go
         uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
         with:
           go-version: ${{ env.GO_VERSION }}
           cache: true
-      - name: Preparar Docker e Caddy
+      - name: Set up Docker and Caddy
         run: |
           sudo apt-get update
           sudo apt-get install -y caddy
           docker info
-      - name: Testar infraestrutura real
+      - name: Test real infrastructure
         run: make test-integration
 
   benchmarks:
@@ -83,14 +87,14 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-      - name: Preparar Go
+      - name: Set up Go
         uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
         with:
           go-version: ${{ env.GO_VERSION }}
           cache: true
-      - name: Medir benchmarks
+      - name: Run benchmarks
         run: make bench
-      - name: Comparar com a base do pull request
+      - name: Compare with the pull request base
         if: github.event_name == 'pull_request'
         env:
           BASE_REF: ${{ github.base_ref }}
@@ -104,9 +108,9 @@ jobs:
             go test -run='^$' -bench=. -benchmem -count=6 ./internal/... > /tmp/nelcota-current.bench
             scripts/compare-benchmarks.sh /tmp/nelcota-base.bench /tmp/nelcota-current.bench
           else
-            echo 'Primeira introdução dos benchmarks: ainda sem base comparável.'
+            echo 'Initial benchmark introduction: no comparable baseline yet.'
           fi
-      - name: Preservar medições
+      - name: Upload measurements
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:

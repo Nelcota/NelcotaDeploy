@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Instalador autocontido servido pelo painel.
+# Self-contained installer served by the panel.
 set -euo pipefail
 umask 077
-fail() { printf 'Erro: %s\n' "$1" >&2; exit 1; }
+fail() { printf 'Error: %s\n' "$1" >&2; exit 1; }
 usage() { printf '%s\n' 'agent.sh --panel-url HTTPS_URL --join-file FILE --release-url HTTPS_URL --signing-key PUBLIC_KEY'; }
 panel='' token_file='' release='' signing_key=''
 while (($#)); do
@@ -12,34 +12,34 @@ while (($#)); do
  --release-url) release=${2:?}; shift 2;;
  --signing-key) signing_key=${2:?}; shift 2;;
  --help) usage; exit 0;;
- *) fail 'Argumento desconhecido';;
+ *) fail 'Unknown argument';;
  esac
 done
 release=${release%/}
 release_base=${release%/*}
-[[ ${release##*/} =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || fail 'Use uma URL imutável terminada em /vMAJOR.MINOR.PATCH'
-[[ $EUID == 0 ]] || fail 'Execute como root'
-[[ $panel == https://* && $panel != *[$'\n\r ']* && $release == https://* && $release != *[$'\n\r ']* && -n $signing_key ]] || fail 'URLs HTTPS e chave pública confiável obrigatórias'
-[[ -f $token_file ]] || fail 'Convite obrigatório'
-[[ ! -e /etc/nelcota-agent/join.json && ! -e /etc/wireguard/wg0.conf ]] || fail 'Agent ou wg0 já configurados'
-[[ ! -e /etc/caddy/Caddyfile ]] || fail 'Caddy existente: preserve a configuração e instale manualmente'
+[[ ${release##*/} =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || fail 'Use an immutable URL ending in /vMAJOR.MINOR.PATCH'
+[[ $EUID == 0 ]] || fail 'Run as root'
+[[ $panel == https://* && $panel != *[$'\n\r ']* && $release == https://* && $release != *[$'\n\r ']* && -n $signing_key ]] || fail 'HTTPS URLs and trusted public key required'
+[[ -f $token_file ]] || fail 'Invitation required'
+[[ ! -e /etc/nelcota-agent/join.json && ! -e /etc/wireguard/wg0.conf ]] || fail 'Agent or wg0 already configured'
+[[ ! -e /etc/caddy/Caddyfile ]] || fail 'Existing Caddy installation: preserve configuration and install manually'
 # shellcheck source=/dev/null
 source /etc/os-release
-case "$ID:$VERSION_ID" in debian:1[2-9]*|ubuntu:2[2468].*) ;; *) fail 'Suporte: Debian 12+ ou Ubuntu 22.04+';; esac
-# Evita desligar o único método de acesso antes de existir uma chave SSH.
+case "$ID:$VERSION_ID" in debian:1[2-9]*|ubuntu:2[2468].*) ;; *) fail 'Supported: Debian 12+ or Ubuntu 22.04+';; esac
+# Avoid disabling the only access method before an SSH key is available.
 key_found=false
 for authorized in /root/.ssh/authorized_keys /home/*/.ssh/authorized_keys; do
  if [[ -s $authorized ]]; then key_found=true; break; fi
 done
-[[ $key_found == true ]] || fail 'Configure e teste acesso SSH por chave antes da instalação'
+[[ $key_found == true ]] || fail 'Configure and test SSH key access before installation'
 export DEBIAN_FRONTEND=noninteractive
 apt-get update
 apt-get install -y ca-certificates curl gnupg minisign git jq caddy wireguard-tools iptables iptables-persistent unattended-upgrades fail2ban
-# Usa o repositório oficial com pacotes atuais de Engine/containerd e identidade de assinatura fixada.
+# Use the official repository with current Engine/containerd packages and a pinned signing identity.
 install -d -m 0755 /etc/apt/keyrings
 curl --proto '=https' --tlsv1.2 -fsSL "https://download.docker.com/linux/$ID/gpg" -o /etc/apt/keyrings/nelcota-docker.asc
 fingerprint=$(gpg --batch --show-keys --with-colons /etc/apt/keyrings/nelcota-docker.asc | awk -F: '$1=="fpr" {print $10; exit}')
-[[ $fingerprint == 9DC858229FC7DD38854AE2D88D81803C0EBFCD88 ]] || fail 'Chave de assinatura Docker não corresponde à identidade fixada'
+[[ $fingerprint == 9DC858229FC7DD38854AE2D88D81803C0EBFCD88 ]] || fail 'Docker signing key does not match the pinned identity'
 chmod 0644 /etc/apt/keyrings/nelcota-docker.asc
 cat > /etc/apt/sources.list.d/nelcota-docker.sources <<APT
 Types: deb
@@ -54,9 +54,9 @@ apt-get install -y docker-ce docker-ce-cli containerd.io
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 arch=$(uname -m)
-case "$arch" in x86_64) arch=amd64_v1; if grep -qw avx2 /proc/cpuinfo && grep -qw bmi1 /proc/cpuinfo && grep -qw bmi2 /proc/cpuinfo && grep -qw fma /proc/cpuinfo && grep -qw f16c /proc/cpuinfo && grep -qw movbe /proc/cpuinfo && grep -qw xsave /proc/cpuinfo && grep -qw abm /proc/cpuinfo; then arch=amd64_v3; fi; buildarch=amd64;; aarch64) arch=arm64; buildarch=arm64;; *) fail 'Arquitetura não suportada';; esac
+case "$arch" in x86_64) arch=amd64_v1; if grep -qw avx2 /proc/cpuinfo && grep -qw bmi1 /proc/cpuinfo && grep -qw bmi2 /proc/cpuinfo && grep -qw fma /proc/cpuinfo && grep -qw f16c /proc/cpuinfo && grep -qw movbe /proc/cpuinfo && grep -qw xsave /proc/cpuinfo && grep -qw abm /proc/cpuinfo; then arch=amd64_v3; fi; buildarch=amd64;; aarch64) arch=arm64; buildarch=arm64;; *) fail 'Unsupported architecture';; esac
 artifact="nelcota-agent_linux_${arch}"
-# O release do mantenedor precisa conter também o buildkitd auditado e assinado.
+# The maintainer release must also include audited and signed BuildKit binaries.
 builder="buildkitd_linux_${buildarch}"
 curl --proto '=https' --tlsv1.2 -fsSL "$release/checksums.txt" -o "$work/checksums.txt"
 curl --proto '=https' --tlsv1.2 -fsSL "$release/checksums.txt.minisig" -o "$work/checksums.txt.minisig"
@@ -78,7 +78,7 @@ address=$(jq -er '.address' "$join")
 panel_address=$(jq -er '.panel_address' "$join")
 endpoint=$(jq -er '.panel_endpoint' "$join")
 pub=$(jq -er '.panel_wireguard_key' "$join")
-[[ $address =~ ^10\.[0-9]+\.[0-9]+\.[0-9]+$ && $panel_address =~ ^10\.[0-9]+\.[0-9]+\.[0-9]+$ && $endpoint =~ ^[a-zA-Z0-9.-]+:[0-9]+$ && $pub =~ ^[a-zA-Z0-9+/]{43}=$ ]] || fail 'Configuração WireGuard recebida é inválida'
+[[ $address =~ ^10\.[0-9]+\.[0-9]+\.[0-9]+$ && $panel_address =~ ^10\.[0-9]+\.[0-9]+\.[0-9]+$ && $endpoint =~ ^[a-zA-Z0-9.-]+:[0-9]+$ && $pub =~ ^[a-zA-Z0-9+/]{43}=$ ]] || fail 'Received WireGuard configuration is invalid'
 private=$(cat "$work/wg.key")
 install -d -m 0700 /etc/wireguard
 cat > /etc/wireguard/wg0.conf <<WG
@@ -96,7 +96,7 @@ chmod 0600 /etc/wireguard/wg0.conf
 systemctl enable --now wg-quick@wg0
 cat > /etc/systemd/system/nelcota-builds.slice <<'UNIT'
 [Unit]
-Description=Builds de baixa prioridade Nelcota
+Description=NelcotaDeploy low-priority builds
 [Slice]
 CPUWeight=10
 IOWeight=10
@@ -120,7 +120,7 @@ cat > /etc/buildkit/buildkitd.toml <<'TOML'
 TOML
 cat > /etc/systemd/system/nelcota-buildkit.service <<'UNIT'
 [Unit]
-Description=BuildKit Nelcota (socket privado)
+Description=NelcotaDeploy BuildKit (private socket)
 After=network-online.target
 [Service]
 ExecStart=/usr/local/bin/buildkitd --config /etc/buildkit/buildkitd.toml --group nelcota-agent --addr unix:///run/buildkit/buildkitd.sock
@@ -129,7 +129,7 @@ Slice=nelcota-builds.slice
 Delegate=yes
 RuntimeDirectory=buildkit
 UMask=0007
-# O worker precisa de mounts/namespaces: sandbox é aplicada ao agent, não ao daemon OCI.
+# The worker needs mounts/namespaces: sandbox the agent, not the OCI daemon.
 [Install]
 WantedBy=multi-user.target
 UNIT
@@ -138,7 +138,7 @@ cat > /etc/caddy/nelcota.json <<'CADDY'
 CADDY
 chown root:caddy /etc/caddy/nelcota.json
 chmod 0640 /etc/caddy/nelcota.json
-# O pacote pode ter iniciado o site padrão. Semear autosave antes de usar --resume.
+# The package may have started the default site. Seed autosave before using --resume.
 systemctl stop caddy
 install -d -o caddy -g caddy -m 0700 /var/lib/caddy/.config/caddy
 install -o caddy -g caddy -m 0600 /etc/caddy/nelcota.json /var/lib/caddy/.config/caddy/autosave.json
@@ -153,7 +153,7 @@ ExecReload=
 UNIT
 cat > /etc/systemd/system/nelcota-agent.service <<'UNIT'
 [Unit]
-Description=Nelcota Deploy Agent
+Description=NelcotaDeploy Agent
 After=network-online.target docker.service nelcota-buildkit.service caddy.service wg-quick@wg0.service
 Requires=docker.service nelcota-buildkit.service caddy.service wg-quick@wg0.service
 [Service]
@@ -183,7 +183,7 @@ UMask=0077
 [Install]
 WantedBy=multi-user.target
 UNIT
-# Só altera a chain própria. Nenhuma porta de app é publicada.
+# Only modify the dedicated chain. No app port is published.
 systemctl enable --now docker
 iptables -N NELCOTA-ISOLATION 2>/dev/null || true
 iptables -C DOCKER-USER -j NELCOTA-ISOLATION 2>/dev/null || iptables -I DOCKER-USER 1 -j NELCOTA-ISOLATION
@@ -191,12 +191,12 @@ iptables -A NELCOTA-ISOLATION -m conntrack --ctstate ESTABLISHED,RELATED -j RETU
 iptables -A NELCOTA-ISOLATION -i br+ -o br+ -j DROP
 iptables -A NELCOTA-ISOLATION -i docker0 -o br+ -j DROP
 iptables -A NELCOTA-ISOLATION -i br+ -o docker0 -j DROP
-# Forward vindo da interface pública nunca alcança bridges das apps.
+# Forwarded public-interface traffic must never reach app bridges.
 wan=$(ip -4 route show default | awk 'NR==1 {print $5}')
-[[ $wan =~ ^[a-zA-Z0-9_-]+$ ]] || fail 'Interface pública não identificada'
+[[ $wan =~ ^[a-zA-Z0-9_-]+$ ]] || fail 'Public interface not identified'
 iptables -A NELCOTA-ISOLATION -i "$wan" -o br+ -j DROP
 iptables -A NELCOTA-ISOLATION -j RETURN
-# INPUT separado do forward do Docker. Mantém portas administrativas e proxy.
+# Separate INPUT from Docker forwarding. Preserve administrative and proxy ports.
 iptables -N NELCOTA-INPUT 2>/dev/null || true
 iptables -A NELCOTA-INPUT -i lo -j ACCEPT
 iptables -A NELCOTA-INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
@@ -206,7 +206,7 @@ iptables -A NELCOTA-INPUT -p icmp -j ACCEPT
 iptables -A NELCOTA-INPUT -i wg0 -j ACCEPT
 iptables -A NELCOTA-INPUT -j DROP
 iptables -I INPUT 1 -j NELCOTA-INPUT
-# Bloqueia IPv6 de entrada além das portas públicas; ICMPv6 mantém ND/PMTU.
+# Block inbound IPv6 outside public ports; ICMPv6 preserves ND/PMTU.
 ip6tables -N NELCOTA-INPUT 2>/dev/null || true
 ip6tables -A NELCOTA-INPUT -i lo -j ACCEPT
 ip6tables -A NELCOTA-INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
@@ -256,4 +256,4 @@ printf '%s\n' '[sshd]' 'enabled = true' 'backend = systemd' > /etc/fail2ban/jail
 printf '%s\n' 'APT::Periodic::Update-Package-Lists "1";' 'APT::Periodic::Unattended-Upgrade "1";' > /etc/apt/apt.conf.d/20nelcota-upgrades
 systemctl restart caddy
 systemctl enable --now nelcota-buildkit nelcota-agent unattended-upgrades fail2ban
-printf '%s\n' 'Agent instalado; nenhum listener de controle público.'
+printf '%s\n' 'Agent installed; no public control listener.'

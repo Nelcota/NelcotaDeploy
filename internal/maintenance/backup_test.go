@@ -13,8 +13,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/nelcota/nelcota-deploy/internal/security"
-	"github.com/nelcota/nelcota-deploy/internal/store"
+	"github.com/Nelcota/NelcotaDeploy/internal/security"
+	"github.com/Nelcota/NelcotaDeploy/internal/store"
 )
 
 func backupFixture(t *testing.T) (Backup, *store.Store, string) {

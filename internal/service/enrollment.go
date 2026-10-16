@@ -8,8 +8,8 @@ import (
 	"encoding/hex"
 	"encoding/pem"
 	"errors"
-	"github.com/nelcota/nelcota-deploy/internal/provision"
-	"github.com/nelcota/nelcota-deploy/internal/security"
+	"github.com/Nelcota/NelcotaDeploy/internal/provision"
+	"github.com/Nelcota/NelcotaDeploy/internal/security"
 	"golang.zx2c4.com/wireguard/wgctrl"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 	"net"
@@ -52,10 +52,10 @@ type EnrollmentService struct {
 
 func (s *EnrollmentService) Join(ctx context.Context, in JoinInput) (JoinResult, error) {
 	if len(in.Token) < 32 || len(in.Token) > 128 {
-		return JoinResult{}, fail(Unauthenticated, "Convite inválido")
+		return JoinResult{}, fail(Unauthenticated, "Invalid invitation")
 	}
 	if _, e := wgtypes.ParseKey(in.WireGuardPublicKey); e != nil {
-		return JoinResult{}, fail(Validation, "Chave WireGuard inválida")
+		return JoinResult{}, fail(Validation, "Invalid WireGuard key")
 	}
 	var result JoinResult
 	e := s.Core.mutate(ctx, func(tx *sql.Tx) error {
@@ -63,14 +63,14 @@ func (s *EnrollmentService) Join(ctx context.Context, in JoinInput) (JoinResult,
 		var limit, cache int64
 		e := tx.QueryRowContext(ctx, "SELECT s.id,s.wireguard_ip,s.build_limit,s.cache_bytes FROM invitations i JOIN servers s ON s.id=i.server_id WHERE i.token_hash=? AND i.consumed_at=0 AND i.expires_at>?", security.Hash(in.Token), time.Now().Unix()).Scan(&id, &ip, &limit, &cache)
 		if e != nil {
-			return fail(Unauthenticated, "Convite inválido ou utilizado")
+			return fail(Unauthenticated, "Invalid or previously used invitation")
 		}
 		var duplicates int
 		if e = tx.QueryRowContext(ctx, "SELECT count(*) FROM servers WHERE wg_public_key=? AND id<>?", in.WireGuardPublicKey, id).Scan(&duplicates); e != nil {
 			return e
 		}
 		if duplicates != 0 || in.WireGuardPublicKey == s.PanelWireGuardKey {
-			return fail(Conflict, "Chave WireGuard já utilizada")
+			return fail(Conflict, "WireGuard key already in use")
 		}
 		cert, key, e := s.CA.Issue(id, false, time.Now())
 		if e != nil {
@@ -84,7 +84,7 @@ func (s *EnrollmentService) Join(ctx context.Context, in JoinInput) (JoinResult,
 		fingerprint := sha256.Sum256(parsed.Raw)
 		if s.Peers != nil {
 			if e = s.Peers.AddPeer(ctx, in.WireGuardPublicKey, ip); e != nil {
-				return fail(Unavailable, "Não foi possível configurar WireGuard")
+				return fail(Unavailable, "Could not configure WireGuard")
 			}
 		}
 		if _, e = tx.ExecContext(ctx, "UPDATE servers SET fingerprint=?,wg_public_key=?,cert_expires_at=? WHERE id=?", hex.EncodeToString(fingerprint[:]), in.WireGuardPublicKey, parsed.NotAfter.Unix(), id); e != nil {

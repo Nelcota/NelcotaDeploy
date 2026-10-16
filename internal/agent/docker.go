@@ -21,6 +21,8 @@ import (
 
 	"github.com/moby/moby/api/types/container"
 
+	agentv1 "github.com/Nelcota/NelcotaDeploy/internal/gen/agent/v1"
+	"github.com/Nelcota/NelcotaDeploy/internal/security"
 	"github.com/containerd/errdefs"
 	bk "github.com/moby/buildkit/client"
 	"github.com/moby/buildkit/session"
@@ -28,8 +30,6 @@ import (
 	"github.com/moby/moby/api/pkg/stdcopy"
 	"github.com/moby/moby/api/types/network"
 	"github.com/moby/moby/client"
-	agentv1 "github.com/nelcota/nelcota-deploy/internal/gen/agent/v1"
-	"github.com/nelcota/nelcota-deploy/internal/security"
 	"github.com/tonistiigi/fsutil"
 	"golang.org/x/sync/errgroup"
 )
@@ -170,7 +170,7 @@ func (d *DockerEngine) Build(ctx context.Context, dep *agentv1.Deploy, dir strin
 		return "", e
 	}
 	if e = d.recordBases(ctx, dir, dockerfile); e != nil {
-		log([]byte("[maintenance] não foi possível registrar imagens base\n"))
+		log([]byte("[maintenance] could not register base images\n"))
 	}
 	return tag, nil
 }

@@ -5,7 +5,7 @@ import (
 	"crypto/rand"
 	"database/sql"
 	"encoding/base32"
-	"github.com/nelcota/nelcota-deploy/internal/security"
+	"github.com/Nelcota/NelcotaDeploy/internal/security"
 	"strings"
 	"time"
 )
@@ -16,7 +16,7 @@ func freshInteractive(ctx context.Context) (Principal, error) {
 		return p, e
 	}
 	if p.Scopes != nil || time.Now().Unix()-p.TwoFactorAt > 300 {
-		return p, fail(Forbidden, "Reautenticação interativa necessária")
+		return p, fail(Forbidden, "Interactive reauthentication required")
 	}
 	return p, nil
 }
@@ -46,7 +46,7 @@ func (a *AuthService) RecoveryCodes(ctx context.Context) ([]string, error) {
 			return e
 		}
 		if n != 1 {
-			return fail(Conflict, "Configure TOTP antes de gerar códigos de recuperação")
+			return fail(Conflict, "Configure TOTP before generating recovery codes")
 		}
 		if _, e := tx.ExecContext(ctx, "DELETE FROM recovery_codes WHERE user_id=?", p.ID); e != nil {
 			return e
@@ -68,7 +68,7 @@ func (a *AuthService) VerifyRecovery(ctx context.Context, challenge, code string
 	e := a.consumeChallenge(ctx, challenge, "two_factor", func(tx *sql.Tx, user string, _ []byte) error {
 		normalized := normalizeRecovery(code)
 		if len(normalized) != 32 {
-			return fail(Unauthenticated, "Código de recuperação inválido")
+			return fail(Unauthenticated, "Invalid recovery code")
 		}
 		r, e := tx.ExecContext(ctx, "UPDATE recovery_codes SET used_at=? WHERE user_id=? AND code_hash=? AND used_at=0 AND EXISTS(SELECT 1 FROM credentials WHERE user_id=? AND kind='totp')", time.Now().Unix(), user, security.Hash(normalized), user)
 		if e != nil {
@@ -76,7 +76,7 @@ func (a *AuthService) VerifyRecovery(ctx context.Context, challenge, code string
 		}
 		n, _ := r.RowsAffected()
 		if n != 1 {
-			return fail(Unauthenticated, "Código de recuperação inválido ou utilizado")
+			return fail(Unauthenticated, "Invalid or previously used recovery code")
 		}
 		if e = a.Core.audit(systemContext(ctx), tx, "auth.recovery.use", user); e != nil {
 			return e

@@ -16,10 +16,10 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Nelcota/NelcotaDeploy/internal/service"
+	"github.com/Nelcota/NelcotaDeploy/web"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
-	"github.com/nelcota/nelcota-deploy/internal/service"
-	"github.com/nelcota/nelcota-deploy/web"
 	"golang.org/x/time/rate"
 )
 
@@ -56,7 +56,7 @@ func New(cfg Config) http.Handler {
 			return
 		}
 		if cfg.GitHub == nil {
-			respond(w, nil, &service.Error{Kind: service.Unavailable, Message: "GitHub não configurado"})
+			respond(w, nil, &service.Error{Kind: service.Unavailable, Message: "GitHub not configured"})
 			return
 		}
 		e = cfg.GitHub.Webhook(r.Context(), service.WebhookInput{Signature: r.Header.Get("X-Hub-Signature-256"), Delivery: r.Header.Get("X-GitHub-Delivery"), Event: r.Header.Get("X-GitHub-Event"), Body: body})
@@ -64,7 +64,7 @@ func New(cfg Config) http.Handler {
 	})
 	r.Get("/api/github/callback", func(w http.ResponseWriter, r *http.Request) {
 		if cfg.GitHub == nil {
-			respond(w, nil, &service.Error{Kind: service.Unavailable, Message: "GitHub indisponível"})
+			respond(w, nil, &service.Error{Kind: service.Unavailable, Message: "GitHub unavailable"})
 			return
 		}
 		v, e := cfg.GitHub.FinishManifest(r.Context(), r.URL.Query().Get("state"), r.URL.Query().Get("code"))
@@ -76,7 +76,7 @@ func New(cfg Config) http.Handler {
 			return
 		}
 		if cfg.Enrollment == nil {
-			respond(w, nil, &service.Error{Kind: service.Unavailable, Message: "Registro indisponível"})
+			respond(w, nil, &service.Error{Kind: service.Unavailable, Message: "Registration unavailable"})
 			return
 		}
 		v, e := cfg.Enrollment.Join(r.Context(), in)
@@ -310,7 +310,7 @@ func New(cfg Config) http.Handler {
 		})
 		r.Post("/api/github/manifest", func(w http.ResponseWriter, r *http.Request) {
 			if cfg.GitHub == nil {
-				respond(w, nil, &service.Error{Kind: service.Unavailable, Message: "GitHub indisponível"})
+				respond(w, nil, &service.Error{Kind: service.Unavailable, Message: "GitHub unavailable"})
 				return
 			}
 			v, e := cfg.GitHub.BeginManifest(r.Context(), cfg.Origin)
@@ -426,7 +426,7 @@ func (a *API) session(next http.Handler) http.Handler {
 		r = r.WithContext(service.WithPrincipal(r.Context(), service.Principal{IP: clientIP(r)}))
 		if authorization := r.Header.Get("Authorization"); authorization != "" {
 			if !strings.HasPrefix(authorization, "Bearer ") || a.cfg.Services.Auth == nil {
-				respond(w, nil, &service.Error{Kind: service.Unauthenticated, Message: "Token inválido"})
+				respond(w, nil, &service.Error{Kind: service.Unauthenticated, Message: "Invalid token"})
 				return
 			}
 			p, e := a.cfg.Services.Auth.AuthenticateToken(r.Context(), strings.TrimPrefix(authorization, "Bearer "))
@@ -473,12 +473,12 @@ func (a *API) csrf(next http.Handler) http.Handler {
 			return
 		}
 		if r.Header.Get("Origin") != a.cfg.Origin {
-			respond(w, nil, &service.Error{Kind: service.Forbidden, Message: "Origem inválida"})
+			respond(w, nil, &service.Error{Kind: service.Forbidden, Message: "Invalid origin"})
 			return
 		}
 		if c, e := r.Cookie(a.cookieName()); e == nil {
 			if !hmac.Equal([]byte(a.csrfToken(c.Value)), []byte(r.Header.Get("X-CSRF-Token"))) {
-				respond(w, nil, &service.Error{Kind: service.Forbidden, Message: "CSRF inválido"})
+				respond(w, nil, &service.Error{Kind: service.Forbidden, Message: "Invalid CSRF token"})
 				return
 			}
 		}
@@ -567,7 +567,7 @@ func read(w http.ResponseWriter, r *http.Request, v any) bool {
 	d := json.NewDecoder(r.Body)
 	d.DisallowUnknownFields()
 	if e := d.Decode(v); e != nil {
-		write(w, 400, map[string]string{"code": "validation", "message": "JSON inválido"})
+		write(w, 400, map[string]string{"code": "validation", "message": "Invalid JSON"})
 		return false
 	}
 	if e := d.Decode(&struct{}{}); e != io.EOF {
@@ -588,7 +588,7 @@ func respond(w http.ResponseWriter, v any, e error) {
 	}
 	var typed *service.Error
 	if !errors.As(e, &typed) {
-		write(w, 500, map[string]string{"code": "internal", "message": "Falha interna"})
+		write(w, 500, map[string]string{"code": "internal", "message": "Internal error"})
 		return
 	}
 	status := 400

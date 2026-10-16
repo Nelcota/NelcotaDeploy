@@ -3,9 +3,9 @@ package agent
 import (
 	"context"
 	"errors"
+	agentv1 "github.com/Nelcota/NelcotaDeploy/internal/gen/agent/v1"
+	"github.com/Nelcota/NelcotaDeploy/internal/security"
 	"github.com/moby/moby/api/types/container"
-	agentv1 "github.com/nelcota/nelcota-deploy/internal/gen/agent/v1"
-	"github.com/nelcota/nelcota-deploy/internal/security"
 	"os"
 	"path/filepath"
 	"strings"

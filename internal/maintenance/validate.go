@@ -4,7 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"github.com/nelcota/nelcota-deploy/internal/security"
+	"github.com/Nelcota/NelcotaDeploy/internal/security"
 	"net/url"
 	"path/filepath"
 )

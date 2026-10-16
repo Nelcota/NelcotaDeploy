@@ -6,8 +6,8 @@ import (
 	"crypto/x509"
 	"encoding/hex"
 	"encoding/pem"
-	"github.com/nelcota/nelcota-deploy/internal/security"
-	"github.com/nelcota/nelcota-deploy/internal/transport"
+	"github.com/Nelcota/NelcotaDeploy/internal/security"
+	"github.com/Nelcota/NelcotaDeploy/internal/transport"
 	"testing"
 	"time"
 )

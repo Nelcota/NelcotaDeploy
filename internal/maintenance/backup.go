@@ -21,9 +21,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/nelcota/nelcota-deploy/internal/host"
-	"github.com/nelcota/nelcota-deploy/internal/security"
-	"github.com/nelcota/nelcota-deploy/internal/store"
+	"github.com/Nelcota/NelcotaDeploy/internal/host"
+	"github.com/Nelcota/NelcotaDeploy/internal/security"
+	"github.com/Nelcota/NelcotaDeploy/internal/store"
 )
 
 const magic = "NELCOTA-BACKUP\x01"

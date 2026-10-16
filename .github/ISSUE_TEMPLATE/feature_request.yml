@@ -1,22 +1,22 @@
-name: Sugerir uma melhoria
-description: Proponha uma funcionalidade ou mudança de comportamento.
-title: "[Proposta]: "
+name: Suggest an improvement
+description: Propose a feature or behavior change. Write in English.
+title: "[Feature]: "
 labels: [enhancement]
 body:
   - type: textarea
     id: problem
     attributes:
-      label: Qual problema você quer resolver?
+      label: What problem are you trying to solve?
     validations:
       required: true
   - type: textarea
     id: proposal
     attributes:
-      label: Proposta
-      description: "Descreva o resultado desejado e um exemplo de uso."
+      label: Proposal
+      description: "Describe the desired outcome and an example use case."
     validations:
       required: true
   - type: textarea
     id: alternatives
     attributes:
-      label: Alternativas e contexto
+      label: Alternatives and context

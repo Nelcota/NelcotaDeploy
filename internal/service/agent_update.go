@@ -3,8 +3,8 @@ package service
 import (
 	"context"
 	"database/sql"
-	"github.com/nelcota/nelcota-deploy/internal/transport"
-	"github.com/nelcota/nelcota-deploy/internal/updater"
+	"github.com/Nelcota/NelcotaDeploy/internal/transport"
+	"github.com/Nelcota/NelcotaDeploy/internal/updater"
 	"time"
 )
 
@@ -12,12 +12,12 @@ import (
 // itself. Reserving the writer slot atomically prevents a new deployment claim.
 func (c *Core) PrepareAgentUpdate(ctx context.Context, peer transport.Peer, r updater.Request) error {
 	if !updater.ValidRequest(r) {
-		return fail(Validation, "Atualização inválida")
+		return fail(Validation, "Invalid update")
 	}
 	return c.mutate(ctx, func(tx *sql.Tx) error {
 		var current string
 		if e := tx.QueryRowContext(ctx, "SELECT agent_version FROM servers WHERE id=? AND (fingerprint=? OR (previous_fingerprint=? AND previous_cert_until>?))", peer.ID, peer.Fingerprint, peer.Fingerprint, time.Now().Unix()).Scan(&current); e != nil {
-			return fail(Forbidden, "Agent não cadastrado")
+			return fail(Forbidden, "Agent not registered")
 		}
 		var same int
 		if e := tx.QueryRowContext(ctx, "SELECT count(*) FROM maintenance_jobs WHERE id=? AND target=? AND version=? AND status IN ('queued','waiting','applied')", r.ID, peer.ID, r.Version).Scan(&same); e != nil {
@@ -27,7 +27,7 @@ func (c *Core) PrepareAgentUpdate(ctx context.Context, peer transport.Peer, r up
 			return nil
 		}
 		if !updater.Newer(r.Version, current) {
-			return fail(Validation, "Versão deve ser posterior à instalada")
+			return fail(Validation, "Version must be newer than the installed version")
 		}
 		var busy int
 		if e := tx.QueryRowContext(ctx, "SELECT count(*) FROM maintenance_jobs WHERE kind='update' AND status IN ('queued','waiting')").Scan(&busy); e != nil {

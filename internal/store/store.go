@@ -15,10 +15,10 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/Nelcota/NelcotaDeploy/internal/host"
+	"github.com/Nelcota/NelcotaDeploy/internal/store/dbgen"
 	_ "github.com/ncruces/go-sqlite3/driver"
 	_ "github.com/ncruces/go-sqlite3/embed"
-	"github.com/nelcota/nelcota-deploy/internal/host"
-	"github.com/nelcota/nelcota-deploy/internal/store/dbgen"
 	"github.com/pressly/goose/v3"
 )
 

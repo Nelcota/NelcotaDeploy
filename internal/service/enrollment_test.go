@@ -2,7 +2,7 @@ package service
 
 import (
 	"context"
-	"github.com/nelcota/nelcota-deploy/internal/security"
+	"github.com/Nelcota/NelcotaDeploy/internal/security"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 	"testing"
 	"time"

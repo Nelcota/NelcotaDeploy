@@ -1,40 +1,40 @@
-name: Relatar um bug
-description: Descreva um comportamento incorreto e como reproduzi-lo.
+name: Report a bug
+description: Describe incorrect behavior and how to reproduce it.
 title: "[Bug]: "
 labels: [bug]
 body:
   - type: markdown
     attributes:
-      value: "Para vulnerabilidades, use o relato privado indicado em SECURITY.md. Remova segredos e dados reais antes de enviar logs."
+      value: "Write in English. For vulnerabilities, use the private reporting channel in SECURITY.md. Remove secrets and real user data before sharing logs."
   - type: input
     id: version
     attributes:
-      label: Commit ou versão
-      placeholder: "SHA do commit ou saída de nelcota-panel version"
+      label: Commit or version
+      placeholder: "Commit SHA or output of nelcota-panel version"
     validations:
       required: true
   - type: textarea
     id: environment
     attributes:
-      label: Ambiente
-      description: "Distribuição Linux, arquitetura, Go, Docker, BuildKit e Caddy relevantes ao problema."
+      label: Environment
+      description: "Linux distribution, architecture, and relevant Go, Docker, BuildKit, and Caddy versions."
     validations:
       required: true
   - type: textarea
     id: reproduction
     attributes:
-      label: Passos para reproduzir
+      label: Steps to reproduce
     validations:
       required: true
   - type: textarea
     id: expected
     attributes:
-      label: Resultado esperado e resultado observado
+      label: Expected and actual behavior
     validations:
       required: true
   - type: textarea
     id: logs
     attributes:
-      label: Logs e informações adicionais
-      description: "Inclua apenas dados que podem ser publicados."
+      label: Logs and additional information
+      description: "Only include information that can be shared publicly."
       render: text

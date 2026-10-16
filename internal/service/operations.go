@@ -6,9 +6,9 @@ import (
 	"errors"
 	"time"
 
-	agentv1 "github.com/nelcota/nelcota-deploy/internal/gen/agent/v1"
-	"github.com/nelcota/nelcota-deploy/internal/security"
-	"github.com/nelcota/nelcota-deploy/internal/updater"
+	agentv1 "github.com/Nelcota/NelcotaDeploy/internal/gen/agent/v1"
+	"github.com/Nelcota/NelcotaDeploy/internal/security"
+	"github.com/Nelcota/NelcotaDeploy/internal/updater"
 )
 
 type Operation struct {
@@ -44,7 +44,7 @@ func interactiveAdmin(ctx context.Context) error {
 		return e
 	}
 	if p.Scopes != nil || time.Now().Unix()-p.TwoFactorAt > 300 {
-		return fail(Forbidden, "Reautenticação interativa necessária")
+		return fail(Forbidden, "Interactive reauthentication required")
 	}
 	return nil
 }
@@ -72,7 +72,7 @@ func (s *OperationsService) Backup(ctx context.Context) (Operation, error) {
 		return Operation{}, e
 	}
 	if s.CreateBackup == nil {
-		return Operation{}, fail(Unavailable, "Backup não configurado")
+		return Operation{}, fail(Unavailable, "Backup not configured")
 	}
 	o := Operation{ID: security.Token(), Kind: "backup", Target: "panel", Status: "queued", CreatedAt: time.Now().Unix()}
 	o.Batch = o.ID
@@ -82,7 +82,7 @@ func (s *OperationsService) Backup(ctx context.Context) (Operation, error) {
 			return e
 		}
 		if n != 0 {
-			return fail(Conflict, "Backup já pendente")
+			return fail(Conflict, "Backup already pending")
 		}
 		if e := insertOperation(ctx, tx, o); e != nil {
 			return e
@@ -100,15 +100,15 @@ func (s *OperationsService) Update(ctx context.Context, version string) ([]Opera
 		return nil, e
 	}
 	if s.VerifyRelease == nil || s.QueuePanel == nil {
-		return nil, fail(Unavailable, "Identidade de releases não configurada")
+		return nil, fail(Unavailable, "Release identity not configured")
 	}
 	if !updater.Newer(version, s.Version) {
-		return nil, fail(Validation, "A versão deve ser posterior à instalada")
+		return nil, fail(Validation, "Version must be newer than the installed version")
 	}
 	check, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
 	if e := s.VerifyRelease(check, version); e != nil {
-		return nil, fail(Validation, "Release ausente, incompatível ou assinatura inválida")
+		return nil, fail(Validation, "Release missing, incompatible, or signature invalid")
 	}
 	batch := security.Token()
 	out := []Operation{}
@@ -118,7 +118,7 @@ func (s *OperationsService) Update(ctx context.Context, version string) ([]Opera
 			return e
 		}
 		if n != 0 {
-			return fail(Conflict, "Atualização já pendente")
+			return fail(Conflict, "Update already pending")
 		}
 		rows, e := tx.QueryContext(ctx, "SELECT id,agent_version FROM servers ORDER BY id")
 		if e != nil {
@@ -135,7 +135,7 @@ func (s *OperationsService) Update(ctx context.Context, version string) ([]Opera
 			}
 			if current != "" && !updater.Newer(version, current) {
 				_ = rows.Close()
-				return fail(Conflict, "Agent possui versão posterior à solicitada")
+				return fail(Conflict, "Agent has a newer version than requested")
 			}
 			out = append(out, Operation{ID: security.Token(), Batch: batch, Kind: "update", Target: id, Version: version, Status: "queued", CreatedAt: time.Now().Unix()})
 		}
@@ -164,7 +164,7 @@ func (s *OperationsService) Cancel(ctx context.Context, batch string) error {
 			return e
 		}
 		if n != 0 {
-			return fail(Conflict, "Operação já está em execução")
+			return fail(Conflict, "Operation already running")
 		}
 		r, e := tx.ExecContext(ctx, "UPDATE maintenance_jobs SET status='cancelled',finished_at=? WHERE batch=? AND status='queued'", time.Now().Unix(), batch)
 		if e != nil {
@@ -172,7 +172,7 @@ func (s *OperationsService) Cancel(ctx context.Context, batch string) error {
 		}
 		n64, _ := r.RowsAffected()
 		if n64 == 0 {
-			return fail(NotFound, "Operação pendente não encontrada")
+			return fail(NotFound, "Pending operation not found")
 		}
 		return s.Core.audit(ctx, tx, "operation.cancel", batch)
 	})

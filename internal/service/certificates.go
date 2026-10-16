@@ -8,8 +8,8 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"encoding/pem"
-	"github.com/nelcota/nelcota-deploy/internal/security"
-	"github.com/nelcota/nelcota-deploy/internal/transport"
+	"github.com/Nelcota/NelcotaDeploy/internal/security"
+	"github.com/Nelcota/NelcotaDeploy/internal/transport"
 	"time"
 )
 
@@ -20,10 +20,10 @@ func (s *EnrollmentService) Renew(ctx context.Context, peer transport.Peer) (sec
 		var grace, expires int64
 		var pending []byte
 		if e := tx.QueryRowContext(ctx, "SELECT fingerprint,previous_fingerprint,previous_cert_until,cert_expires_at,pending_certificate FROM servers WHERE id=?", peer.ID).Scan(&current, &previous, &grace, &expires, &pending); e != nil {
-			return fail(Forbidden, "Agent não cadastrado")
+			return fail(Forbidden, "Agent not registered")
 		}
 		if peer.Fingerprint != current && (peer.Fingerprint != previous || grace < time.Now().Unix()) {
-			return fail(Forbidden, "Certificado não cadastrado")
+			return fail(Forbidden, "Certificate not registered")
 		}
 		if peer.Fingerprint == previous && len(pending) > 0 {
 			b, e := s.Core.Vault.Open(pending, "certificate:"+peer.ID)

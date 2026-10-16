@@ -6,7 +6,7 @@ import (
 	"errors"
 	"time"
 
-	"github.com/nelcota/nelcota-deploy/internal/events"
+	"github.com/Nelcota/NelcotaDeploy/internal/events"
 )
 
 type Kind string
@@ -46,7 +46,7 @@ func WithPrincipal(ctx context.Context, p Principal) context.Context {
 func CurrentUser(ctx context.Context) (Principal, error) {
 	p, ok := ctx.Value(principalKey{}).(Principal)
 	if !ok || p.ID == "" {
-		return p, fail(Unauthenticated, "Autenticação necessária")
+		return p, fail(Unauthenticated, "Authentication required")
 	}
 	return p, nil
 }
@@ -56,7 +56,7 @@ func require(ctx context.Context, admin bool) (Principal, error) {
 		return p, e
 	}
 	if admin && p.Role != "admin" {
-		return p, fail(Forbidden, "Permissão de administrador necessária")
+		return p, fail(Forbidden, "Administrator permission required")
 	}
 	return p, nil
 }

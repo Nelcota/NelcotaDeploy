@@ -2,8 +2,8 @@ package service
 
 import (
 	"context"
-	agentv1 "github.com/nelcota/nelcota-deploy/internal/gen/agent/v1"
-	"github.com/nelcota/nelcota-deploy/internal/transport"
+	agentv1 "github.com/Nelcota/NelcotaDeploy/internal/gen/agent/v1"
+	"github.com/Nelcota/NelcotaDeploy/internal/transport"
 	"strings"
 	"sync/atomic"
 	"testing"

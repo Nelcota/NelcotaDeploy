@@ -1,4 +1,4 @@
-module github.com/nelcota/nelcota-deploy
+module github.com/Nelcota/NelcotaDeploy
 
 go 1.26.8
 

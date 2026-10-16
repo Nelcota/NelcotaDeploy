@@ -12,7 +12,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/nelcota/nelcota-deploy/internal/host"
+	"github.com/Nelcota/NelcotaDeploy/internal/host"
 )
 
 type CertificateBundle struct {

@@ -1,6 +1,6 @@
 syntax = "proto3";
 package agent.v1;
-option go_package = "github.com/nelcota/nelcota-deploy/internal/gen/agent/v1;agentv1";
+option go_package = "github.com/Nelcota/NelcotaDeploy/internal/gen/agent/v1;agentv1";
 
 service AgentService { rpc Connect(stream Event) returns (stream Command); }
 message AppConfig {

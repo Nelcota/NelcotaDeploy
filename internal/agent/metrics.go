@@ -3,10 +3,10 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	agentv1 "github.com/Nelcota/NelcotaDeploy/internal/gen/agent/v1"
+	"github.com/Nelcota/NelcotaDeploy/internal/host"
 	"github.com/moby/moby/api/types/container"
 	"github.com/moby/moby/client"
-	agentv1 "github.com/nelcota/nelcota-deploy/internal/gen/agent/v1"
-	"github.com/nelcota/nelcota-deploy/internal/host"
 	"io"
 	"sync"
 	"time"

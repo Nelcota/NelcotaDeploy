@@ -1,3 +1,3 @@
-# Fronteira do frontend
+# Frontend boundary
 
-Reservado a templ, Datastar e Tailwind. O backend expõe `web.Register(r, services)` como extensão do roteador. Não colocar regras de negócio nos handlers; usar exclusivamente `internal/service`. Consulte `docs/contrato-frontend.md`.
+Reserved for templ, Datastar, and Tailwind. The backend exposes `web.Register(r, services)` as a router extension point. Keep business rules out of handlers; call `internal/service`. See [the frontend contract](../docs/frontend-contract.md).

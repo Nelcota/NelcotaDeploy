@@ -2056,7 +2056,7 @@ const file_agent_v1_agent_proto_rawDesc = "" +
 	"\x10operation_result\x18\x0f \x01(\v2\x19.agent.v1.OperationResultH\x00R\x0foperationResultB\t\n" +
 	"\apayload2A\n" +
 	"\fAgentService\x121\n" +
-	"\aConnect\x12\x0f.agent.v1.Event\x1a\x11.agent.v1.Command(\x010\x01BAZ?github.com/nelcota/nelcota-deploy/internal/gen/agent/v1;agentv1b\x06proto3"
+	"\aConnect\x12\x0f.agent.v1.Event\x1a\x11.agent.v1.Command(\x010\x01B@Z>github.com/Nelcota/NelcotaDeploy/internal/gen/agent/v1;agentv1b\x06proto3"
 
 var (
 	file_agent_v1_agent_proto_rawDescOnce sync.Once

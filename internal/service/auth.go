@@ -12,9 +12,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Nelcota/NelcotaDeploy/internal/security"
 	"github.com/go-webauthn/webauthn/protocol"
 	"github.com/go-webauthn/webauthn/webauthn"
-	"github.com/nelcota/nelcota-deploy/internal/security"
 	"github.com/pquerna/otp"
 	"github.com/pquerna/otp/totp"
 )
@@ -93,7 +93,7 @@ type AuthService struct {
 }
 
 func NewAuth(c *Core, rpID, origin string) (*AuthService, error) {
-	w, e := webauthn.New(&webauthn.Config{RPDisplayName: "Nelcota Deploy", RPID: rpID, RPOrigins: []string{origin}, AuthenticatorSelection: protocol.AuthenticatorSelection{UserVerification: protocol.VerificationRequired}})
+	w, e := webauthn.New(&webauthn.Config{RPDisplayName: "NelcotaDeploy", RPID: rpID, RPOrigins: []string{origin}, AuthenticatorSelection: protocol.AuthenticatorSelection{UserVerification: protocol.VerificationRequired}})
 	return &AuthService{c, w}, e
 }
 func (a *AuthService) user(ctx context.Context, id string) (authUser, error) {
@@ -138,7 +138,7 @@ func (a *AuthService) consumeChallenge(ctx context.Context, token, purpose strin
 		var data []byte
 		if e := tx.QueryRowContext(ctx, "DELETE FROM challenges WHERE token_hash=? AND purpose=? AND expires_at>? RETURNING user_id,data", security.Hash(token), purpose, time.Now().Unix()).Scan(&user, &data); e != nil {
 			if e == sql.ErrNoRows {
-				return fail(Unauthenticated, "Desafio inválido ou expirado")
+				return fail(Unauthenticated, "Invalid or expired challenge")
 			}
 			return e
 		}
@@ -173,7 +173,7 @@ func (a *AuthService) BeginRegistration(ctx context.Context, in RegistrationInpu
 	if in.EnrollmentToken != "" {
 		e := a.Core.DB.Read.QueryRowContext(ctx, "SELECT user_id FROM challenges WHERE token_hash=? AND purpose='enroll' AND expires_at>?", security.Hash(in.EnrollmentToken), time.Now().Unix()).Scan(&id)
 		if e != nil {
-			return Ceremony{}, fail(Unauthenticated, "Convite inválido")
+			return Ceremony{}, fail(Unauthenticated, "Invalid invitation")
 		}
 	} else {
 		p, e := require(ctx, false)
@@ -181,17 +181,17 @@ func (a *AuthService) BeginRegistration(ctx context.Context, in RegistrationInpu
 			return Ceremony{}, e
 		}
 		if time.Now().Unix()-p.TwoFactorAt > 300 {
-			return Ceremony{}, fail(Forbidden, "Reautenticação necessária")
+			return Ceremony{}, fail(Forbidden, "Reauthentication required")
 		}
 		id = p.ID
 	}
 	u, e := a.user(ctx, id)
 	if e != nil {
-		return Ceremony{}, fail(Unauthenticated, "Usuário inválido")
+		return Ceremony{}, fail(Unauthenticated, "Invalid user")
 	}
 	o, s, e := a.WebAuthn.BeginRegistration(u)
 	if e != nil {
-		return Ceremony{}, fail(Validation, "Não foi possível iniciar registro")
+		return Ceremony{}, fail(Validation, "Could not start registration")
 	}
 	b, _ := json.Marshal(o)
 	token, e := a.saveChallenge(ctx, id, "registration", authData{*s, in.EnrollmentToken}, 5*time.Minute)
@@ -207,7 +207,7 @@ func (a *AuthService) FinishRegistration(ctx context.Context, in FinishInput) er
 		if data.Enrollment == "" {
 			p, e := require(ctx, false)
 			if e != nil || p.ID != id {
-				return fail(Forbidden, "Sessão de registro inválida")
+				return fail(Forbidden, "Invalid registration session")
 			}
 		}
 		u, e := a.user(ctx, id)
@@ -216,11 +216,11 @@ func (a *AuthService) FinishRegistration(ctx context.Context, in FinishInput) er
 		}
 		parsed, e := protocol.ParseCredentialCreationResponseBytes(in.Credential)
 		if e != nil {
-			return fail(Validation, "Credencial inválida")
+			return fail(Validation, "Invalid credential")
 		}
 		cred, e := a.WebAuthn.CreateCredential(u, data.Session, parsed)
 		if e != nil {
-			return fail(Unauthenticated, "Registro recusado")
+			return fail(Unauthenticated, "Registration rejected")
 		}
 		b, e = json.Marshal(cred)
 		if e != nil {
@@ -236,7 +236,7 @@ func (a *AuthService) FinishRegistration(ctx context.Context, in FinishInput) er
 			}
 			n, _ := r.RowsAffected()
 			if n != 1 {
-				return fail(Unauthenticated, "Convite utilizado")
+				return fail(Unauthenticated, "Invitation already used")
 			}
 		}
 		if _, e := tx.ExecContext(ctx, "INSERT INTO credentials(id,user_id,kind,data) VALUES(?,?,'passkey',?)", base64.RawURLEncoding.EncodeToString(cred.ID), id, b); e != nil {
@@ -248,7 +248,7 @@ func (a *AuthService) FinishRegistration(ctx context.Context, in FinishInput) er
 func (a *AuthService) BeginLogin(ctx context.Context, email string) (Ceremony, error) {
 	r, e := a.Core.DB.Queries.GetUserByEmail(ctx, strings.ToLower(strings.TrimSpace(email)))
 	if e != nil {
-		return Ceremony{}, fail(Unauthenticated, "Login indisponível para esta conta")
+		return Ceremony{}, fail(Unauthenticated, "Login unavailable for this account")
 	}
 	u, e := a.user(ctx, r.ID)
 	if e != nil {
@@ -256,7 +256,7 @@ func (a *AuthService) BeginLogin(ctx context.Context, email string) (Ceremony, e
 	}
 	o, s, e := a.WebAuthn.BeginLogin(u, webauthn.WithUserVerification(protocol.VerificationRequired))
 	if e != nil {
-		return Ceremony{}, fail(Unauthenticated, "Login indisponível para esta conta")
+		return Ceremony{}, fail(Unauthenticated, "Login unavailable for this account")
 	}
 	b, _ := json.Marshal(o)
 	id, e := a.saveChallenge(ctx, u.ID, "login", authData{Session: *s}, 5*time.Minute)
@@ -275,11 +275,11 @@ func (a *AuthService) FinishLogin(ctx context.Context, in FinishInput) (LoginRes
 		}
 		parsed, e := protocol.ParseCredentialRequestResponseBytes(in.Credential)
 		if e != nil {
-			return fail(Validation, "Resposta inválida")
+			return fail(Validation, "Invalid response")
 		}
 		cred, e := a.WebAuthn.ValidateLogin(u, data.Session, parsed)
 		if e != nil || cred.Authenticator.CloneWarning {
-			return fail(Unauthenticated, "Login recusado")
+			return fail(Unauthenticated, "Login rejected")
 		}
 		b, e = json.Marshal(cred)
 		if e != nil {
@@ -331,7 +331,7 @@ func (a *AuthService) Session(ctx context.Context, token string) (Principal, err
 	var p Principal
 	e := a.Core.DB.Read.QueryRowContext(ctx, "SELECT u.id,u.email,u.name,u.role,s.two_factor_at FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token_hash=? AND s.expires_at>?", security.Hash(token), time.Now().Unix()).Scan(&p.ID, &p.Email, &p.Name, &p.Role, &p.TwoFactorAt)
 	if e != nil {
-		return p, fail(Unauthenticated, "Sessão inválida")
+		return p, fail(Unauthenticated, "Invalid session")
 	}
 	return p, nil
 }
@@ -345,9 +345,9 @@ func (a *AuthService) BeginTOTP(ctx context.Context) (TOTPSetup, error) {
 		return TOTPSetup{}, e
 	}
 	if time.Now().Unix()-p.TwoFactorAt > 300 {
-		return TOTPSetup{}, fail(Forbidden, "Reautenticação necessária")
+		return TOTPSetup{}, fail(Forbidden, "Reauthentication required")
 	}
-	k, e := totp.Generate(totp.GenerateOpts{Issuer: "Nelcota Deploy", AccountName: p.Email})
+	k, e := totp.Generate(totp.GenerateOpts{Issuer: "NelcotaDeploy", AccountName: p.Email})
 	if e != nil {
 		return TOTPSetup{}, e
 	}
@@ -367,7 +367,7 @@ func otpCounter(secret, code string, now time.Time) (int64, error) {
 			return stamp.Unix() / 30, nil
 		}
 	}
-	return 0, fail(Unauthenticated, "Código inválido")
+	return 0, fail(Unauthenticated, "Invalid code")
 }
 func (a *AuthService) FinishTOTP(ctx context.Context, id, code string) error {
 	p, e := freshInteractive(ctx)
@@ -376,7 +376,7 @@ func (a *AuthService) FinishTOTP(ctx context.Context, id, code string) error {
 	}
 	return a.consumeChallenge(ctx, id, "totp_setup", func(tx *sql.Tx, user string, b []byte) error {
 		if user != p.ID {
-			return fail(Unauthenticated, "Desafio inválido")
+			return fail(Unauthenticated, "Invalid challenge")
 		}
 		var encrypted []byte
 		if e := json.Unmarshal(b, &encrypted); e != nil {
@@ -392,7 +392,7 @@ func (a *AuthService) FinishTOTP(ctx context.Context, id, code string) error {
 			return e
 		}
 		if _, e = tx.ExecContext(ctx, "INSERT INTO credentials(id,user_id,kind,data,last_used) VALUES(?,?,'totp',?,?)", "totp-"+user, user, encrypted, counter); e != nil {
-			return fail(Conflict, "TOTP já configurado")
+			return fail(Conflict, "TOTP already configured")
 		}
 		// Sessions established before enabling the second factor must not retain
 		// access. Require a new passkey + TOTP login, and discard pending logins.
@@ -410,7 +410,7 @@ func (a *AuthService) VerifyTOTP(ctx context.Context, challenge, code string) (L
 		var b []byte
 		var last int64
 		if e := tx.QueryRowContext(ctx, "SELECT data,last_used FROM credentials WHERE user_id=? AND kind='totp'", user).Scan(&b, &last); e != nil {
-			return fail(Unauthenticated, "Código inválido")
+			return fail(Unauthenticated, "Invalid code")
 		}
 		secret, e := a.Core.Vault.Open(b, "totp:"+user)
 		if e != nil {
@@ -419,7 +419,7 @@ func (a *AuthService) VerifyTOTP(ctx context.Context, challenge, code string) (L
 		defer clear(secret)
 		counter, e := otpCounter(string(secret), code, time.Now())
 		if e != nil || counter <= last {
-			return fail(Unauthenticated, "Código inválido ou reutilizado")
+			return fail(Unauthenticated, "Invalid or previously used code")
 		}
 		if _, e = tx.ExecContext(ctx, "UPDATE credentials SET last_used=? WHERE user_id=? AND kind='totp'", counter, user); e != nil {
 			return e
@@ -456,7 +456,7 @@ func (a *AuthService) Bootstrap(ctx context.Context, in UserInput) (Enrollment, 
 func (a *AuthService) create(ctx context.Context, in UserInput, first bool) (Enrollment, error) {
 	address, e := mail.ParseAddress(in.Email)
 	if e != nil || address.Address != in.Email || len(in.Name) < 1 || len(in.Name) > 120 || (in.Role != "admin" && in.Role != "member") {
-		return Enrollment{}, fail(Validation, "Usuário inválido")
+		return Enrollment{}, fail(Validation, "Invalid user")
 	}
 	id := security.Token()
 	token := security.Token()
@@ -468,7 +468,7 @@ func (a *AuthService) create(ctx context.Context, in UserInput, first bool) (Enr
 				return e
 			}
 			if n != 0 {
-				return fail(Conflict, "Administrador já inicializado")
+				return fail(Conflict, "Administrator already initialized")
 			}
 		}
 		if _, e := tx.ExecContext(ctx, "INSERT INTO users(id,email,name,role,created_at) VALUES(?,?,?,?,?)", id, strings.ToLower(in.Email), in.Name, in.Role, time.Now().Unix()); e != nil {

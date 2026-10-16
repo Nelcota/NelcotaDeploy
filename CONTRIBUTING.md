@@ -1,10 +1,14 @@
-# Contribuir com o Nelcota Deploy
+# Contributing to NelcotaDeploy
 
-O projeto está em desenvolvimento. A interface e a homologação em VPS são os próximos marcos; o [relatório do backend](docs/relatorio-backend.md) e as [pendências](docs/pendencias.md) mostram o estado atual.
+The project is under development. The web interface and VPS acceptance testing are the next milestones. See the [backend report](docs/backend-report.md) and [outstanding work](docs/outstanding-work.md) for the current status.
 
-## Preparar o ambiente
+## Language
 
-Use Linux, Go 1.26.9+, Git, Make, protoc e ShellCheck. Para integração, instale Docker e Caddy. Os testes com race detector precisam de CGO e de um compilador C.
+Use **English** for documentation, comments, UI and CLI text, filenames, commit messages, issue reports, pull request titles and descriptions, and release notes. This applies even when a conversation with the maintainer uses another language. See [AGENTS.md](AGENTS.md).
+
+## Set up development
+
+Use Linux, Go 1.26.9+, Git, Make, protoc 36.1, and ShellCheck. Install Docker and Caddy for integration testing. The race detector requires CGO and a C compiler. Use the pinned protoc version so generated-file metadata matches CI.
 
 ```bash
 make tools
@@ -14,34 +18,34 @@ make dev-seed
 make dev
 ```
 
-O modo dev usa dados locais em `.local/dev`, agents simulados e uma sessão própria de desenvolvimento. Consulte o [README](README.md#começar-localmente) para usar a API.
+Development mode uses local data in `.local/dev`, simulated agents, and its own development session. See the [README](README.md#local-development) for API examples.
 
-## Propor uma mudança
+## Propose a change
 
-1. Para mudanças de arquitetura ou comportamento público, abra uma issue descrevendo o problema e a proposta.
-2. Crie uma branch a partir de `main`; contribuidores externos podem usar um fork.
-3. Mantenha o escopo do pull request claro e atualize a documentação afetada.
-4. Descreva o comportamento antes/depois e registre os comandos de validação executados.
+1. Open an issue before changing architecture or public behavior. Describe the problem and proposed result.
+2. Create a branch from `main`; external contributors can use a fork.
+3. Keep pull requests focused and update affected documentation.
+4. Explain the before/after behavior and record the validation commands you ran.
 
-Use português ou inglês nas issues e nos pull requests. Trate as pessoas com respeito e concentre a discussão no problema técnico.
+Treat people respectfully and keep discussions focused on the technical problem.
 
-## Verificar antes do pull request
+## Check your change
 
 ```bash
 make build test lint check-generated
 CGO_ENABLED=1 go test -race -count=1 ./...
 ```
 
-Quando a mudança afetar deploy, containers, proxy ou instaladores, execute também `make test-integration` com Docker e Caddy disponíveis. Se uma verificação depender de infraestrutura que você não tem, registre essa limitação no pull request. Ausência de infraestrutura não equivale a teste aprovado.
+For changes to deployment, containers, routing, or installers, also run `make test-integration` with Docker and Caddy available. Record infrastructure limitations in the pull request. Missing infrastructure is not a passing test.
 
-Adicione regressões para correções de comportamento. Não edite manualmente `internal/gen/` ou `internal/store/dbgen/`: altere o Protobuf/SQL de origem e execute `make generate`.
+Add regression tests for behavior fixes. Do not edit `internal/gen/` or `internal/store/dbgen/` manually: change the Protobuf/SQL source and run `make generate`.
 
-## Fronteiras do projeto
+## Project boundaries
 
-- Handlers HTTP usam os serviços de `internal/service`; autorização e regras de negócio pertencem aos serviços.
-- Alterações de banco exigem uma migração nova; preserve a compatibilidade necessária ao rollback de executáveis.
-- O protocolo do agent não oferece shell/exec remoto. Novas ações precisam manter validação, autorização e proteção contra replay.
-- Não envie credenciais, chaves privadas, bancos, backups, logs com dados reais ou artefatos de `.local/` e `dist/`.
-- Alterações de segurança devem considerar [SECURITY.md](SECURITY.md).
+- HTTP handlers call `internal/service`; services own authorization and business rules.
+- Database changes need a new migration. Preserve the compatibility required for executable rollback.
+- The agent protocol does not expose remote shell/exec. New actions must retain validation, authorization, and replay protection.
+- Do not commit credentials, private keys, databases, backups, logs containing real data, or artifacts from `.local/` and `dist/`.
+- Follow [SECURITY.md](SECURITY.md) for security-sensitive changes.
 
-Ao contribuir, você concorda em disponibilizar sua contribuição sob a [licença MIT](LICENSE) do projeto.
+Contributions are provided under the project's [MIT license](LICENSE).

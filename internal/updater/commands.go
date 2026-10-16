@@ -13,7 +13,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/nelcota/nelcota-deploy/internal/security"
+	"github.com/Nelcota/NelcotaDeploy/internal/security"
 	"github.com/spf13/cobra"
 )
 
@@ -21,7 +21,7 @@ func Commands(component string, data *string) []*cobra.Command {
 	version := &cobra.Command{Use: "version", Args: cobra.NoArgs, RunE: func(c *cobra.Command, _ []string) error {
 		return json.NewEncoder(c.OutOrStdout()).Encode(map[string]string{"version": Version})
 	}}
-	update := &cobra.Command{Use: "update VERSION", Short: "Solicita release assinada ao helper local", Args: cobra.ExactArgs(1), RunE: func(c *cobra.Command, args []string) error {
+	update := &cobra.Command{Use: "update VERSION", Short: "Request a signed release through the local helper", Args: cobra.ExactArgs(1), RunE: func(c *cobra.Command, args []string) error {
 		if _, e := LoadTrust(TrustPath(component)); e != nil {
 			return e
 		}
@@ -53,7 +53,7 @@ func Commands(component string, data *string) []*cobra.Command {
 		})
 	}}
 	var purge bool
-	uninstall := &cobra.Command{Use: "uninstall", Short: "Remove o serviço e binário, conservando dados por padrão", Args: cobra.NoArgs, RunE: func(c *cobra.Command, _ []string) error {
+	uninstall := &cobra.Command{Use: "uninstall", Short: "Remove the service and binary, preserving data by default", Args: cobra.NoArgs, RunE: func(c *cobra.Command, _ []string) error {
 		if os.Geteuid() != 0 {
 			return errors.New("uninstall requires root")
 		}
@@ -61,7 +61,7 @@ func Commands(component string, data *string) []*cobra.Command {
 			return exec.CommandContext(ctx, "/usr/bin/systemctl", args...).Run()
 		})
 	}}
-	uninstall.Flags().BoolVar(&purge, "purge", false, "Remove também dados e chaves Nelcota; preserve um backup antes")
+	uninstall.Flags().BoolVar(&purge, "purge", false, "Also remove Nelcota data and keys; keep a backup first")
 	return []*cobra.Command{version, update, apply, uninstall}
 }
 func restartService(ctx context.Context, component, data, expected, healthURL string) error {

@@ -19,7 +19,7 @@ results = []
 
 def record(name, measured, ceiling, unit):
     if measured is not None and measured < 0:
-        raise SystemExit('Medição negativa inválida: ' + name)
+        raise SystemExit('Invalid negative measurement: ' + name)
     exclusive = name in ('webhook_to_queue', 'shallow_clone', 'proxy_overhead')
     results.append({'metric': name, 'value': measured, 'target_max': ceiling, 'exclusive_max': exclusive,
                     'unit': unit, 'status': 'pending' if measured is None else
@@ -31,7 +31,7 @@ def rss(pid):
     for line in Path(f'/proc/{pid}/status').read_text().splitlines():
         if line.startswith('VmRSS:'):
             return int(line.split()[1]) / 1024
-    raise SystemExit('VmRSS não disponível')
+    raise SystemExit('VmRSS unavailable')
 
 record('panel_idle_rss', rss(a.panel_pid), 60, 'MiB')
 record('agent_idle_rss', rss(a.agent_pid), 25, 'MiB')
@@ -40,7 +40,7 @@ stages, duration = {}, None
 if a.deployment:
     deploy = json.loads(a.deployment.read_text())
     if deploy.get('status') != 'success':
-        raise SystemExit('Medição de deploy exige status success')
+        raise SystemExit('Deployment measurement requires success status')
     stages = deploy.get('timings', {})
     if deploy.get('finished_at') and deploy.get('queued_at'):
         duration = deploy['finished_at'] - deploy['queued_at']
@@ -52,7 +52,7 @@ record('start_health_route', ready, 10, 'seconds')
 record('lost_requests', a.lost_requests, 0, 'requests')
 record('proxy_overhead', a.proxy_ms, 1, 'ms')
 record('installation', a.install_seconds, 300, 'seconds')
-output = json.dumps({'measurements': results, 'note': 'Metas requerem VPS e carga representativas; pending não confirma a meta.'}, indent=2)
+output = json.dumps({'measurements': results, 'note': 'Targets require representative VPS infrastructure and load; pending does not confirm a target.'}, indent=2)
 if a.output:
     a.output.write_text(output + '\n')
 print(output)

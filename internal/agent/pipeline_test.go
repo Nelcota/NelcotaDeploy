@@ -3,8 +3,8 @@ package agent
 import (
 	"context"
 	"errors"
-	agentv1 "github.com/nelcota/nelcota-deploy/internal/gen/agent/v1"
-	"github.com/nelcota/nelcota-deploy/internal/security"
+	agentv1 "github.com/Nelcota/NelcotaDeploy/internal/gen/agent/v1"
+	"github.com/Nelcota/NelcotaDeploy/internal/security"
 	"go.uber.org/goleak"
 	"os"
 	"path/filepath"

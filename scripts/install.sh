@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Instalação do painel; revisar antes de executar como root.
+# Panel installation; review before running as root.
 set -euo pipefail
 umask 077
-fail() { printf 'Erro: %s\n' "$1" >&2; exit 1; }
+fail() { printf 'Error: %s\n' "$1" >&2; exit 1; }
 usage() { printf '%s\n' 'install.sh panel --domain HOST --email EMAIL --release-url HTTPS_URL --signing-key MINISIGN_PUBLIC_KEY [--wg-endpoint HOST:51820]'; }
 domain='' email='' release='' signing_key='' endpoint=''
 [[ ${1:-} == panel ]] && shift
@@ -14,34 +14,34 @@ while (($#)); do
     --signing-key) signing_key=${2:?}; shift 2;;
     --wg-endpoint) endpoint=${2:?}; shift 2;;
     --help) usage; exit 0;;
-    *) fail 'Argumento desconhecido';;
+    *) fail 'Unknown argument';;
   esac
 done
 release=${release%/}
 release_base=${release%/*}
-[[ ${release##*/} =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || fail 'Use uma URL imutável terminada em /vMAJOR.MINOR.PATCH'
-[[ $EUID == 0 ]] || fail 'Execute como root'
-[[ $domain =~ ^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$ && $domain == *.* ]] || fail 'Domínio inválido'
-[[ $email == *@* && $email != *$'\n'* ]] || fail 'E-mail inválido'
-[[ $release == https://* && $release != *[$'\n\r ']* && -n $signing_key ]] || fail 'Release HTTPS e chave pública confiável obrigatórias'
+[[ ${release##*/} =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || fail 'Use an immutable URL ending in /vMAJOR.MINOR.PATCH'
+[[ $EUID == 0 ]] || fail 'Run as root'
+[[ $domain =~ ^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$ && $domain == *.* ]] || fail 'Invalid domain'
+[[ $email == *@* && $email != *$'\n'* ]] || fail 'Invalid email address'
+[[ $release == https://* && $release != *[$'\n\r ']* && -n $signing_key ]] || fail 'HTTPS release URL and trusted public key required'
 [[ -n $endpoint ]] || endpoint="$domain:51820"
-[[ $endpoint =~ ^[a-zA-Z0-9.-]+:[0-9]+$ ]] || fail 'Endpoint WireGuard inválido'
+[[ $endpoint =~ ^[a-zA-Z0-9.-]+:[0-9]+$ ]] || fail 'Invalid WireGuard endpoint'
 # shellcheck source=/dev/null
 source /etc/os-release
-case "$ID:$VERSION_ID" in debian:1[2-9]*|ubuntu:2[2468].*) ;; *) fail 'Suporte: Debian 12+ ou Ubuntu 22.04+';; esac
-[[ ! -e /etc/nelcota/master.key ]] || fail 'Instalação existente; preserve os dados e use atualização verificada'
-[[ ! -e /etc/caddy/Caddyfile ]] || fail 'Caddy existente: preserve a configuração e instale manualmente'
-# Evita desligar o único método de acesso antes de existir uma chave SSH.
+case "$ID:$VERSION_ID" in debian:1[2-9]*|ubuntu:2[2468].*) ;; *) fail 'Supported: Debian 12+ or Ubuntu 22.04+';; esac
+[[ ! -e /etc/nelcota/master.key ]] || fail 'Existing installation; preserve data and use a verified update'
+[[ ! -e /etc/caddy/Caddyfile ]] || fail 'Existing Caddy installation: preserve configuration and install manually'
+# Avoid disabling the only access method before an SSH key is available.
 key_found=false
 for authorized in /root/.ssh/authorized_keys /home/*/.ssh/authorized_keys; do
  if [[ -s $authorized ]]; then key_found=true; break; fi
 done
-[[ $key_found == true ]] || fail 'Configure e teste acesso SSH por chave antes da instalação'
+[[ $key_found == true ]] || fail 'Configure and test SSH key access before installation'
 export DEBIAN_FRONTEND=noninteractive
 apt-get update
 apt-get install -y ca-certificates curl minisign caddy wireguard-tools nftables jq unattended-upgrades fail2ban
 arch=$(uname -m)
-case "$arch" in x86_64) arch=amd64_v1; if grep -qw avx2 /proc/cpuinfo && grep -qw bmi1 /proc/cpuinfo && grep -qw bmi2 /proc/cpuinfo && grep -qw fma /proc/cpuinfo && grep -qw f16c /proc/cpuinfo && grep -qw movbe /proc/cpuinfo && grep -qw xsave /proc/cpuinfo && grep -qw abm /proc/cpuinfo; then arch=amd64_v3; fi;; aarch64) arch=arm64;; *) fail 'Arquitetura não suportada';; esac
+case "$arch" in x86_64) arch=amd64_v1; if grep -qw avx2 /proc/cpuinfo && grep -qw bmi1 /proc/cpuinfo && grep -qw bmi2 /proc/cpuinfo && grep -qw fma /proc/cpuinfo && grep -qw f16c /proc/cpuinfo && grep -qw movbe /proc/cpuinfo && grep -qw xsave /proc/cpuinfo && grep -qw abm /proc/cpuinfo; then arch=amd64_v3; fi;; aarch64) arch=arm64;; *) fail 'Unsupported architecture';; esac
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 artifact="nelcota-panel_linux_${arch}"
@@ -54,7 +54,7 @@ id nelcota >/dev/null 2>&1 || useradd --system --home-dir /var/lib/nelcota --she
 install -o root -g root -m 0755 "$work/$artifact" /usr/local/bin/nelcota-panel
 install -d -o nelcota -g nelcota -m 0700 /etc/nelcota /var/lib/nelcota
 install -d -m 0700 /etc/wireguard
-[[ ! -e /etc/wireguard/wg0.conf ]] || fail 'wg0 já configurada; configuração manual necessária'
+[[ ! -e /etc/wireguard/wg0.conf ]] || fail 'wg0 already configured; manual configuration required'
 wg genkey > "$work/wg.key"
 wg pubkey < "$work/wg.key" > /etc/nelcota/wg.pub
 install -o nelcota -g nelcota -m 0600 "$work/wg.key" /etc/nelcota/wg.key
@@ -79,8 +79,8 @@ chown nelcota:nelcota /etc/nelcota/panel.env /etc/nelcota/wg.pub
 /usr/local/bin/nelcota-panel --origin "https://$domain" init --email "$email" > /etc/nelcota/first-access.json
 chown -R nelcota:nelcota /etc/nelcota /var/lib/nelcota
 chmod 0600 /etc/nelcota/first-access.json
-# Não sobrescreva sites existentes.
-[[ ! -s /etc/caddy/Caddyfile || ! -e /etc/nelcota/caddy-installed ]] || fail 'Caddy já gerenciado'
+# Do not overwrite existing sites.
+[[ ! -s /etc/caddy/Caddyfile || ! -e /etc/nelcota/caddy-installed ]] || fail 'Caddy already managed'
 cp /etc/caddy/Caddyfile "$work/Caddyfile.previous"
 cat > /etc/caddy/Caddyfile <<CADDY
 $domain {
@@ -93,7 +93,7 @@ caddy validate --config /etc/caddy/Caddyfile
 : > /etc/nelcota/caddy-installed
 cat > /etc/systemd/system/nelcota-panel.service <<'UNIT'
 [Unit]
-Description=Nelcota Deploy Panel
+Description=NelcotaDeploy Panel
 After=network-online.target wg-quick@wg0.service
 Requires=wg-quick@wg0.service
 [Service]
@@ -124,8 +124,8 @@ UMask=0077
 [Install]
 WantedBy=multi-user.target
 UNIT
-# Firewall em tabela própria; conserva regras existentes e o SSH por chave.
-nft list table inet nelcota >/dev/null 2>&1 && fail 'Firewall nelcota já existe; revise manualmente'
+# Use a dedicated firewall table; preserve existing rules and SSH key access.
+nft list table inet nelcota >/dev/null 2>&1 && fail 'Nelcota firewall already exists; review manually'
 cat > /etc/nelcota/firewall.nft <<'NFT'
 table inet nelcota {
  chain input { type filter hook input priority 0; policy drop;
@@ -193,4 +193,4 @@ systemctl enable --now nelcota-panel-update.path
 systemctl enable nelcota-firewall.service
 systemctl enable --now nelcota-panel
 systemctl reload caddy
-printf 'Painel instalado em https://%s. Convite inicial (15 min) em /etc/nelcota/first-access.json, acesso root.\n' "$domain"
+printf 'Panel installed at https://%s. Initial invitation (15 min) in /etc/nelcota/first-access.json; root access only.\n' "$domain"

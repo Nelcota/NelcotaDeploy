@@ -16,7 +16,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/nelcota/nelcota-deploy/internal/host"
+	"github.com/Nelcota/NelcotaDeploy/internal/host"
 )
 
 // S3 uses the path-style PutObject subset of Signature V4, with a streaming file

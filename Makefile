@@ -15,13 +15,13 @@ test:
 test-integration:
 	$(GO) test -tags=integration -count=1 -timeout=10m ./...
 lint:
-	@test -z "$$(gofmt -l cmd internal web scripts)" || { echo 'Execute go fmt ./...'; exit 1; }
+	@test -z "$$(gofmt -l cmd internal web scripts)" || { echo 'Run go fmt ./...'; exit 1; }
 	$(GO) vet ./...
 	$(GO) vet -tags=integration ./...
 	$(TOOLS)/golangci-lint run
 	shellcheck scripts/*.sh
 proto:
-	PATH="$(TOOLS):$$PATH" protoc -I proto --go_out=. --go_opt=module=github.com/nelcota/nelcota-deploy --connect-go_out=. --connect-go_opt=module=github.com/nelcota/nelcota-deploy --go-vtproto_out=. --go-vtproto_opt=module=github.com/nelcota/nelcota-deploy,features=marshal+unmarshal+size proto/agent/v1/agent.proto
+	PATH="$(TOOLS):$$PATH" protoc -I proto --go_out=. --go_opt=module=github.com/Nelcota/NelcotaDeploy --connect-go_out=. --connect-go_opt=module=github.com/Nelcota/NelcotaDeploy --go-vtproto_out=. --go-vtproto_opt=module=github.com/Nelcota/NelcotaDeploy,features=marshal+unmarshal+size proto/agent/v1/agent.proto
 tools:
 	$(GO) install google.golang.org/protobuf/cmd/protoc-gen-go@v1.36.11
 	$(GO) install connectrpc.com/connect/cmd/protoc-gen-connect-go@v1.19.1

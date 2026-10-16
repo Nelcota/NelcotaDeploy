@@ -12,12 +12,12 @@ import (
 	"sync"
 	"time"
 
-	"github.com/nelcota/nelcota-deploy/internal/events"
-	agentv1 "github.com/nelcota/nelcota-deploy/internal/gen/agent/v1"
-	"github.com/nelcota/nelcota-deploy/internal/maintenance"
-	"github.com/nelcota/nelcota-deploy/internal/security"
-	"github.com/nelcota/nelcota-deploy/internal/store"
-	"github.com/nelcota/nelcota-deploy/internal/store/dbgen"
+	"github.com/Nelcota/NelcotaDeploy/internal/events"
+	agentv1 "github.com/Nelcota/NelcotaDeploy/internal/gen/agent/v1"
+	"github.com/Nelcota/NelcotaDeploy/internal/maintenance"
+	"github.com/Nelcota/NelcotaDeploy/internal/security"
+	"github.com/Nelcota/NelcotaDeploy/internal/store"
+	"github.com/Nelcota/NelcotaDeploy/internal/store/dbgen"
 )
 
 type Dispatcher interface {
@@ -59,10 +59,10 @@ func decodeDeploy(v dbgen.Deployment) Deployment {
 
 func dbError(e error) error {
 	if errors.Is(e, sql.ErrNoRows) {
-		return fail(NotFound, "Recurso não encontrado")
+		return fail(NotFound, "Resource not found")
 	}
 	if e != nil {
-		return fail(Conflict, "Operação não pôde ser concluída")
+		return fail(Conflict, "Operation could not be completed")
 	}
 	return nil
 }
@@ -98,18 +98,18 @@ var hostPattern = regexp.MustCompile(`^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.
 
 func validateApp(in *AppInput) error {
 	if len(in.Name) < 1 || len(in.Name) > 80 || len(in.Branch) < 1 || len(in.Branch) > 200 || strings.HasPrefix(in.Branch, "-") || strings.ContainsAny(in.Branch, "\r\n\x00") {
-		return fail(Validation, "Nome ou branch inválidos")
+		return fail(Validation, "Invalid name or branch")
 	}
 	u, e := url.Parse(in.Repository)
 	if e != nil || u.Scheme != "https" || u.Host != "github.com" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || len(strings.Split(strings.Trim(u.Path, "/"), "/")) != 2 {
-		return fail(Validation, "Repositório deve ser uma URL HTTPS do GitHub")
+		return fail(Validation, "Repository must be a GitHub HTTPS URL")
 	}
 	cfg := &in.Config
 	if cfg.Port == 0 {
 		cfg.Port = 8080
 	}
 	if cfg.Port > 65535 {
-		return fail(Validation, "Porta inválida")
+		return fail(Validation, "Invalid port")
 	}
 	if cfg.MemoryBytes == 0 {
 		cfg.MemoryBytes = 256 << 20
@@ -118,38 +118,38 @@ func validateApp(in *AppInput) error {
 		cfg.NanoCPUs = 1e9
 	}
 	if cfg.MemoryBytes < 32<<20 || cfg.MemoryBytes > 64<<30 || cfg.NanoCPUs < 1e7 || cfg.NanoCPUs > 64e9 {
-		return fail(Validation, "Limites de recursos inválidos")
+		return fail(Validation, "Invalid resource limits")
 	}
 	if cfg.Replicas == 0 {
 		cfg.Replicas = 1
 	}
 	if cfg.Replicas > 16 {
-		return fail(Validation, "Máximo de 16 réplicas")
+		return fail(Validation, "Maximum of 16 replicas")
 	}
 	if cfg.HealthPath == "" {
 		cfg.HealthPath = "/"
 	}
 	if !strings.HasPrefix(cfg.HealthPath, "/") || strings.HasPrefix(cfg.HealthPath, "//") || strings.ContainsAny(cfg.HealthPath, "\r\n") {
-		return fail(Validation, "Healthcheck inválido")
+		return fail(Validation, "Invalid healthcheck")
 	}
 	if cfg.HealthTimeout == 0 {
 		cfg.HealthTimeout = 60
 	}
 	if cfg.HealthTimeout > 600 {
-		return fail(Validation, "Timeout máximo de 600 segundos")
+		return fail(Validation, "Maximum timeout is 600 seconds")
 	}
 	if cfg.Dockerfile == "" {
 		cfg.Dockerfile = "Dockerfile"
 	}
 	if strings.Contains(cfg.Dockerfile, "..") || strings.HasPrefix(cfg.Dockerfile, "/") || strings.ContainsAny(cfg.Dockerfile, "\x00\r\n") {
-		return fail(Validation, "Dockerfile inválido")
+		return fail(Validation, "Invalid Dockerfile")
 	}
 	if len(cfg.Domains) > 20 {
-		return fail(Validation, "Muitos domínios")
+		return fail(Validation, "Too many domains")
 	}
 	for _, d := range cfg.Domains {
 		if !hostPattern.MatchString(d) {
-			return fail(Validation, "Domínio inválido")
+			return fail(Validation, "Invalid domain")
 		}
 	}
 	return nil
@@ -209,7 +209,7 @@ func (s *appsService) save(ctx context.Context, id string, in AppInput) (App, er
 			}
 			n, _ := r.RowsAffected()
 			if n == 0 {
-				return fail(NotFound, "App inexistente ou migração de server não permitida")
+				return fail(NotFound, "App does not exist or server migration is not allowed")
 			}
 		}
 		if _, e := tx.ExecContext(ctx, "DELETE FROM domains WHERE app_id=?", id); e != nil {
@@ -234,14 +234,14 @@ func (s *appsService) Delete(ctx context.Context, id string, confirmed bool) err
 		return e
 	}
 	if !confirmed {
-		return fail(Validation, "Confirmação obrigatória")
+		return fail(Validation, "Confirmation required")
 	}
 	a, e := s.Get(ctx, id)
 	if e != nil {
 		return e
 	}
 	if !a.Config.Stopped {
-		return fail(Conflict, "Pare a app antes de excluir")
+		return fail(Conflict, "Stop the app before deleting it")
 	}
 	return s.c.mutate(ctx, func(tx *sql.Tx) error {
 		var n int
@@ -249,7 +249,7 @@ func (s *appsService) Delete(ctx context.Context, id string, confirmed bool) err
 			return e
 		}
 		if n > 0 {
-			return fail(Conflict, "App possui deploys pendentes")
+			return fail(Conflict, "App has pending deployments")
 		}
 		if _, e := tx.ExecContext(ctx, "DELETE FROM deployments WHERE app_id=?", id); e != nil {
 			return e
@@ -282,13 +282,13 @@ func (s *appsService) SetEnvironment(ctx context.Context, id string, vars []EnvI
 		return e
 	}
 	if len(vars) > 200 {
-		return fail(Validation, "Muitas variáveis")
+		return fail(Validation, "Too many variables")
 	}
 	seen := map[string]bool{}
 	encrypted := make([][]byte, len(vars))
 	for i, v := range vars {
 		if !envPattern.MatchString(v.Key) || seen[v.Key] || len(v.Value) > 65536 || strings.ContainsRune(v.Value, 0) {
-			return fail(Validation, "Variável inválida ou duplicada")
+			return fail(Validation, "Invalid or duplicate variable")
 		}
 		seen[v.Key] = true
 		var e error
@@ -317,7 +317,7 @@ func (s *appsService) SetEnvironment(ctx context.Context, id string, vars []EnvI
 			return e
 		}
 		if total > 512<<10 || count > 200 {
-			return fail(Validation, "Limite de variáveis excedido")
+			return fail(Validation, "Variable limit exceeded")
 		}
 		return s.c.audit(ctx, tx, "env.patch", id)
 	})
@@ -331,7 +331,7 @@ func (s *appsService) Action(ctx context.Context, id, action string, replicas ui
 		return e
 	}
 	if action == "stop" && !confirmed {
-		return fail(Validation, "Confirmação obrigatória")
+		return fail(Validation, "Confirmation required")
 	}
 	switch action {
 	case "start":
@@ -340,12 +340,12 @@ func (s *appsService) Action(ctx context.Context, id, action string, replicas ui
 		a.Config.Stopped = true
 	case "scale":
 		if replicas < 1 || replicas > 16 {
-			return fail(Validation, "Réplicas inválidas")
+			return fail(Validation, "Invalid replicas")
 		}
 		a.Config.Replicas = replicas
 	case "restart":
 	default:
-		return fail(Validation, "Ação inválida")
+		return fail(Validation, "Invalid action")
 	}
 	_, e = s.Update(ctx, id, AppInput{a.Name, a.ServerID, a.Repository, a.Branch, a.Config})
 	if e != nil {
@@ -353,7 +353,7 @@ func (s *appsService) Action(ctx context.Context, id, action string, replicas ui
 	}
 	if action == "restart" {
 		if s.c.Control == nil {
-			return fail(Unavailable, "Agent indisponível")
+			return fail(Unavailable, "Agent unavailable")
 		}
 		return s.c.send(ctx, a.ServerID, &agentv1.Command{Action: &agentv1.Command_Restart{Restart: &agentv1.AppAction{AppId: id}}})
 	}
@@ -379,19 +379,19 @@ func (s *serversService) Invite(ctx context.Context, in ServerInput) (Invitation
 	}
 	ip := net.ParseIP(in.WireGuardIP)
 	if ip == nil || !ip.IsPrivate() || ip.To4() == nil || len(in.Name) < 1 || len(in.Name) > 80 {
-		return Invitation{}, fail(Validation, "Nome e IPv4 privado obrigatórios")
+		return Invitation{}, fail(Validation, "Name and private IPv4 address required")
 	}
 	if in.BuildLimit == 0 {
 		in.BuildLimit = 1
 	}
 	if in.BuildLimit < 1 || in.BuildLimit > 8 {
-		return Invitation{}, fail(Validation, "Limite de builds inválido")
+		return Invitation{}, fail(Validation, "Invalid build limit")
 	}
 	if in.CacheBytes == 0 {
 		in.CacheBytes = 5 << 30
 	}
 	if in.CacheBytes < 64<<20 || in.CacheBytes > 100<<30 {
-		return Invitation{}, fail(Validation, "Teto de cache inválido")
+		return Invitation{}, fail(Validation, "Invalid cache limit")
 	}
 	token := security.Token()
 	id := security.Token()
@@ -412,7 +412,7 @@ func (s *serversService) Prune(ctx context.Context, id, scope string, confirmed 
 		return e
 	}
 	if !confirmed {
-		return fail(Validation, "Confirmação obrigatória")
+		return fail(Validation, "Confirmation required")
 	}
 	var v agentv1.Prune_Scope
 	switch scope {
@@ -421,10 +421,10 @@ func (s *serversService) Prune(ctx context.Context, id, scope string, confirmed 
 	case "orphan_images":
 		v = agentv1.Prune_ORPHAN_IMAGES
 	default:
-		return fail(Validation, "Escopo inválido")
+		return fail(Validation, "Invalid scope")
 	}
 	if s.c.Control == nil {
-		return fail(Unavailable, "Agent indisponível")
+		return fail(Unavailable, "Agent unavailable")
 	}
 	if e := s.c.mutate(ctx, func(tx *sql.Tx) error { return s.c.audit(ctx, tx, "server.prune."+scope, id) }); e != nil {
 		return e
@@ -462,15 +462,15 @@ func (s *settingsService) Set(ctx context.Context, key, value string) error {
 		if value != "" {
 			var cfg maintenance.S3
 			if json.Unmarshal([]byte(value), &cfg) != nil || cfg.Validate() != nil {
-				return fail(Validation, "Configuração S3 inválida")
+				return fail(Validation, "Invalid S3 configuration")
 			}
 		}
 	case "github.app_id", "github.private_key", "github.webhook_secret", "github.client_id", "github.client_secret":
 	default:
-		return fail(Validation, "Ajuste desconhecido")
+		return fail(Validation, "Unknown setting")
 	}
 	if len(value) > 32768 {
-		return fail(Validation, "Valor muito grande")
+		return fail(Validation, "Value too large")
 	}
 	b, e := s.c.Vault.Seal([]byte(value), "setting:"+key)
 	if e != nil {
@@ -535,7 +535,7 @@ func (s *logsService) Subscribe(ctx context.Context, topic string) (events.Subsc
 			return events.Subscription{}, e
 		}
 	default:
-		return events.Subscription{}, fail(Validation, "Tópico inválido")
+		return events.Subscription{}, fail(Validation, "Invalid topic")
 	}
 	sub := s.c.Hub.Subscribe(ctx, topic, 128)
 	if !strings.HasPrefix(topic, "app/") || s.c.Control == nil {
@@ -591,10 +591,10 @@ func (s *auditService) RecordRequest(ctx context.Context, method, route string, 
 
 func (c *Core) send(ctx context.Context, server string, command *agentv1.Command) error {
 	if c.Control == nil {
-		return fail(Unavailable, "Agent indisponível")
+		return fail(Unavailable, "Agent unavailable")
 	}
 	if e := c.Control.Send(ctx, server, command); e != nil {
-		return fail(Unavailable, "Agent indisponível")
+		return fail(Unavailable, "Agent unavailable")
 	}
 	return nil
 }

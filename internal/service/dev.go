@@ -4,8 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
-	agentv1 "github.com/nelcota/nelcota-deploy/internal/gen/agent/v1"
-	"github.com/nelcota/nelcota-deploy/internal/transport"
+	agentv1 "github.com/Nelcota/NelcotaDeploy/internal/gen/agent/v1"
+	"github.com/Nelcota/NelcotaDeploy/internal/transport"
 	"strings"
 	"sync"
 	"time"
@@ -15,7 +15,7 @@ const DevUserID = "development-user"
 
 func (c *Core) Seed(ctx context.Context) error {
 	ctx = systemContext(ctx)
-	_, e := c.DB.Write.ExecContext(ctx, "INSERT INTO users(id,email,name,role,created_at) VALUES(?,?,?,'admin',?) ON CONFLICT DO NOTHING", DevUserID, "dev@localhost", "Desenvolvimento", time.Now().Unix())
+	_, e := c.DB.Write.ExecContext(ctx, "INSERT INTO users(id,email,name,role,created_at) VALUES(?,?,?,'admin',?) ON CONFLICT DO NOTHING", DevUserID, "dev@localhost", "Development", time.Now().Unix())
 	if e != nil {
 		return e
 	}
@@ -25,7 +25,7 @@ func (c *Core) Seed(ctx context.Context) error {
 		cfg := AppConfig{Domains: []string{name + ".example.test"}, MemoryBytes: 256 << 20, NanoCPUs: 1e9, Port: 8080, HealthPath: "/", HealthTimeout: 60, Replicas: 1, CacheEnabled: true, Dockerfile: "Dockerfile"}
 		b, _ := json.Marshal(cfg)
 		e = c.mutate(ctx, func(tx *sql.Tx) error {
-			if _, e := tx.ExecContext(ctx, "INSERT INTO servers(id,name,wireguard_ip,status,heartbeat_at,fingerprint,agent_ready) VALUES(?,?,?,'online',?,'development',1) ON CONFLICT DO NOTHING", server, "Servidor "+name, "10.77.0."+string(rune('2'+i)), time.Now().Unix()); e != nil {
+			if _, e := tx.ExecContext(ctx, "INSERT INTO servers(id,name,wireguard_ip,status,heartbeat_at,fingerprint,agent_ready) VALUES(?,?,?,'online',?,'development',1) ON CONFLICT DO NOTHING", server, "Server "+name, "10.77.0."+string(rune('2'+i)), time.Now().Unix()); e != nil {
 				return e
 			}
 			if _, e := tx.ExecContext(ctx, "INSERT INTO apps(id,name,server_id,repository,branch,config) VALUES(?,?,?,?,'main',?) ON CONFLICT DO NOTHING", app, name, server, "https://github.com/example/"+name, string(b)); e != nil {
@@ -33,7 +33,7 @@ func (c *Core) Seed(ctx context.Context) error {
 			}
 			for j, status := range []string{"success", "failed", "cancelled"} {
 				id := "dev-deploy-" + name + "-" + status
-				if _, e := tx.ExecContext(ctx, "INSERT INTO deployments(id,app_id,sha,message,author,origin,status,queued_at,started_at,finished_at) VALUES(?,?,?,?,?,'push',?,?,?,?) ON CONFLICT DO NOTHING", id, app, strings.Repeat(string(rune('a'+i)), 40), "Deploy de demonstração", "Desenvolvimento", status, time.Now().Unix()-int64((j+1)*3600), time.Now().Unix()-int64((j+1)*3600)+1, time.Now().Unix()-int64((j+1)*3600)+8); e != nil {
+				if _, e := tx.ExecContext(ctx, "INSERT INTO deployments(id,app_id,sha,message,author,origin,status,queued_at,started_at,finished_at) VALUES(?,?,?,?,?,'push',?,?,?,?) ON CONFLICT DO NOTHING", id, app, strings.Repeat(string(rune('a'+i)), 40), "Demo deployment", "Development", status, time.Now().Unix()-int64((j+1)*3600), time.Now().Unix()-int64((j+1)*3600)+1, time.Now().Unix()-int64((j+1)*3600)+8); e != nil {
 					return e
 				}
 			}
@@ -48,7 +48,7 @@ func (c *Core) Seed(ctx context.Context) error {
 			return e
 		}
 		if len(b) == 0 {
-			if e = c.LogStore.Append(ctx, id, []byte("[clone] SHA confirmado\n[build] cache hit\n[healthcheck] saudável\n[route] versão publicada\n")); e != nil {
+			if e = c.LogStore.Append(ctx, id, []byte("[clone] SHA verified\n[build] cache hit\n[healthcheck] healthy\n[route] version deployed\n")); e != nil {
 				return e
 			}
 		}

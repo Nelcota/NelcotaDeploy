@@ -19,7 +19,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/nelcota/nelcota-deploy/internal/host"
+	"github.com/Nelcota/NelcotaDeploy/internal/host"
 )
 
 var Version = "v0.0.0-dev"

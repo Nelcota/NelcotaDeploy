@@ -19,16 +19,16 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/nelcota/nelcota-deploy/internal/events"
-	"github.com/nelcota/nelcota-deploy/internal/host"
-	"github.com/nelcota/nelcota-deploy/internal/httpapi"
-	"github.com/nelcota/nelcota-deploy/internal/maintenance"
-	"github.com/nelcota/nelcota-deploy/internal/security"
-	"github.com/nelcota/nelcota-deploy/internal/service"
-	"github.com/nelcota/nelcota-deploy/internal/store"
-	"github.com/nelcota/nelcota-deploy/internal/transport"
-	"github.com/nelcota/nelcota-deploy/internal/updater"
-	"github.com/nelcota/nelcota-deploy/scripts"
+	"github.com/Nelcota/NelcotaDeploy/internal/events"
+	"github.com/Nelcota/NelcotaDeploy/internal/host"
+	"github.com/Nelcota/NelcotaDeploy/internal/httpapi"
+	"github.com/Nelcota/NelcotaDeploy/internal/maintenance"
+	"github.com/Nelcota/NelcotaDeploy/internal/security"
+	"github.com/Nelcota/NelcotaDeploy/internal/service"
+	"github.com/Nelcota/NelcotaDeploy/internal/store"
+	"github.com/Nelcota/NelcotaDeploy/internal/transport"
+	"github.com/Nelcota/NelcotaDeploy/internal/updater"
+	"github.com/Nelcota/NelcotaDeploy/scripts"
 	"github.com/spf13/cobra"
 	"golang.org/x/sync/errgroup"
 )
@@ -40,7 +40,7 @@ func main() {
 	defer cancel()
 	if e := command().ExecuteContext(ctx); e != nil {
 		if !errors.Is(e, context.Canceled) {
-			slog.Error("comando não concluído", "reason", safeError(e))
+			slog.Error("command failed", "reason", safeError(e))
 			os.Exit(1)
 		}
 	}
@@ -50,21 +50,21 @@ func safeError(e error) string {
 	if errors.As(e, &typed) {
 		return typed.Message
 	}
-	return "verifique configuração, permissões e disponibilidade dos serviços"
+	return "check configuration, permissions, and service availability"
 }
 func command() *cobra.Command {
 	cfg := config{}
 	root := &cobra.Command{Use: "nelcota-panel", SilenceUsage: true, SilenceErrors: true}
 	f := root.PersistentFlags()
-	f.StringVar(&cfg.data, "data-dir", env("NELCOTA_DATA_DIR", "/var/lib/nelcota"), "Diretório de dados")
-	f.StringVar(&cfg.keys, "config-dir", env("NELCOTA_CONFIG_DIR", "/etc/nelcota"), "Diretório de chaves")
-	f.StringVar(&cfg.listen, "listen", env("NELCOTA_LISTEN", "127.0.0.1:8080"), "API HTTP atrás do Caddy")
-	f.StringVar(&cfg.origin, "origin", env("NELCOTA_ORIGIN", "https://localhost"), "Origem exata do painel")
-	f.StringVar(&cfg.control, "control-listen", env("NELCOTA_CONTROL_LISTEN", "10.77.0.1:8443"), "Endereço WireGuard do controle")
-	f.StringVar(&cfg.wg, "wg-interface", env("NELCOTA_WG_INTERFACE", "wg0"), "Interface WireGuard")
-	f.StringVar(&cfg.endpoint, "wg-endpoint", env("NELCOTA_WG_ENDPOINT", ""), "Endpoint público do WireGuard")
-	f.StringVar(&cfg.wgPublic, "wg-public-key", env("NELCOTA_WG_PUBLIC_KEY", ""), "Chave pública WireGuard do painel")
-	f.StringVar(&cfg.diagnostics, "pprof-listen", env("NELCOTA_PPROF_LISTEN", ""), "Diagnósticos apenas no WireGuard")
+	f.StringVar(&cfg.data, "data-dir", env("NELCOTA_DATA_DIR", "/var/lib/nelcota"), "Data directory")
+	f.StringVar(&cfg.keys, "config-dir", env("NELCOTA_CONFIG_DIR", "/etc/nelcota"), "Key directory")
+	f.StringVar(&cfg.listen, "listen", env("NELCOTA_LISTEN", "127.0.0.1:8080"), "HTTP API behind Caddy")
+	f.StringVar(&cfg.origin, "origin", env("NELCOTA_ORIGIN", "https://localhost"), "Exact panel origin")
+	f.StringVar(&cfg.control, "control-listen", env("NELCOTA_CONTROL_LISTEN", "10.77.0.1:8443"), "Control WireGuard address")
+	f.StringVar(&cfg.wg, "wg-interface", env("NELCOTA_WG_INTERFACE", "wg0"), "WireGuard interface")
+	f.StringVar(&cfg.endpoint, "wg-endpoint", env("NELCOTA_WG_ENDPOINT", ""), "Public WireGuard endpoint")
+	f.StringVar(&cfg.wgPublic, "wg-public-key", env("NELCOTA_WG_PUBLIC_KEY", ""), "Panel WireGuard public key")
+	f.StringVar(&cfg.diagnostics, "pprof-listen", env("NELCOTA_PPROF_LISTEN", ""), "Diagnostics on WireGuard only")
 	init := &cobra.Command{Use: "init", RunE: func(cmd *cobra.Command, _ []string) error {
 		email, _ := cmd.Flags().GetString("email")
 		name, _ := cmd.Flags().GetString("name")
@@ -82,8 +82,8 @@ func command() *cobra.Command {
 		}
 		return json.NewEncoder(cmd.OutOrStdout()).Encode(en)
 	}}
-	init.Flags().String("email", "", "E-mail do administrador")
-	init.Flags().String("name", "Administrador", "Nome do administrador")
+	init.Flags().String("email", "", "Administrator email")
+	init.Flags().String("name", "Administrator", "Administrator name")
 	_ = init.MarkFlagRequired("email")
 	root.AddCommand(init)
 	root.AddCommand(&cobra.Command{Use: "serve", RunE: func(cmd *cobra.Command, _ []string) error { return serve(cmd.Context(), cfg, false) }})
@@ -277,7 +277,7 @@ func serve(ctx context.Context, c config, dev bool) error {
 		core.Control = dispatcher
 		api.DevelopmentLogin = auth.DevelopmentSession
 		g.Go(func() error { return dispatcher.Run(gctx) })
-		slog.Warn("modo de desenvolvimento: login simulado em POST /api/dev/session; escuta apenas 127.0.0.1")
+		slog.Warn("development mode: simulated login at POST /api/dev/session; listening on 127.0.0.1 only")
 	} else {
 		if e = host.RequireInterface(c.control, c.wg); e != nil {
 			return e
@@ -355,7 +355,7 @@ func serve(ctx context.Context, c config, dev bool) error {
 	if !dev {
 		b := maintenance.Backup{Data: c.data, Config: c.keys, KeyFile: env("NELCOTA_BACKUP_KEY_FILE", filepath.Join(c.keys, "backup.key"))}
 		g.Go(func() error {
-			return b.Run(gctx, func(ctx context.Context, p string) error { return uploadBackup(ctx, core, p) }, func(error) { slog.Error("backup não concluído; nova tentativa em uma hora") })
+			return b.Run(gctx, func(ctx context.Context, p string) error { return uploadBackup(ctx, core, p) }, func(error) { slog.Error("backup failed; retrying in one hour") })
 		})
 	}
 	g.Go(func() error { return core.RunScheduler(gctx) })
@@ -366,7 +366,7 @@ func serve(ctx context.Context, c config, dev bool) error {
 			ctx = service.WithPrincipal(ctx, service.Principal{ID: "system", Role: "admin", TwoFactorAt: time.Now().Unix()})
 			_, e := core.Operations.Update(ctx, r.Version)
 			return e == nil, e
-		}, func(error) { slog.Warn("solicitação local de atualização não concluída") })
+		}, func(error) { slog.Warn("local update request failed") })
 	})
 	g.Go(func() error {
 		tick := time.NewTicker(time.Minute)
@@ -385,7 +385,7 @@ func serve(ctx context.Context, c config, dev bool) error {
 	public := host.Server(c.listen, httpapi.New(api))
 	public.ReadTimeout = 15 * time.Second
 	g.Go(func() error { return host.Serve(gctx, public, false) })
-	fmt.Printf("Nelcota Deploy: %s\n", c.origin)
+	fmt.Printf("NelcotaDeploy: %s\n", c.origin)
 	return g.Wait()
 }
 

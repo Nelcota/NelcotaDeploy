@@ -1,7 +1,7 @@
-// Cole no console da origem HTTPS do painel. Não é um frontend de produção.
-// Tokens, convites, otpauth e recovery codes aparecem apenas em diálogos locais.
+// Paste into the panel HTTPS origin console. This is not a production frontend.
+// Tokens, invitations, otpauth URLs, and recovery codes only appear in local dialogs.
 (() => {
-  if (location.protocol !== 'https:') throw new Error('Abra a origem HTTPS do painel.');
+  if (location.protocol !== 'https:') throw new Error('Open the panel HTTPS origin.');
   let csrf = '';
   const decode = s => Uint8Array.from(atob(s.replace(/-/g, '+').replace(/_/g, '/')), c => c.charCodeAt(0));
   const encode = b => btoa(String.fromCharCode(...new Uint8Array(b))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
@@ -35,7 +35,7 @@
     return {id: c.id, rawId: encode(c.rawId), type: c.type, response, clientExtensionResults: c.getClientExtensionResults()};
   };
   async function api(path, method = 'GET', body) {
-    if (!path.startsWith('/api/')) throw new Error('Use um caminho /api/ da mesma origem.');
+    if (!path.startsWith('/api/')) throw new Error('Use a same-origin /api/ path.');
     const headers = {'Content-Type': 'application/json'};
     if (csrf) headers['X-CSRF-Token'] = csrf;
     const res = await fetch(path, {method, headers, credentials: 'same-origin', cache: 'no-store',
@@ -49,8 +49,8 @@
   window.N = {
     api,
     async register() {
-      const token = prompt('Convite de /etc/nelcota/first-access.json (15 min):');
-      if (!token) throw new Error('Convite não informado.');
+      const token = prompt('Invitation from /etc/nelcota/first-access.json (15 minutes):');
+      if (!token) throw new Error('Invitation not provided.');
       const begin = await api('/api/auth/register/begin', 'POST', {enrollment_token: token.trim()});
       const credential = await navigator.credentials.create({publicKey: creation(begin.options.publicKey)});
       await api('/api/auth/register/finish', 'POST', {ceremony_id: begin.ceremony_id, credential: serialize(credential)});
@@ -60,14 +60,14 @@
       // that cookie. A valid existing session can also refresh this value.
       try { csrf = (await api('/api/session')).csrf_token; }
       catch (e) { if (!e.message.startsWith('401:')) throw e; }
-      const email = prompt('E-mail do administrador:');
-      if (!email) throw new Error('E-mail não informado.');
+      const email = prompt('Administrator email:');
+      if (!email) throw new Error('Email address not provided.');
       const begin = await api('/api/auth/login/begin', 'POST', {email: email.trim()});
       const credential = await navigator.credentials.get({publicKey: assertion(begin.options.publicKey)});
       const result = await api('/api/auth/login/finish', 'POST', {ceremony_id: begin.ceremony_id, credential: serialize(credential)});
       if (result.requires_totp) {
-        const code = prompt('TOTP atual, ou recovery code de uso único:');
-        if (!code) throw new Error('Código não informado; refaça o login.');
+        const code = prompt('Current TOTP or single-use recovery code:');
+        if (!code) throw new Error('Code not provided; sign in again.');
         const recovery = code.trim().replace(/-/g, '').length === 32;
         await api(recovery ? '/api/auth/recovery/verify' : '/api/auth/totp/verify', 'POST', {challenge: result.challenge, code: code.trim()});
       }
@@ -75,24 +75,24 @@
     },
     async enableTOTP() {
       const setup = await api('/api/auth/totp/begin', 'POST', {});
-      prompt('Cadastre esta URL otpauth no autenticador; não a compartilhe:', setup.url);
-      const code = prompt('Código TOTP recém-gerado:');
-      if (!code) throw new Error('Código não informado.');
+      prompt('Add this otpauth URL to your authenticator; do not share it:', setup.url);
+      const code = prompt('Newly generated TOTP code:');
+      if (!code) throw new Error('Code not provided.');
       await api('/api/auth/totp/finish', 'POST', {id: setup.id, code: code.trim()});
     },
     async recoveryCodes() {
       const result = await api('/api/auth/recovery-codes', 'POST', {});
-      prompt('Guarde estes dez códigos em cofre privado. Nova geração invalida os anteriores:', result.codes.join('\n'));
+      prompt('Store these ten codes in a private vault. Generating new codes invalidates previous codes:', result.codes.join('\n'));
     },
     async makeToken() {
-      const result = await api('/api/tokens', 'POST', {name: 'homologacao', ttl_hours: 1,
+      const result = await api('/api/tokens', 'POST', {name: 'staging', ttl_hours: 1,
         scopes: ['apps:write', 'deploys:write', 'servers:write', 'logs:read', 'settings:write', 'audit:read']});
       N.tokenId = result.id;
-      prompt('Copie o token para a leitura oculta do terminal. Expira em 1 hora:', result.token);
+      prompt('Copy the token into the hidden terminal prompt. It expires in one hour:', result.token);
       result.token = '';
     },
     async revokeToken() {
-      if (!N.tokenId) throw new Error('Consulte GET /api/tokens e informe N.tokenId.');
+      if (!N.tokenId) throw new Error('Check GET /api/tokens and set N.tokenId.');
       await api(`/api/tokens/${encodeURIComponent(N.tokenId)}`, 'DELETE');
     },
     async githubManifest() {

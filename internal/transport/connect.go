@@ -13,9 +13,9 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
-	agentv1 "github.com/nelcota/nelcota-deploy/internal/gen/agent/v1"
-	"github.com/nelcota/nelcota-deploy/internal/gen/agent/v1/agentv1connect"
-	"github.com/nelcota/nelcota-deploy/internal/security"
+	agentv1 "github.com/Nelcota/NelcotaDeploy/internal/gen/agent/v1"
+	"github.com/Nelcota/NelcotaDeploy/internal/gen/agent/v1/agentv1connect"
+	"github.com/Nelcota/NelcotaDeploy/internal/security"
 	"golang.org/x/sync/errgroup"
 )
 

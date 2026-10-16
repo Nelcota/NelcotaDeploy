@@ -8,7 +8,7 @@ import (
 	connect "connectrpc.com/connect"
 	context "context"
 	errors "errors"
-	v1 "github.com/nelcota/nelcota-deploy/internal/gen/agent/v1"
+	v1 "github.com/Nelcota/NelcotaDeploy/internal/gen/agent/v1"
 	http "net/http"
 	strings "strings"
 )

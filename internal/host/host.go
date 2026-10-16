@@ -3,8 +3,8 @@ package host
 import (
 	"context"
 	"errors"
+	agentv1 "github.com/Nelcota/NelcotaDeploy/internal/gen/agent/v1"
 	"github.com/VictoriaMetrics/metrics"
-	agentv1 "github.com/nelcota/nelcota-deploy/internal/gen/agent/v1"
 	"github.com/shirou/gopsutil/v4/cpu"
 	"github.com/shirou/gopsutil/v4/disk"
 	"github.com/shirou/gopsutil/v4/mem"

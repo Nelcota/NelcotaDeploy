@@ -1,27 +1,31 @@
-# Documentação do Nelcota Deploy
+# NelcotaDeploy documentation
 
-O backend está implementado e testado localmente. O frontend e a homologação completa em VPS continuam pendentes. Para uma visão rápida, comece pelo [README principal](../README.md).
+The backend is implemented and locally tested. The web interface and complete VPS acceptance testing remain outstanding. Start with the [project README](../README.md) for an overview.
 
-## Por onde começar
+## Reading paths
 
-| Objetivo | Documento |
+| Goal | Document |
 | --- | --- |
-| Entender a arquitetura e a visão do produto | [Plano original](Nelcota%20Deploy.md) |
-| Conferir o que está implementado e foi validado | [Relatório do backend](relatorio-backend.md) |
-| Identificar pendências e validações externas | [Pendências](pendencias.md) |
-| Construir a interface ou integrar as APIs | [Contrato do frontend](contrato-frontend.md) |
-| Testar instalação e operação em duas VPS | [Roteiro de homologação](testar-em-vps.md) |
-| Operar backup, restore, update e recuperação | [Guia de operação](operacao-backend.md) |
-| Entender os pacotes locais de laboratório | [Releases de homologação](releases-homologacao.md) |
-| Consultar decisões e evolução do backend | [Decisões](decisoes.md) · [Progresso](progresso-backend.md) |
-| Enviar uma contribuição ou relatar uma vulnerabilidade | [Contribuição](../CONTRIBUTING.md) · [Segurança](../SECURITY.md) |
+| Understand architecture and product goals | [System plan](system-plan.md) |
+| Check implemented features and validation | [Backend report](backend-report.md) |
+| Identify external acceptance work | [Outstanding work](outstanding-work.md) |
+| Build the interface or integrate APIs | [Frontend contract](frontend-contract.md) |
+| Test installation and operations on two servers | [VPS acceptance guide](vps-testing.md) |
+| Operate backups, restores, updates, and recovery | [Operations guide](backend-operations.md) |
+| Understand local laboratory packages | [Staging releases](staging-releases.md) |
+| Review decisions and backend milestones | [Decisions](decisions.md) · [Progress](backend-progress.md) |
+| Contribute or report a vulnerability | [Contributing](../CONTRIBUTING.md) · [Security](../SECURITY.md) |
 
-## Como interpretar os documentos
+## Interpreting these documents
 
-O plano original descreve objetivos e possibilidades futuras. O relatório distingue implementação, teste local e aceitação em infraestrutura real. Checkmarks de progresso não substituem a homologação operacional.
+The system plan records goals and future options. The backend report distinguishes implementation, local testing, and acceptance on real infrastructure. Progress checkmarks do not replace operational acceptance.
 
-Os relatórios de 15/10/2026 preservam as condições da execução local, incluindo caminhos e artefatos daquela máquina. Diretórios `.local/`, `.tools/`, `bin/` e `dist/` não fazem parte do checkout público. A publicação do código não equivale à publicação dos pacotes locais ou à aprovação para produção.
+The October 15, 2026 reports retain the conditions of local validation, including paths and artifacts from that machine. `.local/`, `.tools/`, `bin/`, and `dist/` are not included in the public checkout. Publishing source does not publish those packages or approve production use.
 
-## Identidade visual
+## Visual identity
 
-O [logo vetorial](assets/logo.svg), o [banner do README](assets/readme-banner.svg) e a [imagem de compartilhamento](assets/social-preview.png) fazem parte do repositório e seguem a licença MIT do projeto. Os SVGs são editáveis e independem de fontes externas ou scripts.
+The editable [vector logo](assets/logo.svg), [README banner](assets/readme-banner.svg), and [sharing image](assets/social-preview.png) are included under the project's MIT license. The SVGs do not require external fonts or scripts.
+
+## Project language
+
+Repository content and GitHub activity must be in English. See [AGENTS.md](../AGENTS.md). Historical cryptographic identifiers and signed artifacts are preserved exactly.

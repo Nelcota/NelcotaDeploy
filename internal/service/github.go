@@ -14,9 +14,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Nelcota/NelcotaDeploy/internal/security"
 	"github.com/bradleyfalzon/ghinstallation/v2"
 	"github.com/google/go-github/v75/github"
-	"github.com/nelcota/nelcota-deploy/internal/security"
 )
 
 type GitHubService struct {
@@ -91,7 +91,7 @@ func (g *GitHubService) Check(ctx context.Context, repo, sha, status string, che
 		state = "completed"
 		conclusion = "cancelled"
 	}
-	opts := github.CreateCheckRunOptions{Name: "Nelcota Deploy", HeadSHA: sha, Status: &state}
+	opts := github.CreateCheckRunOptions{Name: "NelcotaDeploy", HeadSHA: sha, Status: &state}
 	if conclusion != "" {
 		opts.Conclusion = &conclusion
 		opts.CompletedAt = &github.Timestamp{Time: time.Now()}
@@ -118,17 +118,17 @@ type WebhookInput struct {
 
 func (g *GitHubService) Webhook(ctx context.Context, in WebhookInput) error {
 	if len(in.Body) > 1<<20 || len(in.Delivery) == 0 || len(in.Delivery) > 200 {
-		return fail(Validation, "Webhook inválido")
+		return fail(Validation, "Invalid webhook")
 	}
 	secret, e := g.Core.Setting(ctx, "github.webhook_secret")
 	if e != nil || secret == "" {
-		return fail(Unavailable, "Webhook não configurado")
+		return fail(Unavailable, "Webhook not configured")
 	}
 	signature, err := hex.DecodeString(strings.TrimPrefix(in.Signature, "sha256="))
 	mac := hmac.New(sha256.New, []byte(secret))
 	_, _ = mac.Write(in.Body)
 	if err != nil || !strings.HasPrefix(in.Signature, "sha256=") || !hmac.Equal(signature, mac.Sum(nil)) {
-		return fail(Unauthenticated, "Assinatura inválida")
+		return fail(Unauthenticated, "Invalid signature")
 	}
 	if in.Event != "push" {
 		return nil
@@ -148,13 +148,13 @@ func (g *GitHubService) Webhook(ctx context.Context, in WebhookInput) error {
 		} `json:"head_commit"`
 	}
 	if e = json.Unmarshal(in.Body, &push); e != nil {
-		return fail(Validation, "Payload inválido")
+		return fail(Validation, "Invalid payload")
 	}
 	if push.Deleted {
 		return nil
 	}
 	if !shaPattern.MatchString(push.After) {
-		return fail(Validation, "SHA inválido")
+		return fail(Validation, "Invalid SHA")
 	}
 	apps, e := g.Core.DB.Queries.ListApps(ctx)
 	if e != nil {
@@ -205,27 +205,27 @@ func (g *GitHubService) BeginManifest(ctx context.Context, origin string) (GitHu
 	if e != nil {
 		return GitHubManifest{}, e
 	}
-	manifest := map[string]any{"name": "Nelcota Deploy", "url": origin, "hook_attributes": map[string]any{"url": origin + "/api/webhooks/github", "active": true}, "redirect_url": origin + "/api/github/callback", "public": false, "default_permissions": map[string]string{"contents": "read", "metadata": "read", "checks": "write"}, "default_events": []string{"push"}}
+	manifest := map[string]any{"name": "NelcotaDeploy", "url": origin, "hook_attributes": map[string]any{"url": origin + "/api/webhooks/github", "active": true}, "redirect_url": origin + "/api/github/callback", "public": false, "default_permissions": map[string]string{"contents": "read", "metadata": "read", "checks": "write"}, "default_events": []string{"push"}}
 	b, e := json.Marshal(manifest)
 	return GitHubManifest{Action: "https://github.com/settings/apps/new?state=" + url.QueryEscape(state), Manifest: b, ExpiresAt: expires}, e
 }
 func (g *GitHubService) FinishManifest(ctx context.Context, state, code string) (map[string]string, error) {
 	if len(code) < 1 || len(code) > 200 || strings.ContainsAny(code, "/?#\r\n") {
-		return nil, fail(Validation, "Código inválido")
+		return nil, fail(Validation, "Invalid code")
 	}
 	var user string
 	e := g.Core.DB.Write.QueryRowContext(ctx, "DELETE FROM challenges WHERE token_hash=? AND purpose='github_manifest' AND expires_at>? RETURNING user_id", security.Hash(state), time.Now().Unix()).Scan(&user)
 	if e != nil {
-		return nil, fail(Unauthenticated, "Estado inválido")
+		return nil, fail(Unauthenticated, "Invalid state")
 	}
 	u, e := g.Core.DB.Queries.GetUser(ctx, user)
 	if e != nil || u.Role != "admin" {
-		return nil, fail(Forbidden, "Administrador necessário")
+		return nil, fail(Forbidden, "Administrator required")
 	}
 	client := github.NewClient(&http.Client{Timeout: 20 * time.Second})
 	app, _, e := client.Apps.CompleteAppManifest(ctx, code)
 	if e != nil {
-		return nil, fail(Unavailable, "GitHub recusou a configuração")
+		return nil, fail(Unavailable, "GitHub rejected the configuration")
 	}
 	ctx = WithPrincipal(ctx, Principal{ID: u.ID, Role: u.Role})
 	values := map[string]string{"github.app_id": strconv.FormatInt(app.GetID(), 10), "github.private_key": app.GetPEM(), "github.webhook_secret": app.GetWebhookSecret(), "github.client_id": app.GetClientID(), "github.client_secret": app.GetClientSecret()}

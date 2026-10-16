@@ -11,9 +11,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/nelcota/nelcota-deploy/internal/events"
-	agentv1 "github.com/nelcota/nelcota-deploy/internal/gen/agent/v1"
-	"github.com/nelcota/nelcota-deploy/internal/security"
+	"github.com/Nelcota/NelcotaDeploy/internal/events"
+	agentv1 "github.com/Nelcota/NelcotaDeploy/internal/gen/agent/v1"
+	"github.com/Nelcota/NelcotaDeploy/internal/security"
 	"google.golang.org/protobuf/proto"
 )
 

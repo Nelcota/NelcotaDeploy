@@ -10,7 +10,7 @@ func (s *serversService) UpdateLimits(ctx context.Context, id string, in ServerL
 		return Server{}, e
 	}
 	if in.BuildLimit < 1 || in.BuildLimit > 8 || in.CacheBytes < 64<<20 || in.CacheBytes > 100<<30 {
-		return Server{}, fail(Validation, "Limites de build ou cache inválidos")
+		return Server{}, fail(Validation, "Invalid build or cache limits")
 	}
 	e := s.c.mutate(ctx, func(tx *sql.Tx) error {
 		r, e := tx.ExecContext(ctx, "UPDATE servers SET build_limit=?,cache_bytes=? WHERE id=?", in.BuildLimit, in.CacheBytes, id)
@@ -19,7 +19,7 @@ func (s *serversService) UpdateLimits(ctx context.Context, id string, in ServerL
 		}
 		n, _ := r.RowsAffected()
 		if n != 1 {
-			return fail(NotFound, "Server não encontrado")
+			return fail(NotFound, "Server not found")
 		}
 		return s.c.audit(ctx, tx, "server.limits", id)
 	})
@@ -35,5 +35,5 @@ func (s *serversService) UpdateLimits(ctx context.Context, id string, in ServerL
 			return server, nil
 		}
 	}
-	return Server{}, fail(NotFound, "Server não encontrado")
+	return Server{}, fail(NotFound, "Server not found")
 }

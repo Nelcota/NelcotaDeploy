@@ -3,8 +3,8 @@ package transport
 import (
 	"context"
 	"crypto/tls"
-	"github.com/nelcota/nelcota-deploy/internal/security"
-	"github.com/nelcota/nelcota-deploy/internal/updater"
+	"github.com/Nelcota/NelcotaDeploy/internal/security"
+	"github.com/Nelcota/NelcotaDeploy/internal/updater"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"

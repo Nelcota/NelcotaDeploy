@@ -8,13 +8,13 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
-	"github.com/nelcota/nelcota-deploy/internal/agent"
-	agentv1 "github.com/nelcota/nelcota-deploy/internal/gen/agent/v1"
-	"github.com/nelcota/nelcota-deploy/internal/host"
-	"github.com/nelcota/nelcota-deploy/internal/provision"
-	"github.com/nelcota/nelcota-deploy/internal/security"
-	"github.com/nelcota/nelcota-deploy/internal/transport"
-	"github.com/nelcota/nelcota-deploy/internal/updater"
+	"github.com/Nelcota/NelcotaDeploy/internal/agent"
+	agentv1 "github.com/Nelcota/NelcotaDeploy/internal/gen/agent/v1"
+	"github.com/Nelcota/NelcotaDeploy/internal/host"
+	"github.com/Nelcota/NelcotaDeploy/internal/provision"
+	"github.com/Nelcota/NelcotaDeploy/internal/security"
+	"github.com/Nelcota/NelcotaDeploy/internal/transport"
+	"github.com/Nelcota/NelcotaDeploy/internal/updater"
 	"github.com/spf13/cobra"
 	"golang.org/x/sync/errgroup"
 	"io"
@@ -38,7 +38,7 @@ func main() {
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
 	if e := command().ExecuteContext(ctx); e != nil && !errors.Is(e, context.Canceled) {
-		slog.Error("agent não iniciado; verifique configuração, permissões e serviços locais")
+		slog.Error("agent startup failed; check configuration, permissions, and local services")
 		os.Exit(1)
 	}
 }
@@ -46,19 +46,19 @@ func command() *cobra.Command {
 	var dir, data, bk, caddy, wg, diag string
 	root := &cobra.Command{Use: "nelcota-agent", SilenceErrors: true, SilenceUsage: true}
 	f := root.PersistentFlags()
-	f.StringVar(&dir, "config-dir", "/etc/nelcota-agent", "Chaves do agent")
-	f.StringVar(&data, "data-dir", "/var/lib/nelcota-agent", "Estado persistente")
-	f.StringVar(&bk, "buildkit", "unix:///run/buildkit/buildkitd.sock", "Socket local BuildKit")
-	f.StringVar(&caddy, "caddy-admin", "http://127.0.0.1:2019", "API admin local do Caddy")
-	f.StringVar(&wg, "wg-interface", "wg0", "Interface WireGuard")
-	f.StringVar(&diag, "pprof-listen", "", "Diagnósticos no WireGuard")
+	f.StringVar(&dir, "config-dir", "/etc/nelcota-agent", "Agent keys")
+	f.StringVar(&data, "data-dir", "/var/lib/nelcota-agent", "Persistent state")
+	f.StringVar(&bk, "buildkit", "unix:///run/buildkit/buildkitd.sock", "Local BuildKit socket")
+	f.StringVar(&caddy, "caddy-admin", "http://127.0.0.1:2019", "Local Caddy admin API")
+	f.StringVar(&wg, "wg-interface", "wg0", "WireGuard interface")
+	f.StringVar(&diag, "pprof-listen", "", "Diagnostics on WireGuard")
 	var panel, tokenFile, pubFile string
 	join := &cobra.Command{Use: "join", RunE: func(cmd *cobra.Command, _ []string) error {
 		return enroll(cmd.Context(), dir, panel, tokenFile, pubFile)
 	}}
-	join.Flags().StringVar(&panel, "panel-url", "", "Origem HTTPS do painel")
-	join.Flags().StringVar(&tokenFile, "join-token-file", "", "Arquivo 0600 com convite")
-	join.Flags().StringVar(&pubFile, "wg-public-key-file", "", "Arquivo com chave pública WireGuard")
+	join.Flags().StringVar(&panel, "panel-url", "", "Panel HTTPS origin")
+	join.Flags().StringVar(&tokenFile, "join-token-file", "", "Mode 0600 invitation file")
+	join.Flags().StringVar(&pubFile, "wg-public-key-file", "", "WireGuard public key file")
 	_ = join.MarkFlagRequired("panel-url")
 	_ = join.MarkFlagRequired("join-token-file")
 	_ = join.MarkFlagRequired("wg-public-key-file")
@@ -134,14 +134,14 @@ func command() *cobra.Command {
 					return false, nil
 				}
 				return true, nil
-			}, func(error) { slog.Warn("solicitação local de atualização não concluída") })
+			}, func(error) { slog.Warn("local update request failed") })
 		})
 		g.Go(func() error {
-			return engine.RunMaintenance(gctx, func() bool { return pipeline.Ready() && len(pipeline.Active()) == 0 && !updater.Pending(data) }, func(error) { slog.Warn("atualização de imagens base não concluída") })
+			return engine.RunMaintenance(gctx, func() bool { return pipeline.Ready() && len(pipeline.Active()) == 0 && !updater.Pending(data) }, func(error) { slog.Warn("base image update failed") })
 		})
 		g.Go(func() error { return rpc.Run(gctx) })
 		g.Go(func() error {
-			return transport.RunCertificateRenewal(gctx, join.ControlURL, tls, certificates, func(error) { slog.Warn("renovação do certificado não concluída") })
+			return transport.RunCertificateRenewal(gctx, join.ControlURL, tls, certificates, func(error) { slog.Warn("certificate renewal failed") })
 		})
 		g.Go(func() error { return host.Diagnostics(gctx, diag, wg) })
 		return g.Wait()

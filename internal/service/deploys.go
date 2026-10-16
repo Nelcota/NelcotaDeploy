@@ -8,9 +8,9 @@ import (
 	"strings"
 	"time"
 
-	agentv1 "github.com/nelcota/nelcota-deploy/internal/gen/agent/v1"
-	"github.com/nelcota/nelcota-deploy/internal/security"
-	"github.com/nelcota/nelcota-deploy/internal/transport"
+	agentv1 "github.com/Nelcota/NelcotaDeploy/internal/gen/agent/v1"
+	"github.com/Nelcota/NelcotaDeploy/internal/security"
+	"github.com/Nelcota/NelcotaDeploy/internal/transport"
 )
 
 type deploysService struct{ c *Core }
@@ -41,16 +41,16 @@ func (s *deploysService) Enqueue(ctx context.Context, in DeployInput) (Deploymen
 		return Deployment{}, e
 	}
 	if !shaPattern.MatchString(in.SHA) {
-		return Deployment{}, fail(Validation, "SHA completo obrigatório")
+		return Deployment{}, fail(Validation, "Full SHA required")
 	}
 	if in.Origin == "" {
 		in.Origin = "manual"
 	}
 	if in.Origin != "push" && in.Origin != "manual" && in.Origin != "rollback" {
-		return Deployment{}, fail(Validation, "Origem inválida")
+		return Deployment{}, fail(Validation, "Invalid origin")
 	}
 	if len(in.Message) > 1000 || len(in.Author) > 200 {
-		return Deployment{}, fail(Validation, "Metadados muito grandes")
+		return Deployment{}, fail(Validation, "Metadata too large")
 	}
 	if _, e := (&appsService{s.c}).Get(ctx, in.AppID); e != nil {
 		return Deployment{}, e
@@ -83,7 +83,7 @@ func (s *deploysService) Cancel(ctx context.Context, id string) error {
 		return e
 	}
 	if d.Status == "success" || d.Status == "failed" || d.Status == "cancelled" {
-		return fail(Conflict, "Deploy já finalizado")
+		return fail(Conflict, "Deployment already finished")
 	}
 	e = s.c.mutate(ctx, func(tx *sql.Tx) error {
 		if _, e := tx.ExecContext(ctx, "UPDATE deployments SET status=CASE WHEN status='queued' THEN 'cancelled' ELSE status END,finished_at=CASE WHEN status='queued' THEN ? ELSE finished_at END,cancel_requested=1 WHERE id=?", time.Now().Unix(), id); e != nil {
@@ -108,7 +108,7 @@ func (s *deploysService) Cancel(ctx context.Context, id string) error {
 			return e
 		}
 		if s.c.Control == nil {
-			return fail(Unavailable, "Cancelamento pendente até agent conectar")
+			return fail(Unavailable, "Cancellation pending until the agent connects")
 		}
 		return s.c.send(ctx, a.ServerID, &agentv1.Command{Action: &agentv1.Command_Cancel{Cancel: &agentv1.Cancel{DeployId: id}}})
 	}
@@ -124,7 +124,7 @@ func (c *Core) Claim(ctx context.Context) (Deployment, error) {
 	e := c.mutate(ctx, func(tx *sql.Tx) error {
 		e := tx.QueryRowContext(ctx, `SELECT d.id FROM deployments d JOIN apps a ON a.id=d.app_id JOIN servers s ON s.id=a.server_id WHERE d.status='queued' AND NOT EXISTS(SELECT 1 FROM maintenance_jobs m WHERE m.kind='update' AND (m.status='waiting' OR (m.status='queued' AND m.ordinal=(SELECT min(ordinal) FROM maintenance_jobs WHERE kind='update' AND status IN ('queued','waiting')))) AND (m.target=s.id OR m.target='panel')) AND s.status='online' AND s.agent_ready=1 AND s.heartbeat_at>? AND NOT EXISTS(SELECT 1 FROM deployments x WHERE x.app_id=d.app_id AND x.status IN ('building','starting')) AND (SELECT count(*) FROM deployments x JOIN apps ax ON ax.id=x.app_id WHERE ax.server_id=s.id AND x.status IN ('building','starting'))<s.build_limit ORDER BY CASE WHEN d.origin='push' THEN 1 ELSE 0 END,d.queued_at,d.rowid LIMIT 1`, time.Now().Add(-20*time.Second).Unix()).Scan(&id)
 		if errors.Is(e, sql.ErrNoRows) {
-			return fail(NotFound, "Fila vazia")
+			return fail(NotFound, "Queue empty")
 		}
 		if e != nil {
 			return e
@@ -231,7 +231,7 @@ func (c *Core) AgentConnected(ctx context.Context, p transport.Peer) error {
 	}
 	n, _ := r.RowsAffected()
 	if n != 1 {
-		return fail(Forbidden, "Agent não cadastrado")
+		return fail(Forbidden, "Agent not registered")
 	}
 	return nil
 }
@@ -264,12 +264,12 @@ func (c *Core) AgentEvent(ctx context.Context, p transport.Peer, e *agentv1.Even
 	case *agentv1.Event_DeployLog:
 		l := v.DeployLog
 		if len(l.Line) > 16384 {
-			return fail(Validation, "Log excede limite")
+			return fail(Validation, "Log exceeds the limit")
 		}
 		if l.Runtime {
 			a, err := c.DB.Queries.GetApp(ctx, l.AppId)
 			if err != nil || a.ServerID != p.ID {
-				return fail(Forbidden, "App não pertence ao server")
+				return fail(Forbidden, "App does not belong to this server")
 			}
 			c.publish("app/"+l.AppId, "runtime.log", map[string]any{"line": mustMaskRuntime(c, ctx, a.ID, string(l.Line)), "sequence": l.Sequence})
 			return nil
@@ -280,7 +280,7 @@ func (c *Core) AgentEvent(ctx context.Context, p transport.Peer, e *agentv1.Even
 		}
 		a, err := c.DB.Queries.GetApp(ctx, d.AppID)
 		if err != nil || a.ServerID != p.ID || d.AppID != l.AppId {
-			return fail(Forbidden, "Deploy não pertence ao server")
+			return fail(Forbidden, "Deployment does not belong to this server")
 		}
 		safe, err := c.maskApp(ctx, a.ID, string(l.Line))
 		if err != nil {
@@ -298,16 +298,16 @@ func (c *Core) AgentEvent(ctx context.Context, p transport.Peer, e *agentv1.Even
 		}
 		a, err := c.DB.Queries.GetApp(ctx, d.AppID)
 		if err != nil || a.ServerID != p.ID || d.AppID != s.AppId {
-			return fail(Forbidden, "Deploy não pertence ao server")
+			return fail(Forbidden, "Deployment does not belong to this server")
 		}
 		if s.Stage != "" {
 			switch s.Stage {
 			case "clone", "build", "start", "healthcheck", "route":
 			default:
-				return fail(Validation, "Etapa inválida")
+				return fail(Validation, "Invalid stage")
 			}
 			if s.DurationMs < 0 {
-				return fail(Validation, "Duração inválida")
+				return fail(Validation, "Invalid duration")
 			}
 			_, err = c.DB.Write.ExecContext(ctx, "UPDATE deployments SET timings=json_set(timings,?,?) WHERE id=?", "$."+s.Stage, s.DurationMs, d.ID)
 			if err != nil {
@@ -362,17 +362,17 @@ func (c *Core) AgentEvent(ctx context.Context, p transport.Peer, e *agentv1.Even
 			return err
 		}
 		if app.ServerID != p.ID {
-			return fail(Forbidden, "App não pertence ao server")
+			return fail(Forbidden, "App does not belong to this server")
 		}
 		c.publish("servers", "container.event", v.ContainerEvent)
 	case *agentv1.Event_Metrics:
 		if len(v.Metrics.Containers) > 256 {
-			return fail(Validation, "Métricas excedem limite")
+			return fail(Validation, "Metrics exceed the limit")
 		}
 		ownedMetrics := make([]*agentv1.ContainerMetrics, 0, len(v.Metrics.Containers))
 		for _, metric := range v.Metrics.Containers {
 			if metric == nil {
-				return fail(Validation, "Métrica inválida")
+				return fail(Validation, "Invalid metric")
 			}
 			app, err := c.DB.Queries.GetApp(ctx, metric.AppId)
 			if errors.Is(err, sql.ErrNoRows) {
@@ -382,14 +382,14 @@ func (c *Core) AgentEvent(ctx context.Context, p transport.Peer, e *agentv1.Even
 				return err
 			}
 			if app.ServerID != p.ID {
-				return fail(Forbidden, "Métrica não pertence ao server")
+				return fail(Forbidden, "Metric does not belong to this server")
 			}
 			ownedMetrics = append(ownedMetrics, metric)
 		}
 		v.Metrics.Containers = ownedMetrics
 		c.publish("servers", "server.metrics", map[string]any{"server_id": p.ID, "metrics": v.Metrics})
 	default:
-		return fail(Validation, "Evento desconhecido")
+		return fail(Validation, "Unknown event")
 	}
 	return nil
 }

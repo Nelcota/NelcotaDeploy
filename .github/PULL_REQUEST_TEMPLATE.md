@@ -1,11 +1,11 @@
-## Problema e resultado
+## Problem and outcome
 
-Descreva o problema e o comportamento depois da mudança. Relacione a issue, se houver.
+Describe the problem and the resulting behavior. Link the issue, if applicable.
 
-## Validação
+## Validation
 
-Informe os comandos executados e os resultados. Registre limitações de infraestrutura, quando existirem.
+List validation commands and results. Record infrastructure limitations, if any.
 
-## Impacto operacional
+## Operational impact
 
-Descreva mudanças em API/protocolo, schema, configuração, instalação ou rollback. Remova esta seção se não houver impacto.
+Describe changes to APIs, protocol, schema, configuration, installation, or rollback. Remove this section if there is no operational impact.

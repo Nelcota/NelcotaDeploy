@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Empacota sem publicar. Os buildkitd devem ter origem e hash revisados pelo mantenedor.
+# Package without publishing. The maintainer must review BuildKit provenance and hashes.
 set -euo pipefail
 umask 077
 [[ $# == 4 || $# == 5 ]] || { printf '%s\n' 'release.sh VERSION MINISIGN_SECRET_KEY_FILE BUILDKITD_AMD64 BUILDKITD_ARM64 [BUILDKIT_PROVENANCE_DIR]' >&2; exit 1; }
@@ -18,8 +18,8 @@ if [[ -n $provenance ]]; then
  done
 fi
 cd "$(dirname "$0")/.."
-[[ -z $(git status --porcelain --untracked-files=normal) ]] || { printf '%s\n' 'O código deve estar commitado e limpo antes de empacotar.' >&2; exit 1; }
-[[ ! -e dist/$version && ! -L dist/$version ]] || { printf '%s\n' "Release dist/$version já existe; recusando sobrescrever." >&2; exit 1; }
+[[ -z $(git status --porcelain --untracked-files=normal) ]] || { printf '%s\n' 'Commit the code and clean the working tree before packaging.' >&2; exit 1; }
+[[ ! -e dist/$version && ! -L dist/$version ]] || { printf '%s\n' "Release dist/$version already exists; refusing to overwrite." >&2; exit 1; }
 mkdir -p dist
 stage=$(mktemp -d "dist/.${version}.XXXXXX")
 trap 'rm -rf -- "$stage"' EXIT
@@ -31,7 +31,7 @@ for component in panel agent; do
  for target in amd64_v1 amd64_v3 arm64; do
   arch=${target%%_*} level=${target#*_}
   [[ $arch != arm64 ]] || level=v1
-  GOOS=linux GOARCH="$arch" GOAMD64="$level" CGO_ENABLED=0 go build -trimpath -pgo=auto -ldflags="-s -w -X github.com/nelcota/nelcota-deploy/internal/updater.Version=$version" -o "$stage/nelcota-${component}_linux_${target}" "./cmd/nelcota-$component"
+  GOOS=linux GOARCH="$arch" GOAMD64="$level" CGO_ENABLED=0 go build -trimpath -pgo=auto -ldflags="-s -w -X github.com/Nelcota/NelcotaDeploy/internal/updater.Version=$version" -o "$stage/nelcota-${component}_linux_${target}" "./cmd/nelcota-$component"
  done
 done
 install -m 0755 "$builder_amd64" "$stage/buildkitd_linux_amd64"
@@ -51,9 +51,9 @@ fi
  go version -m buildkitd_linux_amd64 buildkitd_linux_arm64 > buildkit-build-info.txt
  sha256sum nelcota-panel_linux_{amd64_v1,amd64_v3,arm64} nelcota-agent_linux_{amd64_v1,amd64_v3,arm64} buildkitd_linux_{amd64,arm64} release.json build-info.json buildkit-build-info.txt "${extras[@]}" > checksums.txt
 )
-minisign -Sm "$stage/checksums.txt" -s "$key_file" -t "Nelcota Deploy $version; source $source_commit"
+minisign -Sm "$stage/checksums.txt" -s "$key_file" -t "NelcotaDeploy $version; source $source_commit"
 chmod 0755 "$stage" "$stage"/nelcota-* "$stage"/buildkitd_*
 chmod 0644 "$stage"/*.json "$stage"/*.txt "$stage"/checksums.txt.minisig
 mv -T --no-clobber "$stage" "dist/$version"
-[[ ! -d $stage ]] || { printf '%s\n' 'Destino ocupado durante o empacotamento.' >&2; exit 1; }
-printf 'Release assinado local: dist/%s/\n' "$version"
+[[ ! -d $stage ]] || { printf '%s\n' 'Destination became occupied during packaging.' >&2; exit 1; }
+printf 'Locally signed release: dist/%s/\n' "$version"
