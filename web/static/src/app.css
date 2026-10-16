@@ -33,7 +33,7 @@
 }
 
 /* Visual language: a quiet frame, one large rounded content panel, pastel stat
-   tiles, and rounded rows. Every pairing below meets WCAG AA for its text size. */
+   tiles, and rounded rows. The brand green follows the mascot. Every pairing below meets WCAG AA for its text size. */
 :root {
   --radius: 1rem;
   --frame: #e9ebf0;
@@ -43,7 +43,7 @@
   --card-foreground: #101114;
   --popover: #ffffff;
   --popover-foreground: #101114;
-  --primary: #4338ca;
+  --primary: #047857;
   --primary-foreground: #ffffff;
   --secondary: #eceef3;
   --secondary-foreground: #101114;
@@ -54,16 +54,16 @@
   --destructive: oklch(0.5 0.2 27);
   --border: rgb(15 23 42 / 0.09);
   --input: rgb(15 23 42 / 0.14);
-  --ring: #6366f1;
-  --tile-1: #a6d4e8;
-  --tile-2: #a3bdf2;
-  --tile-3: #b2aef3;
+  --ring: #059669;
+  --tile-1: #a7e3c4;
+  --tile-2: #9fd8d6;
+  --tile-3: #a6d4e8;
   --tile-fg: #0b0b12;
-  --link: #4338ca;
-  --success: oklch(0.5 0.14 150);
+  --link: #065f46;
+  --success: oklch(0.5 0.14 140);
   --warning: oklch(0.5 0.12 70);
   --info: oklch(0.48 0.16 255);
-  --chart-2: #4f6bed;
+  --chart-2: #0f766e;
   color-scheme: light;
 }
 .dark {
@@ -74,7 +74,7 @@
   --card-foreground: #f4f4f5;
   --popover: #1d1d20;
   --popover-foreground: #f4f4f5;
-  --primary: #a5b4fc;
+  --primary: #6ee7b7;
   --primary-foreground: #0b0b12;
   --secondary: #26262a;
   --secondary-foreground: #f4f4f5;
@@ -85,12 +85,12 @@
   --destructive: oklch(0.76 0.16 22);
   --border: rgb(255 255 255 / 0.07);
   --input: rgb(255 255 255 / 0.12);
-  --ring: #a5b4fc;
-  --link: #a5b4fc;
-  --success: oklch(0.82 0.13 160);
+  --ring: #6ee7b7;
+  --link: #6ee7b7;
+  --success: oklch(0.82 0.14 140);
   --warning: oklch(0.82 0.14 80);
   --info: oklch(0.78 0.11 260);
-  --chart-2: #8fa8f8;
+  --chart-2: #5eead4;
   color-scheme: dark;
 }
 
