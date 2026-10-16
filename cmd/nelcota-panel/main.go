@@ -119,8 +119,10 @@ func env(key, fallback string) string {
 func devConfig(c config) config {
 	c.data = env("NELCOTA_DEV_DATA_DIR", ".local/dev")
 	c.keys = filepath.Join(c.data, "keys")
-	c.origin = "http://127.0.0.1:8080"
-	c.listen = "127.0.0.1:8080"
+	// Browsers reject IP addresses as WebAuthn RP IDs; set
+	// NELCOTA_DEV_ORIGIN=http://localhost:8080 to exercise real passkeys.
+	c.origin = env("NELCOTA_DEV_ORIGIN", "http://127.0.0.1:8080")
+	c.listen = env("NELCOTA_DEV_LISTEN", "127.0.0.1:8080")
 	return c
 }
 func initialize(ctx context.Context, c config) error {
@@ -230,6 +232,7 @@ func open(ctx context.Context, c config) (*service.Core, *service.AuthService, e
 	}
 	if trust, e := updater.LoadTrust(updater.TrustPath("panel")); e == nil {
 		ops.VerifyRelease = trust.Check
+		ops.LatestRelease = trust.Latest
 		ops.QueuePanel = func(id, version string) error {
 			return updater.Queue(c.data, updater.Request{ID: id, Version: version})
 		}
@@ -267,7 +270,7 @@ func serve(ctx context.Context, c config, dev bool) error {
 	if e != nil {
 		return e
 	}
-	api := httpapi.Config{Origin: c.origin, Dev: dev, CSRFKey: key, Services: core.Services(auth), AgentScript: scripts.Agent}
+	api := httpapi.Config{Origin: c.origin, Dev: dev, CSRFKey: key, Services: core.Services(auth), AgentScript: scripts.Agent, Version: updater.Version}
 	g, gctx := errgroup.WithContext(ctx)
 	if dev {
 		if e = core.Seed(ctx); e != nil {
@@ -276,6 +279,7 @@ func serve(ctx context.Context, c config, dev bool) error {
 		dispatcher := service.NewDevDispatcher(core, gctx)
 		core.Control = dispatcher
 		api.DevelopmentLogin = auth.DevelopmentSession
+		api.Services.Repos = service.DevRepos{}
 		g.Go(func() error { return dispatcher.Run(gctx) })
 		slog.Warn("development mode: simulated login at POST /api/dev/session; listening on 127.0.0.1 only")
 	} else {
@@ -350,17 +354,29 @@ func serve(ctx context.Context, c config, dev bool) error {
 		gh := &service.GitHubService{Core: core}
 		core.GitHub = gh
 		api.GitHub = gh
+		api.Services.Repos = gh
 	}
 	g.Go(func() error { return host.Diagnostics(gctx, c.diagnostics, c.wg) })
 	if !dev {
 		b := maintenance.Backup{Data: c.data, Config: c.keys, KeyFile: env("NELCOTA_BACKUP_KEY_FILE", filepath.Join(c.keys, "backup.key"))}
 		g.Go(func() error {
-			return b.Run(gctx, func(ctx context.Context, p string) error { return uploadBackup(ctx, core, p) }, func(error) { slog.Error("backup failed; retrying in one hour") })
+			return b.Run(gctx, func(ctx context.Context, p string) error { return uploadBackup(ctx, core, p) }, func(error) { slog.Error("backup failed; retrying in one hour"); core.BackupFailed() })
+		})
+		g.Go(func() error {
+			return b.RunVerification(gctx, func(e error) { slog.Error("backup verification failed", "err", e); core.BackupUnverified() })
 		})
 	}
 	g.Go(func() error { return core.RunScheduler(gctx) })
 	g.Go(func() error { return core.RunChecks(gctx) })
 	g.Go(func() error { return core.Operations.Run(gctx) })
+	release := service.Release{}
+	if trust, e := updater.LoadTrust(updater.TrustPath("panel")); e == nil {
+		release = service.ReleaseFor(trust.BaseURL, updater.Version, trust.PublicKey)
+	}
+	api.Services.Provisioning = &service.Provisioner{Core: core, Origin: c.origin, Release: release}
+	notifier := service.NewNotifier(core, c.origin)
+	api.Services.Notifications = notifier.Service()
+	g.Go(func() error { return notifier.Run(gctx) })
 	g.Go(func() error {
 		return updater.RunRequests(gctx, c.data, func(ctx context.Context, r updater.Request) (bool, error) {
 			ctx = service.WithPrincipal(ctx, service.Principal{ID: "system", Role: "admin", TwoFactorAt: time.Now().Unix()})

@@ -1,0 +1,103 @@
+package pages
+
+import (
+	"github.com/Nelcota/NelcotaDeploy/web/i18n"
+	"github.com/Nelcota/NelcotaDeploy/web/ui"
+)
+
+// LoginNotice maps fixed notice codes to messages; arbitrary text is never reflected.
+func LoginNotice(code string) string {
+	switch code {
+	case "totp-enabled":
+		return "Two-factor authentication is on. Sign in again with your passkey and an authenticator code."
+	case "totp-reset":
+		return "Two-factor authentication was turned off and your sessions were signed out."
+	case "signed-out":
+		return "You have been signed out."
+	}
+	return ""
+}
+
+templ authHeading(title, text string) {
+	<div class="grid gap-1.5">
+		<h1 class="text-2xl font-medium tracking-tight">{ i18n.T(ctx, title) }</h1>
+		<p class="muted">{ i18n.T(ctx, text) }</p>
+	</div>
+}
+
+templ Login(s Shell, next, notice string, devLogin bool) {
+	@Public(s) {
+		<div class="grid gap-5" data-auth="login" data-next={ next }>
+			@authHeading("Sign in", "Use the passkey registered for your account.")
+			if LoginNotice(notice) != "" {
+				@ui.Notice("info", LoginNotice(notice))
+			}
+			<form id="login-form" novalidate>
+				<div class="grid gap-4">
+					@ui.Field("Email", "email", "", "") {
+						<input id="email" name="email" class="input" type="email" autocomplete="username webauthn" required autofocus/>
+					}
+					<button type="submit" class="btn w-full">
+						@ui.Icon("fingerprint", "")
+						{ i18n.T(ctx, "Sign in with passkey") }
+					</button>
+				</div>
+			</form>
+			<form id="totp-step" class="hidden" novalidate>
+				<div class="grid gap-4">
+					<div data-totp-field>
+						@ui.Field("Authenticator code", "totp-code", "Enter the 6-digit code from your authenticator app.", "") {
+							<input id="totp-code" class="input tracking-widest" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" aria-describedby="totp-code-hint"/>
+						}
+					</div>
+					<div class="hidden" data-recovery-field>
+						@ui.Field("Recovery code", "recovery-code", "Each recovery code works once.", "") {
+							<input id="recovery-code" class="input font-mono" autocomplete="off" spellcheck="false" aria-describedby="recovery-code-hint"/>
+						}
+					</div>
+					<button type="submit" class="btn w-full">{ i18n.T(ctx, "Verify") }</button>
+					<button type="button" class="btn" data-variant="link" data-recovery-toggle>{ i18n.T(ctx, "Use a recovery code") }</button>
+				</div>
+			</form>
+			<p class="text-sm text-destructive empty:hidden" role="alert" data-auth-error></p>
+			if devLogin {
+				<div class="grid gap-3 border-t pt-6">
+					<p class="text-xs text-muted-foreground">{ i18n.T(ctx, "Only available in development mode.") }</p>
+					<button type="button" id="dev-login" class="btn w-full" data-variant="outline">{ i18n.T(ctx, "Continue as development administrator") }</button>
+				</div>
+			}
+			<p class="muted">{ i18n.T(ctx, "Received an invitation?") } <a class="underline underline-offset-4 hover:text-foreground" href="/enroll">{ i18n.T(ctx, "Set up your passkey") }</a>.</p>
+		</div>
+	}
+}
+
+templ Enroll(s Shell) {
+	@Public(s) {
+		<div class="grid gap-6" data-auth="enroll">
+			@authHeading("Set up your passkey", "Paste the invitation token you received. It can be used once and expires after 15 minutes.")
+			<form id="enroll-form" novalidate>
+				<div class="grid gap-4">
+					@ui.Field("Invitation token", "token", "Never share it or paste it into a URL.", "") {
+						<input id="token" name="token" class="input font-mono" type="password" autocomplete="off" spellcheck="false" required aria-describedby="token-hint"/>
+					}
+					<button type="submit" class="btn w-full">
+						@ui.Icon("fingerprint", "")
+						{ i18n.T(ctx, "Create passkey") }
+					</button>
+				</div>
+			</form>
+			<p class="text-sm text-destructive empty:hidden" role="alert" data-auth-error></p>
+			<div id="enroll-done" class="hidden">
+				@ui.Notice("circle-check", "Passkey created") {
+					<p>{ i18n.T(ctx, "Sign in with it now. If your administrator requires two-factor authentication, set it up from your account page.") }</p>
+					<p class="mt-3">
+						@ui.LinkButton("/login", "", "sm", nil) {
+							{ i18n.T(ctx, "Sign in") }
+						}
+					</p>
+				}
+			</div>
+			<p class="muted"><a class="underline underline-offset-4 hover:text-foreground" href="/login">{ i18n.T(ctx, "Back to sign in") }</a></p>
+		</div>
+	}
+}

@@ -261,3 +261,46 @@ func TestTrustAndHealthEndpointAreBoundedAndLocal(t *testing.T) {
 		t.Fatal("accepted a trust FIFO")
 	}
 }
+
+func TestLatestIsBoundedAndValidated(t *testing.T) {
+	body := "v1.4.2\n"
+	status := 200
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/elsewhere" {
+			_, _ = w.Write([]byte("v9.9.9\n"))
+			return
+		}
+		if r.URL.Path != "/releases/latest" {
+			http.NotFound(w, r)
+			return
+		}
+		if status == http.StatusFound {
+			http.Redirect(w, r, "/elsewhere", status)
+			return
+		}
+		w.WriteHeader(status)
+		_, _ = w.Write([]byte(body))
+	}))
+	defer srv.Close()
+	trust, _ := signedFixture(t)
+	trust.BaseURL = srv.URL + "/releases/"
+	trust.Client = srv.Client()
+	if v, e := trust.Latest(context.Background()); e != nil || v != "v1.4.2" {
+		t.Fatal(v, e)
+	}
+	for name, c := range map[string]struct {
+		body   string
+		status int
+	}{
+		"pre-release": {"v1.5.0-rc.1\n", 200},
+		"garbage":     {"<html>", 200},
+		"oversized":   {"v1.4.2" + strings.Repeat(" ", 80), 200},
+		"missing":     {"", 404},
+		"redirect":    {"", http.StatusFound},
+	} {
+		body, status = c.body, c.status
+		if v, e := trust.Latest(context.Background()); e == nil {
+			t.Errorf("%s: accepted %q", name, v)
+		}
+	}
+}

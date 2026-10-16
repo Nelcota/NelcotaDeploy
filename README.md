@@ -29,7 +29,7 @@ NelcotaDeploy separates application control into two components: a panel stores 
 SQLite, two Go binaries, and familiar services: Docker, BuildKit, and Caddy. The initial version requires a **Dockerfile in your application repository**.
 
 > [!IMPORTANT]
-> **The backend is implemented; the web UI is still being built.** The current web page is a placeholder. Local tests include real Docker, BuildKit, and Caddy, but complete installation and operational targets still require VPS acceptance testing. Read the [backend report](docs/backend-report.md) and [outstanding work](docs/outstanding-work.md) before production use.
+> **The backend and web interface are implemented and locally tested.** Local tests include real Docker, BuildKit, and Caddy, and browser tests use a virtual passkey authenticator, but complete installation, real devices, and operational targets still require VPS acceptance testing. Read the [backend report](docs/backend-report.md), [frontend report](docs/frontend-report.md), and [outstanding work](docs/outstanding-work.md) before production use.
 
 ## Implemented capabilities
 
@@ -41,6 +41,7 @@ SQLite, two Go binaries, and familiar services: Docker, BuildKit, and Caddy. The
 | Communication | mTLS, signed commands, replay protection, and agent reconnection |
 | Observability | Build and runtime logs over SSE, zstd retention, host and container metrics |
 | Operations | Encrypted local/S3 backups, offline restore, signed updates, and executable rollback |
+| Interface | Server-rendered panel (templ, Datastar, Tailwind, Basecoat) with live status, xterm.js logs, uPlot metrics, light/dark themes, and a command palette |
 
 ## Architecture
 
@@ -78,7 +79,7 @@ make dev-seed
 make dev
 ```
 
-Open **http://127.0.0.1:8080**. Sample data lives in `.local/dev`, outside Git. The interface currently displays a simple placeholder; APIs and event streams are available.
+Open **http://127.0.0.1:8080** and choose **Continue as development administrator**. Sample data lives in `.local/dev`, outside Git. Browsers do not accept IP addresses for passkeys; to try real passkeys, run with `NELCOTA_DEV_ORIGIN=http://localhost:8080`.
 
 <details>
 <summary><strong>Use the API with a development session</strong></summary>
@@ -109,7 +110,9 @@ curl -b /tmp/nelcota-dev-cookies \
 | `make build` | Build the panel and agent into `bin/` |
 | `make test` | Run the test suite |
 | `make lint` | Check formatting, vet, golangci-lint, and ShellCheck |
-| `make check-generated` | Check reproducible Protobuf/Connect/sqlc generation |
+| `make check-generated` | Check reproducible Protobuf/Connect/sqlc and web asset generation |
+| `make web` | Generate templ components, Tailwind CSS, and fingerprinted precompressed assets |
+| `make e2e` | Run Playwright browser tests (Node and `npx playwright install chromium` in `web/`) |
 | `CGO_ENABLED=1 go test -race -count=1 ./...` | Run the race detector; requires a C compiler |
 | `make test-integration` | Exercise Docker, BuildKit, Caddy, and installers |
 | `make bench` | Run local benchmarks |
@@ -123,6 +126,7 @@ Integration tests fail when required infrastructure is missing. [CI](https://git
 - [Installation and acceptance testing on two VPS instances](docs/vps-testing.md)
 - [Operations: backups, restore, updates, and recovery](docs/backend-operations.md)
 - [Backend status and validation evidence](docs/backend-report.md)
+- [Frontend status, tests, and screenshots](docs/frontend-report.md)
 - [Local staging releases](docs/staging-releases.md)
 - [Technical decisions](docs/decisions.md)
 
@@ -130,7 +134,8 @@ The staging packages described in the documentation are local artifacts ignored 
 
 ## Roadmap
 
-- [ ] Build the web interface with templ, Datastar, and Tailwind.
+- [x] Build the web interface with templ, Datastar, and Tailwind.
+- [ ] Validate the interface with real passkeys, browsers, and devices against a VPS panel.
 - [ ] Validate installation, firewall, WireGuard, reboot, and recovery on VPS infrastructure.
 - [ ] Validate GitHub App integration, passkeys, and S3 storage in real environments.
 - [ ] Prove performance targets on representative infrastructure.

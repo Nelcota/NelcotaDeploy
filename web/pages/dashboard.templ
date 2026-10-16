@@ -1,0 +1,366 @@
+package pages
+
+import (
+	"context"
+
+	"github.com/Nelcota/NelcotaDeploy/web/i18n"
+	"strconv"
+
+	"github.com/Nelcota/NelcotaDeploy/internal/service"
+	"github.com/Nelcota/NelcotaDeploy/web/ui"
+)
+
+// Metrics is the latest host sample for a server, received over the event hub.
+type Metrics struct {
+	CPUPercent  float64     `json:"cpu_percent"`
+	MemoryUsed  int64       `json:"memory_used"`
+	MemoryTotal int64       `json:"memory_total"`
+	DiskUsed    int64       `json:"disk_used"`
+	DiskTotal   int64       `json:"disk_total"`
+	NetworkRX   int64       `json:"network_rx"`
+	NetworkTX   int64       `json:"network_tx"`
+	CacheUsed   int64       `json:"cache_used"`
+	Containers  []Container `json:"containers"`
+	At          int64       `json:"-"`
+}
+
+// Container is one container sample within Metrics.
+type Container struct {
+	AppID       string  `json:"app_id"`
+	ContainerID string  `json:"container_id"`
+	CPUPercent  float64 `json:"cpu_percent"`
+	MemoryUsed  int64   `json:"memory_used"`
+	MemoryLimit int64   `json:"memory_limit"`
+	PIDs        int64   `json:"pids"`
+}
+
+// AppRow is an app with its state and server name.
+type AppRow struct {
+	App        service.App
+	Latest     service.Deployment
+	State      AppState
+	ServerName string
+}
+
+// RedeploySHA is the commit a quick deploy rebuilds when the branch head is unknown.
+func (a AppRow) RedeploySHA() string {
+	if a.Latest.SHA != "" {
+		return a.Latest.SHA
+	}
+	return a.App.DesiredSHA
+}
+
+// Step is one item of the first-run checklist.
+type Step struct {
+	Label, Hint, Href, Action string
+	Done                      bool
+}
+
+// Attention is something that needs a person to act.
+type Attention struct {
+	ID, Tone, Title, Detail, Href, Action string
+}
+
+type DashboardView struct {
+	Apps      []AppRow
+	Servers   []service.Server
+	Metrics   map[string]Metrics
+	Steps     []Step
+	Attention []Attention
+	Err       string
+}
+
+func (v DashboardView) stepsDone() int {
+	n := 0
+	for _, s := range v.Steps {
+		if s.Done {
+			n++
+		}
+	}
+	return n
+}
+
+func (v DashboardView) showSteps() bool {
+	return len(v.Steps) > 0 && v.stepsDone() < len(v.Steps)
+}
+
+// tone picks a stable thumbnail color (1–3) for a name.
+func tone(name string) string {
+	n := 0
+	for _, r := range name {
+		n += int(r)
+	}
+	return strconv.Itoa(n%3 + 1)
+}
+
+templ Dashboard(s Shell, v DashboardView) {
+	@App(s) {
+		@PageHeader("Home", "") {
+			@Connection()
+			if s.Admin() {
+				@ui.LinkButton("/apps/new", "", "sm", nil) {
+					@ui.Icon("plus", "")
+					{ i18n.T(ctx, "New app") }
+				}
+			}
+		}
+		@LiveStream("/ui/stream/dashboard")
+		if v.Err != "" {
+			@ui.ErrorState("Home unavailable", v.Err)
+		} else {
+			@DashboardBody(s, v)
+		}
+	}
+}
+
+templ DashboardBody(s Shell, v DashboardView) {
+	<div id="dashboard" class="grid gap-10">
+		if v.showSteps() {
+			@FirstSteps(v)
+		}
+		@AttentionList(v.Attention)
+		<section aria-labelledby="apps-heading" class="grid gap-3">
+			<div class="flex items-baseline justify-between gap-4">
+				<h2 id="apps-heading" class="section-title">{ i18n.T(ctx, "Apps") }</h2>
+				<a href="/apps" class="see-all">{ i18n.T(ctx, "All apps") }</a>
+			</div>
+			if len(v.Apps) == 0 {
+				@ui.Empty("box", "No apps yet", "Create an app from a GitHub repository with a Dockerfile.") {
+					if s.Admin() {
+						@ui.LinkButton("/apps/new", "", "sm", nil) {
+							{ i18n.T(ctx, "New app") }
+						}
+					}
+				}
+			} else {
+				@AppsTable(v.Apps)
+			}
+		</section>
+		<section aria-labelledby="servers-heading" class="grid gap-3">
+			<div class="flex items-baseline justify-between gap-4">
+				<h2 id="servers-heading" class="section-title">{ i18n.T(ctx, "Servers") }</h2>
+				<a href="/servers" class="see-all">{ i18n.T(ctx, "All servers") }</a>
+			</div>
+			if len(v.Servers) == 0 {
+				@ui.Empty("server", "No servers", "Add a server to start deploying.") {
+					if s.Admin() {
+						@ui.LinkButton("/servers", "outline", "sm", nil) {
+							{ i18n.T(ctx, "Add server") }
+						}
+					}
+				}
+			} else {
+				<ul class="rows">
+					for _, srv := range v.Servers {
+						<li>
+							@ServerCard(srv, v.Metrics[srv.ID])
+						</li>
+					}
+				</ul>
+			}
+		</section>
+	</div>
+}
+
+templ FirstSteps(v DashboardView) {
+	<section id="first-steps" class="surface grid gap-4 p-5 sm:p-6" aria-labelledby="first-steps-title">
+		<div class="flex flex-wrap items-baseline justify-between gap-3">
+			<h2 id="first-steps-title" class="section-title">{ i18n.T(ctx, "Get your first app online") }</h2>
+			<span class="text-sm text-muted-foreground">{ i18n.Tf(ctx, "%d of %d done", v.stepsDone(), len(v.Steps)) }</span>
+		</div>
+		<progress class="meter" max={ strconv.Itoa(len(v.Steps)) } value={ strconv.Itoa(v.stepsDone()) } aria-label={ i18n.T(ctx, "Setup progress") }></progress>
+		<ol class="grid gap-2">
+			for _, st := range v.Steps {
+				<li
+					class="checkitem"
+					if st.Done {
+						data-done
+					}
+				>
+					<span class="checkmark" aria-hidden="true">
+						if st.Done {
+							@ui.Icon("check", "size-3.5")
+						}
+					</span>
+					<span class="min-w-0 flex-1">
+						<span class="font-medium">{ st.Label }</span>
+						if st.Done {
+							<span class="sr-only">{ i18n.T(ctx, "(done)") }</span>
+						} else if st.Hint != "" {
+							<span class="block text-sm text-muted-foreground">{ st.Hint }</span>
+						}
+					</span>
+					if !st.Done && st.Href != "" {
+						@ui.LinkButton(templ.SafeURL(st.Href), "outline", "sm", nil) {
+							{ st.Action }
+						}
+					}
+				</li>
+			}
+		</ol>
+	</section>
+}
+
+templ AttentionList(items []Attention) {
+	<section id="attention" class="grid gap-3" aria-labelledby="attention-title">
+		<h2 id="attention-title" class="section-title">{ i18n.T(ctx, "Needs your attention") }</h2>
+		if len(items) == 0 {
+			<p class="surface flex items-center gap-2 px-4 py-3 text-sm">
+				@ui.Icon("circle-check", "size-4 text-success")
+				{ i18n.T(ctx, "Everything is running normally.") }
+			</p>
+		} else {
+			<ul class="grid gap-2">
+				for _, a := range items {
+					<li id={ "attention-" + a.ID } class="notice-row" data-tone={ a.Tone }>
+						<div class="min-w-0 flex-1">
+							<p class="font-medium">{ a.Title }</p>
+							if a.Detail != "" {
+								<p class="text-sm text-muted-foreground">{ a.Detail }</p>
+							}
+						</div>
+						if a.Href != "" {
+							@ui.LinkButton(templ.SafeURL(a.Href), "", "sm", nil) {
+								{ a.Action }
+							}
+						}
+					</li>
+				}
+			</ul>
+		}
+	</section>
+}
+
+func serverStatus(s service.Server) string {
+	if s.Status == "online" && !s.Ready {
+		return "not_ready"
+	}
+	return s.Status
+}
+
+templ miniMeter(label string, used, total int64) {
+	<span class="mini-meter">
+		{ i18n.T(ctx, label) }
+		<progress max="1000" value={ ui.Permille(used, total) } aria-label={ label + " " + ui.Usage(used, total) }></progress>
+		<span class="tabular-nums">{ ui.Percent(float64(used*100) / float64(max(total, 1))) }</span>
+	</span>
+}
+
+templ ServerCard(srv service.Server, m Metrics) {
+	<article id={ "server-" + srv.ID } class="row" aria-label={ srv.Name }>
+		<div class="row-main">
+			<span class="row-thumb" data-tone="muted" aria-hidden="true">
+				@ui.Icon("server", "")
+			</span>
+			<div class="min-w-0 flex-1">
+				<div class="flex flex-wrap items-center gap-2">
+					<h3 class="truncate font-medium">{ srv.Name }</h3>
+					@ui.Status(serverStatus(srv))
+				</div>
+				<p class="row-meta">
+					if m.At == 0 {
+						<span>{ i18n.T(ctx, "Waiting for metrics…") }</span>
+					} else {
+						<span>{ i18n.T(ctx, "CPU") } <span class="tabular-nums">{ ui.Percent(m.CPUPercent) }</span></span>
+						@miniMeter("Memory", m.MemoryUsed, m.MemoryTotal)
+						@miniMeter("Disk", m.DiskUsed, m.DiskTotal)
+					}
+					<span>{ i18n.Tf(ctx, "Heartbeat %s", i18n.T(ctx, ui.Ago(srv.HeartbeatAt))) }</span>
+				</p>
+			</div>
+		</div>
+		<div class="row-actions">
+			<a class="row-action" href="/servers" aria-label={ i18n.Tf(ctx, "Details for %s", srv.Name) }>
+				@ui.Icon("chevron-right", "")
+				{ i18n.T(ctx, "Details") }
+			</a>
+		</div>
+	</article>
+}
+
+templ AppsTable(rows []AppRow) {
+	<ul id="apps-body" class="rows" aria-label={ i18n.T(ctx, "Apps") }>
+		for _, row := range rows {
+			@AppRowView(row)
+		}
+	</ul>
+}
+
+templ appSummary(row AppRow) {
+	switch row.State.Key {
+		case "publishing":
+			<span>{ PublishingLine(ctx, row.Latest) }</span>
+		case "update_failed":
+			<span>{ i18n.Tf(ctx, "Stopped %s. The previous version is still online.", i18n.T(ctx, ui.StagePhrase(FailedStage(row.Latest)))) }</span>
+		case "not_live":
+			<span>{ i18n.Tf(ctx, "Stopped %s.", i18n.T(ctx, ui.StagePhrase(FailedStage(row.Latest)))) }</span>
+		case "new":
+			<span>{ i18n.T(ctx, "Not published yet") }</span>
+		default:
+			if row.State.Live.ID != "" {
+				<span title={ row.State.Live.SHA }>{ i18n.T(ctx, "Version") }&nbsp;<span class="mono">{ ui.ShortSHA(row.State.Live.SHA) }</span></span>
+				<span>{ i18n.T(ctx, ui.Ago(row.State.Live.QueuedAt)) }</span>
+			}
+	}
+}
+
+// PublishingLine describes a deployment in progress.
+func PublishingLine(ctx context.Context, d service.Deployment) string {
+	if d.Status == "queued" {
+		return i18n.T(ctx, "Waiting for a build slot")
+	}
+	return i18n.Tf(ctx, "%s, %s so far", i18n.T(ctx, ui.StageLabel(CurrentStage(d))), ui.Span(d.StartedAt, d.FinishedAt))
+}
+
+templ AppRowView(row AppRow) {
+	<li id={ "app-row-" + row.App.ID } class="row">
+		<div class="row-main">
+			<a href={ templ.SafeURL("/apps/" + row.App.ID) } class="shrink-0" aria-hidden="true" tabindex="-1">
+				@AppLogo(row.App, "")
+			</a>
+			<div class="min-w-0 flex-1">
+				<div class="flex flex-wrap items-center gap-2">
+					<a href={ templ.SafeURL("/apps/" + row.App.ID) } class="truncate font-medium hover:underline">{ row.App.Name }</a>
+					<span class="status" data-tone={ ui.Tone(row.State.Key) } data-status={ row.Latest.Status } data-state={ row.State.Key }>{ i18n.T(ctx, row.State.Label) }</span>
+				</div>
+				<p class="row-meta">
+					if len(row.App.Config.Domains) > 0 {
+						<span>{ row.App.Config.Domains[0] }</span>
+					}
+					@appSummary(row)
+					if row.Latest.Author != "" {
+						<span class="hidden md:inline-flex">{ row.Latest.Author }</span>
+					}
+				</p>
+			</div>
+		</div>
+		<div class="row-actions">
+			switch row.State.Key {
+				case "publishing":
+					<a class="row-action" href={ templ.SafeURL("/apps/" + row.App.ID) }>
+						@ui.Icon("activity", "")
+						{ i18n.T(ctx, "Watch") }
+					</a>
+				case "update_failed", "not_live":
+					<a class="row-action text-destructive" href={ templ.SafeURL("/apps/" + row.App.ID) } aria-label={ i18n.Tf(ctx, "See why %s didn't go live", row.App.Name) }>
+						@ui.Icon("circle-alert", "")
+						{ i18n.T(ctx, "See why") }
+					</a>
+				case "stopped", "new":
+					<a class="row-action" href={ templ.SafeURL("/apps/" + row.App.ID) }>
+						@ui.Icon("chevron-right", "")
+						{ i18n.T(ctx, "Open") }
+					</a>
+				default:
+					<button type="button" class="row-action" data-on:click={ ui.Post("/ui/apps/" + row.App.ID + "/deploy?latest=1") } aria-label={ i18n.Tf(ctx, "Publish the latest version of %s", row.App.Name) }>
+						@ui.Icon("rocket", "")
+						{ i18n.T(ctx, "Publish") }
+					</button>
+			}
+			<a class="row-action" href={ templ.SafeURL("/apps/" + row.App.ID + "/logs") } aria-label={ i18n.Tf(ctx, "Logs for %s", row.App.Name) }>
+				@ui.Icon("scroll-text", "")
+				{ i18n.T(ctx, "Logs") }
+			</a>
+		</div>
+	</li>
+}

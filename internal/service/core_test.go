@@ -135,6 +135,39 @@ func TestWebhookSignatureAndDedupe(t *testing.T) {
 		t.Fatal(e)
 	}
 }
+
+func TestWebhookRemembersInstallation(t *testing.T) {
+	c, ctx, a := fixture(t)
+	if e := (&settingsService{c}).Set(ctx, "github.webhook_secret", "testsecret"); e != nil {
+		t.Fatal(e)
+	}
+	g := &GitHubService{Core: c}
+	push := func(delivery string, installation int) {
+		t.Helper()
+		body := []byte(fmt.Sprintf(`{"ref":"refs/heads/main","after":"%s","repository":{"html_url":"https://github.com/example/app"},"installation":{"id":%d}}`, strings.Repeat("c", 40), installation))
+		mac := hmac.New(sha256.New, []byte("testsecret"))
+		mac.Write(body)
+		if e := g.Webhook(ctx, WebhookInput{Signature: "sha256=" + hex.EncodeToString(mac.Sum(nil)), Delivery: delivery, Event: "push", Body: body}); e != nil {
+			t.Fatal(e)
+		}
+	}
+	installation := func() int64 {
+		got, e := (&appsService{c}).Get(ctx, a.ID)
+		if e != nil {
+			t.Fatal(e)
+		}
+		return got.Config.InstallationID
+	}
+	push("d1", 31)
+	if installation() != 31 {
+		t.Fatal("installation not remembered", installation())
+	}
+	// An ID set by a person is never replaced.
+	push("d2", 99)
+	if installation() != 31 {
+		t.Fatal("installation replaced", installation())
+	}
+}
 func TestInviteAndBootstrapOneUse(t *testing.T) {
 	c, ctx, _ := fixture(t)
 	auth, e := NewAuth(c, "localhost", "http://localhost:8080")

@@ -28,6 +28,8 @@ type Operations interface {
 	Backup(context.Context) (Operation, error)
 	Update(context.Context, string) ([]Operation, error)
 	Cancel(context.Context, string) error
+	Updates(context.Context) (UpdateStatus, error)
+	SetAutomaticUpdates(context.Context, bool) error
 }
 type OperationsService struct {
 	Core          *Core
@@ -36,6 +38,9 @@ type OperationsService struct {
 	CreateBackup  func(context.Context, string) error
 	QueuePanel    func(string, string) error
 	PanelResult   func() updater.Result
+	// LatestRelease reads the release location's unsigned "latest" pointer.
+	LatestRelease func(context.Context) (string, error)
+	updates       updateState
 }
 
 func interactiveAdmin(ctx context.Context) error {
@@ -99,6 +104,13 @@ func (s *OperationsService) Update(ctx context.Context, version string) ([]Opera
 	if e := interactiveAdmin(ctx); e != nil {
 		return nil, e
 	}
+	return s.queueUpdate(ctx, version)
+}
+
+// queueUpdate verifies a signed release and queues it for every server, then
+// the panel. Callers authorize: people through Update, the panel itself for
+// automatic updates.
+func (s *OperationsService) queueUpdate(ctx context.Context, version string) ([]Operation, error) {
 	if s.VerifyRelease == nil || s.QueuePanel == nil {
 		return nil, fail(Unavailable, "Release identity not configured")
 	}
@@ -185,10 +197,17 @@ func (s *OperationsService) Run(ctx context.Context) error {
 	}
 	tick := time.NewTicker(time.Second)
 	defer tick.Stop()
+	releases := time.NewTicker(updateCheckInterval)
+	defer releases.Stop()
+	first := time.After(firstUpdateCheck)
 	for {
 		select {
 		case <-ctx.Done():
 			return nil
+		case <-first:
+			s.checkUpdates(ctx)
+		case <-releases.C:
+			s.checkUpdates(ctx)
 		case <-tick.C:
 			if e := s.step(ctx); e != nil && ctx.Err() != nil {
 				return nil
@@ -307,7 +326,7 @@ func (s *OperationsService) step(ctx context.Context) error {
 	return nil
 }
 func (s *OperationsService) finish(ctx context.Context, o Operation, status, code string) error {
-	return s.Core.mutate(ctx, func(tx *sql.Tx) error {
+	e := s.Core.mutate(ctx, func(tx *sql.Tx) error {
 		if _, e := tx.ExecContext(ctx, "UPDATE maintenance_jobs SET status=?,finished_at=?,error_code=? WHERE id=? AND status='waiting'", status, time.Now().Unix(), code, o.ID); e != nil {
 			return e
 		}
@@ -318,6 +337,25 @@ func (s *OperationsService) finish(ctx context.Context, o Operation, status, cod
 		}
 		return s.Core.audit(systemContext(ctx), tx, "operation."+status, o.ID)
 	})
+	if e == nil && status == "failed" {
+		switch o.Kind {
+		case "backup":
+			s.Core.BackupFailed()
+		case "update":
+			s.Core.publish("operations", "update.failed", map[string]string{"version": o.Version, "code": code, "target": o.Target})
+		}
+	}
+	return e
+}
+
+// BackupFailed announces a failed backup, manual or daily.
+func (c *Core) BackupFailed() {
+	c.publish("operations", "backup.failed", map[string]string{})
+}
+
+// BackupUnverified announces that the weekly test restore of the newest backup failed.
+func (c *Core) BackupUnverified() {
+	c.publish("operations", "backup.unverified", map[string]string{})
 }
 func (c *Core) operationResult(ctx context.Context, server string, result *agentv1.OperationResult) error {
 	if result == nil || result.Id == "" {

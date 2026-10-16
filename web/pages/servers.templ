@@ -1,0 +1,340 @@
+package pages
+
+import (
+	"encoding/json"
+	"github.com/Nelcota/NelcotaDeploy/web/i18n"
+	"net"
+	"strconv"
+	"time"
+
+	"github.com/Nelcota/NelcotaDeploy/internal/service"
+	"github.com/Nelcota/NelcotaDeploy/web/ui"
+)
+
+type ServersView struct {
+	Servers []service.Server
+	Apps    []service.App
+	Err     string
+}
+
+// appNames is embedded as JSON so live container rows can show app names.
+func (v ServersView) appNames() string {
+	m := make(map[string]string, len(v.Apps))
+	for _, a := range v.Apps {
+		m[a.ID] = a.Name
+	}
+	b, _ := json.Marshal(m)
+	return string(b)
+}
+
+// NextAddress suggests the next free WireGuard address in 10.77.0.0/24 (the
+// panel uses .1), as the standard installer expects.
+func (v ServersView) NextAddress() string {
+	used := map[int]bool{1: true}
+	for _, s := range v.Servers {
+		if ip := net.ParseIP(s.WireGuardIP).To4(); ip != nil && ip[0] == 10 && ip[1] == 77 && ip[2] == 0 {
+			used[int(ip[3])] = true
+		}
+	}
+	for n := 2; n < 255; n++ {
+		if !used[n] {
+			return "10.77.0." + strconv.Itoa(n)
+		}
+	}
+	return ""
+}
+
+func gib(b int64) string {
+	return strconv.FormatFloat(float64(b)/float64(1<<30), 'f', -1, 64)
+}
+
+templ Servers(s Shell, v ServersView) {
+	@App(s) {
+		@PageHeader("Servers", "Live CPU and memory since you opened this page.") {
+			<span id="metrics-conn" class="conn" data-state="connecting" role="status">{ i18n.T(ctx, "Connecting…") }</span>
+			if s.Admin() {
+				@ui.Button("", "sm", templ.Attributes{"data-on:click": ui.Open("invite")}) {
+					@ui.Icon("plus", "")
+					{ i18n.T(ctx, "Add server") }
+				}
+			}
+		}
+		if v.Err != "" {
+			@ui.ErrorState("Servers unavailable", v.Err)
+		} else {
+			<div id="invite-result"></div>
+			<div id="servers-list" class="grid gap-4" data-apps={ v.appNames() }>
+				if len(v.Servers) == 0 {
+					@ui.Empty("server", "No servers yet", "Add a server, then run the install command on it.")
+				}
+				for _, srv := range v.Servers {
+					@ServerPanel(s, srv)
+				}
+			</div>
+			if s.Admin() {
+				@InviteDialog(v.NextAddress())
+			}
+		}
+	}
+}
+
+templ ServerPanel(s Shell, srv service.Server) {
+	<article id={ "server-" + srv.ID } class="card" data-server={ srv.ID } aria-labelledby={ "server-" + srv.ID + "-name" }>
+		<header class="sm:grid-cols-[1fr_auto]">
+			<h2 id={ "server-" + srv.ID + "-name" } class="flex flex-wrap items-center gap-2">
+				{ srv.Name }
+				<span data-server-status>
+					@ui.Status(serverStatus(srv))
+				</span>
+			</h2>
+			<p class="flex flex-wrap gap-x-3 gap-y-1">
+				<span class="mono">{ srv.WireGuardIP }</span>
+				if srv.Version != "" {
+					<span>{ i18n.Tf(ctx, "Agent %s", srv.Version) }</span>
+				}
+				<span>{ i18n.Tf(ctx, "Heartbeat %s", i18n.T(ctx, ui.Ago(srv.HeartbeatAt))) }</span>
+			</p>
+			if s.Admin() {
+				<div class="mt-2 flex flex-wrap gap-1 sm:col-start-2 sm:row-span-2 sm:row-start-1 sm:mt-0 sm:justify-self-end">
+					@ui.Button("outline", "sm", templ.Attributes{"data-on:click": ui.Open("limits-" + srv.ID)}) {
+						@ui.Icon("sliders-horizontal", "")
+						{ i18n.T(ctx, "Limits") }
+					}
+					@ui.Button("outline", "sm", templ.Attributes{"data-on:click": ui.Open("free-" + srv.ID)}) {
+						@ui.Icon("brush-cleaning", "")
+						{ i18n.T(ctx, "Free up space") }
+					}
+				</div>
+			}
+		</header>
+		<section class="grid gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+			<figure class="grid gap-2">
+				<figcaption class="flex flex-wrap gap-x-4 gap-y-1 text-sm">
+					<span><span class="inline-block size-2 rounded-full bg-[var(--chart-2)]" aria-hidden="true"></span> { i18n.T(ctx, "CPU") } <span class="font-medium tabular-nums" data-metric="cpu">—</span></span>
+					<span><span class="inline-block size-2 rounded-full bg-warning" aria-hidden="true"></span> { i18n.T(ctx, "Memory") } <span class="font-medium tabular-nums" data-metric="memory">—</span></span>
+				</figcaption>
+				<div class="chart h-40 rounded-md border bg-background" data-chart aria-hidden="true">
+					<p class="grid h-full place-items-center text-xs text-muted-foreground" data-chart-empty>{ i18n.T(ctx, "Collecting samples…") }</p>
+				</div>
+			</figure>
+			<div class="grid content-start gap-4">
+				<div class="grid gap-1">
+					<div class="flex justify-between gap-2 text-xs">
+						<span class="text-muted-foreground">{ i18n.T(ctx, "Disk") }</span>
+						<span class="tabular-nums" data-metric="disk">—</span>
+					</div>
+					<progress class="meter" max="1000" value="0" data-metric="disk-meter" aria-label={ i18n.T(ctx, "Disk usage") }></progress>
+				</div>
+				<div class="grid gap-1">
+					<div class="flex justify-between gap-2 text-xs">
+						<span class="text-muted-foreground">{ i18n.T(ctx, "Build cache") }</span>
+						<span class="tabular-nums" data-metric="cache">{ i18n.Tf(ctx, "— of %s", ui.Bytes(srv.CacheBytes)) }</span>
+					</div>
+					<progress class="meter" max="1000" value="0" data-metric="cache-meter" data-limit={ strconv.FormatInt(srv.CacheBytes, 10) } aria-label={ i18n.T(ctx, "Build cache usage") }></progress>
+				</div>
+				@ServerLimits(srv)
+			</div>
+		</section>
+		<section>
+			<details>
+				<summary class="cursor-pointer text-sm font-medium">{ i18n.T(ctx, "Containers") } <span class="text-muted-foreground" data-metric="containers-count"></span></summary>
+				<div class="mt-3">
+					@ui.Table(i18n.Tf(ctx, "Containers on %s", srv.Name)) {
+						<thead><tr><th scope="col">{ i18n.T(ctx, "App") }</th><th scope="col">{ i18n.T(ctx, "CPU") }</th><th scope="col">{ i18n.T(ctx, "Memory") }</th><th scope="col">{ i18n.T(ctx, "Processes") }</th></tr></thead>
+						<tbody data-containers>
+							<tr><td colspan="4" class="text-muted-foreground">{ i18n.T(ctx, "Waiting for metrics…") }</td></tr>
+						</tbody>
+					}
+				</div>
+			</details>
+		</section>
+		if s.Admin() {
+			@ui.Dialog("free-"+srv.ID, i18n.Tf(ctx, "Free up space on %s", srv.Name), "Running apps aren't affected.") {
+				<div class="grid gap-3">
+					<div class="flex flex-wrap items-center gap-3 rounded-xl border p-4">
+						<div class="min-w-0 flex-1">
+							<p class="font-medium">{ i18n.T(ctx, "Remove unused images") }</p>
+							<p class="text-sm text-muted-foreground">{ i18n.T(ctx, "Deletes images no running container uses. Safe to do any time.") }</p>
+						</div>
+						<button type="button" class="btn" data-variant="outline" data-size="sm" data-on:click={ ui.Post("/ui/servers/"+srv.ID+"/prune/orphan_images") + "; el.closest('dialog').close()" }>{ i18n.T(ctx, "Remove images") }</button>
+					</div>
+					<div class="flex flex-wrap items-center gap-3 rounded-xl border p-4">
+						<div class="min-w-0 flex-1">
+							<p class="font-medium">{ i18n.T(ctx, "Clear the build cache") }</p>
+							<p class="text-sm text-muted-foreground">{ i18n.T(ctx, "Frees the most space. The next builds will be slower.") }</p>
+						</div>
+						<button type="button" class="btn" data-variant="destructive" data-size="sm" data-on:click={ ui.Post("/ui/servers/"+srv.ID+"/prune/cache") + "; el.closest('dialog').close()" }>{ i18n.T(ctx, "Clear cache") }</button>
+					</div>
+				</div>
+			}
+			@ui.Dialog("limits-"+srv.ID, i18n.Tf(ctx, "Limits for %s", srv.Name), "Applied within ten seconds. Running builds aren't affected.") {
+				<form class="grid gap-4" data-on:submit={ ui.PostForm("/ui/servers/" + srv.ID + "/limits") }>
+					@ui.Field("Builds at the same time", "limit-builds-"+srv.ID, "1 to 8. Use 2 or more only on servers with plenty of memory.", "") {
+						<input id={ "limit-builds-" + srv.ID } name="build_limit" class="input" type="number" min="1" max="8" required value={ strconv.FormatInt(srv.BuildLimit, 10) }/>
+					}
+					@ui.Field("Build cache size (GiB)", "limit-cache-"+srv.ID, "Older cache is removed above this size.", "") {
+						<input id={ "limit-cache-" + srv.ID } name="cache_gib" class="input" type="number" min="0.0625" max="100" step="0.0625" required value={ gib(srv.CacheBytes) }/>
+					}
+					<footer class="flex justify-end gap-2">
+						<button type="submit" class="btn">{ i18n.T(ctx, "Save limits") }</button>
+					</footer>
+				</form>
+			}
+		}
+	</article>
+}
+
+templ ServerLimits(srv service.Server) {
+	<dl id={ "server-limits-" + srv.ID } class="grid grid-cols-2 gap-3 text-sm">
+		<div><dt class="text-xs text-muted-foreground">{ i18n.T(ctx, "Build cache size") }</dt><dd class="font-medium">{ ui.Bytes(srv.CacheBytes) }</dd></div>
+		<div><dt class="text-xs text-muted-foreground">{ i18n.T(ctx, "Builds at the same time") }</dt><dd class="font-medium">{ strconv.FormatInt(srv.BuildLimit, 10) }</dd></div>
+	</dl>
+}
+
+templ InviteDialog(next string) {
+	@ui.Dialog("invite", "Add a server", "Use a fresh Debian 12+ or Ubuntu 22.04+ server with SSH key access. The invitation expires after 15 minutes.") {
+		<form class="grid gap-4" data-on:submit={ ui.PostForm("/ui/servers/invite") }>
+			@ui.Field("Name", "invite-name", "", "") {
+				<input id="invite-name" name="name" class="input" required maxlength="80" placeholder="apps-1" autocomplete="off"/>
+			}
+			@ui.Field("WireGuard address", "invite-ip", "A unique private IPv4 address in 10.77.0.0/24.", "") {
+				<input id="invite-ip" name="wireguard_ip" class="input font-mono" required value={ next } inputmode="decimal" aria-describedby="invite-ip-hint"/>
+			}
+			<div class="grid gap-4 sm:grid-cols-2">
+				@ui.Field("Builds at the same time", "invite-builds", "", "") {
+					<input id="invite-builds" name="build_limit" class="input" type="number" min="1" max="8" value="1" required/>
+				}
+				@ui.Field("Build cache size (GiB)", "invite-cache", "", "") {
+					<input id="invite-cache" name="cache_gib" class="input" type="number" min="0.0625" max="100" step="0.0625" value="5" required/>
+				}
+			</div>
+			<footer class="flex justify-end gap-2">
+				<button type="submit" class="btn">{ i18n.T(ctx, "Create invitation") }</button>
+			</footer>
+		</form>
+	}
+}
+
+// InviteView is a new server's invitation: the script to run, and whether the
+// panel can run it over SSH.
+type InviteView struct {
+	Name   string
+	Server string
+	Token  string
+	Script string
+	// Placeholders is true when the script still needs a release location and key.
+	Placeholders bool
+	SSH          bool
+	Expires      time.Time
+}
+
+templ InviteResult(v InviteView) {
+	<section id="invite-result" class="card mb-4" aria-labelledby="invite-result-title">
+		<header>
+			<h2 id="invite-result-title">{ i18n.Tf(ctx, "Install the agent on %s", v.Name) }</h2>
+			<p>{ i18n.T(ctx, "Run as root on the new server. The token works once and won't be shown again.") }</p>
+			<div class="card-action">
+				<span class="status" data-tone="warning" data-expires={ v.Expires.UTC().Format(time.RFC3339) }>{ i18n.T(ctx, "15:00 remaining") }</span>
+			</div>
+		</header>
+		<section class="grid gap-3">
+			<pre id="install-command" class="overflow-x-auto rounded-md bg-muted p-3 font-mono text-xs leading-relaxed select-all">{ v.Script }</pre>
+			<div class="flex flex-wrap items-center gap-2">
+				@ui.Copy("install-command", "Copy commands")
+				if v.Placeholders {
+					<span class="text-xs text-muted-foreground">{ i18n.T(ctx, "Replace RELEASE_URL and MINISIGN_PUBLIC_KEY with your release location and signing key.") }</span>
+				}
+			</div>
+			if v.SSH {
+				@sshInstall(v)
+			}
+		</section>
+	</section>
+}
+
+// sshInstall lets the panel run the script itself. The person confirms the
+// server's host key first; the private key is sent once and never stored.
+templ sshInstall(v InviteView) {
+	<details class="rounded-xl border p-4">
+		<summary class="cursor-pointer text-sm font-medium">{ i18n.T(ctx, "Or let the panel install it over SSH") }</summary>
+		<form id="ssh-form" class="mt-4 grid gap-4" data-on:submit={ ui.PostForm("/ui/servers/" + v.Server + "/ssh/check") }>
+			<input type="hidden" name="token" value={ v.Token }/>
+			<div class="grid gap-4 sm:grid-cols-[minmax(0,1fr)_6rem_10rem]">
+				@ui.Field("Server address", "ssh-host", "", "") {
+					<input id="ssh-host" name="host" class="input font-mono" required autocomplete="off" spellcheck="false" placeholder="203.0.113.10"/>
+				}
+				@ui.Field("Port", "ssh-port", "", "") {
+					<input id="ssh-port" name="port" class="input" type="number" min="1" max="65535" value="22" required/>
+				}
+				@ui.Field("User", "ssh-user", "", "") {
+					<input id="ssh-user" name="user" class="input font-mono" value="root" required autocomplete="off" spellcheck="false"/>
+				}
+			</div>
+			@ui.Field("Private key", "ssh-key", "Used for this installation only and never saved. Users other than root need passwordless sudo.", "") {
+				<textarea id="ssh-key" name="private_key" class="textarea font-mono" rows="4" required spellcheck="false" autocomplete="off" placeholder="-----BEGIN OPENSSH PRIVATE KEY-----" aria-describedby="ssh-key-hint"></textarea>
+			}
+			@ui.Field("Key passphrase", "ssh-passphrase", "", "") {
+				<input id="ssh-passphrase" name="passphrase" class="input" type="password" autocomplete="off"/>
+			}
+			<div id="ssh-confirm">
+				<button type="submit" class="btn" data-variant="outline">{ i18n.T(ctx, "Check the server") }</button>
+			</div>
+		</form>
+		<div id="ssh-progress"></div>
+	</details>
+}
+
+// SSHConfirm shows the host key to confirm before installing.
+templ SSHConfirm(server, fingerprint string) {
+	<div id="ssh-confirm" class="grid gap-3 rounded-lg border border-warning/40 p-3">
+		<p class="text-sm">{ i18n.T(ctx, "Confirm this is your server. Compare it with the output of ssh-keyscan or your provider's console:") }</p>
+		<code class="mono break-all text-sm">{ fingerprint }</code>
+		<input type="hidden" name="fingerprint" value={ fingerprint }/>
+		<div class="flex flex-wrap gap-2">
+			<button type="button" class="btn" data-on:click={ ui.PostFormOf("/ui/servers/"+server+"/ssh/install", "#ssh-form") }>{ i18n.T(ctx, "It matches, install") }</button>
+			<button type="submit" class="btn" data-variant="ghost">{ i18n.T(ctx, "Check again") }</button>
+		</div>
+	</div>
+}
+
+// SSHProgress follows an installation's log live.
+templ SSHProgress(job string) {
+	<div id="ssh-progress" class="mt-4 grid gap-2">
+		<p id="ssh-status" class="text-sm text-muted-foreground" role="status">{ i18n.T(ctx, "Installing…") }</p>
+		@SSHLog(nil)
+		// A plain request: it retries network errors, but not after the job ends.
+		<div hidden data-init={ ui.Get("/ui/stream/provision/" + job) }></div>
+	</div>
+}
+
+// SSHLog is the installation output so far.
+templ SSHLog(lines []string) {
+	<pre id="ssh-log" class="max-h-80 overflow-auto rounded-md bg-muted p-3 font-mono text-xs leading-relaxed" aria-label={ i18n.T(ctx, "Installation log") }>
+		for _, l := range lines {
+			@SSHLine(l)
+		}
+	</pre>
+}
+
+// SSHLine is one line of installation output.
+templ SSHLine(line string) {
+	<span class="block">{ line }</span>
+}
+
+// SSHStatus reports how an installation ended.
+templ SSHStatus(j service.ProvisionJob) {
+	switch j.Status {
+		case "done":
+			<p id="ssh-status" class="flex items-center gap-2 text-sm text-success" role="status">
+				@ui.Icon("circle-check", "size-4")
+				{ i18n.T(ctx, "Installed. The server appears as online once its agent connects.") }
+			</p>
+		case "failed":
+			<p id="ssh-status" class="flex items-center gap-2 text-sm text-destructive" role="alert">
+				@ui.Icon("circle-x", "size-4")
+				{ i18n.Tf(ctx, "The installation stopped: %s.", i18n.T(ctx, j.Error)) }
+			</p>
+		default:
+			<p id="ssh-status" class="text-sm text-muted-foreground" role="status">{ i18n.T(ctx, "Installing…") }</p>
+	}
+}

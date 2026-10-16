@@ -353,3 +353,50 @@ func TestRestoreInheritsOwnerForNewDirectories(t *testing.T) {
 		}
 	}
 }
+
+func TestVerifyTestRestoresWithoutTouchingData(t *testing.T) {
+	b, _, _ := backupFixture(t)
+	dir := filepath.Join(b.Data, "backups")
+	if e := os.MkdirAll(dir, 0700); e != nil {
+		t.Fatal(e)
+	}
+	// Nothing to verify yet.
+	if e := b.VerifyLatest(t.Context()); e != nil {
+		t.Fatal(e)
+	}
+	good := filepath.Join(dir, "nelcota-2026-10-15.nbk")
+	if e := b.Create(t.Context(), good); e != nil {
+		t.Fatal(e)
+	}
+	_ = os.WriteFile(good+".ok", []byte("x"), 0600)
+	before, _ := os.ReadFile(filepath.Join(b.Data, "panel.db"))
+	if e := b.VerifyLatest(t.Context()); e != nil {
+		t.Fatal(e)
+	}
+	marker, e := os.ReadFile(filepath.Join(dir, "verified"))
+	if e != nil || strings.TrimSpace(string(marker)) != "nelcota-2026-10-15.nbk" {
+		t.Fatal(string(marker), e)
+	}
+	after, _ := os.ReadFile(filepath.Join(b.Data, "panel.db"))
+	if !bytes.Equal(before, after) {
+		t.Fatal("verification changed the live database")
+	}
+	if left, _ := filepath.Glob(filepath.Join(b.Data, ".verify-*")); len(left) != 0 {
+		t.Fatal("staging directory left behind", left)
+	}
+
+	// A newer, damaged backup is reported once the week has passed.
+	bad := filepath.Join(dir, "nelcota-2026-10-16.nbk")
+	raw, _ := os.ReadFile(good)
+	raw[len(raw)/2] ^= 0xff
+	_ = os.WriteFile(bad, raw, 0600)
+	_ = os.WriteFile(bad+".ok", []byte("x"), 0600)
+	if e := b.VerifyLatest(t.Context()); e != nil {
+		t.Fatal("verified again within a week", e)
+	}
+	old := time.Now().Add(-8 * 24 * time.Hour)
+	_ = os.Chtimes(filepath.Join(dir, "verified"), old, old)
+	if e := b.VerifyLatest(t.Context()); e == nil || !strings.Contains(e.Error(), "nelcota-2026-10-16.nbk") {
+		t.Fatal("damaged backup passed verification", e)
+	}
+}

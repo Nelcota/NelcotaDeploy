@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"sync"
 	"time"
 
@@ -276,12 +277,14 @@ func (p *Pipeline) deploy(ctx context.Context, d *agentv1.Deploy, emit func(*age
 		_ = emit(&agentv1.Event{Payload: &agentv1.Event_DeployStatus{DeployStatus: &agentv1.DeployStatus{DeployId: d.DeployId, AppId: d.App.AppId, Stage: name, DurationMs: time.Since(started).Milliseconds()}}})
 	}
 	success := false
+	// code names the step that failed so the panel can explain it to people.
+	code := "workspace_error"
 	defer func() {
 		if !success {
 			if ctx.Err() != nil {
 				status("cancelled")
 			} else {
-				status("failed")
+				_ = emit(&agentv1.Event{Payload: &agentv1.Event_DeployStatus{DeployStatus: &agentv1.DeployStatus{DeployId: d.DeployId, AppId: d.App.AppId, Status: "failed", ErrorCode: code}}})
 			}
 		}
 	}()
@@ -308,11 +311,13 @@ func (p *Pipeline) deploy(ctx context.Context, d *agentv1.Deploy, emit func(*age
 	defer masker.Flush()
 	safeLog := func(b []byte) { _, _ = masker.Write(b) }
 	started := time.Now()
+	code = "clone_failed"
 	if e = p.Engine.Clone(ctx, d, dir, safeLog); e != nil {
 		return
 	}
 	stage("clone", started)
 	started = time.Now()
+	code = "build_failed"
 	image, e := p.Engine.Build(ctx, d, dir, safeLog)
 	if e != nil {
 		return
@@ -329,6 +334,7 @@ func (p *Pipeline) deploy(ctx context.Context, d *agentv1.Deploy, emit func(*age
 	}()
 	status("starting")
 	started = time.Now()
+	code = "start_failed"
 	fresh, e = p.Engine.Start(ctx, d.App, image)
 	if e != nil {
 		return
@@ -339,8 +345,10 @@ func (p *Pipeline) deploy(ctx context.Context, d *agentv1.Deploy, emit func(*age
 	fresh.Revision = d.App.Revision
 	started = time.Now()
 	if e = p.Engine.Health(ctx, d.App, fresh); e != nil {
+		code = healthCode(ctx, p.Engine, fresh, e)
 		return
 	}
+	code = "state_error"
 	stage("healthcheck", started)
 	if e = ctx.Err(); e != nil {
 		return
@@ -372,6 +380,7 @@ func (p *Pipeline) deploy(ctx context.Context, d *agentv1.Deploy, emit func(*age
 		return
 	}
 	started = time.Now()
+	code = "route_failed"
 	if e = p.Engine.Route(ctx, d.App, fresh); e != nil {
 		p.mu.Lock()
 		if old.AppID != "" {
@@ -602,4 +611,19 @@ func (p *Pipeline) Idle() bool {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	return len(p.active) == 0 && len(p.apps) == 0
+}
+
+// healthCode classifies a failed health check: the app exited, never answered
+// (usually the wrong port), or answered with an error status.
+func healthCode(ctx context.Context, engine Engine, r Running, err error) string {
+	inspect, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	defer cancel()
+	if alive, e := engine.Inspect(inspect, r); e == nil && !alive {
+		return "app_exited"
+	}
+	var h *HealthError
+	if errors.As(err, &h) && h.Status != 0 {
+		return "health_status_" + strconv.Itoa(h.Status)
+	}
+	return "health_no_response"
 }

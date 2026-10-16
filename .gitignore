@@ -18,3 +18,7 @@ bench.txt
 .DS_Store
 .idea/
 .vscode/
+/web/node_modules/
+/web/static/build/
+/web/test-results/
+/web/playwright-report/

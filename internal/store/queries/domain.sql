@@ -11,7 +11,7 @@ SELECT * FROM deployments WHERE app_id = ? ORDER BY queued_at DESC, rowid DESC L
 -- name: GetDeployment :one
 SELECT * FROM deployments WHERE id = ?;
 -- name: ListUsers :many
-SELECT id,email,name,role,created_at FROM users ORDER BY email;
+SELECT u.id,u.email,u.name,u.role,u.created_at,CAST(COALESCE(a.updated_at,0) AS INTEGER) AS avatar_at FROM users u LEFT JOIN avatars a ON a.user_id=u.id ORDER BY u.email;
 -- name: GetUser :one
 SELECT * FROM users WHERE id = ?;
 -- name: GetUserByEmail :one

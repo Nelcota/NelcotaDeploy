@@ -128,7 +128,7 @@ PANEL_DOMAIN=panel.example.com
 PANEL_IP=203.0.113.10
 ADMIN_EMAIL=admin@example.com
 RELEASE_BASE=https://releases.example.com/nelcota
-SIGNING_KEY='CHAVE_PUBLICA_MINISIGN_CONFERIDA'
+SIGNING_KEY='VERIFIED_MINISIGN_PUBLIC_KEY'
 bash -n /root/nelcota-install.sh
 bash /root/nelcota-install.sh panel \
   --domain "$PANEL_DOMAIN" --email "$ADMIN_EMAIL" \
@@ -212,7 +212,7 @@ On the agent as root, within the 15-minute invitation lifetime:
 ```bash
 PANEL_URL=https://panel.example.com
 RELEASE_BASE=https://releases.example.com/nelcota
-SIGNING_KEY='CHAVE_PUBLICA_MINISIGN_CONFERIDA'
+SIGNING_KEY='VERIFIED_MINISIGN_PUBLIC_KEY'
 chmod 0600 /root/nelcota-join
 bash -n /root/nelcota-agent-install.sh
 bash /root/nelcota-agent-install.sh \

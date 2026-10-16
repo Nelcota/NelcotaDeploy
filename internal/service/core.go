@@ -37,6 +37,7 @@ type Core struct {
 	Control         Dispatcher
 	GitHub          GitHub
 	Operations      *OperationsService
+	disk            diskRelief
 }
 
 func (c *Core) Services(auth *AuthService) Services {
@@ -52,7 +53,7 @@ func decodeApp(v dbgen.App) App {
 	return a
 }
 func decodeDeploy(v dbgen.Deployment) Deployment {
-	d := Deployment{ID: v.ID, AppID: v.AppID, SHA: v.Sha, Message: v.Message, Author: v.Author, Origin: v.Origin, Status: v.Status, QueuedAt: v.QueuedAt, StartedAt: v.StartedAt, FinishedAt: v.FinishedAt, ErrorCode: v.ErrorCode, Clean: v.Clean != 0, Timings: map[string]int64{}, CancelRequested: v.CancelRequested != 0}
+	d := Deployment{ID: v.ID, AppID: v.AppID, SHA: v.Sha, Message: v.Message, Author: v.Author, Origin: v.Origin, Status: v.Status, QueuedAt: v.QueuedAt, StartedAt: v.StartedAt, FinishedAt: v.FinishedAt, ErrorCode: v.ErrorCode, Clean: v.Clean != 0, Timings: map[string]int64{}, CancelRequested: v.CancelRequested != 0, RetryOf: v.RetryOf}
 	_ = json.Unmarshal([]byte(v.Timings), &d.Timings)
 	return d
 }
@@ -165,9 +166,15 @@ func (s *appsService) List(ctx context.Context) ([]App, error) {
 	if e != nil {
 		return nil, dbError(e)
 	}
+	logos, e := s.logoVersions(ctx)
+	if e != nil {
+		return nil, dbError(e)
+	}
 	out := make([]App, 0, len(rows))
 	for _, r := range rows {
-		out = append(out, decodeApp(r))
+		a := decodeApp(r)
+		a.LogoAt = logos[a.ID]
+		out = append(out, a)
 	}
 	return out, nil
 }
@@ -176,7 +183,14 @@ func (s *appsService) Get(ctx context.Context, id string) (App, error) {
 		return App{}, e
 	}
 	r, e := s.c.DB.Queries.GetApp(ctx, id)
-	return decodeApp(r), dbError(e)
+	if e != nil {
+		return App{}, dbError(e)
+	}
+	a := decodeApp(r)
+	if e := s.c.DB.Read.QueryRowContext(ctx, "SELECT updated_at FROM app_logos WHERE app_id=?", id).Scan(&a.LogoAt); e != nil && !errors.Is(e, sql.ErrNoRows) {
+		return App{}, dbError(e)
+	}
+	return a, nil
 }
 func (s *appsService) Create(ctx context.Context, in AppInput) (App, error) {
 	return s.save(ctx, "", in)
@@ -466,21 +480,47 @@ func (s *settingsService) Set(ctx context.Context, key, value string) error {
 			}
 		}
 	case "github.app_id", "github.private_key", "github.webhook_secret", "github.client_id", "github.client_secret":
+	case "updates.automatic":
+		if value != "true" && value != "false" {
+			return fail(Validation, "Invalid setting")
+		}
 	default:
 		return fail(Validation, "Unknown setting")
 	}
+	return s.c.saveSetting(ctx, key, value, "settings.update")
+}
+
+func (s *settingsService) TestS3(ctx context.Context, value string) error {
+	if _, e := authorize(ctx, "settings:write", true); e != nil {
+		return e
+	}
+	var cfg maintenance.S3
+	if json.Unmarshal([]byte(value), &cfg) != nil || cfg.Validate() != nil {
+		return fail(Validation, "Invalid S3 configuration")
+	}
+	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
+	defer cancel()
+	if e := cfg.Test(ctx); e != nil {
+		return fail(Unavailable, strings.ToUpper(e.Error()[:1])+e.Error()[1:]+".")
+	}
+	return nil
+}
+
+// saveSetting seals and stores a setting, recording action in the audit log.
+// Callers authorize and validate the value.
+func (c *Core) saveSetting(ctx context.Context, key, value, action string) error {
 	if len(value) > 32768 {
 		return fail(Validation, "Value too large")
 	}
-	b, e := s.c.Vault.Seal([]byte(value), "setting:"+key)
+	b, e := c.Vault.Seal([]byte(value), "setting:"+key)
 	if e != nil {
 		return e
 	}
-	return s.c.mutate(ctx, func(tx *sql.Tx) error {
+	return c.mutate(ctx, func(tx *sql.Tx) error {
 		if _, e := tx.ExecContext(ctx, "INSERT INTO settings(key,encrypted) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET encrypted=excluded.encrypted", key, b); e != nil {
 			return e
 		}
-		return s.c.audit(ctx, tx, "settings.update", key)
+		return c.audit(ctx, tx, action, key)
 	})
 }
 func (c *Core) Setting(ctx context.Context, key string) (string, error) {

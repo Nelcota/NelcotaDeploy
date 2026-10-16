@@ -158,6 +158,34 @@ func (t Trust) manifest(ctx context.Context, version string) (map[string]string,
 	}
 	return hashes, meta, nil
 }
+
+// Latest returns the newest stable version the release location announces in
+// its "latest" file. The pointer is not signed: callers must verify the
+// version with Check before offering or applying it.
+func (t Trust) Latest(ctx context.Context) (string, error) {
+	if e := t.validate(); e != nil {
+		return "", e
+	}
+	req, e := http.NewRequestWithContext(ctx, "GET", strings.TrimRight(t.BaseURL, "/")+"/latest", nil)
+	if e != nil {
+		return "", errors.New("invalid release request")
+	}
+	res, e := t.client().Do(req)
+	if e != nil {
+		return "", errors.New("release check failed")
+	}
+	defer res.Body.Close()
+	if res.StatusCode != 200 {
+		return "", errors.New("release check rejected")
+	}
+	b, e := io.ReadAll(io.LimitReader(res.Body, 65))
+	version := strings.TrimSpace(string(b))
+	if e != nil || len(b) > 64 || !ValidVersion(version) {
+		return "", errors.New("invalid latest version")
+	}
+	return version, nil
+}
+
 func (t Trust) client() *http.Client {
 	c := t.Client
 	if c == nil {

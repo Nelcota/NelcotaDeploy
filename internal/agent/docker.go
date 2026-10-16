@@ -40,6 +40,8 @@ type DockerEngine struct {
 	cacheMu        sync.RWMutex
 	statsMu        sync.Mutex
 	previousStats  map[string]container.CPUStats
+	cacheUsed      uint64
+	cacheCheckedAt time.Time
 	Docker         *client.Client
 	BuildKit       *bk.Client
 	Caddy          *Caddy
@@ -227,6 +229,18 @@ func (d *DockerEngine) cleanupContainers(r Running) {
 		_, _ = d.Docker.ContainerRemove(ctx, id, client.ContainerRemoveOptions{Force: true, RemoveVolumes: true})
 	}
 }
+
+// HealthError explains why a candidate never became healthy. Status is the last
+// HTTP status received, or zero when the app never answered at all.
+type HealthError struct{ Status int }
+
+func (e *HealthError) Error() string {
+	if e.Status == 0 {
+		return "healthcheck timed out without a response"
+	}
+	return "healthcheck timed out with HTTP " + strconv.Itoa(e.Status)
+}
+
 func (d *DockerEngine) Health(ctx context.Context, app *agentv1.AppConfig, r Running) error {
 	timeout := time.Duration(app.HealthTimeoutSeconds) * time.Second
 	if timeout <= 0 {
@@ -235,6 +249,7 @@ func (d *DockerEngine) Health(ctx context.Context, app *agentv1.AppConfig, r Run
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	client := &http.Client{Timeout: 2 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	last := 0
 	for _, addr := range r.Addresses {
 		for {
 			req, e := http.NewRequestWithContext(ctx, "GET", "http://"+addr+app.HealthPath, nil)
@@ -244,6 +259,7 @@ func (d *DockerEngine) Health(ctx context.Context, app *agentv1.AppConfig, r Run
 			resp, e := client.Do(req)
 			if e == nil {
 				_ = resp.Body.Close()
+				last = resp.StatusCode
 				if resp.StatusCode >= 200 && resp.StatusCode < 400 {
 					break
 				}
@@ -252,7 +268,7 @@ func (d *DockerEngine) Health(ctx context.Context, app *agentv1.AppConfig, r Run
 			select {
 			case <-ctx.Done():
 				timer.Stop()
-				return errors.New("healthcheck timed out")
+				return &HealthError{Status: last}
 			case <-timer.C:
 			}
 		}

@@ -1,0 +1,123 @@
+package pages
+
+import (
+	"github.com/Nelcota/NelcotaDeploy/web/i18n"
+	"github.com/Nelcota/NelcotaDeploy/web/ui"
+)
+
+// Gallery shows every shared component for visual review (development only).
+templ Gallery(s Shell) {
+	@App(s) {
+		@PageHeader("Components", "Shared building blocks rendered in the current theme.") {
+			@Connection()
+		}
+		<div class="grid gap-6">
+			@ui.Card("Buttons", "Variants and sizes") {
+				<div class="flex flex-wrap gap-2">
+					@ui.Button("", "", nil) {
+						@ui.Icon("rocket", "")
+						{ i18n.T(ctx, "Primary") }
+					}
+					@ui.Button("secondary", "", nil) {
+						{ i18n.T(ctx, "Secondary") }
+					}
+					@ui.Button("outline", "", nil) {
+						{ i18n.T(ctx, "Outline") }
+					}
+					@ui.Button("ghost", "", nil) {
+						{ i18n.T(ctx, "Ghost") }
+					}
+					@ui.Button("destructive", "", nil) {
+						@ui.Icon("trash-2", "")
+						{ i18n.T(ctx, "Destructive") }
+					}
+					@ui.Button("outline", "sm", templ.Attributes{"disabled": true}) {
+						{ i18n.T(ctx, "Disabled") }
+					}
+					@ui.Button("outline", "icon", templ.Attributes{"aria-label": "Refresh"}) {
+						@ui.Icon("refresh-cw", "")
+					}
+				</div>
+			}
+			@ui.Card("Status", "Text labels accompany every color") {
+				<div class="flex flex-wrap gap-2">
+					for _, v := range []string{"queued", "building", "starting", "success", "failed", "cancelled", "online", "offline", "not_ready"} {
+						@ui.Status(v)
+					}
+					@ui.Badge("secondary", "manual")
+					@ui.Badge("outline", "build")
+				</div>
+			}
+			@ui.Card("Form controls", "") {
+				<form class="grid max-w-md gap-4" data-on:submit="evt.preventDefault()">
+					@ui.Field("Name", "g-name", "Lowercase letters and digits.", "") {
+						<input id="g-name" class="input" name="name" aria-describedby="g-name-hint" value="api"/>
+					}
+					@ui.Field("Secret value", "g-secret", "", "This field is required.") {
+						<div class="flex gap-2">
+							<input id="g-secret" class="input" type="password" aria-invalid="true" aria-describedby="g-secret-error" autocomplete="off"/>
+							@ui.Button("outline", "icon", templ.Attributes{"data-reveal": "g-secret", "aria-label": "Show value", "aria-pressed": "false"}) {
+								@ui.Icon("eye", "")
+							}
+						</div>
+					}
+					@ui.Field("Server", "g-server", "", "") {
+						<select id="g-server" class="select w-full"><option>{ i18n.T(ctx, "Server api") }</option></select>
+					}
+					<label class="flex items-center gap-2 text-sm"><input class="input" type="checkbox" role="switch" checked/> { i18n.T(ctx, "Build cache") }</label>
+				</form>
+			}
+			@ui.Card("Table", "") {
+				@ui.Table("Example deployments") {
+					<thead><tr><th>{ i18n.T(ctx, "Status") }</th><th>{ i18n.T(ctx, "Commit") }</th><th>{ i18n.T(ctx, "Duration") }</th></tr></thead>
+					<tbody>
+						<tr>
+							<td>
+								@ui.Status("success")
+							</td>
+							<td class="mono">{ i18n.T(ctx, "a1b2c3d") }</td>
+							<td>{ i18n.T(ctx, "8.0 s") }</td>
+						</tr>
+						<tr>
+							<td>
+								@ui.Status("building")
+							</td>
+							<td class="mono">{ i18n.T(ctx, "e4f5a6b") }</td>
+							<td>—</td>
+						</tr>
+					</tbody>
+				}
+			}
+			@ui.Card("Feedback", "") {
+				<div class="grid gap-4">
+					@ui.Loading("Loading deployments…")
+					@ui.ErrorState("Could not load servers", "The agent is unavailable.") {
+						<p class="mt-2">
+							@ui.Button("outline", "sm", nil) {
+								{ i18n.T(ctx, "Retry") }
+							}
+						</p>
+					}
+					@ui.Notice("info", "Heads up") {
+						<p>{ i18n.T(ctx, "Build variables are only available during builds.") }</p>
+					}
+					<div class="flex flex-wrap gap-2">
+						@ui.Button("outline", "", templ.Attributes{"data-on:click": "window.Nelcota.toast('success', 'Saved')"}) {
+							{ i18n.T(ctx, "Show toast") }
+						}
+						@ui.Button("destructive", "", templ.Attributes{"data-on:click": ui.Open("g-confirm")}) {
+							{ i18n.T(ctx, "Open confirmation") }
+						}
+					</div>
+					@ui.ConfirmDialog("g-confirm", "Stop app?", "The app stops serving traffic until started again.", "Stop app", "window.Nelcota.toast('success', 'Confirmed')", true)
+				</div>
+			}
+			@ui.Empty("box", "No apps yet", "Create an app to deploy a repository.") {
+				@ui.Button("", "sm", nil) {
+					@ui.Icon("plus", "")
+					{ i18n.T(ctx, "New app") }
+				}
+			}
+		</div>
+	}
+}

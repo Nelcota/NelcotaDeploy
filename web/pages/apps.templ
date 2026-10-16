@@ -1,0 +1,32 @@
+package pages
+
+import (
+	"github.com/Nelcota/NelcotaDeploy/web/i18n"
+	"github.com/Nelcota/NelcotaDeploy/web/ui"
+)
+
+templ AppsList(s Shell, rows []AppRow, err string) {
+	@App(s) {
+		@PageHeader("Apps", "") {
+			if s.Admin() {
+				@ui.LinkButton("/apps/new", "", "sm", nil) {
+					@ui.Icon("plus", "")
+					{ i18n.T(ctx, "New app") }
+				}
+			}
+		}
+		if err != "" {
+			@ui.ErrorState("Apps unavailable", err)
+		} else if len(rows) == 0 {
+			@ui.Empty("box", "No apps yet", "Create an app from a GitHub repository with a Dockerfile.") {
+				if s.Admin() {
+					@ui.LinkButton("/apps/new", "", "sm", nil) {
+						{ i18n.T(ctx, "New app") }
+					}
+				}
+			}
+		} else {
+			@AppsTable(rows)
+		}
+	}
+}

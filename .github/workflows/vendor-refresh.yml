@@ -1,0 +1,61 @@
+name: Vendor refresh
+
+# Re-vendors browser libraries from web/package-lock.json, rebuilds the
+# generated web assets, and opens a pull request when anything changed.
+on:
+  schedule:
+    - cron: '0 7 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: vendor-refresh
+  cancel-in-progress: true
+
+env:
+  GO_VERSION: '1.26.9'
+
+jobs:
+  refresh:
+    name: Refresh vendored assets
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Set up Go
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+      - name: Set up Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22'
+      - name: Install templ and Tailwind
+        run: |
+          mkdir -p .tools
+          GOBIN="$PWD/.tools" go install github.com/a-h/templ/cmd/templ@v0.3.1020
+          ./scripts/install-tailwind.sh .tools
+      - name: Re-vendor and rebuild
+        run: make web-vendor web
+      - name: Check the asset budget
+        run: make web-size
+      - name: Open a pull request
+        uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8.1.1
+        with:
+          branch: automation/vendor-refresh
+          delete-branch: true
+          commit-message: Refresh vendored web assets
+          title: Refresh vendored web assets
+          body: |
+            Automated run of `make web-vendor web` from `web/package-lock.json` and the pinned Datastar release.
+            `make web-size` passed. Review the vendored diffs and run `make e2e` before merging.
+          labels: dependencies
+          add-paths: |
+            web

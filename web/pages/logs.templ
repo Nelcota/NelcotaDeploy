@@ -1,0 +1,118 @@
+package pages
+
+import (
+	"github.com/Nelcota/NelcotaDeploy/internal/service"
+	"github.com/Nelcota/NelcotaDeploy/web/i18n"
+	"github.com/Nelcota/NelcotaDeploy/web/ui"
+)
+
+// LogsView selects build logs for one deployment or the app's runtime logs.
+type LogsView struct {
+	Deployments []service.Deployment
+	Selected    service.Deployment
+	Runtime     bool
+	Err         string
+}
+
+func (v LogsView) fileName(app string) string {
+	if v.Runtime {
+		return app + "-runtime.log"
+	}
+	return app + "-" + ui.ShortSHA(v.Selected.SHA) + "-" + v.Selected.ID + ".log"
+}
+
+templ Logs(s Shell, c AppContext, v LogsView) {
+	@AppLayout(s, c, nil) {
+		<div class="grid gap-3">
+			<form method="get" action={ templ.SafeURL("/apps/" + c.App.ID + "/logs") } class="flex flex-wrap items-end gap-3">
+				<div class="grid gap-1.5">
+					<label class="label" for="log-source">{ i18n.T(ctx, "Source") }</label>
+					<select id="log-source" name="deployment" class="select max-w-full" data-on:change="el.form.submit()">
+						<option
+							value="runtime"
+							if v.Runtime {
+								selected
+							}
+						>{ i18n.T(ctx, "Runtime logs (live)") }</option>
+						for _, d := range v.Deployments {
+							<option
+								value={ d.ID }
+								if !v.Runtime && d.ID == v.Selected.ID {
+									selected
+								}
+							>{ i18n.Tf(ctx, "Build %s", ui.ShortSHA(d.SHA)) } · { i18n.T(ctx, ui.StatusLabel(d.Status)) } · { i18n.T(ctx, ui.Ago(d.QueuedAt)) }</option>
+						}
+					</select>
+				</div>
+				<noscript><button type="submit" class="btn" data-variant="outline">{ i18n.T(ctx, "Show") }</button></noscript>
+				<div class="flex min-h-9 items-center gap-2 text-sm">
+					if !v.Runtime {
+						<span id="log-status" class="status" data-tone={ ui.Tone(v.Selected.Status) } data-status={ v.Selected.Status }>{ i18n.T(ctx, ui.StatusLabel(v.Selected.Status)) }</span>
+						<span class="mono text-muted-foreground" title={ v.Selected.SHA }>{ ui.ShortSHA(v.Selected.SHA) }</span>
+					}
+					<span id="log-conn" class="conn" data-state="connecting" role="status">{ i18n.T(ctx, "Connecting…") }</span>
+				</div>
+			</form>
+			if v.Err != "" {
+				@ui.ErrorState("Logs unavailable", v.Err)
+			} else {
+				<div class="flex flex-wrap items-center gap-2" role="toolbar" aria-label={ i18n.T(ctx, "Log controls") } aria-controls="terminal">
+					<div class="flex min-w-0 flex-1 items-center gap-1 sm:max-w-sm">
+						<label for="log-search" class="sr-only">{ i18n.T(ctx, "Search logs") }</label>
+						<input id="log-search" type="search" class="input h-8 min-w-0 flex-1" placeholder={ i18n.T(ctx, "Search logs") } autocomplete="off" spellcheck="false" aria-describedby="log-matches"/>
+						@ui.Button("outline", "icon-sm", templ.Attributes{"data-log": "prev", "aria-label": i18n.T(ctx, "Previous match")}) {
+							@ui.Icon("chevron-right", "rotate-180")
+						}
+						@ui.Button("outline", "icon-sm", templ.Attributes{"data-log": "next", "aria-label": i18n.T(ctx, "Next match")}) {
+							@ui.Icon("chevron-right", "")
+						}
+					</div>
+					<span id="log-matches" class="min-w-20 text-xs text-muted-foreground tabular-nums" aria-live="polite"></span>
+					<div class="flex flex-wrap items-center gap-1 sm:ms-auto">
+						@ui.Button("outline", "sm", templ.Attributes{"data-log": "pause", "aria-pressed": "false"}) {
+							@ui.Icon("pause", "")
+							<span>{ i18n.T(ctx, "Pause") }</span>
+						}
+						@ui.Button("outline", "sm", templ.Attributes{"data-log": "follow", "aria-pressed": "true"}) {
+							@ui.Icon("arrow-down-to-line", "")
+							<span>{ i18n.T(ctx, "Follow") }</span>
+						}
+						@ui.Button("outline", "sm", templ.Attributes{"data-log": "download"}) {
+							@ui.Icon("download", "")
+							<span>{ i18n.T(ctx, "Download") }</span>
+						}
+						if v.Runtime {
+							@ui.Button("ghost", "sm", templ.Attributes{"data-log": "clear"}) {
+								{ i18n.T(ctx, "Clear") }
+							}
+						}
+					</div>
+				</div>
+				<div
+					id="terminal"
+					class="log-view"
+					role="log"
+					aria-label={ i18n.T(ctx, "Log output") }
+					if v.Runtime {
+						data-mode="runtime"
+						data-topic={ "app/" + c.App.ID }
+					} else {
+						data-mode="build"
+						data-topic={ "deploy/" + v.Selected.ID }
+						data-deployment={ v.Selected.ID }
+						data-status={ v.Selected.Status }
+					}
+					data-file={ v.fileName(c.App.Name) }
+				></div>
+				<p id="log-held" class="hidden text-xs text-warning" role="status"></p>
+				<p class="text-xs text-muted-foreground">
+					if v.Runtime {
+						{ i18n.T(ctx, "Runtime logs are streamed live and not stored.") }
+					} else {
+						{ i18n.T(ctx, "Logs of the last 50 deployments are kept. Secrets are masked.") }
+					}
+				</p>
+			}
+		</div>
+	}
+}

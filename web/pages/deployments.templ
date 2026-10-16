@@ -1,0 +1,233 @@
+package pages
+
+import (
+	"context"
+
+	"github.com/Nelcota/NelcotaDeploy/internal/service"
+	"github.com/Nelcota/NelcotaDeploy/web/i18n"
+	"github.com/Nelcota/NelcotaDeploy/web/ui"
+)
+
+type DeploymentsView struct {
+	Deployments []service.Deployment
+	Err         string
+}
+
+// live returns the ID of the newest successful deployment, which is the running version.
+func (v DeploymentsView) live() string {
+	for _, d := range v.Deployments {
+		if d.Status == "success" {
+			return d.ID
+		}
+	}
+	return ""
+}
+
+func (v DeploymentsView) redeploySHA(app service.App) string {
+	if len(v.Deployments) > 0 {
+		return v.Deployments[0].SHA
+	}
+	return app.DesiredSHA
+}
+
+templ deployActions(c AppContext, v DeploymentsView) {
+	if !c.App.Config.Stopped && v.redeploySHA(c.App) != "" {
+		@ui.Button("", "sm", templ.Attributes{"data-on:click": ui.Post("/ui/apps/" + c.App.ID + "/deploy?latest=1")}) {
+			@ui.Icon("rocket", "")
+			{ i18n.T(ctx, "Publish latest") }
+		}
+	}
+	@ui.Button("outline", "sm", templ.Attributes{"data-on:click": ui.Open("deploy-commit")}) {
+		{ i18n.T(ctx, "Publish a commit") }
+	}
+	if v.redeploySHA(c.App) != "" {
+		@ui.Button("ghost", "sm", templ.Attributes{"data-on:click": ui.Open("confirm-clean")}) {
+			{ i18n.T(ctx, "Build without cache") }
+		}
+	}
+}
+
+templ Deployments(s Shell, c AppContext, v DeploymentsView) {
+	@AppLayout(s, c, deployActions(c, v)) {
+		<div class="mb-3 flex items-center justify-between">
+			<h2 class="section-title">{ i18n.T(ctx, "History") }</h2>
+			@Connection()
+		</div>
+		@LiveStream("/ui/stream/apps/" + c.App.ID + "/deployments")
+		@DeploymentsTable(c.App, v)
+		@ui.ConfirmDialog("confirm-clean", "Build without cache?", i18n.Tf(ctx, "Rebuilds %s from scratch. Slower than a normal build.", ui.ShortSHA(v.redeploySHA(c.App))), "Start build", ui.Post("/ui/apps/"+c.App.ID+"/deploy?clean=true"), false)
+		@DeployCommitDialog(c.App)
+	}
+}
+
+templ DeploymentsTable(app service.App, v DeploymentsView) {
+	<div id="deployments">
+		if v.Err != "" {
+			@ui.ErrorState("Deployments unavailable", v.Err)
+		} else if len(v.Deployments) == 0 {
+			@ui.Empty("rocket", "No deployments yet", i18n.Tf(ctx, "Pushes to %s deploy automatically once the GitHub App is installed.", app.Branch))
+		} else {
+			<ul class="rows" aria-label={ i18n.T(ctx, "Deployment history") }>
+				for _, d := range v.Deployments {
+					@deploymentRow(app, d, d.ID == v.live())
+				}
+			</ul>
+		}
+	</div>
+}
+
+func statusIcon(status string) string {
+	switch status {
+	case "success":
+		return "circle-check"
+	case "failed":
+		return "circle-x"
+	case "cancelled":
+		return "ban"
+	case "queued":
+		return "clock"
+	default:
+		return "loader-circle"
+	}
+}
+
+func message(ctx context.Context, d service.Deployment) string {
+	if d.Message != "" {
+		return d.Message
+	}
+	return i18n.Tf(ctx, "Deployment %s", ui.ShortSHA(d.SHA))
+}
+
+// stageState reports how far the pipeline got: done stages have timings; the
+// first missing stage of an active deployment is the current one.
+func stageState(d service.Deployment, i int) string {
+	if _, ok := d.Timings[Stages[i]]; ok {
+		return "done"
+	}
+	if ui.Active(d.Status) && d.Status != "queued" {
+		for j := 0; j < i; j++ {
+			if _, ok := d.Timings[Stages[j]]; !ok {
+				return ""
+			}
+		}
+		return "current"
+	}
+	return ""
+}
+
+templ deploymentRow(app service.App, d service.Deployment, live bool) {
+	<li id={ "deployment-" + d.ID } class="row" data-deployment-status={ d.Status }>
+		<div class="row-main items-start">
+			<span class="row-thumb size-12 rounded-xl" data-tone={ deployTone(d.Status) } aria-hidden="true">
+				if ui.Active(d.Status) && d.Status != "queued" {
+					@ui.Icon(statusIcon(d.Status), "animate-spin")
+				} else {
+					@ui.Icon(statusIcon(d.Status), "")
+				}
+			</span>
+			<div class="min-w-0 flex-1">
+				<div class="flex flex-wrap items-center gap-2">
+					<span class="max-w-full truncate font-medium" title={ d.Message }>{ message(ctx, d) }</span>
+					@ui.Status(d.Status)
+					if live {
+						<span class="status" data-tone="success">{ i18n.T(ctx, "Online now") }</span>
+					}
+					if d.CancelRequested && ui.Active(d.Status) {
+						<span class="text-xs text-muted-foreground">{ i18n.T(ctx, "Cancelling…") }</span>
+					}
+				</div>
+				<p class="row-meta">
+					<span title={ d.SHA }>
+						<span class="mono">{ ui.ShortSHA(d.SHA) }</span>
+					</span>
+					<span>
+						@ui.Badge("outline", d.Origin)
+						if d.Clean {
+							@ui.Badge("secondary", "clean")
+						}
+						if d.RetryOf != "" {
+							<span title={ i18n.T(ctx, "The previous attempt failed while switching traffic, which is usually temporary.") }>
+								@ui.Badge("secondary", "Automatic retry")
+							</span>
+						}
+					</span>
+					if d.Author != "" {
+						<span>{ d.Author }</span>
+					}
+					<span>
+						<time datetime={ ui.ISO(d.QueuedAt) } title={ ui.Timestamp(d.QueuedAt) }>{ i18n.T(ctx, ui.Ago(d.QueuedAt)) }</time>
+					</span>
+					<span>
+						if d.StartedAt > 0 {
+							if ui.Active(d.Status) {
+								{ i18n.Tf(ctx, "%s so far", ui.Span(d.StartedAt, d.FinishedAt)) }
+							} else {
+								{ ui.Span(d.StartedAt, d.FinishedAt) }
+							}
+						} else if d.Status == "queued" {
+							{ i18n.T(ctx, "Waiting for a build slot") }
+						}
+					</span>
+					if d.ErrorCode != "" {
+						<span class="mono text-destructive">{ d.ErrorCode }</span>
+					}
+				</p>
+				if len(d.Timings) == 0 {
+					<p class="mt-2 text-xs text-muted-foreground">
+						if ui.Active(d.Status) {
+							{ i18n.T(ctx, "Stage timings not reported yet") }
+						} else {
+							{ i18n.T(ctx, "Stage timings not recorded") }
+						}
+					</p>
+				} else {
+					<ol class="mt-3 flex flex-wrap gap-1.5" aria-label={ i18n.T(ctx, "Stage durations") }>
+						for i, stage := range Stages {
+							<li class="stage" data-state={ stageState(d, i) }>
+								<span>{ i18n.T(ctx, ui.StageLabel(stage)) }</span>
+								if ms, ok := d.Timings[stage]; ok {
+									<span class="tabular-nums">{ ui.Millis(ms) }</span>
+								} else {
+									<span aria-label={ i18n.T(ctx, "not recorded") }>—</span>
+								}
+							</li>
+						}
+					</ol>
+				}
+			</div>
+		</div>
+		<div class="row-actions">
+			<a class="row-action" href={ templ.SafeURL("/apps/" + app.ID + "/logs?deployment=" + d.ID) } aria-label={ i18n.Tf(ctx, "Logs for %s", ui.ShortSHA(d.SHA)) }>
+				@ui.Icon("scroll-text", "")
+				{ i18n.T(ctx, "Logs") }
+			</a>
+			if ui.Active(d.Status) && !d.CancelRequested {
+				<button type="button" class="row-action" data-on:click={ ui.Open("cancel-" + d.ID) }>
+					@ui.Icon("ban", "")
+					{ i18n.T(ctx, "Cancel") }
+				</button>
+				@ui.ConfirmDialog("cancel-"+d.ID, "Cancel this deployment?", "The current version keeps running.", "Cancel deployment", ui.Post("/ui/deployments/"+d.ID+"/cancel"), true)
+			}
+			if d.Status == "success" && !live {
+				<button type="button" class="row-action" data-on:click={ ui.Open("rollback-" + d.ID) } aria-label={ i18n.Tf(ctx, "Restore version %s", ui.ShortSHA(d.SHA)) }>
+					@ui.Icon("undo-2", "")
+					{ i18n.T(ctx, "Restore") }
+				</button>
+				@ui.ConfirmDialog("rollback-"+d.ID, i18n.Tf(ctx, "Restore version %s?", ui.ShortSHA(d.SHA)), "The commit is rebuilt and goes live after its health check passes.", "Restore this version", ui.Post("/ui/deployments/"+d.ID+"/rollback"), false)
+			}
+		</div>
+	</li>
+}
+
+// deployTone maps a status to a pastel tile; failures use a neutral tile with
+// the danger color carried by the status pill.
+func deployTone(status string) string {
+	switch status {
+	case "success":
+		return "1"
+	case "failed", "cancelled":
+		return "muted"
+	default:
+		return "2"
+	}
+}

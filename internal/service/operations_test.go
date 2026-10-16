@@ -215,3 +215,68 @@ func TestQueuedUpdateDrainsWithoutAllowingNewBuildClaims(t *testing.T) {
 		t.Fatal("queued maintenance did not drain existing work", e)
 	}
 }
+
+func TestUpdateCheckAnnouncesVerifiedReleasesAndQueuesWhenAutomatic(t *testing.T) {
+	c, ctx, _ := fixture(t)
+	p, _ := CurrentUser(ctx)
+	p.TwoFactorAt = time.Now().Unix()
+	ctx = WithPrincipal(ctx, p)
+	latest, verified := "v1.2.0", true
+	s := &OperationsService{Core: c, Version: "v1.1.0", QueuePanel: func(string, string) error { return nil },
+		LatestRelease: func(context.Context) (string, error) { return latest, nil },
+		VerifyRelease: func(context.Context, string) error {
+			if !verified {
+				return errors.New("bad signature")
+			}
+			return nil
+		}}
+	sub := c.Hub.Subscribe(ctx, "operations", 4)
+	defer sub.Cancel()
+
+	verified = false
+	s.checkUpdates(ctx)
+	if st, _ := s.Updates(ctx); st.Available != "" {
+		t.Fatal("offered an unverified release", st)
+	}
+	verified = true
+	s.checkUpdates(ctx)
+	st, e := s.Updates(ctx)
+	if e != nil || st.Available != "v1.2.0" || st.Current != "v1.1.0" || st.Automatic || !st.Configured || st.CheckedAt == 0 {
+		t.Fatal(st, e)
+	}
+	select {
+	case ev := <-sub.C:
+		if ev.Kind != "update.available" {
+			t.Fatal(ev.Kind)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("update not announced")
+	}
+	if jobs, _ := s.List(ctx); len(jobs) != 0 {
+		t.Fatal("queued without automatic updates", jobs)
+	}
+
+	if e := s.SetAutomaticUpdates(ctx, true); e != nil {
+		t.Fatal(e)
+	}
+	s.checkUpdates(ctx)
+	jobs, _ := s.List(ctx)
+	if len(jobs) == 0 || jobs[0].Version != "v1.2.0" {
+		t.Fatal("automatic update not queued", jobs)
+	}
+	// A pending update is not queued twice.
+	s.checkUpdates(ctx)
+	if again, _ := s.List(ctx); len(again) != len(jobs) {
+		t.Fatal("queued twice")
+	}
+	latest = "v1.1.0"
+	s.checkUpdates(ctx)
+	if st, _ := s.Updates(ctx); st.Available != "" {
+		t.Fatal("kept announcing an installed version")
+	}
+	// Turning it on needs a recent passkey sign-in.
+	p.TwoFactorAt = 0
+	if e := s.SetAutomaticUpdates(WithPrincipal(ctx, p), false); !Is(e, Forbidden) {
+		t.Fatal(e)
+	}
+}

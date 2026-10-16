@@ -1,0 +1,325 @@
+package pages
+
+import (
+	"github.com/Nelcota/NelcotaDeploy/web/i18n"
+	"strings"
+
+	"github.com/Nelcota/NelcotaDeploy/internal/service"
+	"github.com/Nelcota/NelcotaDeploy/web/ui"
+)
+
+// OverviewView is the app's landing tab.
+type OverviewView struct {
+	State       AppState
+	Deployments []service.Deployment
+	LogTail     []string
+	Usage       []Container
+	CanLatest   bool
+	Err         string
+}
+
+// previousDuration is how long the last successful deployment took, in seconds.
+func (v OverviewView) previousDuration() string {
+	for _, d := range v.Deployments {
+		if d.Status == "success" && d.ID != v.State.Latest.ID && d.StartedAt > 0 {
+			return ui.Span(d.StartedAt, d.FinishedAt)
+		}
+	}
+	return ""
+}
+
+// recent returns up to eight deployments, oldest first.
+func (v OverviewView) recent() []service.Deployment {
+	n := min(len(v.Deployments), 8)
+	out := make([]service.Deployment, 0, n)
+	for i := n - 1; i >= 0; i-- {
+		out = append(out, v.Deployments[i])
+	}
+	return out
+}
+
+// stepState is done, current, failed, or "" for a stage of deployment d.
+func stepState(d service.Deployment, stage string) string {
+	if _, ok := d.Timings[stage]; ok {
+		return "done"
+	}
+	switch {
+	case d.Status == "failed" && FailedStage(d) == stage:
+		return "fail"
+	case (d.Status == "building" || d.Status == "starting") && CurrentStage(d) == stage:
+		return "now"
+	}
+	return ""
+}
+
+func errorLine(line string) bool {
+	l := strings.ToLower(line)
+	return strings.Contains(l, "error") || strings.Contains(l, "fail") || strings.Contains(l, "no response") || strings.Contains(l, "exception") || strings.Contains(l, "panic")
+}
+
+templ overviewActions(c AppContext, v OverviewView) {
+	if v.State.Key == "publishing" && !v.State.Latest.CancelRequested {
+		@ui.Button("outline", "sm", templ.Attributes{"data-on:click": ui.Open("cancel-" + v.State.Latest.ID)}) {
+			@ui.Icon("ban", "")
+			{ i18n.T(ctx, "Cancel") }
+		}
+		@ui.ConfirmDialog("cancel-"+v.State.Latest.ID, "Cancel this deployment?", "The current version keeps running.", "Cancel deployment", ui.Post("/ui/deployments/"+v.State.Latest.ID+"/cancel"), true)
+	} else if !c.App.Config.Stopped {
+		if v.CanLatest || v.State.Latest.SHA != "" || c.App.DesiredSHA != "" {
+			@ui.Button("", "sm", templ.Attributes{"data-on:click": ui.Post("/ui/apps/" + c.App.ID + "/deploy?latest=1")}) {
+				@ui.Icon("rocket", "")
+				{ i18n.T(ctx, "Publish latest") }
+			}
+		}
+		@ui.Button("outline", "sm", templ.Attributes{"data-on:click": ui.Open("deploy-commit")}) {
+			{ i18n.T(ctx, "Publish a commit") }
+		}
+	}
+}
+
+templ Overview(s Shell, c AppContext, v OverviewView) {
+	@AppLayout(s, c, overviewActions(c, v)) {
+		<div class="-mt-2 mb-3 flex justify-end">
+			@Connection()
+		</div>
+		@LiveStream("/ui/stream/apps/" + c.App.ID + "/overview")
+		if v.Err != "" {
+			@ui.ErrorState("Overview unavailable", v.Err)
+		} else {
+			@OverviewBody(c, v)
+		}
+		@DeployCommitDialog(c.App)
+	}
+}
+
+templ DeployCommitDialog(app service.App) {
+	@ui.Dialog("deploy-commit", "Publish a commit", "") {
+		<form class="grid gap-4" data-on:submit={ ui.PostForm("/ui/apps/" + app.ID + "/deploy") }>
+			@ui.Field("Commit SHA", "deploy-sha", "The full 40-character SHA from GitHub.", "") {
+				<input id="deploy-sha" name="sha" class="input font-mono" required pattern="[0-9a-fA-F]{40}|[0-9a-fA-F]{64}" autocomplete="off" spellcheck="false" aria-describedby="deploy-sha-hint"/>
+			}
+			@ui.Field("Description", "deploy-message", "", "") {
+				<input id="deploy-message" name="message" class="input" maxlength="1000" placeholder={ i18n.T(ctx, "Manual deployment") }/>
+			}
+			<label class="flex items-center gap-2 text-sm"><input class="input" type="checkbox" name="clean" value="true"/> { i18n.T(ctx, "Build without cache") }</label>
+			<footer class="flex justify-end gap-2">
+				<button type="button" class="btn" data-variant="outline" data-on:click="el.closest('dialog').close()">{ i18n.T(ctx, "Cancel") }</button>
+				<button type="submit" class="btn">{ i18n.T(ctx, "Publish") }</button>
+			</footer>
+		</form>
+	}
+}
+
+templ OverviewBody(c AppContext, v OverviewView) {
+	<div id="overview" class="grid gap-6">
+		switch v.State.Key {
+			case "publishing":
+				@publishingCard(c, v)
+			case "update_failed", "not_live":
+				@failureCard(c, v)
+		}
+		@liveCard(c, v)
+		<div class="grid gap-4 md:grid-cols-3">
+			<section class="surface grid content-start gap-3 p-5" aria-labelledby="recent-title">
+				<h2 id="recent-title" class="text-sm font-medium text-muted-foreground">{ i18n.T(ctx, "Recent releases") }</h2>
+				if len(v.Deployments) == 0 {
+					<p class="text-sm">{ i18n.T(ctx, "None yet") }</p>
+				} else {
+					<ol class="flex flex-wrap gap-1.5" aria-label={ i18n.T(ctx, "Oldest to newest") }>
+						for _, d := range v.recent() {
+							<li class="release-dot" data-tone={ ui.Tone(d.Status) } title={ ui.ShortSHA(d.SHA) + ": " + i18n.T(ctx, ui.StatusLabel(d.Status)) + ", " + i18n.T(ctx, ui.Ago(d.QueuedAt)) }>
+								<span class="sr-only">{ ui.ShortSHA(d.SHA) } { i18n.T(ctx, ui.StatusLabel(d.Status)) }</span>
+							</li>
+						}
+					</ol>
+					<a class="see-all" href={ templ.SafeURL("/apps/" + c.App.ID + "/deployments") }>{ i18n.T(ctx, "Full history") }</a>
+				}
+			</section>
+			@UsageCard(c.App, v.Usage)
+			<section class="surface grid content-start gap-2 p-5" aria-labelledby="runs-title">
+				<h2 id="runs-title" class="text-sm font-medium text-muted-foreground">{ i18n.T(ctx, "Runs on") }</h2>
+				<p class="font-medium">{ c.ServerName }</p>
+				<p class="text-sm text-muted-foreground">{ u32(c.App.Config.Replicas) } × { ui.Bytes(c.App.Config.MemoryBytes) }, { ui.CPUs(c.App.Config.NanoCPUs) } CPU</p>
+			</section>
+		</div>
+	</div>
+}
+
+templ stageSteps(d service.Deployment) {
+	<ol class="steps" aria-label={ i18n.T(ctx, "Deployment steps") }>
+		for _, st := range Stages {
+			<li class="step" data-state={ stepState(d, st) }>
+				if stepState(d, st) == "now" {
+					@ui.Icon("loader-circle", "size-3.5 animate-spin")
+				} else if stepState(d, st) == "done" {
+					@ui.Icon("check", "size-3.5")
+				} else if stepState(d, st) == "fail" {
+					@ui.Icon("x", "size-3.5")
+				}
+				{ i18n.T(ctx, ui.StageLabel(st)) }
+				if ms, ok := d.Timings[st]; ok {
+					<span class="tabular-nums opacity-70">{ ui.Millis(ms) }</span>
+				}
+				switch stepState(d, st) {
+					case "now":
+						<span class="sr-only">{ i18n.T(ctx, "(in progress)") }</span>
+					case "fail":
+						<span class="sr-only">{ i18n.T(ctx, "(failed)") }</span>
+				}
+			</li>
+		}
+	</ol>
+}
+
+templ publishingCard(c AppContext, v OverviewView) {
+	<section class="surface grid gap-4 p-5 sm:p-6" aria-labelledby="publishing-title" aria-live="polite">
+		<div class="flex flex-wrap items-baseline justify-between gap-2">
+			<h2 id="publishing-title" class="section-title">{ i18n.T(ctx, "Publishing") } <span class="mono">{ ui.ShortSHA(v.State.Latest.SHA) }</span></h2>
+			<span class="text-sm text-muted-foreground tabular-nums">
+				if v.State.Latest.Status == "queued" {
+					{ i18n.T(ctx, "Waiting for a build slot") }
+				} else {
+					{ i18n.Tf(ctx, "%s so far", ui.Span(v.State.Latest.StartedAt, 0)) }
+					if v.previousDuration() != "" {
+						· { i18n.Tf(ctx, "last time %s", v.previousDuration()) }
+					}
+				}
+			</span>
+		</div>
+		if v.State.Latest.Message != "" {
+			<p class="text-sm">{ v.State.Latest.Message }</p>
+		}
+		@stageSteps(v.State.Latest)
+		<p class="text-sm text-muted-foreground">
+			if v.State.Live.ID != "" {
+				{ i18n.T(ctx, "Version") } <span class="mono">{ ui.ShortSHA(v.State.Live.SHA) }</span> { i18n.T(ctx, "stays online until the new one is ready.") }
+			} else {
+				{ i18n.T(ctx, "The app goes online once the health check passes.") }
+			}
+			<a class="ms-1 text-link hover:underline" href={ templ.SafeURL("/apps/" + c.App.ID + "/logs?deployment=" + v.State.Latest.ID) }>{ i18n.T(ctx, "Watch the log") }</a>
+		</p>
+	</section>
+}
+
+templ failureCard(c AppContext, v OverviewView) {
+	<section class="failure grid gap-4 p-5 sm:p-6" aria-labelledby="failure-title">
+		<h2 id="failure-title" class="section-title">
+			if v.State.Key == "update_failed" {
+				{ i18n.T(ctx, "Version") } <span class="mono">{ ui.ShortSHA(v.State.Latest.SHA) }</span> { i18n.T(ctx, "didn't go live. Your site is still running the previous version.") }
+			} else {
+				{ i18n.T(ctx, "Version") } <span class="mono">{ ui.ShortSHA(v.State.Latest.SHA) }</span> { i18n.T(ctx, "didn't go live.") }
+			}
+		</h2>
+		@stageSteps(v.State.Latest)
+		<div class="grid gap-1">
+			<p>{ Explain(ctx, v.State.Latest.ErrorCode, c.App).What }</p>
+			<p class="text-sm text-muted-foreground">{ Explain(ctx, v.State.Latest.ErrorCode, c.App).Fix }</p>
+		</div>
+		if len(v.LogTail) > 0 {
+			<pre class="log-tail" aria-label={ i18n.T(ctx, "Last log lines") }>
+				for _, line := range v.LogTail {
+					if errorLine(line) {
+						<mark>{ line }</mark>{ "\n" }
+					} else {
+						{ line }{ "\n" }
+					}
+				}
+			</pre>
+		}
+		<div class="flex flex-wrap gap-2">
+			<button type="button" class="btn" data-size="sm" data-on:click={ ui.Post("/ui/apps/" + c.App.ID + "/deploy?sha=" + v.State.Latest.SHA) }>
+				@ui.Icon("rotate-ccw", "")
+				{ i18n.T(ctx, "Try again") }
+			</button>
+			if strings.HasPrefix(v.State.Latest.ErrorCode, "health") {
+				@ui.LinkButton(templ.SafeURL("/apps/"+c.App.ID+"/settings#section-health"), "outline", "sm", nil) {
+					{ i18n.T(ctx, "Change health check") }
+				}
+			}
+			@ui.LinkButton(templ.SafeURL("/apps/"+c.App.ID+"/logs?deployment="+v.State.Latest.ID), "ghost", "sm", nil) {
+				{ i18n.T(ctx, "Full log") }
+			}
+		</div>
+	</section>
+}
+
+templ liveCard(c AppContext, v OverviewView) {
+	<section class="surface grid gap-4 p-5 sm:p-6" aria-labelledby="live-title">
+		<div class="flex flex-wrap items-start justify-between gap-3">
+			<div class="grid gap-1">
+				<h2 id="live-title" class="text-sm font-medium text-muted-foreground">{ i18n.T(ctx, "Online now") }</h2>
+				if c.App.Config.Stopped {
+					<p class="text-lg font-medium">{ i18n.T(ctx, "Stopped") }</p>
+					<p class="text-sm text-muted-foreground">{ i18n.T(ctx, "Start it from Settings when you want it back online.") }</p>
+				} else if v.State.Live.ID == "" {
+					<p class="text-lg font-medium">{ i18n.T(ctx, "Nothing yet") }</p>
+					<p class="text-sm text-muted-foreground">{ i18n.T(ctx, "The first version goes online after its health check passes.") }</p>
+				} else {
+					<p class="text-lg font-medium">{ i18n.T(ctx, "Version") } <span class="mono">{ ui.ShortSHA(v.State.Live.SHA) }</span></p>
+					<p class="text-sm text-muted-foreground">
+						if v.State.Live.Message != "" {
+							{ v.State.Live.Message } ·
+						}
+						{ i18n.T(ctx, ui.Ago(v.State.Live.QueuedAt)) }
+						if v.State.Live.Author != "" {
+							{ i18n.Tf(ctx, "by %s", v.State.Live.Author) }
+						}
+					</p>
+				}
+			</div>
+		</div>
+		if len(c.App.Config.Domains) > 0 {
+			<div class="grid gap-2">
+				<ul class="flex flex-wrap gap-2">
+					for _, d := range c.App.Config.Domains {
+						<li>
+							<a class="domain-link" href={ templ.SafeURL("https://" + d) } target="_blank" rel="noopener noreferrer">
+								{ d }
+								@ui.Icon("external-link", "size-3.5")
+								<span class="sr-only">{ i18n.T(ctx, "(opens in a new tab)") }</span>
+							</a>
+						</li>
+					}
+				</ul>
+				// DNS is checked as soon as the page opens. Live updates redraw this card,
+				// so the results are kept out of the morph.
+				<div data-ignore-morph>
+					<div id="dns-results" class="text-sm text-muted-foreground" aria-live="polite" data-init={ ui.Post("/ui/apps/" + c.App.ID + "/dns") }>{ i18n.T(ctx, "Checking DNS…") }</div>
+					<button type="button" class="btn mt-2" data-variant="ghost" data-size="sm" data-on:click={ ui.Post("/ui/apps/" + c.App.ID + "/dns") }>{ i18n.T(ctx, "Check again") }</button>
+				</div>
+			</div>
+		} else {
+			<p class="text-sm text-muted-foreground">{ i18n.T(ctx, "No web address yet.") } <a class="text-link hover:underline" href={ templ.SafeURL("/apps/" + c.App.ID + "/settings#section-domains") }>{ i18n.T(ctx, "Add a domain") }</a></p>
+		}
+	</section>
+}
+
+templ DNSResults(checks []service.DomainCheck) {
+	<ul id="dns-results" class="grid gap-1 text-sm" aria-live="polite">
+		for _, d := range checks {
+			<li class="flex flex-wrap items-center gap-2">
+				if d.Resolves {
+					@ui.Icon("circle-check", "size-4 text-success")
+					<span class="mono">{ d.Host }</span> { i18n.T(ctx, "points to") } <span class="mono">{ strings.Join(d.Addresses, ", ") }</span>
+				} else {
+					@ui.Icon("circle-alert", "size-4 text-warning")
+					<span class="mono">{ d.Host }</span> { i18n.T(ctx, "doesn't resolve yet. Add an A record for your server's public IP.") }
+				}
+			</li>
+		}
+	</ul>
+}
+
+templ UsageCard(app service.App, usage []Container) {
+	<section id="usage" class="surface grid content-start gap-2 p-5" aria-labelledby="usage-title">
+		<h2 id="usage-title" class="text-sm font-medium text-muted-foreground">{ i18n.T(ctx, "Usage now") }</h2>
+		if len(usage) == 0 {
+			<p class="text-sm">{ i18n.T(ctx, "Waiting for metrics…") }</p>
+		} else {
+			for _, u := range usage {
+				<p class="text-sm"><span class="font-medium tabular-nums">{ ui.Percent(u.CPUPercent) }</span> CPU · <span class="font-medium tabular-nums">{ ui.Bytes(u.MemoryUsed) }</span> { i18n.Tf(ctx, "of %s", ui.Bytes(u.MemoryLimit)) }</p>
+			}
+			<p class="text-xs text-muted-foreground">{ i18n.Tf(ctx, "%d container(s)", len(usage)) }</p>
+		}
+	</section>
+}

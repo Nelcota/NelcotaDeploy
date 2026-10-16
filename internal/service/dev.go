@@ -4,11 +4,14 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
-	agentv1 "github.com/Nelcota/NelcotaDeploy/internal/gen/agent/v1"
-	"github.com/Nelcota/NelcotaDeploy/internal/transport"
+	"math"
 	"strings"
 	"sync"
 	"time"
+
+	agentv1 "github.com/Nelcota/NelcotaDeploy/internal/gen/agent/v1"
+	"github.com/Nelcota/NelcotaDeploy/internal/store/dbgen"
+	"github.com/Nelcota/NelcotaDeploy/internal/transport"
 )
 
 const DevUserID = "development-user"
@@ -19,7 +22,7 @@ func (c *Core) Seed(ctx context.Context) error {
 	if e != nil {
 		return e
 	}
-	for i, name := range []string{"loja", "api", "blog"} {
+	for i, name := range []string{"store", "api", "blog"} {
 		server := "dev-server-" + name
 		app := "dev-app-" + name
 		cfg := AppConfig{Domains: []string{name + ".example.test"}, MemoryBytes: 256 << 20, NanoCPUs: 1e9, Port: 8080, HealthPath: "/", HealthTimeout: 60, Replicas: 1, CacheEnabled: true, Dockerfile: "Dockerfile"}
@@ -54,6 +57,20 @@ func (c *Core) Seed(ctx context.Context) error {
 		}
 	}
 	return nil
+}
+
+// devMetrics simulates a host sample that varies smoothly over time, with one
+// container per app on the server, shaped like agentv1.Metrics in JSON.
+func devMetrics(now time.Time, index int, server string, apps []dbgen.App) map[string]any {
+	phase := float64(now.UnixMilli()%180_000)/180_000*2*math.Pi + float64(index)
+	wave := (1 + math.Sin(phase)) / 2
+	containers := []map[string]any{}
+	for _, a := range apps {
+		if a.ServerID == server {
+			containers = append(containers, map[string]any{"app_id": a.ID, "container_id": "dev-" + a.ID, "cpu_percent": 2 + 18*wave, "memory_used": int64(96<<20) + int64(wave*float64(64<<20)), "memory_limit": 256 << 20, "network_rx": now.Unix() * 1024, "network_tx": now.Unix() * 512, "pids": 12})
+		}
+	}
+	return map[string]any{"cpu_percent": 6 + 40*wave, "memory_used": int64(float64(4<<30) * (0.22 + 0.12*wave)), "memory_total": 4 << 30, "disk_used": int64(12<<30) + int64(index)<<30, "disk_total": 40 << 30, "network_rx": now.Unix() * 4096, "network_tx": now.Unix() * 2048, "containers": containers, "cache_used": int64(1<<30) + int64(index)*(512<<20)}
 }
 func (a *AuthService) DevelopmentSession(ctx context.Context) (LoginResult, error) {
 	return a.issueSession(ctx, DevUserID)
@@ -94,9 +111,6 @@ func (d *DevDispatcher) Run(ctx context.Context) error {
 		mu.Unlock()
 		wg.Wait()
 	}()
-	emitStatus := func(server string, dep *agentv1.Deploy, status string) {
-		_ = d.Core.AgentEvent(ctx, transport.Peer{ID: server}, &agentv1.Event{Payload: &agentv1.Event_DeployStatus{DeployStatus: &agentv1.DeployStatus{DeployId: dep.DeployId, AppId: dep.App.AppId, Status: status}}})
-	}
 	for {
 		select {
 		case <-ctx.Done():
@@ -121,29 +135,73 @@ func (d *DevDispatcher) Run(ctx context.Context) error {
 			wg.Go(func() {
 				defer cancel()
 				defer func() { mu.Lock(); delete(jobs, dep.DeployId); mu.Unlock() }()
-				for i, status := range []string{"building", "starting", "success"} {
-					timer := time.NewTimer(600 * time.Millisecond)
-					select {
-					case <-jobCtx.Done():
-						timer.Stop()
-						emitStatus(item.server, dep, "cancelled")
-						return
-					case <-timer.C:
-					}
-					_ = d.Core.AgentEvent(ctx, transport.Peer{ID: item.server}, &agentv1.Event{Payload: &agentv1.Event_DeployLog{DeployLog: &agentv1.DeployLog{DeployId: dep.DeployId, AppId: dep.App.AppId, Sequence: uint64(i + 1), Line: []byte("[dev] " + status + "\n")}}})
-					emitStatus(item.server, dep, status)
-				}
+				d.simulate(jobCtx, ctx, item.server, dep)
 			})
 		case <-tick.C:
 			servers, _ := d.Core.DB.Queries.ListServers(ctx)
-			for _, s := range servers {
-				_, _ = d.Core.DB.Write.ExecContext(ctx, "UPDATE servers SET heartbeat_at=?,status='online',agent_ready=1 WHERE id=?", time.Now().Unix(), s.ID)
-				d.Core.publish("servers", "server.metrics", map[string]any{"server_id": s.ID, "metrics": map[string]any{"cpu_percent": 12, "memory_used": 128 << 20, "memory_total": 4 << 30, "disk_used": 2 << 30, "disk_total": 40 << 30}})
-			}
 			apps, _ := d.Core.DB.Queries.ListApps(ctx)
+			for i, s := range servers {
+				_, _ = d.Core.DB.Write.ExecContext(ctx, "UPDATE servers SET heartbeat_at=?,status='online',agent_ready=1 WHERE id=?", time.Now().Unix(), s.ID)
+				d.Core.publish("servers", "server.metrics", map[string]any{"server_id": s.ID, "metrics": devMetrics(time.Now(), i, s.ID, apps)})
+			}
 			for _, a := range apps {
 				d.Core.publish("app/"+a.ID, "runtime.log", map[string]any{"line": "[dev] GET /health 200\n", "sequence": time.Now().Unix()})
 			}
 		}
 	}
+}
+
+// devStages mirrors the real pipeline with short simulated durations.
+var devStages = []struct {
+	name     string
+	duration time.Duration
+	lines    []string
+}{
+	{"clone", 300 * time.Millisecond, []string{"[clone] fetching exact commit", "[clone] SHA verified"}},
+	{"build", 900 * time.Millisecond, []string{"[build] resolving base image", "[build] cache hit: dependencies", "[build] image ready"}},
+	{"start", 300 * time.Millisecond, []string{"[start] container started"}},
+	{"healthcheck", 400 * time.Millisecond, []string{"[healthcheck] responded 200"}},
+	{"route", 150 * time.Millisecond, []string{"[route] traffic switched"}},
+}
+
+// simulate walks one deployment through the pipeline. Commits whose SHA starts
+// with "dead" fail the health check, so failure screens can be exercised.
+func (d *DevDispatcher) simulate(job, ctx context.Context, server string, dep *agentv1.Deploy) {
+	peer := transport.Peer{ID: server}
+	var seq uint64
+	send := func(s *agentv1.DeployStatus) {
+		s.DeployId, s.AppId = dep.DeployId, dep.App.AppId
+		_ = d.Core.AgentEvent(ctx, peer, &agentv1.Event{Payload: &agentv1.Event_DeployStatus{DeployStatus: s}})
+	}
+	log := func(line string) {
+		seq++
+		_ = d.Core.AgentEvent(ctx, peer, &agentv1.Event{Payload: &agentv1.Event_DeployLog{DeployLog: &agentv1.DeployLog{DeployId: dep.DeployId, AppId: dep.App.AppId, Sequence: seq, Line: []byte(line + "\n")}}})
+	}
+	failing := strings.HasPrefix(dep.Sha, "dead")
+	for _, st := range devStages {
+		if st.name == "start" {
+			send(&agentv1.DeployStatus{Status: "starting"})
+		}
+		started := time.Now()
+		timer := time.NewTimer(st.duration)
+		select {
+		case <-job.Done():
+			timer.Stop()
+			log("[dev] cancelled")
+			send(&agentv1.DeployStatus{Status: "cancelled"})
+			return
+		case <-timer.C:
+		}
+		if failing && st.name == "healthcheck" {
+			log("[start] listening on 0.0.0.0:3000")
+			log("[healthcheck] no response on port 8080 at / within the timeout")
+			send(&agentv1.DeployStatus{Status: "failed", ErrorCode: "health_no_response"})
+			return
+		}
+		for _, line := range st.lines {
+			log(line)
+		}
+		send(&agentv1.DeployStatus{Stage: st.name, DurationMs: time.Since(started).Milliseconds()})
+	}
+	send(&agentv1.DeployStatus{Status: "success"})
 }

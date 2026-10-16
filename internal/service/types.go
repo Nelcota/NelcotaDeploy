@@ -35,6 +35,7 @@ type Principal struct {
 	Email       string   `json:"email"`
 	Name        string   `json:"name"`
 	Role        string   `json:"role"`
+	AvatarAt    int64    `json:"avatar_at,omitempty"`
 	TwoFactorAt int64    `json:"-"`
 	IP          string   `json:"-"`
 }
@@ -74,6 +75,7 @@ type App struct {
 	Config     AppConfig `json:"config"`
 	DesiredSHA string    `json:"desired_sha"`
 	Revision   int64     `json:"revision"`
+	LogoAt     int64     `json:"logo_at,omitempty"`
 }
 type AppConfig struct {
 	Domains        []string `json:"domains"`
@@ -121,6 +123,8 @@ type Deployment struct {
 	FinishedAt      int64            `json:"finished_at"`
 	ErrorCode       string           `json:"error_code"`
 	Clean           bool             `json:"clean"`
+	// RetryOf is the failed deployment this one retries automatically.
+	RetryOf string `json:"retry_of,omitempty"`
 }
 type DeployInput struct {
 	AppID   string `json:"app_id"`
@@ -129,6 +133,8 @@ type DeployInput struct {
 	Author  string `json:"author"`
 	Origin  string `json:"origin"`
 	Clean   bool   `json:"clean"`
+	// retryOf is set only by the automatic retry, never by callers.
+	retryOf string
 }
 type Server struct {
 	Ready       bool   `json:"ready"`
@@ -178,6 +184,10 @@ type Apps interface {
 	Environment(context.Context, string) ([]EnvInfo, error)
 	SetEnvironment(context.Context, string, []EnvInput) error
 	Action(context.Context, string, string, uint32, bool) error
+	CheckDomains(context.Context, string) ([]DomainCheck, error)
+	SetLogo(context.Context, string, []byte) error
+	RemoveLogo(context.Context, string) error
+	Logo(context.Context, string) (Logo, error)
 }
 type Deploys interface {
 	List(context.Context, string) ([]Deployment, error)
@@ -199,6 +209,9 @@ type Logs interface {
 type Settings interface {
 	Get(context.Context) (SettingsView, error)
 	Set(context.Context, string, string) error
+	// TestS3 checks an S3 configuration (JSON, as saved) by storing and
+	// deleting a small object.
+	TestS3(context.Context, string) error
 }
 type Audit interface {
 	RecordRequest(context.Context, string, string, int) error
@@ -214,4 +227,10 @@ type Services struct {
 	Settings   Settings
 	Audit      Audit
 	Operations Operations
+	// Repos is optional (nil without GitHub access).
+	Repos Repos
+	// Notifications is optional (nil when the panel sends none).
+	Notifications Notifications
+	// Provisioning is optional (nil when servers are added by hand only).
+	Provisioning Provisioning
 }

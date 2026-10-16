@@ -63,7 +63,7 @@ func (q *Queries) GetCredentials(ctx context.Context, userID string) ([]Credenti
 }
 
 const getDeployment = `-- name: GetDeployment :one
-SELECT id, app_id, sha, message, author, origin, status, queued_at, started_at, finished_at, log_ref, error_code, clean, check_id, cancel_requested, timings FROM deployments WHERE id = ?
+SELECT id, app_id, sha, message, author, origin, status, queued_at, started_at, finished_at, log_ref, error_code, clean, check_id, cancel_requested, timings, retry_of FROM deployments WHERE id = ?
 `
 
 func (q *Queries) GetDeployment(ctx context.Context, id string) (Deployment, error) {
@@ -86,6 +86,7 @@ func (q *Queries) GetDeployment(ctx context.Context, id string) (Deployment, err
 		&i.CheckID,
 		&i.CancelRequested,
 		&i.Timings,
+		&i.RetryOf,
 	)
 	return i, err
 }
@@ -282,7 +283,7 @@ func (q *Queries) ListAudit(ctx context.Context, limit int64) ([]AuditLog, error
 }
 
 const listDeployments = `-- name: ListDeployments :many
-SELECT id, app_id, sha, message, author, origin, status, queued_at, started_at, finished_at, log_ref, error_code, clean, check_id, cancel_requested, timings FROM deployments WHERE app_id = ? ORDER BY queued_at DESC, rowid DESC LIMIT 100
+SELECT id, app_id, sha, message, author, origin, status, queued_at, started_at, finished_at, log_ref, error_code, clean, check_id, cancel_requested, timings, retry_of FROM deployments WHERE app_id = ? ORDER BY queued_at DESC, rowid DESC LIMIT 100
 `
 
 func (q *Queries) ListDeployments(ctx context.Context, appID string) ([]Deployment, error) {
@@ -311,6 +312,7 @@ func (q *Queries) ListDeployments(ctx context.Context, appID string) ([]Deployme
 			&i.CheckID,
 			&i.CancelRequested,
 			&i.Timings,
+			&i.RetryOf,
 		); err != nil {
 			return nil, err
 		}
@@ -369,24 +371,34 @@ func (q *Queries) ListServers(ctx context.Context) ([]Server, error) {
 }
 
 const listUsers = `-- name: ListUsers :many
-SELECT id,email,name,role,created_at FROM users ORDER BY email
+SELECT u.id,u.email,u.name,u.role,u.created_at,CAST(COALESCE(a.updated_at,0) AS INTEGER) AS avatar_at FROM users u LEFT JOIN avatars a ON a.user_id=u.id ORDER BY u.email
 `
 
-func (q *Queries) ListUsers(ctx context.Context) ([]User, error) {
+type ListUsersRow struct {
+	ID        string `json:"id"`
+	Email     string `json:"email"`
+	Name      string `json:"name"`
+	Role      string `json:"role"`
+	CreatedAt int64  `json:"created_at"`
+	AvatarAt  int64  `json:"avatar_at"`
+}
+
+func (q *Queries) ListUsers(ctx context.Context) ([]ListUsersRow, error) {
 	rows, err := q.query(ctx, q.listUsersStmt, listUsers)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []User{}
+	items := []ListUsersRow{}
 	for rows.Next() {
-		var i User
+		var i ListUsersRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.Email,
 			&i.Name,
 			&i.Role,
 			&i.CreatedAt,
+			&i.AvatarAt,
 		); err != nil {
 			return nil, err
 		}

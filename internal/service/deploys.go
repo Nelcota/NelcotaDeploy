@@ -5,11 +5,13 @@ import (
 	"database/sql"
 
 	"errors"
+	"regexp"
 	"strings"
 	"time"
 
 	agentv1 "github.com/Nelcota/NelcotaDeploy/internal/gen/agent/v1"
 	"github.com/Nelcota/NelcotaDeploy/internal/security"
+	"github.com/Nelcota/NelcotaDeploy/internal/store/dbgen"
 	"github.com/Nelcota/NelcotaDeploy/internal/transport"
 )
 
@@ -69,7 +71,7 @@ func (s *deploysService) enqueue(ctx context.Context, tx *sql.Tx, id string, in 
 	if _, e := tx.ExecContext(ctx, "UPDATE deployments SET status='cancelled',finished_at=? WHERE app_id=? AND status='queued'", now, in.AppID); e != nil {
 		return e
 	}
-	if _, e := tx.ExecContext(ctx, "INSERT INTO deployments(id,app_id,sha,message,author,origin,status,queued_at,clean) VALUES(?,?,?,?,?,?,'queued',?,?)", id, in.AppID, strings.ToLower(in.SHA), in.Message, in.Author, in.Origin, now, in.Clean); e != nil {
+	if _, e := tx.ExecContext(ctx, "INSERT INTO deployments(id,app_id,sha,message,author,origin,status,queued_at,clean,retry_of) VALUES(?,?,?,?,?,?,'queued',?,?,?)", id, in.AppID, strings.ToLower(in.SHA), in.Message, in.Author, in.Origin, now, in.Clean, in.retryOf); e != nil {
 		return e
 	}
 	return s.c.audit(ctx, tx, "deploy.enqueue", id)
@@ -327,7 +329,7 @@ func (c *Core) AgentEvent(ctx context.Context, p transport.Peer, e *agentv1.Even
 			}
 			code := ""
 			if s.Status == "failed" {
-				code = "deployment_failed"
+				code = failureCode(s.ErrorCode)
 			}
 			if _, err := tx.ExecContext(ctx, "UPDATE deployments SET status=?,finished_at=?,error_code=? WHERE id=?", s.Status, finished, code, d.ID); err != nil {
 				return err
@@ -340,6 +342,9 @@ func (c *Core) AgentEvent(ctx context.Context, p transport.Peer, e *agentv1.Even
 			if s.Status == "success" {
 				_, err := tx.ExecContext(ctx, "UPDATE apps SET desired_sha=? WHERE id=?", d.Sha, d.AppID)
 				return err
+			}
+			if s.Status == "failed" {
+				return retryTransient(ctx, c, tx, d, code)
 			}
 			return nil
 		})
@@ -388,6 +393,7 @@ func (c *Core) AgentEvent(ctx context.Context, p transport.Peer, e *agentv1.Even
 		}
 		v.Metrics.Containers = ownedMetrics
 		c.publish("servers", "server.metrics", map[string]any{"server_id": p.ID, "metrics": v.Metrics})
+		c.relieveDisk(ctx, p.ID, v.Metrics)
 	default:
 		return fail(Validation, "Unknown event")
 	}
@@ -539,4 +545,42 @@ func mustMaskRuntime(c *Core, ctx context.Context, id, line string) string {
 		return "[log unavailable]"
 	}
 	return safe
+}
+
+var failureCodePattern = regexp.MustCompile(`^[a-z][a-z0-9_]{0,39}$`)
+
+// transientFailures are failures that usually pass on a second attempt
+// without any change. Build, start, and health check failures are never
+// retried: they need a fix, and retrying would hide them.
+var transientFailures = map[string]bool{"route_failed": true}
+
+// retryTransient queues one automatic retry of a deployment that failed for a
+// transient reason, unless it was itself a retry, it was cancelled, the app is
+// stopped, or a newer deployment already exists.
+func retryTransient(ctx context.Context, c *Core, tx *sql.Tx, d dbgen.Deployment, code string) error {
+	if !transientFailures[code] || d.RetryOf != "" || d.CancelRequested != 0 {
+		return nil
+	}
+	var newer int
+	if e := tx.QueryRowContext(ctx, "SELECT count(*) FROM deployments WHERE app_id=? AND id<>? AND queued_at>=?", d.AppID, d.ID, d.QueuedAt).Scan(&newer); e != nil {
+		return e
+	}
+	var stopped bool
+	if e := tx.QueryRowContext(ctx, "SELECT COALESCE(json_extract(config,'$.stopped'),0) FROM apps WHERE id=?", d.AppID).Scan(&stopped); e != nil {
+		return e
+	}
+	if newer > 0 || stopped {
+		return nil
+	}
+	in := DeployInput{AppID: d.AppID, SHA: d.Sha, Message: d.Message, Author: d.Author, Origin: d.Origin, Clean: d.Clean != 0, retryOf: d.ID}
+	return (&deploysService{c}).enqueue(systemContext(ctx), tx, security.Token(), in)
+}
+
+// failureCode keeps an agent-reported failure reason when it is a plain code,
+// so the interface can explain it; anything else becomes the generic code.
+func failureCode(reported string) string {
+	if failureCodePattern.MatchString(reported) {
+		return reported
+	}
+	return "deployment_failed"
 }

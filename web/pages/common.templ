@@ -1,0 +1,63 @@
+package pages
+
+import (
+	"github.com/Nelcota/NelcotaDeploy/web/i18n"
+	"github.com/Nelcota/NelcotaDeploy/web/ui"
+)
+
+templ ErrorPage(s Shell, title, message string) {
+	if s.User.ID != "" {
+		@App(s) {
+			@errorBody(title, message)
+		}
+	} else {
+		@Public(s) {
+			@errorBody(title, message)
+		}
+	}
+}
+
+templ errorBody(title, message string) {
+	<div class="mx-auto max-w-lg py-12">
+		@ui.ErrorState(title, message) {
+			<p class="mt-3">
+				@ui.LinkButton("/", "outline", "sm", nil) {
+					{ i18n.T(ctx, "Back to overview") }
+				}
+			</p>
+		}
+	</div>
+}
+
+// ReauthDialog opens when an action needs a recent passkey sign-in. The server
+// sets $_reauth; auth.js runs the passkey (and TOTP) ceremony.
+templ ReauthDialog(email string) {
+	<dialog
+		id="reauth"
+		class="dialog"
+		aria-labelledby="reauth-title"
+		data-effect="$_reauth && !el.open && el.showModal()"
+		data-on:close="$_reauth = false"
+	>
+		<div class="w-[calc(100%-2rem)] max-w-md gap-4 rounded-lg border bg-background p-6 shadow-lg" data-reauth-root data-email={ email }>
+			<header class="gap-1.5">
+				<h2 id="reauth-title" class="text-lg font-semibold">{ i18n.T(ctx, "Confirm it's you") }</h2>
+				<p class="text-sm text-muted-foreground">{ i18n.T(ctx, "This action requires a passkey sign-in within the last five minutes.") }</p>
+			</header>
+			<div class="hidden" data-reauth-totp>
+				<div class="grid gap-1.5">
+					<label class="label" for="reauth-code">{ i18n.T(ctx, "Authenticator code") }</label>
+					<input id="reauth-code" class="input" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6"/>
+				</div>
+			</div>
+			<p class="text-sm text-destructive empty:hidden" role="alert" data-reauth-error></p>
+			<footer class="gap-2">
+				<button type="button" class="btn" data-variant="outline" data-on:click="el.closest('dialog').close()">{ i18n.T(ctx, "Cancel") }</button>
+				<button type="button" class="btn" data-reauth>
+					@ui.Icon("fingerprint", "")
+					{ i18n.T(ctx, "Continue with passkey") }
+				</button>
+			</footer>
+		</div>
+	</dialog>
+}

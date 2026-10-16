@@ -151,6 +151,9 @@ func TestDockerBuildKitCaddy(t *testing.T) {
 	if !found {
 		t.Fatal("managed container stats missing")
 	}
+	if metrics.CacheUsed == 0 {
+		t.Fatal("BuildKit cache usage missing after real builds")
+	}
 	if e = engine.Health(ctx, app, old); e != nil {
 		t.Fatal(e)
 	}

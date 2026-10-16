@@ -5,6 +5,7 @@ import (
 	"errors"
 	agentv1 "github.com/Nelcota/NelcotaDeploy/internal/gen/agent/v1"
 	"github.com/Nelcota/NelcotaDeploy/internal/security"
+	bk "github.com/moby/buildkit/client"
 	"go.uber.org/goleak"
 	"os"
 	"path/filepath"
@@ -18,6 +19,9 @@ func TestMain(m *testing.M) { goleak.VerifyTestMain(m) }
 
 type fakeEngine struct {
 	mu          sync.Mutex
+	healthErr   error
+	buildError  bool
+	exited      bool
 	healthError bool
 	block       bool
 	routed      bool
@@ -32,12 +36,18 @@ func (f *fakeEngine) Clone(ctx context.Context, _ *agentv1.Deploy, _ string, _ f
 	return nil
 }
 func (f *fakeEngine) Build(context.Context, *agentv1.Deploy, string, func([]byte)) (string, error) {
+	if f.buildError {
+		return "", errors.New("build failed")
+	}
 	return "new-image", nil
 }
 func (f *fakeEngine) Start(context.Context, *agentv1.AppConfig, string) (Running, error) {
 	return Running{AppID: "app", Image: "new-image", Containers: []string{"new"}, Addresses: []string{"127.0.0.1:1"}}, nil
 }
 func (f *fakeEngine) Health(context.Context, *agentv1.AppConfig, Running) error {
+	if f.healthErr != nil {
+		return f.healthErr
+	}
 	if f.healthError {
 		return errors.New("unhealthy")
 	}
@@ -55,7 +65,7 @@ func (f *fakeEngine) Remove(_ context.Context, r Running) error {
 	f.removed = append(f.removed, r.Containers...)
 	return nil
 }
-func (f *fakeEngine) Inspect(context.Context, Running) (bool, error)                 { return true, nil }
+func (f *fakeEngine) Inspect(context.Context, Running) (bool, error)                 { return !f.exited, nil }
 func (f *fakeEngine) Stop(context.Context, Running) error                            { return nil }
 func (f *fakeEngine) Restart(context.Context, Running) error                         { return nil }
 func (f *fakeEngine) Logs(context.Context, Running, int64, bool, func([]byte)) error { return nil }
@@ -148,5 +158,44 @@ func TestEncryptedStateAndPendingRecovery(t *testing.T) {
 	after, e := state.Load()
 	if e != nil || len(after.Pending) != 0 {
 		t.Fatal("pending record not cleared", e)
+	}
+}
+
+func TestFailureCodesNameTheStep(t *testing.T) {
+	for _, row := range []struct {
+		engine *fakeEngine
+		want   string
+	}{
+		{&fakeEngine{buildError: true}, "build_failed"},
+		{&fakeEngine{healthErr: &HealthError{}}, "health_no_response"},
+		{&fakeEngine{healthErr: &HealthError{Status: 502}}, "health_status_502"},
+		{&fakeEngine{healthErr: &HealthError{}, exited: true}, "app_exited"},
+	} {
+		p, _ := NewPipeline(row.engine, nil, t.TempDir(), 1)
+		var code, status string
+		p.deploy(context.Background(), &agentv1.Deploy{DeployId: "d", Sha: strings.Repeat("a", 40), App: &agentv1.AppConfig{AppId: "app"}}, func(e *agentv1.Event) error {
+			if s := e.GetDeployStatus(); s != nil && s.Status != "" {
+				status, code = s.Status, s.ErrorCode
+			}
+			return nil
+		})
+		if status != "failed" || code != row.want {
+			t.Fatal(row.want, status, code)
+		}
+	}
+}
+
+func TestHealthErrorMessages(t *testing.T) {
+	if (&HealthError{}).Error() == (&HealthError{Status: 500}).Error() {
+		t.Fatal("messages should differ")
+	}
+}
+
+func TestCacheTotal(t *testing.T) {
+	if got := cacheTotal([]*bk.UsageInfo{{Size: 10}, nil, {Size: -1}, {Size: 5, Shared: true}}); got != 15 {
+		t.Fatal(got)
+	}
+	if (&DockerEngine{}).buildCacheUsed(context.Background()) != 0 {
+		t.Fatal("no BuildKit client should report zero")
 	}
 }

@@ -1,0 +1,56 @@
+package pages
+
+import (
+	"strconv"
+
+	"github.com/Nelcota/NelcotaDeploy/web/ui"
+)
+
+// Command is one palette entry: a link, or a button that runs an action.
+type Command struct {
+	Label, Hint, Icon, Keywords string
+	Href                        string
+	Action                      string
+	Attrs                       templ.Attributes
+}
+
+type CommandGroup struct {
+	Label    string
+	Commands []Command
+}
+
+templ CommandList(groups []CommandGroup) {
+	for g, group := range groups {
+		<li role="presentation" data-group>
+			<p class="px-2 pt-2 pb-1 text-xs font-medium text-muted-foreground" id={ "cmdk-group-" + strconv.Itoa(g) }>{ group.Label }</p>
+			<ul role="group" aria-labelledby={ "cmdk-group-" + strconv.Itoa(g) }>
+				for i, c := range group.Commands {
+					<li
+						role="option"
+						id={ "cmdk-" + strconv.Itoa(g) + "-" + strconv.Itoa(i) }
+						aria-selected="false"
+						class="cmdk-item flex cursor-pointer items-center gap-3 rounded-md px-2 py-2 text-sm"
+						data-keywords={ group.Label + " " + c.Label + " " + c.Hint + " " + c.Keywords }
+						if c.Href != "" {
+							data-href={ c.Href }
+						}
+						if c.Action != "" {
+							data-on:click={ c.Action }
+						}
+						{ c.Attrs... }
+					>
+						@commandBody(c)
+					</li>
+				}
+			</ul>
+		</li>
+	}
+}
+
+templ commandBody(c Command) {
+	@ui.Icon(c.Icon, "size-4 shrink-0 text-muted-foreground")
+	<span class="min-w-0 flex-1 truncate">{ c.Label }</span>
+	if c.Hint != "" {
+		<span class="truncate text-xs text-muted-foreground">{ c.Hint }</span>
+	}
+}

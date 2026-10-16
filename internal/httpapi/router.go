@@ -32,6 +32,7 @@ type Config struct {
 	GitHub           *service.GitHubService
 	Enrollment       *service.EnrollmentService
 	AgentScript      []byte
+	Version          string
 }
 type API struct{ cfg Config }
 
@@ -68,7 +69,16 @@ func New(cfg Config) http.Handler {
 			return
 		}
 		v, e := cfg.GitHub.FinishManifest(r.Context(), r.URL.Query().Get("state"), r.URL.Query().Get("code"))
-		respond(w, v, e)
+		// Browsers continue to the App installation on GitHub; API clients keep JSON.
+		if strings.Contains(r.Header.Get("Accept"), "application/json") {
+			respond(w, v, e)
+			return
+		}
+		if e != nil {
+			http.Redirect(w, r, "/settings/github?github=failed", http.StatusSeeOther)
+			return
+		}
+		http.Redirect(w, r, v["installation_url"], http.StatusSeeOther)
 	})
 	r.Post("/api/servers/join", func(w http.ResponseWriter, r *http.Request) {
 		var in service.JoinInput
@@ -378,6 +388,20 @@ func New(cfg Config) http.Handler {
 			v, e := cfg.Services.Users.List(r.Context())
 			respond(w, v, e)
 		})
+		r.Put("/api/users/{id}/role", func(w http.ResponseWriter, r *http.Request) {
+			var in struct {
+				Role string `json:"role"`
+			}
+			if !read(w, r, &in) {
+				return
+			}
+			e := cfg.Services.Users.SetRole(r.Context(), chi.URLParam(r, "id"), in.Role)
+			respond(w, map[string]bool{"ok": e == nil}, e)
+		})
+		r.Delete("/api/users/{id}", func(w http.ResponseWriter, r *http.Request) {
+			e := cfg.Services.Users.Remove(r.Context(), chi.URLParam(r, "id"))
+			respond(w, map[string]bool{"ok": e == nil}, e)
+		})
 		r.Post("/api/users", func(w http.ResponseWriter, r *http.Request) {
 			var in service.UserInput
 			if !read(w, r, &in) {
@@ -396,7 +420,15 @@ func New(cfg Config) http.Handler {
 			respond(w, map[string]bool{"ok": e == nil}, e)
 		})
 	}
-	web.Register(r, cfg.Services)
+	web.Register(r, web.Config{
+		Services:   cfg.Services,
+		Origin:     cfg.Origin,
+		Dev:        cfg.Dev,
+		DevLogin:   cfg.Dev && cfg.DevelopmentLogin != nil,
+		Version:    cfg.Version,
+		CSRFToken:  a.requestCSRF,
+		Authorized: a.streamAuthorized,
+	})
 	return r
 }
 func (a *API) headers(next http.Handler) http.Handler {
@@ -461,6 +493,16 @@ func (a *API) csrfToken(token string) string {
 	h := hmac.New(sha256.New, a.cfg.CSRFKey)
 	h.Write([]byte(token))
 	return base64.RawURLEncoding.EncodeToString(h.Sum(nil))
+}
+
+// requestCSRF returns the CSRF token bound to the request's session cookie, for
+// server-rendered pages. It is empty without a session.
+func (a *API) requestCSRF(r *http.Request) string {
+	c, e := r.Cookie(a.cookieName())
+	if e != nil || c.Value == "" {
+		return ""
+	}
+	return a.csrfToken(c.Value)
 }
 func (a *API) csrf(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -571,7 +613,7 @@ func read(w http.ResponseWriter, r *http.Request, v any) bool {
 		return false
 	}
 	if e := d.Decode(&struct{}{}); e != io.EOF {
-		write(w, 400, map[string]string{"code": "validation", "message": "JSON adicional"})
+		write(w, 400, map[string]string{"code": "validation", "message": "Unexpected additional JSON"})
 		return false
 	}
 	return true

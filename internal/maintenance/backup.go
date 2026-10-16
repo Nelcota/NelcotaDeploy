@@ -13,6 +13,7 @@ import (
 	"database/sql"
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"io"
 	"io/fs"
 	"net/url"
@@ -320,84 +321,13 @@ func (b Backup) Restore(ctx context.Context, input string, replace bool) error {
 	if err != nil {
 		return err
 	}
-	in, err := os.OpenFile(input, os.O_RDONLY|sysNoFollow, 0)
-	if err != nil {
-		return err
-	}
-	defer in.Close()
-	st, err := in.Stat()
-	if err != nil {
-		return err
-	}
-	if !st.Mode().IsRegular() || st.Size() > maxArchive+(16<<20) {
-		return errors.New("invalid backup file")
-	}
-	sr, err := newUnsealer(&contextReader{ctx, in}, key)
-	if err != nil {
-		return err
-	}
 	stage, err := os.MkdirTemp(b.Data, ".restore-")
 	if err != nil {
 		return err
 	}
 	defer os.RemoveAll(stage)
-	tr := tar.NewReader(sr)
-	seen := map[string]bool{}
-	var total int64
-	for {
-		h, e := tr.Next()
-		if e == io.EOF {
-			break
-		}
-		if e != nil {
-			return e
-		}
-		name := h.Name
-		if h.Typeflag != tar.TypeReg || name == "config/backup.key" || name != filepath.ToSlash(filepath.Clean(name)) || strings.Contains(name, "\\") || (name != "panel.db" && !strings.HasPrefix(name, "config/")) || strings.HasPrefix(name, "/") || strings.Contains("/"+name+"/", "/../") || seen[name] {
-			return errors.New("invalid archive path or entry")
-		}
-		if h.Size < 0 || h.Size > 2<<30 || (name != "panel.db" && h.Size > 32<<20) {
-			return errors.New("archive entry too large")
-		}
-		total += h.Size
-		if total > maxArchive {
-			return errors.New("archive too large")
-		}
-		seen[name] = true
-		if len(seen) > maxEntries {
-			return errors.New("too many backup entries")
-		}
-		dest := filepath.Join(stage, filepath.FromSlash(name))
-		if e = os.MkdirAll(filepath.Dir(dest), 0700); e != nil {
-			return e
-		}
-		out, e := os.OpenFile(dest, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
-		if e != nil {
-			return e
-		}
-		_, e = io.Copy(out, &contextReader{ctx, tr})
-		if e == nil {
-			e = out.Sync()
-		}
-		_ = out.Close()
-		if e != nil {
-			return e
-		}
-	}
-	// tar EOF is not the encrypted stream EOF: authenticate the final frame too.
-	if n, e := io.Copy(io.Discard, sr); e != nil || n != 0 {
-		return errors.New("invalid archive footer")
-	}
-	if !seen["panel.db"] || !seen["config/master.key"] {
-		return errors.New("incomplete backup")
-	}
-	if _, err = security.LoadKey(filepath.Join(stage, "config/master.key")); err != nil {
-		return err
-	}
-	if err = checkDatabase(ctx, filepath.Join(stage, "panel.db")); err != nil {
-		return err
-	}
-	if err = validateSecrets(ctx, stage); err != nil {
+	seen, err := stageArchive(ctx, input, stage, key)
+	if err != nil {
 		return err
 	}
 	// Recreate the backup key from the operator-supplied copy, never from tar.
@@ -463,6 +393,160 @@ func (b Backup) Restore(ctx context.Context, input string, replace bool) error {
 		return err
 	}
 	return syncRoot(dataRoot)
+}
+
+// stageArchive decrypts and authenticates a backup, extracts it into stage,
+// and checks that it is complete and its database is sound. It never touches
+// the live data, so it serves both restores and backup verification.
+func stageArchive(ctx context.Context, input, stage string, key []byte) (map[string]bool, error) {
+	in, err := os.OpenFile(input, os.O_RDONLY|sysNoFollow, 0)
+	if err != nil {
+		return nil, err
+	}
+	defer in.Close()
+	st, err := in.Stat()
+	if err != nil {
+		return nil, err
+	}
+	if !st.Mode().IsRegular() || st.Size() > maxArchive+(16<<20) {
+		return nil, errors.New("invalid backup file")
+	}
+	sr, err := newUnsealer(&contextReader{ctx, in}, key)
+	if err != nil {
+		return nil, err
+	}
+	tr := tar.NewReader(sr)
+	seen := map[string]bool{}
+	var total int64
+	for {
+		h, e := tr.Next()
+		if e == io.EOF {
+			break
+		}
+		if e != nil {
+			return nil, e
+		}
+		name := h.Name
+		if h.Typeflag != tar.TypeReg || name == "config/backup.key" || name != filepath.ToSlash(filepath.Clean(name)) || strings.Contains(name, "\\") || (name != "panel.db" && !strings.HasPrefix(name, "config/")) || strings.HasPrefix(name, "/") || strings.Contains("/"+name+"/", "/../") || seen[name] {
+			return nil, errors.New("invalid archive path or entry")
+		}
+		if h.Size < 0 || h.Size > 2<<30 || (name != "panel.db" && h.Size > 32<<20) {
+			return nil, errors.New("archive entry too large")
+		}
+		total += h.Size
+		if total > maxArchive {
+			return nil, errors.New("archive too large")
+		}
+		seen[name] = true
+		if len(seen) > maxEntries {
+			return nil, errors.New("too many backup entries")
+		}
+		dest := filepath.Join(stage, filepath.FromSlash(name))
+		if e = os.MkdirAll(filepath.Dir(dest), 0700); e != nil {
+			return nil, e
+		}
+		out, e := os.OpenFile(dest, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
+		if e != nil {
+			return nil, e
+		}
+		_, e = io.Copy(out, &contextReader{ctx, tr})
+		if e == nil {
+			e = out.Sync()
+		}
+		_ = out.Close()
+		if e != nil {
+			return nil, e
+		}
+	}
+	// tar EOF is not the encrypted stream EOF: authenticate the final frame too.
+	if n, e := io.Copy(io.Discard, sr); e != nil || n != 0 {
+		return nil, errors.New("invalid archive footer")
+	}
+	if !seen["panel.db"] || !seen["config/master.key"] {
+		return nil, errors.New("incomplete backup")
+	}
+	if _, err = security.LoadKey(filepath.Join(stage, "config/master.key")); err != nil {
+		return nil, err
+	}
+	if err = checkDatabase(ctx, filepath.Join(stage, "panel.db")); err != nil {
+		return nil, err
+	}
+	if err = validateSecrets(ctx, stage); err != nil {
+		return nil, err
+	}
+	return seen, nil
+}
+
+// Verify proves that a backup can be restored: it decrypts it with the backup
+// key, extracts it into a temporary directory next to the data, and runs the
+// same checks as a restore, without changing anything.
+func (b Backup) Verify(ctx context.Context, input string) error {
+	key, err := security.LoadKey(b.KeyFile)
+	if err != nil {
+		return err
+	}
+	stage, err := os.MkdirTemp(b.Data, ".verify-")
+	if err != nil {
+		return err
+	}
+	defer os.RemoveAll(stage)
+	_, err = stageArchive(ctx, input, stage, key)
+	return err
+}
+
+// verifyEvery is how often the newest backup is test-restored.
+const verifyEvery = 7 * 24 * time.Hour
+
+// VerifyLatest test-restores the newest completed daily backup when the last
+// verification is older than a week, and records the result.
+func (b Backup) VerifyLatest(ctx context.Context) error {
+	dir := filepath.Join(b.Data, "backups")
+	marker := filepath.Join(dir, "verified")
+	if st, e := os.Stat(marker); e == nil && time.Since(st.ModTime()) < verifyEvery {
+		return nil
+	}
+	entries, e := os.ReadDir(dir)
+	if e != nil {
+		if errors.Is(e, os.ErrNotExist) {
+			return nil
+		}
+		return e
+	}
+	newest := ""
+	for _, entry := range entries {
+		n := entry.Name()
+		if strings.HasPrefix(n, "nelcota-") && strings.HasSuffix(n, ".nbk") && n > newest {
+			if _, e := os.Stat(filepath.Join(dir, n+".ok")); e == nil {
+				newest = n
+			}
+		}
+	}
+	if newest == "" {
+		return nil
+	}
+	run, cancel := context.WithTimeout(ctx, 15*time.Minute)
+	defer cancel()
+	if e := b.Verify(run, filepath.Join(dir, newest)); e != nil {
+		return fmt.Errorf("backup %s can't be restored: %w", newest, e)
+	}
+	return os.WriteFile(marker, []byte(newest+"\n"), 0600)
+}
+
+// RunVerification checks the newest backup weekly (looking every six hours,
+// so a panel that restarts often still verifies) and reports failures.
+func (b Backup) RunVerification(ctx context.Context, report func(error)) error {
+	tick := time.NewTicker(6 * time.Hour)
+	defer tick.Stop()
+	for {
+		if e := b.VerifyLatest(ctx); e != nil && ctx.Err() == nil {
+			report(e)
+		}
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-tick.C:
+		}
+	}
 }
 
 func installFile(ctx context.Context, root *os.Root, relative, source string, replace bool) error {

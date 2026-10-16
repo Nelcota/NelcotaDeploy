@@ -36,10 +36,17 @@ type Auth interface {
 	FinishTOTP(context.Context, string, string) error
 	Session(context.Context, string) (Principal, error)
 	Logout(context.Context, string) error
+	Factors(context.Context) (Factors, error)
+	RemovePasskey(context.Context, string) error
+	SetAvatar(context.Context, []byte) error
+	RemoveAvatar(context.Context) error
+	Avatar(context.Context, string) (Avatar, error)
 }
 type Users interface {
 	List(context.Context) ([]Principal, error)
 	Create(context.Context, UserInput) (Enrollment, error)
+	SetRole(context.Context, string, string) error
+	Remove(context.Context, string) error
 }
 type RegistrationInput struct {
 	EnrollmentToken string `json:"enrollment_token"`
@@ -329,7 +336,7 @@ func (a *AuthService) issueSessionTx(ctx context.Context, tx *sql.Tx, user strin
 }
 func (a *AuthService) Session(ctx context.Context, token string) (Principal, error) {
 	var p Principal
-	e := a.Core.DB.Read.QueryRowContext(ctx, "SELECT u.id,u.email,u.name,u.role,s.two_factor_at FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token_hash=? AND s.expires_at>?", security.Hash(token), time.Now().Unix()).Scan(&p.ID, &p.Email, &p.Name, &p.Role, &p.TwoFactorAt)
+	e := a.Core.DB.Read.QueryRowContext(ctx, "SELECT u.id,u.email,u.name,u.role,s.two_factor_at,COALESCE(a.updated_at,0) FROM sessions s JOIN users u ON u.id=s.user_id LEFT JOIN avatars a ON a.user_id=u.id WHERE s.token_hash=? AND s.expires_at>?", security.Hash(token), time.Now().Unix()).Scan(&p.ID, &p.Email, &p.Name, &p.Role, &p.TwoFactorAt, &p.AvatarAt)
 	if e != nil {
 		return p, fail(Unauthenticated, "Invalid session")
 	}
@@ -439,7 +446,7 @@ func (a *AuthService) List(ctx context.Context) ([]Principal, error) {
 	r, e := a.Core.DB.Queries.ListUsers(ctx)
 	out := make([]Principal, 0, len(r))
 	for _, u := range r {
-		out = append(out, Principal{ID: u.ID, Email: u.Email, Name: u.Name, Role: u.Role})
+		out = append(out, Principal{ID: u.ID, Email: u.Email, Name: u.Name, Role: u.Role, AvatarAt: u.AvatarAt})
 	}
 	return out, dbError(e)
 }

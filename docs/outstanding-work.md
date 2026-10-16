@@ -15,12 +15,13 @@ Commands, formats, configuration, and boundaries are covered in [operations](bac
 - Install, update/rollback, and reboot disposable Debian/Ubuntu VPS instances with real systemd, IPv4/IPv6 firewall, WireGuard, cgroups, and SSH. Installer syntax and helper logic were tested locally; the workstation was not subjected to root installation.
 - Configure the production domain and signing identity, publish official signed releases, and distribute the public key. Source is public at [Nelcota/NelcotaDeploy](https://github.com/Nelcota/NelcotaDeploy); MIT licensing is selected. Local staging binaries have not been published as official releases.
 - Configure a real GitHub App, public webhook, and production S3 credentials. GitHub API tests use simulated transport. S3 tests include real local TLS, redirect rejection, and an official SigV4 vector. Go signature verification was checked against official Minisign output on Debian.
-- Validate passkeys on real browsers/devices; tests use a virtual ECDSA authenticator.
+- Validate passkeys on real browsers/devices; backend tests use a virtual ECDSA authenticator and browser tests use Chromium's CDP virtual authenticator.
+- Review the web interface against a VPS panel with real agents: live metrics and logs over WAN latency, the GitHub App manifest round trip (the callback currently returns JSON with the installation link), and Safari/Firefox. Browser tests ran only on Chromium against development mode.
 - Prove all performance targets on representative VPS infrastructure with Go/Node builds, long load, streaming, crashes, full disks, and reboots. Local Docker/BuildKit/Caddy tests passed under traffic. Local memory measurements are documented; they do not establish VPS acceptance.
 - Exercise full recovery on a new VPS, including restoring WireGuard with the protected backup key and adjusting domains, addresses, and file owners.
 
 ## Later phases
 
-Previews, external notifications, scale-to-zero, Trivy, and Litestream remain in phase 2. PGO stays automatic without an artificial profile; collect representative production data before committing `default.pgo`. The internal five-year CA needs trust migration/renewal before expiration. Automatic rotation covers three-month service certificates.
+Previews, scale-to-zero, Trivy, and Litestream remain in phase 2. External notifications (webhooks and email) are implemented and tested against local servers; delivery to real Slack, Discord, and SMTP providers, SSH installation on a real VPS, and the release `latest` pointer on a real mirror still need acceptance. PGO stays automatic without an artificial profile; collect representative production data before committing `default.pgo`. The internal five-year CA needs trust migration/renewal before expiration. Automatic rotation covers three-month service certificates.
 
 The recorded govulncheck v1.9.0 scan found no vulnerabilities in called symbols or imported packages. One required-module warning remains for unimported OpenPGP (GO-2026-5932). Keep scanning in CI and inspect distributed daemon versions separately.

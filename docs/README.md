@@ -1,19 +1,20 @@
 # NelcotaDeploy documentation
 
-The backend is implemented and locally tested. The web interface and complete VPS acceptance testing remain outstanding. Start with the [project README](../README.md) for an overview.
+The backend and web interface are implemented and locally tested. Complete VPS acceptance testing remains outstanding. Start with the [project README](../README.md) for an overview.
 
 ## Reading paths
 
 | Goal | Document |
 | --- | --- |
 | Understand architecture and product goals | [System plan](system-plan.md) |
-| Check implemented features and validation | [Backend report](backend-report.md) |
+| Check implemented features and validation | [Backend report](backend-report.md) · [Frontend report](frontend-report.md) |
 | Identify external acceptance work | [Outstanding work](outstanding-work.md) |
-| Build the interface or integrate APIs | [Frontend contract](frontend-contract.md) |
+| Build the interface or integrate APIs | [Frontend contract](frontend-contract.md) · [Backend changes for the interface](backend-changes.md) |
 | Test installation and operations on two servers | [VPS acceptance guide](vps-testing.md) |
 | Operate backups, restores, updates, and recovery | [Operations guide](backend-operations.md) |
 | Understand local laboratory packages | [Staging releases](staging-releases.md) |
-| Review decisions and backend milestones | [Decisions](decisions.md) · [Progress](backend-progress.md) |
+| Review decisions and milestones | [Decisions](decisions.md) · [Backend progress](backend-progress.md) · [Frontend progress](frontend-progress.md) |
+| Run checks, workflows, releases, and automated VPS acceptance | [Development and release automation](development.md) |
 | Contribute or report a vulnerability | [Contributing](../CONTRIBUTING.md) · [Security](../SECURITY.md) |
 
 ## Interpreting these documents
