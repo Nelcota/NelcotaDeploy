@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Relatar uma vulnerabilidade em privado
+    url: https://github.com/Nelcota/nelcota-deploy/security/advisories/new
+    about: Use este canal para problemas de segurança.
+  - name: Consultar a documentação
+    url: https://github.com/Nelcota/nelcota-deploy/tree/main/docs
+    about: APIs, operação, instalação e estado do projeto.

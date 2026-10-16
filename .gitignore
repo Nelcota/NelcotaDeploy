@@ -11,3 +11,10 @@
 coverage.out
 bench.txt
 /dist/
+.env
+.env.*
+!.env.example
+*.log
+.DS_Store
+.idea/
+.vscode/
