@@ -1,6 +1,7 @@
 package pages
 
 import (
+	"context"
 	"net/url"
 	"strconv"
 	"strings"
@@ -305,8 +306,19 @@ templ PageHeader(title, description string) {
 // Connection shows live-update state driven by the $_conn signal.
 templ Connection() {
 	<span class="conn" data-state="connecting" data-attr:data-state="$_conn" role="status">
-		<span data-text={ "$_conn === 'live' ? " + ui.JS(i18n.T(ctx, "Connected")) + " : $_conn === 'reconnecting' ? " + ui.JS(i18n.T(ctx, "Reconnecting…")) + " : $_conn === 'offline' ? " + ui.JS(i18n.T(ctx, "Disconnected")) + " : " + ui.JS(i18n.T(ctx, "Connecting…")) }>{ i18n.T(ctx, "Connecting…") }</span>
+		<span data-text={ connText(ctx) }>{ i18n.T(ctx, "Connecting…") }</span>
 	</span>
+}
+
+// connText is the Datastar expression naming the connection state. Every
+// literal is a JSON string from ui.JS, so translations can't break out of it.
+func connText(ctx context.Context) string {
+	states := [][2]string{{"live", "Connected"}, {"reconnecting", "Reconnecting…"}, {"offline", "Disconnected"}}
+	expr := ui.JS(i18n.T(ctx, "Connecting…"))
+	for i := len(states) - 1; i >= 0; i-- {
+		expr = "$_conn === " + ui.JS(states[i][0]) + " ? " + ui.JS(i18n.T(ctx, states[i][1])) + " : " + expr
+	}
+	return expr
 }
 
 // LiveStream opens a Datastar stream and tracks its connection state.

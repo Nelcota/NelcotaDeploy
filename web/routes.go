@@ -237,9 +237,13 @@ func isReauth(err error) bool {
 	return errors.As(err, &typed) && typed.Kind == service.Forbidden && strings.Contains(strings.ToLower(typed.Message), "reauthentication")
 }
 
-// safeNext keeps post-login navigation on this origin.
+// safeNext keeps post-login navigation on this origin: a path that starts with
+// one slash, never "//" or "/\" (which browsers treat as another host).
 func safeNext(next string) string {
-	if next == "" || !strings.HasPrefix(next, "/") || strings.HasPrefix(next, "//") || strings.ContainsAny(next, "\\\r\n") {
+	if len(next) == 0 || next[0] != '/' || (len(next) > 1 && (next[1] == '/' || next[1] == '\\')) || strings.ContainsAny(next, "\\\r\n") {
+		return "/"
+	}
+	if u, err := url.Parse(next); err != nil || u.Scheme != "" || u.Host != "" {
 		return "/"
 	}
 	return next

@@ -206,8 +206,9 @@ func buildMail(m emailTarget, subject, body string, now time.Time) []byte {
 	fmt.Fprintf(&b, "Message-ID: %s\r\n", messageID(domain))
 	b.WriteString("MIME-Version: 1.0\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Transfer-Encoding: 8bit\r\nAuto-Submitted: auto-generated\r\n\r\n")
 	for line := range strings.Lines(body) {
-		line = strings.TrimRight(line, "\r\n")
-		// Dot-stuffing is done by net/smtp; normalize line endings only.
+		// Dot-stuffing is done by net/smtp. Bare carriage returns are dropped so
+		// a value can't fake an SMTP line ending.
+		line = strings.ReplaceAll(strings.TrimRight(line, "\r\n"), "\r", "")
 		b.WriteString(line + "\r\n")
 	}
 	return b.Bytes()

@@ -141,7 +141,8 @@ func commitFieldHint(c AppContext) string {
 // commit" dialog. Err explains why the list is unavailable; the SHA field
 // still works then.
 templ CommitList(commits []service.Commit, err string) {
-	<div id="deploy-commit-list" class="grid gap-1.5">
+	// The list loads after the dialog opens; a SHA typed meanwhile still wins.
+	<div id="deploy-commit-list" class="grid gap-1.5" data-init="el.closest('form').querySelector('#deploy-sha').value && el.querySelectorAll('input[name=sha]').forEach(r => r.checked = false)">
 		if err != "" {
 			<p class="text-sm text-muted-foreground">{ i18n.T(ctx, "Recent commits couldn't be loaded. Enter the SHA below instead.") } { i18n.T(ctx, err) }</p>
 		} else if len(commits) == 0 {

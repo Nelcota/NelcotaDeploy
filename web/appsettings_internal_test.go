@@ -47,3 +47,19 @@ func TestAppInputKeepsUneditedFields(t *testing.T) {
 		}
 	}
 }
+
+func TestSafeNextStaysOnThisOrigin(t *testing.T) {
+	for in, want := range map[string]string{
+		"/apps/x?tab=logs":     "/apps/x?tab=logs",
+		"":                     "/",
+		"apps":                 "/",
+		"//evil.example":       "/",
+		"/\\evil.example":      "/",
+		"https://evil.example": "/",
+		"/a\r\nLocation: x":    "/",
+	} {
+		if got := safeNext(in); got != want {
+			t.Errorf("safeNext(%q) = %q, want %q", in, got, want)
+		}
+	}
+}

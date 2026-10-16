@@ -359,3 +359,12 @@ func mustPort(t *testing.T, p string) int {
 	}
 	return n
 }
+
+func TestMailBodyDropsBareCarriageReturns(t *testing.T) {
+	m := emailTarget{From: "panel@example.com", To: []string{"ops@example.com"}}
+	got := string(buildMail(m, "s", "a\r.\rb\r\nc", time.Unix(0, 0)))
+	body := got[strings.Index(got, "\r\n\r\n")+4:]
+	if body != "a.b\r\nc\r\n" {
+		t.Fatalf("%q", body)
+	}
+}
