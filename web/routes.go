@@ -239,9 +239,16 @@ func isReauth(err error) bool {
 
 // safeNext keeps post-login navigation on this origin: a path that starts with
 // one slash, never "//" or "/\" (which browsers treat as another host).
+// Browsers drop tabs and newlines from URLs, so "/\t/host" would become
+// "//host"; any control character, space, or backslash is refused.
 func safeNext(next string) string {
-	if len(next) == 0 || next[0] != '/' || (len(next) > 1 && (next[1] == '/' || next[1] == '\\')) || strings.ContainsAny(next, "\\\r\n") {
+	if len(next) == 0 || next[0] != '/' || (len(next) > 1 && next[1] == '/') {
 		return "/"
+	}
+	for _, c := range next {
+		if c <= ' ' || c == 0x7f || c == '\\' {
+			return "/"
+		}
 	}
 	if u, err := url.Parse(next); err != nil || u.Scheme != "" || u.Host != "" {
 		return "/"

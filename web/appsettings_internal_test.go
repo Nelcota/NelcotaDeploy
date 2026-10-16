@@ -57,6 +57,9 @@ func TestSafeNextStaysOnThisOrigin(t *testing.T) {
 		"/\\evil.example":      "/",
 		"https://evil.example": "/",
 		"/a\r\nLocation: x":    "/",
+		"/\t/evil.example":     "/",
+		"/\n/evil.example":     "/",
+		"/ /evil.example":      "/",
 	} {
 		if got := safeNext(in); got != want {
 			t.Errorf("safeNext(%q) = %q, want %q", in, got, want)
