@@ -1,0 +1,40 @@
+name: Relatar um bug
+description: Descreva um comportamento incorreto e como reproduzi-lo.
+title: "[Bug]: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: "Para vulnerabilidades, use o relato privado indicado em SECURITY.md. Remova segredos e dados reais antes de enviar logs."
+  - type: input
+    id: version
+    attributes:
+      label: Commit ou versão
+      placeholder: "SHA do commit ou saída de nelcota-panel version"
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Ambiente
+      description: "Distribuição Linux, arquitetura, Go, Docker, BuildKit e Caddy relevantes ao problema."
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Passos para reproduzir
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Resultado esperado e resultado observado
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs e informações adicionais
+      description: "Inclua apenas dados que podem ser publicados."
+      render: text
