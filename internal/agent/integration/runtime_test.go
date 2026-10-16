@@ -9,6 +9,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/netip"
 	"os"
 	"path/filepath"
 	"strings"
@@ -20,8 +21,8 @@ import (
 	agentv1 "github.com/Nelcota/NelcotaDeploy/internal/gen/agent/v1"
 	"github.com/Nelcota/NelcotaDeploy/internal/security"
 	"github.com/containerd/errdefs"
-	legacycontainer "github.com/docker/docker/api/types/container"
-	"github.com/docker/go-connections/nat"
+	"github.com/moby/moby/api/types/container"
+	"github.com/moby/moby/api/types/network"
 	"github.com/moby/moby/client"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
@@ -51,14 +52,14 @@ func TestDockerBuildKitCaddy(t *testing.T) {
 	}
 	adminAddr, proxyAddr := free(), free()
 	config, _ := json.Marshal(map[string]any{"admin": map[string]any{"listen": adminAddr}, "apps": map[string]any{"http": map[string]any{"servers": map[string]any{"nelcota": map[string]any{"listen": []string{proxyAddr}, "routes": []any{}, "automatic_https": map[string]any{"disable": true}}}}}})
-	caddy, e := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{ContainerRequest: testcontainers.ContainerRequest{Image: "caddy:2.10.2", Files: []testcontainers.ContainerFile{{Reader: bytes.NewReader(config), ContainerFilePath: "/etc/caddy/caddy.json", FileMode: 0644}}, Cmd: []string{"caddy", "run", "--config", "/etc/caddy/caddy.json"}, HostConfigModifier: func(h *legacycontainer.HostConfig) { h.NetworkMode = "host" }, WaitingFor: wait.ForLog("serving initial configuration")}, Started: true})
+	caddy, e := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{ContainerRequest: testcontainers.ContainerRequest{Image: "caddy:2.10.2", Files: []testcontainers.ContainerFile{{Reader: bytes.NewReader(config), ContainerFilePath: "/etc/caddy/caddy.json", FileMode: 0644}}, Cmd: []string{"caddy", "run", "--config", "/etc/caddy/caddy.json"}, HostConfigModifier: func(h *container.HostConfig) { h.NetworkMode = "host" }, WaitingFor: wait.ForLog("serving initial configuration")}, Started: true})
 	if e != nil {
 		t.Fatal(e)
 	}
 	defer testcontainers.TerminateContainer(caddy)
-	builder, e := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{ContainerRequest: testcontainers.ContainerRequest{Image: "moby/buildkit:v0.34.0", ExposedPorts: []string{"1234/tcp"}, Privileged: true, Cmd: []string{"--addr", "tcp://0.0.0.0:1234"}, HostConfigModifier: func(h *legacycontainer.HostConfig) {
+	builder, e := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{ContainerRequest: testcontainers.ContainerRequest{Image: "moby/buildkit:v0.34.0", ExposedPorts: []string{"1234/tcp"}, Privileged: true, Cmd: []string{"--addr", "tcp://0.0.0.0:1234"}, HostConfigModifier: func(h *container.HostConfig) {
 		h.Privileged = true
-		h.PortBindings = nat.PortMap{nat.Port("1234/tcp"): []nat.PortBinding{{HostIP: "127.0.0.1"}}}
+		h.PortBindings = network.PortMap{network.MustParsePort("1234/tcp"): []network.PortBinding{{HostIP: netip.MustParseAddr("127.0.0.1")}}}
 	}, WaitingFor: wait.ForListeningPort("1234/tcp")}, Started: true})
 	if e != nil {
 		t.Fatal(e)
