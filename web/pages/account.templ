@@ -14,79 +14,75 @@ type settingsItem struct {
 }
 
 var settingsItems = []settingsItem{
-	{"account", "/settings", "fingerprint", "Account", false},
+	{"account", "/settings", "user", "Account", false},
 	{"users", "/settings/users", "users", "Team", true},
-	{"github", "/settings/github", "plug", "Connections", true},
+	{"github", "/settings/github", "link", "Connections", true},
 	{"audit", "/settings/audit", "history", "Activity", true},
 	{"platform", "/settings/platform", "circle-arrow-up", "System", true},
 }
 
-// SettingsLayout renders the settings sub-navigation around a section.
+func settingsTabs(s Shell, active string) []ui.Tab {
+	var tabs []ui.Tab
+	for _, item := range settingsItems {
+		if !item.Admin || s.Admin() {
+			tabs = append(tabs, ui.Tab{Href: item.Href, Icon: item.Icon, Label: item.Label, Current: item.Key == active})
+		}
+	}
+	return tabs
+}
+
+// SettingsLayout renders the settings tabs above a section. The active tab
+// names the section, so its title is only announced to screen readers.
 templ SettingsLayout(s Shell, active, title, description string) {
 	@App(s) {
 		@PageHeader("Settings", "") {
 		}
-		<div class="grid gap-6 md:grid-cols-[12rem_minmax(0,1fr)]">
-			<nav aria-label={ i18n.T(ctx, "Settings") }>
-				<ul class="flex flex-wrap gap-1 md:flex-col md:flex-nowrap">
-					for _, item := range settingsItems {
-						if !item.Admin || s.Admin() {
-							<li>
-								<a
-									href={ templ.SafeURL(item.Href) }
-									class="nav-link whitespace-nowrap"
-									if item.Key == active {
-										aria-current="page"
-									}
-								>
-									@ui.Icon(item.Icon, "")
-									{ i18n.T(ctx, item.Label) }
-								</a>
-							</li>
-						}
-					}
-				</ul>
-			</nav>
-			<div class="grid min-w-0 content-start gap-6">
-				<div>
-					<h2 class="text-lg font-semibold">{ i18n.T(ctx, title) }</h2>
-					if description != "" {
-						<p class="muted">{ i18n.T(ctx, description) }</p>
-					}
-				</div>
-				{ children... }
-			</div>
+		@ui.TabNav("Settings", settingsTabs(s, active), "-mt-4 mb-6")
+		<h2 class="sr-only">{ i18n.T(ctx, title) }</h2>
+		<div class="grid min-w-0 content-start gap-6">
+			if description != "" {
+				<p class="muted">{ i18n.T(ctx, description) }</p>
+			}
+			{ children... }
 		</div>
 	}
 }
 
-// ProfilePhoto shows the signed-in person's photo with upload and remove
-// controls. The browser shrinks the chosen image before sending it (app.js).
+// ProfilePhoto is the profile row: who is signed in, with photo upload and
+// remove controls. The browser shrinks the chosen image before sending it (app.js).
 templ ProfilePhoto(u service.Principal) {
-	<div id="profile-photo" class="flex flex-wrap items-center gap-4">
-		@Avatar(u, "size-16 text-xl")
-		<form
-			id="avatar-form"
-			class="grid gap-1"
-			enctype="multipart/form-data"
-			data-on:submit={ ui.PostForm("/ui/account/avatar") }
-		>
-			<input id="avatar-file" class="sr-only" type="file" name="photo" tabindex="-1" aria-hidden="true" accept="image/jpeg,image/png,image/webp,image/gif" data-avatar-input/>
-			<span class="flex flex-wrap gap-2">
-				<button type="button" class="btn" data-variant="outline" data-size="sm" data-on:click="document.getElementById('avatar-file').click()">
-					@ui.Icon("camera", "")
+	<div id="profile-photo" class="setting-row">
+		<div class="setting-head">
+			<div class="flex min-w-0 items-center gap-4">
+				@Avatar(u, "size-14 text-xl")
+				<div class="setting-label">
+					<h3 class="truncate">{ u.Name }</h3>
+					<p class="break-all">{ u.Email } · { i18n.T(ctx, RoleLabel(u.Role)) }</p>
+				</div>
+			</div>
+			<form
+				id="avatar-form"
+				class="grid gap-1 sm:justify-items-end"
+				enctype="multipart/form-data"
+				data-on:submit={ ui.PostForm("/ui/account/avatar") }
+			>
+				<input id="avatar-file" class="sr-only" type="file" name="photo" tabindex="-1" aria-hidden="true" accept="image/jpeg,image/png,image/webp,image/gif" data-avatar-input/>
+				<span class="flex flex-wrap gap-2">
 					if u.AvatarAt > 0 {
-						{ i18n.T(ctx, "Change photo") }
-					} else {
-						{ i18n.T(ctx, "Add photo") }
+						<button type="button" class="btn" data-variant="ghost" data-size="sm" data-on:click={ ui.Post("/ui/account/avatar/remove") }>{ i18n.T(ctx, "Remove photo") }</button>
 					}
-				</button>
-				if u.AvatarAt > 0 {
-					<button type="button" class="btn" data-variant="ghost" data-size="sm" data-on:click={ ui.Post("/ui/account/avatar/remove") }>{ i18n.T(ctx, "Remove photo") }</button>
-				}
-			</span>
-			<span class="text-xs text-muted-foreground">{ i18n.T(ctx, "JPEG, PNG, or WebP. It's cropped to a square.") }</span>
-		</form>
+					<button type="button" class="btn" data-variant="outline" data-size="sm" data-on:click="document.getElementById('avatar-file').click()">
+						@ui.Icon("camera", "")
+						if u.AvatarAt > 0 {
+							{ i18n.T(ctx, "Change photo") }
+						} else {
+							{ i18n.T(ctx, "Add photo") }
+						}
+					</button>
+				</span>
+				<span class="text-xs text-muted-foreground">{ i18n.T(ctx, "JPEG, PNG, or WebP. It's cropped to a square.") }</span>
+			</form>
+		</div>
 	</div>
 }
 
@@ -100,84 +96,92 @@ type AccountView struct {
 
 templ Account(s Shell, v AccountView) {
 	@SettingsLayout(s, "account", "Account", "") {
-		@ui.Card("Profile", "") {
+		<div class="settings-list">
 			@ProfilePhoto(s.User)
-			<dl class="mt-5 grid gap-3 text-sm sm:grid-cols-3">
-				<div><dt class="text-muted-foreground">{ i18n.T(ctx, "Name") }</dt><dd class="font-medium">{ s.User.Name }</dd></div>
-				<div><dt class="text-muted-foreground">{ i18n.T(ctx, "Email") }</dt><dd class="font-medium break-all">{ s.User.Email }</dd></div>
-				<div><dt class="text-muted-foreground">{ i18n.T(ctx, "Role") }</dt><dd class="font-medium">{ i18n.T(ctx, RoleLabel(s.User.Role)) }</dd></div>
-			</dl>
-			<div class="mt-4">
-				<button type="button" class="btn" data-variant="outline" data-size="sm" data-logout>
-					@ui.Icon("log-out", "")
-					{ i18n.T(ctx, "Sign out") }
-				</button>
+		</div>
+		<section id="preferences" class="settings-group" aria-labelledby="preferences-title">
+			<h3 id="preferences-title">{ i18n.T(ctx, "Preferences") }</h3>
+			<div class="settings-list">
+				<div class="setting-row">
+					<div class="setting-head">
+						<div class="setting-label">
+							<span id="language-label">{ i18n.T(ctx, "Language") }</span>
+							<p>{ i18n.T(ctx, "Saved in this browser.") }</p>
+						</div>
+						@LanguageChoice(s.Path)
+					</div>
+				</div>
+				<div class="setting-row">
+					<div class="setting-head">
+						<div class="setting-label">
+							<span aria-hidden="true">{ i18n.T(ctx, "Theme") }</span>
+							<p>{ i18n.T(ctx, "Light, dark, or the same as your device.") }</p>
+						</div>
+						@ThemeSelect()
+					</div>
+				</div>
 			</div>
-		}
-		<section id="preferences" class="card">
-			<header>
-				<h2>{ i18n.T(ctx, "Preferences") }</h2>
-				<p>{ i18n.T(ctx, "Saved in this browser.") }</p>
-			</header>
-			<section class="grid gap-4">
-				<div class="flex flex-wrap items-center justify-between gap-3">
-					<span id="language-label" class="text-sm font-medium">{ i18n.T(ctx, "Language") }</span>
-					@LanguageChoice(s.Path)
-				</div>
-				<div class="flex flex-wrap items-center justify-between gap-3">
-					<span class="text-sm font-medium" aria-hidden="true">{ i18n.T(ctx, "Theme") }</span>
-					@ThemeSelect()
-				</div>
-			</section>
 		</section>
-		if v.Err != "" {
-			@ui.ErrorState("Sign-in methods unavailable", v.Err)
-		} else {
-			@Passkeys(v.Factors)
-			@TwoFactor(v.Factors)
-		}
+		<section class="settings-group" aria-labelledby="security-title">
+			<h3 id="security-title">{ i18n.T(ctx, "Security") }</h3>
+			<div class="settings-list">
+				if v.Err != "" {
+					<div class="setting-row">
+						@ui.ErrorState("Sign-in methods unavailable", v.Err)
+					</div>
+				} else {
+					@Passkeys(v.Factors)
+					@TwoFactor(v.Factors)
+				}
+			</div>
+		</section>
 		@TokensCard(s, v.Tokens, v.TokErr)
+		<div class="flex justify-end">
+			<button type="button" class="btn" data-variant="outline" data-size="sm" data-logout>
+				@ui.Icon("log-out", "")
+				{ i18n.T(ctx, "Sign out") }
+			</button>
+		</div>
 	}
 }
 
 templ Passkeys(f service.Factors) {
-	<section id="passkeys" class="card">
-		<header>
-			<h2>{ i18n.T(ctx, "Passkeys") }</h2>
-			<p>{ i18n.T(ctx, "Add a second passkey on another device in case you lose this one.") }</p>
-			<div class="card-action">
-				<button type="button" class="btn" data-variant="outline" data-size="sm" data-add-passkey>
-					@ui.Icon("plus", "")
-					{ i18n.T(ctx, "Add passkey") }
-				</button>
+	<section id="passkeys" class="setting-row">
+		<div class="setting-head">
+			<div class="setting-label">
+				<h4>{ i18n.T(ctx, "Passkeys") }</h4>
+				<p>{ i18n.T(ctx, "Add a second passkey on another device in case you lose this one.") }</p>
+				if len(f.Passkeys) == 0 {
+					<p>{ i18n.T(ctx, "No passkeys are registered.") }</p>
+				}
 			</div>
-		</header>
-		<section>
-			if len(f.Passkeys) == 0 {
-				<p class="muted">{ i18n.T(ctx, "No passkeys are registered.") }</p>
-			} else {
-				<ul class="divide-y rounded-lg border">
-					for i, p := range f.Passkeys {
-						<li class="flex flex-wrap items-center justify-between gap-3 p-3">
-							<div class="flex min-w-0 items-center gap-3">
-								@ui.Icon("key-round", "size-4 shrink-0 text-muted-foreground")
-								<div class="min-w-0">
-									<p class="text-sm font-medium">{ i18n.Tf(ctx, "Passkey %d", i+1) }</p>
-									<p class="truncate text-xs text-muted-foreground"><span class="mono" title={ p.ID }>{ shortID(p.ID) }</span> · { i18n.Tf(ctx, "Last used %s", i18n.T(ctx, ui.Ago(p.LastUsed))) }</p>
-								</div>
+			<button type="button" class="btn" data-variant="outline" data-size="sm" data-add-passkey>
+				@ui.Icon("plus", "")
+				{ i18n.T(ctx, "Add passkey") }
+			</button>
+		</div>
+		if len(f.Passkeys) > 0 {
+			<ul class="divide-y rounded-xl border">
+				for i, p := range f.Passkeys {
+					<li class="flex flex-wrap items-center justify-between gap-3 p-3">
+						<div class="flex min-w-0 items-center gap-3">
+							@ui.Icon("key-round", "size-4 shrink-0 text-muted-foreground")
+							<div class="min-w-0">
+								<p class="text-sm font-medium">{ i18n.Tf(ctx, "Passkey %d", i+1) }</p>
+								<p class="truncate text-xs text-muted-foreground"><span class="mono" title={ p.ID }>{ shortID(p.ID) }</span> · { i18n.Tf(ctx, "Last used %s", i18n.T(ctx, ui.Ago(p.LastUsed))) }</p>
 							</div>
-							if len(f.Passkeys) > 1 {
-								@ui.Button("ghost", "sm", templ.Attributes{"data-on:click": ui.Open("remove-passkey-" + strconv.Itoa(i)), "aria-label": i18n.Tf(ctx, "Remove passkey %d", i+1)}) {
-									@ui.Icon("trash-2", "")
-									{ i18n.T(ctx, "Remove") }
-								}
-								@ui.ConfirmDialog("remove-passkey-"+strconv.Itoa(i), "Remove this passkey?", "You won't be able to sign in with it anymore.", "Remove passkey", ui.Post("/ui/account/passkeys/"+p.ID+"/delete"), true)
+						</div>
+						if len(f.Passkeys) > 1 {
+							@ui.Button("ghost", "sm", templ.Attributes{"data-on:click": ui.Open("remove-passkey-" + strconv.Itoa(i)), "aria-label": i18n.Tf(ctx, "Remove passkey %d", i+1)}) {
+								@ui.Icon("trash-2", "")
+								{ i18n.T(ctx, "Remove") }
 							}
-						</li>
-					}
-				</ul>
-			}
-		</section>
+							@ui.ConfirmDialog("remove-passkey-"+strconv.Itoa(i), "Remove this passkey?", "You won't be able to sign in with it anymore.", "Remove passkey", ui.Post("/ui/account/passkeys/"+p.ID+"/delete"), true)
+						}
+					</li>
+				}
+			</ul>
+		}
 	</section>
 }
 
@@ -188,28 +192,34 @@ func shortID(id string) string {
 	return id
 }
 
+// TwoFactor shows whether two-factor authentication is on next to its label,
+// with its actions in the control slot. Setting it up fills #totp-panel.
 templ TwoFactor(f service.Factors) {
-	<section id="two-factor" class="card">
-		<header>
-			<h2>{ i18n.T(ctx, "Two-factor authentication") }</h2>
-			<p>{ i18n.T(ctx, "Require an authenticator code after your passkey.") }</p>
-			<div class="card-action">
+	<section id="two-factor" class="setting-row">
+		<div class="setting-head">
+			<div class="setting-label">
+				<h4 class="flex flex-wrap items-center gap-2">
+					{ i18n.T(ctx, "Two-factor authentication") }
+					if f.TOTP {
+						@ui.Pill("success", "On", nil)
+					} else {
+						@ui.Pill("muted", "Off", nil)
+					}
+				</h4>
+				<p>{ i18n.T(ctx, "Require an authenticator code after your passkey.") }</p>
 				if f.TOTP {
-					<span class="status" data-tone="success">{ i18n.T(ctx, "On") }</span>
+					<p>
+						{ i18n.N(ctx, f.RecoveryRemaining, "%d unused recovery code.", "%d unused recovery codes.") }
+						if f.RecoveryRemaining == 0 {
+							<span class="text-destructive">{ i18n.T(ctx, "Generate codes so you can still sign in if you lose your authenticator.") }</span>
+						}
+					</p>
 				} else {
-					<span class="status" data-tone="muted">{ i18n.T(ctx, "Off") }</span>
+					<p>{ i18n.T(ctx, "Turning this on signs you out everywhere and revokes your API tokens.") }</p>
 				}
 			</div>
-		</header>
-		<section id="totp-panel" class="grid gap-4">
-			if f.TOTP {
-				<p class="text-sm">
-					{ i18n.Tf(ctx, "%d unused recovery codes.", f.RecoveryRemaining) }
-					if f.RecoveryRemaining == 0 {
-						<span class="text-destructive">{ i18n.T(ctx, "Generate codes so you can still sign in if you lose your authenticator.") }</span>
-					}
-				</p>
-				<div class="flex flex-wrap gap-2">
+			<div class="flex flex-wrap gap-2">
+				if f.TOTP {
 					@ui.Button("outline", "sm", templ.Attributes{"data-on:click": ui.Open("confirm-recovery")}) {
 						@ui.Icon("refresh-cw", "")
 						{ i18n.T(ctx, "Generate recovery codes") }
@@ -217,19 +227,17 @@ templ TwoFactor(f service.Factors) {
 					@ui.Button("destructive", "sm", templ.Attributes{"data-on:click": ui.Open("confirm-totp-reset")}) {
 						{ i18n.T(ctx, "Turn off two-factor") }
 					}
-				</div>
-				@ui.ConfirmDialog("confirm-recovery", "Generate new recovery codes?", "Your current codes stop working. The new ones are shown once.", "Generate codes", ui.Post("/ui/account/recovery-codes"), false)
-				@ui.ConfirmDialog("confirm-totp-reset", "Turn off two-factor authentication?", "Your authenticator and recovery codes are removed and you are signed out everywhere.", "Turn off", ui.Post("/ui/account/totp/reset"), true)
-			} else {
-				<p class="muted">{ i18n.T(ctx, "Turning this on signs you out everywhere and revokes your API tokens.") }</p>
-				<div>
-					@ui.Button("outline", "sm", templ.Attributes{"data-on:click": ui.Post("/ui/account/totp/begin")}) {
+					@ui.ConfirmDialog("confirm-recovery", "Generate new recovery codes?", "Your current codes stop working. The new ones are shown once.", "Generate codes", ui.Post("/ui/account/recovery-codes"), false)
+					@ui.ConfirmDialog("confirm-totp-reset", "Turn off two-factor authentication?", "Your authenticator and recovery codes are removed and you are signed out everywhere.", "Turn off", ui.Post("/ui/account/totp/reset"), true)
+				} else {
+					@ui.Button("outline", "sm", templ.Attributes{"id": "totp-begin", "data-on:click": ui.Post("/ui/account/totp/begin")}) {
 						@ui.Icon("smartphone", "")
 						{ i18n.T(ctx, "Set up authenticator") }
 					}
-				</div>
-			}
-		</section>
+				}
+			</div>
+		</div>
+		<section id="totp-panel" class="grid gap-4 empty:hidden"></section>
 	</section>
 }
 
@@ -241,7 +249,7 @@ templ TOTPSetup(id, qr, secret string) {
 			<li>{ i18n.T(ctx, "Enter the 6-digit code it shows to confirm.") }</li>
 		</ol>
 		<div class="flex flex-wrap items-start gap-6">
-			<img src={ qr } width="180" height="180" alt={ i18n.T(ctx, "QR code for your authenticator app") } class="rounded-md border bg-white p-2"/>
+			<img src={ qr } width="180" height="180" alt={ i18n.T(ctx, "QR code for your authenticator app") } class="rounded-xl border bg-white p-2"/>
 			<div class="grid min-w-0 gap-2">
 				<p class="text-xs text-muted-foreground">{ i18n.T(ctx, "Setup key") }</p>
 				<p id="totp-secret" class="mono break-all select-all">{ secret }</p>
@@ -255,8 +263,10 @@ templ TOTPSetup(id, qr, secret string) {
 			@ui.Field("Authenticator code", "totp-confirm", "", "") {
 				<input id="totp-confirm" name="code" class="input tracking-widest" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" required/>
 			}
-			<div>
+			<div class="flex flex-wrap gap-2">
 				<button type="submit" class="btn">{ i18n.T(ctx, "Enable two-factor") }</button>
+				// Leaving setup reloads the page, which brings the setup button back.
+				<a class="btn" data-variant="ghost" href="/settings#two-factor">{ i18n.T(ctx, "Cancel") }</a>
 			</div>
 		</form>
 	</section>
@@ -268,7 +278,7 @@ templ RecoveryCodes(codes []string, text string) {
 		@ui.Notice("triangle-alert", "Save these codes now") {
 			<p>{ i18n.T(ctx, "They won't be shown again. Each code works once.") }</p>
 		}
-		<ol id="recovery-list" class="grid gap-1 rounded-lg border bg-muted/40 p-4 font-mono text-sm sm:grid-cols-2">
+		<ol id="recovery-list" class="grid gap-1 rounded-xl border bg-muted/40 p-4 font-mono text-sm sm:grid-cols-2">
 			for _, c := range codes {
 				<li>{ c }</li>
 			}

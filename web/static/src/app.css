@@ -32,56 +32,61 @@
   font-display: swap;
 }
 
-/* Visual language: a quiet frame, one large rounded content panel, pastel stat
-   tiles, and rounded rows. The brand green follows the mascot. Every pairing below meets WCAG AA for its text size. */
+/* Visual language: a quiet green-gray frame, one large rounded content panel,
+   pastel tiles, and rounded rows. The brand green follows the mascot and also
+   marks progress (current steps, meters, running builds); --info is kept for
+   informational notices. Two radii: 1.5rem for containers (cards, lists, rows,
+   surfaces, dialogs) and 0.75rem for controls and boxes inside them. Every text
+   pairing below meets WCAG AA for its size: foreground, muted foreground, and
+   link text are at least 5.2:1 on the frame, background, card, muted, and
+   accent colors in both themes. */
 :root {
   --radius: 1rem;
-  --frame: #e9ebf0;
+  --frame: #e8ece9;
   --background: #ffffff;
-  --foreground: #101114;
-  --card: #f4f5f8;
-  --card-foreground: #101114;
+  --foreground: #101412;
+  --card: #f3f6f4;
+  --card-foreground: #101412;
   --popover: #ffffff;
-  --popover-foreground: #101114;
+  --popover-foreground: #101412;
   --primary: #047857;
   --primary-foreground: #ffffff;
-  --secondary: #eceef3;
-  --secondary-foreground: #101114;
-  --muted: #eceef3;
-  --muted-foreground: #5b5f66;
-  --accent: #e4e7ef;
-  --accent-foreground: #101114;
+  --secondary: #eaeeeb;
+  --secondary-foreground: #101412;
+  --muted: #eaeeeb;
+  --muted-foreground: #575f5a;
+  --accent: #e1e8e3;
+  --accent-foreground: #101412;
   --destructive: oklch(0.5 0.2 27);
-  --border: rgb(15 23 42 / 0.09);
-  --input: rgb(15 23 42 / 0.14);
+  --border: rgb(16 32 24 / 0.09);
+  --input: rgb(16 32 24 / 0.15);
   --ring: #059669;
   --tile-1: #a7e3c4;
   --tile-2: #9fd8d6;
-  --tile-3: #a6d4e8;
+  --tile-3: #bfe3b0;
   --tile-fg: #0b0b12;
   --link: #065f46;
   --success: oklch(0.5 0.14 140);
   --warning: oklch(0.5 0.12 70);
   --info: oklch(0.48 0.16 255);
-  --chart-2: #0f766e;
   color-scheme: light;
 }
 .dark {
-  --frame: #0b0b0d;
-  --background: #151517;
-  --foreground: #f4f4f5;
-  --card: #1d1d20;
-  --card-foreground: #f4f4f5;
-  --popover: #1d1d20;
-  --popover-foreground: #f4f4f5;
+  --frame: #0a0c0b;
+  --background: #141715;
+  --foreground: #f3f5f4;
+  --card: #1b1f1d;
+  --card-foreground: #f3f5f4;
+  --popover: #1b1f1d;
+  --popover-foreground: #f3f5f4;
   --primary: #6ee7b7;
   --primary-foreground: #0b0b12;
-  --secondary: #26262a;
-  --secondary-foreground: #f4f4f5;
-  --muted: #26262a;
-  --muted-foreground: #a1a1aa;
-  --accent: #2c2c31;
-  --accent-foreground: #f4f4f5;
+  --secondary: #252a27;
+  --secondary-foreground: #f3f5f4;
+  --muted: #252a27;
+  --muted-foreground: #a2aba6;
+  --accent: #2b312e;
+  --accent-foreground: #f3f5f4;
   --destructive: oklch(0.76 0.16 22);
   --border: rgb(255 255 255 / 0.07);
   --input: rgb(255 255 255 / 0.12);
@@ -90,7 +95,6 @@
   --success: oklch(0.82 0.14 140);
   --warning: oklch(0.82 0.14 80);
   --info: oklch(0.78 0.11 260);
-  --chart-2: #5eead4;
   color-scheme: dark;
 }
 
@@ -108,8 +112,6 @@
 @layer base {
   html {
     -webkit-text-size-adjust: 100%;
-  }
-  html {
     font-family: var(--font-sans);
   }
   body {
@@ -137,19 +139,16 @@
     @apply sticky top-4 hidden h-[calc(100dvh-2rem)] flex-col items-center py-4 lg:flex;
   }
   .rail-link {
-    @apply flex flex-col items-center gap-1 rounded-xl text-xs text-foreground/70 hover:text-foreground;
+    @apply relative flex flex-col items-center gap-1 rounded-xl text-xs text-foreground/70 hover:text-foreground;
   }
   .rail-icon {
-    @apply grid size-11 place-items-center rounded-2xl transition-colors [&_svg]:size-5;
+    @apply relative grid size-11 place-items-center rounded-xl transition-colors [&_svg]:size-5;
   }
   .rail-link:hover .rail-icon {
     @apply bg-muted;
   }
   .rail-link[aria-current="page"] {
-    @apply text-foreground;
-  }
-  .rail-link[aria-current="page"] {
-    @apply font-medium;
+    @apply font-medium text-foreground;
   }
   .rail-link[aria-current="page"] .rail-icon {
     @apply bg-primary/20 text-link;
@@ -161,9 +160,6 @@
   .lang-button {
     @apply flex h-10 items-center gap-2 rounded-xl px-3 text-sm text-muted-foreground hover:bg-muted hover:text-foreground;
   }
-  .rail-link {
-    @apply relative;
-  }
   /* Shortcut hint, shown after a short hover or on keyboard focus. */
   .rail-link[data-shortcut]::after {
     content: attr(data-shortcut);
@@ -174,9 +170,6 @@
   }
   .rail-link[data-shortcut]:focus-visible::after {
     @apply opacity-100;
-  }
-  .rail-icon {
-    @apply relative;
   }
   .rail-alert {
     @apply absolute top-2 right-2 size-2.5 rounded-full bg-destructive ring-2 ring-frame;
@@ -221,8 +214,29 @@
   .segmented a {
     @apply flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground aria-[current=true]:bg-background aria-[current=true]:font-medium aria-[current=true]:text-foreground aria-[current=true]:shadow-sm;
   }
+  /* Underlined section tabs (ui.TabNav), shared by app pages and settings. On
+     narrow screens they scroll sideways; app.js marks the sides that have more
+     tabs and they fade out there. */
+  .tabs-row {
+    @apply flex items-end gap-4 border-b;
+  }
   .tabs-nav {
-    @apply overflow-x-auto overflow-y-hidden [scrollbar-width:none] [&::-webkit-scrollbar]:hidden;
+    @apply min-w-0 flex-1 overflow-x-auto overflow-y-hidden [scrollbar-width:none] [&::-webkit-scrollbar]:hidden;
+    --fade-start: 0px;
+    --fade-end: 0px;
+    mask-image: linear-gradient(to right, transparent, #000 var(--fade-start), #000 calc(100% - var(--fade-end)), transparent);
+  }
+  .tabs-nav[data-fade-start] {
+    --fade-start: 2rem;
+  }
+  .tabs-nav[data-fade-end] {
+    --fade-end: 2rem;
+  }
+  .tab-link {
+    @apply -mb-px inline-flex items-center gap-2 border-b-2 border-transparent px-3 py-2 text-sm font-medium whitespace-nowrap text-muted-foreground hover:text-foreground max-sm:px-2.5 max-sm:py-3 max-sm:[&_svg]:hidden;
+  }
+  .tab-link[aria-current="page"] {
+    @apply border-primary text-foreground;
   }
   .tabbar {
     @apply fixed inset-x-0 bottom-0 z-30 grid grid-cols-4 border-t bg-frame/95 px-2 pt-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] backdrop-blur lg:hidden;
@@ -264,16 +278,10 @@
   .tile[data-tone="3"] {
     @apply bg-[var(--tile-3)];
   }
-  .tile-value {
-    @apply text-3xl leading-none font-medium tracking-tight tabular-nums sm:text-4xl;
-  }
-  .tile-label {
-    @apply text-sm font-medium;
-  }
 
   /* Surfaces and lists */
   .surface {
-    @apply rounded-2xl bg-card;
+    @apply rounded-[1.5rem] bg-card;
   }
   .checkitem {
     @apply flex flex-wrap items-center gap-3 rounded-xl border border-border px-3 py-2.5 sm:flex-nowrap;
@@ -282,18 +290,26 @@
   .checkitem-text {
     @apply min-w-[min(100%,14rem)] flex-1;
   }
-  /* When the action wraps, it lines up with the text, not the check. */
+  /* When the action wraps, it lines up with the text, not the step number. */
   .checkitem > .checkitem-text + .btn {
     @apply max-sm:ms-9;
   }
-  .checkmark {
-    @apply grid size-6 shrink-0 place-items-center rounded-full border-2 border-border;
+  /* A commit to choose in the "Publish a commit" dialog. */
+  #deploy-commit-list {
+    @apply max-h-72 overflow-y-auto;
   }
-  .checkitem[data-done] .checkmark {
-    @apply border-success bg-success text-background;
+  .commit-choice {
+    @apply flex cursor-pointer items-start gap-3 rounded-xl border border-border px-3 py-2 text-sm has-[:checked]:border-primary has-[:checked]:bg-muted;
+  }
+  .commit-choice > input {
+    @apply mt-1 shrink-0 accent-primary;
+  }
+  /* A step's number: plain text on a tinted square, so it doesn't read as a checkbox. */
+  .step-number {
+    @apply grid size-6 shrink-0 place-items-center rounded-md bg-muted text-xs font-semibold text-muted-foreground tabular-nums;
   }
   .notice-row {
-    @apply flex flex-wrap items-center gap-3 rounded-2xl border border-l-4 bg-card px-4 py-3 sm:flex-nowrap;
+    @apply flex flex-wrap items-center gap-3 rounded-[1.5rem] border border-l-4 bg-card px-4 py-3 sm:flex-nowrap;
   }
   .notice-row[data-tone="danger"] {
     @apply border-l-destructive;
@@ -302,23 +318,25 @@
     @apply border-l-warning;
   }
 
-  .steps {
+  /* Step progress: deployment stages and the new-app wizard. States are done,
+     current, and failed. */
+  .stages {
     @apply flex flex-wrap gap-1.5;
   }
-  .step {
+  .stage {
     @apply inline-flex items-center gap-1.5 rounded-full border border-border px-2.5 py-1 text-xs text-muted-foreground;
   }
-  .step[data-state="done"] {
+  .stage[data-state="done"] {
     @apply border-success/40 text-foreground [&_svg]:text-success;
   }
-  .step[data-state="now"] {
-    @apply border-info/50 bg-info/10 font-medium text-foreground;
+  .stage[data-state="current"] {
+    @apply border-primary/50 bg-primary/10 font-medium text-foreground;
   }
-  .step[data-state="fail"] {
+  .stage[data-state="failed"] {
     @apply border-destructive/50 bg-destructive/10 font-medium text-destructive;
   }
   .failure {
-    @apply rounded-2xl border border-destructive/30 bg-destructive/[0.06];
+    @apply rounded-[1.5rem] border border-destructive/30 bg-destructive/[0.06];
   }
   .log-tail {
     @apply overflow-x-auto rounded-xl bg-[#0b0d10] p-3 font-mono text-xs leading-relaxed whitespace-pre text-[#d4d8dd];
@@ -335,8 +353,8 @@
   .release-dot[data-tone="danger"] {
     @apply bg-destructive;
   }
-  .release-dot[data-tone="info"] {
-    @apply bg-info;
+  .release-dot[data-tone="progress"] {
+    @apply bg-primary;
   }
   .domain-link {
     @apply inline-flex items-center gap-1.5 rounded-full border border-border px-3 py-1 text-sm hover:bg-muted;
@@ -357,13 +375,13 @@
     @apply grid gap-2.5;
   }
   .row {
-    @apply flex flex-col overflow-hidden rounded-2xl bg-card sm:flex-row;
+    @apply flex flex-col overflow-hidden rounded-[1.5rem] bg-card sm:flex-row;
   }
   .row-main {
     @apply flex min-w-0 flex-1 items-center gap-4 p-3;
   }
   .row-thumb {
-    @apply grid size-12 shrink-0 place-items-center rounded-xl bg-[var(--tile-1)] text-lg font-semibold text-tile-fg uppercase sm:size-16 sm:rounded-2xl sm:text-xl [&_svg]:size-5 sm:[&_svg]:size-6;
+    @apply grid size-12 shrink-0 place-items-center rounded-xl bg-[var(--tile-1)] text-lg font-semibold text-tile-fg uppercase sm:size-16 sm:text-xl [&_svg]:size-5 sm:[&_svg]:size-6;
   }
   .row-thumb[data-tone="2"] {
     @apply bg-[var(--tile-2)];
@@ -377,15 +395,6 @@
   .row-thumb[data-tone="logo"] {
     @apply bg-muted;
   }
-  .stage {
-    @apply inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs text-muted-foreground;
-  }
-  .stage[data-state="done"] {
-    @apply border-success/30 bg-success/10 text-foreground;
-  }
-  .stage[data-state="current"] {
-    @apply border-info/40 bg-info/10 text-foreground;
-  }
   .row-meta {
     @apply mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground [&_svg]:size-3.5;
   }
@@ -395,24 +404,6 @@
   .row-meta > span + span::before {
     content: "·";
     @apply -ms-2.5 me-1 text-muted-foreground/60 max-sm:hidden;
-  }
-  .row-bar {
-    @apply mt-3 h-1 overflow-hidden rounded-full bg-muted;
-  }
-  .row-bar > span {
-    @apply block h-full w-full rounded-full bg-muted-foreground/40;
-  }
-  .row-bar[data-tone="success"] > span {
-    @apply bg-success;
-  }
-  .row-bar[data-tone="danger"] > span {
-    @apply bg-destructive;
-  }
-  .row-bar[data-tone="warning"] > span {
-    @apply w-1/4 bg-warning;
-  }
-  .row-bar[data-tone="info"] > span {
-    @apply w-1/3 animate-[row-progress_1.4s_ease-in-out_infinite] bg-info;
   }
   .row-actions {
     @apply flex border-t sm:border-t-0 sm:border-l;
@@ -427,17 +418,11 @@
     @apply inline-flex items-center gap-1.5;
   }
   .mini-meter progress {
-    @apply h-1.5 w-14 appearance-none overflow-hidden rounded-full bg-muted [&::-moz-progress-bar]:bg-info [&::-webkit-progress-bar]:bg-muted [&::-webkit-progress-value]:bg-info;
+    @apply h-1.5 w-14 appearance-none overflow-hidden rounded-full bg-muted [&::-moz-progress-bar]:bg-primary [&::-webkit-progress-bar]:bg-muted [&::-webkit-progress-value]:bg-primary;
   }
 
   .skip-link {
     @apply sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-50 focus:rounded-md focus:bg-primary focus:px-3 focus:py-2 focus:text-primary-foreground;
-  }
-  .nav-link {
-    @apply flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground;
-  }
-  .nav-link[aria-current="page"] {
-    @apply bg-muted text-foreground;
   }
   .status {
     @apply inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-xs font-medium whitespace-nowrap;
@@ -455,6 +440,9 @@
   .status[data-tone="warning"] {
     @apply border-warning/30 bg-warning/10 text-warning;
   }
+  .status[data-tone="progress"] {
+    @apply border-primary/30 bg-primary/10 text-link;
+  }
   .status[data-tone="info"] {
     @apply border-info/30 bg-info/10 text-info;
   }
@@ -465,7 +453,7 @@
     @apply pointer-events-none fixed inset-x-0 bottom-0 z-50 flex flex-col items-center gap-2 p-4 sm:items-end;
   }
   .toast {
-    @apply pointer-events-auto flex w-full max-w-sm items-start gap-3 rounded-lg border bg-popover p-3 text-sm text-popover-foreground shadow-lg;
+    @apply pointer-events-auto flex w-full max-w-sm items-start gap-3 rounded-xl border bg-popover p-3 text-sm text-popover-foreground shadow-lg;
   }
   .toast[data-tone="danger"] {
     @apply border-destructive/40;
@@ -475,6 +463,9 @@
   }
   .toast[data-tone="success"] > svg {
     @apply text-success;
+  }
+  .toast[data-tone="info"] > svg {
+    @apply text-info;
   }
   .meter {
     @apply h-2 w-full appearance-none overflow-hidden rounded-full bg-muted;
@@ -503,8 +494,33 @@
   .muted {
     @apply text-sm text-muted-foreground;
   }
+  /* Settings: titled groups of rows, a label on the left and its control on the right. */
+  .settings-group {
+    @apply grid gap-2;
+  }
+  .settings-group > h3 {
+    @apply px-1 text-sm font-medium text-muted-foreground;
+  }
+  .settings-list {
+    @apply divide-y rounded-[1.5rem] bg-card;
+  }
+  .setting-row {
+    @apply grid gap-4 p-5 sm:px-6;
+  }
+  .setting-head {
+    @apply flex flex-wrap items-center justify-between gap-x-6 gap-y-3;
+  }
+  .setting-label {
+    @apply grid min-w-0 gap-0.5;
+  }
+  .setting-label > :first-child {
+    @apply text-sm font-medium;
+  }
+  .setting-label > p {
+    @apply text-sm text-muted-foreground;
+  }
   .log-view {
-    @apply h-[60vh] min-h-72 overflow-hidden rounded-lg border bg-[#0b0d10] p-2;
+    @apply h-[60vh] min-h-72 overflow-hidden rounded-xl border bg-[#0b0d10] p-2;
   }
   .chart {
     @apply w-full overflow-hidden;
@@ -526,22 +542,68 @@
   .conn[data-state="connecting"]::before {
     @apply bg-muted-foreground;
   }
+  /* The indicator speaks up only when updates are not arriving. "Live" is
+     reserved for apps that are online, so a working connection stays visually
+     hidden and is still announced to screen readers. */
+  .conn[data-state="live"] {
+    @apply sr-only;
+  }
+  /* A page connects within a moment; show "Connecting…" only if it takes longer. */
+  .conn[data-state="connecting"] {
+    animation: conn-wait 1.5s;
+  }
+  @keyframes conn-wait {
+    from,
+    to {
+      opacity: 0;
+    }
+  }
   .btn[aria-pressed="true"] {
     @apply border-primary/40 bg-muted text-foreground;
   }
   .cmdk-item[aria-selected="true"] {
     @apply bg-muted text-foreground;
   }
-}
 
-@keyframes row-progress {
-  0% { transform: translateX(-100%); }
-  100% { transform: translateX(300%); }
-}
+  /* Disclosure (ui.Disclosure): a summary with a chevron that turns when open. */
+  .disclosure > summary {
+    @apply flex w-fit cursor-pointer list-none items-center gap-2 rounded-md text-sm font-medium [&::-webkit-details-marker]:hidden;
+  }
+  .disclosure-chevron {
+    @apply size-4 shrink-0 text-muted-foreground transition-transform;
+  }
+  .disclosure[open] > summary .disclosure-chevron {
+    @apply rotate-90;
+  }
+  .disclosure-body {
+    @apply mt-4;
+  }
+  /* Read-only status rows, such as which credentials are stored. */
+  .status-list {
+    @apply divide-y rounded-xl bg-muted/50 text-sm;
+  }
+  .status-list > li {
+    @apply flex items-center justify-between gap-3 px-4 py-2.5;
+  }
 
-/* Rounder Basecoat surfaces to match the panel. */
-@layer components {
+  /* Rounder Basecoat surfaces to match the panel. */
   .card {
     @apply rounded-[1.5rem] bg-card ring-0;
   }
+
+  /* Phones: at least 44 px to tap. An invisible layer around small controls
+     enlarges the hit area without changing the layout. */
+  @media (max-width: 39.999rem) {
+    /* Zero specificity, so controls Basecoat positions absolutely stay put. */
+    :where(.btn, .rail-button) {
+      position: relative;
+    }
+    .btn::after,
+    .rail-button::after {
+      content: "";
+      @apply absolute top-1/2 left-1/2 h-[max(100%,2.75rem)] w-[max(100%,2.75rem)] -translate-x-1/2 -translate-y-1/2;
+    }
+  }
 }
+
+

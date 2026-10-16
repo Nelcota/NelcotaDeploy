@@ -1,7 +1,9 @@
 package pages
 
 import (
+	"context"
 	"github.com/Nelcota/NelcotaDeploy/web/i18n"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -24,7 +26,7 @@ templ Users(s Shell, users []service.Principal, err string) {
 
 // InviteUserDialog collects a new person's name, email, and role.
 templ InviteUserDialog() {
-	@ui.Dialog("invite-user", "Invite someone", "They get a token to register a passkey. It works once and expires after 15 minutes.") {
+	@ui.Dialog("invite-user", "Invite someone", "They get a link to set up a passkey. It works once, for 24 hours.") {
 		<form class="grid gap-4" data-on:submit={ ui.PostForm("/ui/users") }>
 			@ui.Field("Name", "user-name", "", "") {
 				<input id="user-name" name="name" class="input" required maxlength="120" autocomplete="off"/>
@@ -45,7 +47,7 @@ templ InviteUserDialog() {
 }
 
 templ roleOption(value, label, description string, checked bool) {
-	<label class="flex cursor-pointer items-start gap-3 rounded-lg border p-3 has-checked:border-primary has-checked:bg-accent/50">
+	<label class="flex cursor-pointer items-start gap-3 rounded-xl border p-3 has-checked:border-primary has-checked:bg-accent/50">
 		<input type="radio" class="input mt-0.5" name="role" value={ value } checked?={ checked } aria-describedby={ "role-option-" + value }/>
 		<span class="grid gap-0.5">
 			<span class="text-sm font-medium">{ i18n.T(ctx, label) }</span>
@@ -55,20 +57,8 @@ templ roleOption(value, label, description string, checked bool) {
 }
 
 templ TeamList(s Shell, users []service.Principal) {
-	<section id="team" class="card" aria-labelledby="team-title">
-		<header>
-			<h2 id="team-title">
-				{ i18n.T(ctx, "People") }
-				<span class="font-normal text-muted-foreground tabular-nums">{ strconv.Itoa(len(users)) }</span>
-			</h2>
-			<div class="card-action">
-				@ui.Button("", "sm", templ.Attributes{"data-on:click": ui.Open("invite-user")}) {
-					@ui.Icon("plus", "")
-					{ i18n.T(ctx, "Invite") }
-				}
-			</div>
-		</header>
-		<section class="grid gap-4">
+	@ui.Panel(ui.CardProps{ID: "team", Title: "People", TitleExtra: count(len(users)), Action: inviteButton()}) {
+		<div class="grid gap-4">
 			<ul class="divide-y" aria-label={ i18n.T(ctx, "People") }>
 				for _, u := range users {
 					<li class="flex flex-wrap items-center gap-3 py-3 first:pt-0 last:pb-0">
@@ -111,10 +101,26 @@ templ TeamList(s Shell, users []service.Principal) {
 				}
 			</ul>
 			if len(users) <= 1 {
-				<p class="rounded-lg border border-dashed p-4 text-center text-sm text-muted-foreground">{ i18n.T(ctx, "Only you so far. Invite people to publish apps with you.") }</p>
+				<p class="rounded-xl border border-dashed p-4 text-center text-sm text-muted-foreground">{ i18n.T(ctx, "Only you so far. Invite people to publish apps with you.") }</p>
 			}
-		</section>
-	</section>
+		</div>
+	}
+}
+
+templ count(n int) {
+	<span class="font-normal text-muted-foreground tabular-nums">{ strconv.Itoa(n) }</span>
+}
+
+templ inviteButton() {
+	@ui.Button("", "sm", templ.Attributes{"data-on:click": ui.Open("invite-user")}) {
+		@ui.Icon("plus", "")
+		{ i18n.T(ctx, "Invite") }
+	}
+}
+
+// expiryPill counts down to t (app.js updates it every second).
+templ expiryPill(t time.Time) {
+	@ui.Pill("warning", "15:00 remaining", templ.Attributes{"data-expires": t.UTC().Format(time.RFC3339)})
 }
 
 // RoleLabel names a role for people.
@@ -131,30 +137,50 @@ type InviteDelivery struct {
 	Err string
 }
 
+// InviteLink is the one-click address of an invitation. The token travels in
+// the fragment, which browsers never send to a server, so it can't end up in
+// access logs or referrers; the enroll page reads it from there.
+func InviteLink(origin, token string) string {
+	return origin + "/enroll#token=" + url.QueryEscape(token)
+}
+
 templ UserInvite(name string, en service.Enrollment, origin string, sent InviteDelivery) {
-	<section id="user-invite-result" class="card" aria-labelledby="user-invite-title">
-		<header>
-			<h2 id="user-invite-title">{ i18n.Tf(ctx, "Invitation for %s", name) }</h2>
-			if sent.To != "" {
-				<p class="flex items-center gap-2">
-					@ui.Icon("circle-check", "size-4 text-success")
-					{ i18n.Tf(ctx, "Emailed to %s. The token below also works if the email doesn't arrive.", sent.To) }
-				</p>
-			} else {
-				if sent.Err != "" {
-					<p class="text-warning">{ i18n.T(ctx, sent.Err) }</p>
-				}
-				<p>{ i18n.T(ctx, "Send it privately. They paste it at") } <span class="mono">{ origin }/enroll</span>{ i18n.T(ctx, ". It won't be shown again.") }</p>
-			}
-			<div class="card-action">
-				<span class="status" data-tone="warning" data-expires={ en.ExpiresAt.UTC().Format(time.RFC3339) }>{ i18n.T(ctx, "15:00 remaining") }</span>
+	@ui.Panel(ui.CardProps{ID: "user-invite-result", Title: i18n.Tf(ctx, "Invitation for %s", name), Header: inviteDelivery(sent), Action: validFor(en.ExpiresAt)}) {
+		<div class="grid gap-3">
+			<div class="flex flex-wrap items-center gap-2">
+				<code id="enrollment-link" class="mono min-w-0 flex-1 break-all select-all rounded-xl bg-muted p-2">{ InviteLink(origin, en.Token) }</code>
+				@ui.Copy("enrollment-link", "Copy link")
 			</div>
-		</header>
-		<section class="flex flex-wrap items-center gap-2">
-			<code id="enrollment-token" class="mono break-all select-all rounded-md bg-muted p-2">{ en.Token }</code>
-			@ui.Copy("enrollment-token", "Copy token")
-		</section>
-	</section>
+			@ui.Disclosure("", "If the link doesn't open", false, "text-sm", nil) {
+				<p class="text-muted-foreground">
+					@ui.Phrase("They can open %s and paste this token:", ui.Mono(origin+"/enroll"))
+				</p>
+				<div class="mt-2 flex flex-wrap items-center gap-2">
+					<code id="enrollment-token" class="mono break-all select-all rounded-xl bg-muted p-2">{ en.Token }</code>
+					@ui.Copy("enrollment-token", "Copy token")
+				</div>
+			}
+		</div>
+	}
+}
+
+// validFor says how long an invitation link works, with the exact time on hover.
+templ validFor(t time.Time) {
+	@ui.Pill("muted", "Works for 24 hours", templ.Attributes{"title": t.UTC().Format("2006-01-02 15:04 UTC")})
+}
+
+templ inviteDelivery(sent InviteDelivery) {
+	if sent.To != "" {
+		<p class="flex items-center gap-2">
+			@ui.Icon("circle-check", "size-4 text-success")
+			{ i18n.Tf(ctx, "Emailed to %s. The link below also works if the email doesn't arrive.", sent.To) }
+		</p>
+	} else {
+		if sent.Err != "" {
+			<p class="text-warning">{ i18n.T(ctx, sent.Err) }</p>
+		}
+		<p>{ i18n.T(ctx, "Send this link privately. It works once and won't be shown again.") }</p>
+	}
 }
 
 // GitHubView reports which GitHub App credentials are stored.
@@ -185,20 +211,14 @@ templ GitHub(s Shell, v GitHubView, s3 bool) {
 					<p>{ i18n.T(ctx, "The link may have expired. Start again with Create GitHub App.") }</p>
 				}
 		}
-		<section class="card">
-			<header>
-				<h2>{ i18n.T(ctx, "Create the GitHub App") }</h2>
-				<p>{ i18n.T(ctx, "GitHub creates the App and sends its credentials back to the panel, then asks which repositories it may read. The panel finds each app's installation by itself.") }</p>
-			</header>
-			<section class="grid gap-3">
-				<div>
-					<button type="button" class="btn" data-github-manifest>
-						@ui.Icon("git-pull-request", "")
-						{ i18n.T(ctx, "Create GitHub App") }
-					</button>
-				</div>
-			</section>
-		</section>
+		@ui.Card("Create the GitHub App", "GitHub creates the App and sends its credentials back to the panel, then asks which repositories it may read. The panel finds each app's installation by itself.") {
+			<div>
+				<button type="button" class="btn" data-github-manifest>
+					@ui.Icon("github", "")
+					{ i18n.T(ctx, "Create GitHub App") }
+				</button>
+			</div>
+		}
 		@GitHubCredentials(v)
 		if v.Notify != nil {
 			@NotificationsCard(*v.Notify)
@@ -208,20 +228,16 @@ templ GitHub(s Shell, v GitHubView, s3 bool) {
 }
 
 templ GitHubCredentials(v GitHubView) {
-	<section id="github-status" class="card">
-		<header>
-			<h2>{ i18n.T(ctx, "Credentials") }</h2>
-			<p>{ i18n.T(ctx, "Saved values are encrypted and can't be viewed. Fill in only what you want to change.") }</p>
-		</header>
-		<section class="grid gap-4">
-			<ul class="grid gap-2 sm:grid-cols-2">
+	@ui.Panel(ui.CardProps{ID: "github-status", Title: "Credentials", Description: "Saved values are encrypted and can't be viewed. Fill in only what you want to change."}) {
+		<div class="grid gap-4">
+			<ul class="status-list" aria-label={ i18n.T(ctx, "Credentials") }>
 				for _, k := range gitHubKeys {
-					<li class="flex items-center justify-between gap-2 rounded-md border px-3 py-2 text-sm">
+					<li>
 						<span>{ i18n.T(ctx, k[1]) }</span>
 						if v.Configured[k[0]] {
-							<span class="status" data-tone="success">{ i18n.T(ctx, "Configured") }</span>
+							@ui.Pill("success", "Configured", nil)
 						} else {
-							<span class="status" data-tone="muted">{ i18n.T(ctx, "Not set") }</span>
+							@ui.Pill("muted", "Not configured", nil)
 						}
 					</li>
 				}
@@ -229,13 +245,12 @@ templ GitHubCredentials(v GitHubView) {
 			<div class="grid gap-1.5">
 				<span class="label">{ i18n.T(ctx, "Webhook URL") }</span>
 				<div class="flex flex-wrap items-center gap-2">
-					<code id="webhook-url" class="mono rounded-md bg-muted p-2 break-all">{ v.Origin }/api/webhooks/github</code>
+					<code id="webhook-url" class="mono rounded-xl bg-muted p-2 break-all">{ v.Origin }/api/webhooks/github</code>
 					@ui.Copy("webhook-url", "Copy")
 				</div>
 			</div>
-			<details class="rounded-lg border p-4">
-				<summary class="cursor-pointer text-sm font-medium">{ i18n.T(ctx, "Enter credentials manually") }</summary>
-				<form class="mt-4 grid gap-4" data-on:submit={ ui.PostForm("/ui/settings/github") }>
+			@ui.Disclosure("", "Enter credentials manually", false, "rounded-xl border p-4", nil) {
+				<form class="grid gap-4" data-on:submit={ ui.PostForm("/ui/settings/github") }>
 					<div class="grid gap-4 sm:grid-cols-2">
 						@ui.Field("App ID", "gh-app-id", "", "") {
 							<input id="gh-app-id" name="github.app_id" class="input" inputmode="numeric" autocomplete="off"/>
@@ -255,9 +270,9 @@ templ GitHubCredentials(v GitHubView) {
 					}
 					<div><button type="submit" class="btn" data-variant="outline">{ i18n.T(ctx, "Save credentials") }</button></div>
 				</form>
-			</details>
-		</section>
-	</section>
+			}
+		</div>
+	}
 }
 
 // OperationsView lists maintenance jobs, optionally filtered by kind.
@@ -336,7 +351,7 @@ templ OperationsTable(v OperationsView) {
 							</td>
 							<td class="text-sm">
 								if o.Kind == "update" {
-									{ i18n.T(ctx, "Update to") } <span class="mono">{ o.Version }</span>
+									@ui.Phrase("Update to %s", ui.Mono(o.Version))
 								} else {
 									{ i18n.T(ctx, "Backup") }
 								}
@@ -366,18 +381,14 @@ templ OperationsTable(v OperationsView) {
 }
 
 templ BackupCard() {
-	<section id="backups" class="card scroll-mt-6">
-		<header>
-			<h2>{ i18n.T(ctx, "Backups") }</h2>
-			<p>{ i18n.T(ctx, "An encrypted backup of the database, keys, and logs runs every day. It's uploaded to S3 when configured in Connections. Restoring is done offline with the command-line tool.") }</p>
-			<div class="card-action">
-				@ui.Button("", "sm", templ.Attributes{"data-on:click": ui.Post("/ui/operations/backup")}) {
-					@ui.Icon("database-backup", "")
-					{ i18n.T(ctx, "Back up now") }
-				}
-			</div>
-		</header>
-	</section>
+	@ui.Panel(ui.CardProps{ID: "backups", Class: "scroll-mt-6", Title: "Backups", Description: "An encrypted backup of the database, keys, and logs runs every day. It's uploaded to S3 when configured in Connections. Restoring is done offline with the command-line tool.", Action: backupButton(), HeaderOnly: true})
+}
+
+templ backupButton() {
+	@ui.Button("", "sm", templ.Attributes{"data-on:click": ui.Post("/ui/operations/backup")}) {
+		@ui.Icon("database-backup", "")
+		{ i18n.T(ctx, "Back up now") }
+	}
 }
 
 // notificationEvents names each notification event for people.
@@ -415,90 +426,85 @@ func emailValue(n service.NotificationSettings, field string) string {
 // NotificationsCard configures webhooks and email for outside notifications.
 // Saved secrets (the webhook address and the SMTP password) are never shown.
 templ NotificationsCard(n service.NotificationSettings) {
-	<section id="notifications" class="card">
-		<header>
-			<h2>{ i18n.T(ctx, "Notifications") }</h2>
-			<p>{ i18n.T(ctx, "Hear about problems without opening the panel. Slack and Discord webhooks are recognized automatically.") }</p>
-		</header>
-		<section>
-			<form id="notify-form" class="grid gap-5" data-on:submit={ ui.PostForm("/ui/settings/notifications") }>
-				<fieldset class="grid gap-3">
-					<legend class="mb-1 text-sm font-medium">{ i18n.T(ctx, "Webhook") }</legend>
-					if n.WebhookKind != "" {
-						<div class="flex flex-wrap items-center gap-2 text-sm">
-							<span class="status" data-tone="success">{ webhookLabel(n.WebhookKind) }</span>
-							<span class="mono">{ n.WebhookHost }</span>
-							<button type="button" class="btn" data-variant="ghost" data-size="sm" data-on:click={ ui.Post("/ui/settings/notifications/webhook/remove") }>{ i18n.T(ctx, "Remove") }</button>
-						</div>
-					}
-					@ui.Field("Webhook address", "notify-webhook", "Leave empty to keep the saved address.", "") {
-						<input id="notify-webhook" name="webhook_url" class="input font-mono" type="url" pattern="https://.+" placeholder="https://hooks.slack.com/services/…" autocomplete="off" spellcheck="false" aria-describedby="notify-webhook-hint"/>
-					}
-					@ui.Field("Signing secret", "notify-secret", "Optional, for your own webhook: requests carry X-Nelcota-Signature (HMAC-SHA256 of the body).", "") {
-						<input id="notify-secret" name="webhook_secret" class="input font-mono" type="password" autocomplete="new-password" aria-describedby="notify-secret-hint"/>
-					}
-				</fieldset>
-				// Email stays folded until it is configured.
-				<details class="group rounded-xl border p-4" open?={ n.Email != nil }>
-					<summary class="flex cursor-pointer items-center gap-2 text-sm font-medium">
-						{ i18n.T(ctx, "Email") }
-						if n.Email != nil {
-							<span class="status" data-tone="success">{ n.Email.Host }</span>
-						} else {
-							<span class="font-normal text-muted-foreground">{ i18n.T(ctx, "Optional") }</span>
-						}
-					</summary>
-					<div class="mt-4 grid gap-4 sm:grid-cols-2">
-						@ui.Field("SMTP server", "notify-host", "", "") {
-							<input id="notify-host" name="smtp_host" class="input" value={ emailValue(n, "host") } placeholder="smtp.example.com" autocomplete="off" spellcheck="false"/>
-						}
-						@ui.Field("Port", "notify-port", "TLS is required.", "") {
-							<select id="notify-port" name="smtp_port" class="select w-full" aria-describedby="notify-port-hint">
-								for _, p := range []string{"587", "465", "2525"} {
-									<option
-										value={ p }
-										if emailValue(n, "port") == p {
-											selected
-										}
-									>{ p }</option>
-								}
-							</select>
-						}
-						@ui.Field("Username", "notify-user", "", "") {
-							<input id="notify-user" name="smtp_username" class="input" value={ emailValue(n, "username") } autocomplete="off"/>
-						}
-						@ui.Field("Password", "notify-password", "Leave empty to keep the saved password.", "") {
-							<input id="notify-password" name="smtp_password" class="input" type="password" autocomplete="new-password" aria-describedby="notify-password-hint"/>
-						}
-						@ui.Field("From", "notify-from", "", "") {
-							<input id="notify-from" name="smtp_from" class="input" type="email" value={ emailValue(n, "from") } placeholder="panel@example.com" autocomplete="off"/>
-						}
-						@ui.Field("Send to", "notify-to", "Separate addresses with commas.", "") {
-							<input id="notify-to" name="smtp_to" class="input" value={ emailValue(n, "to") } placeholder="ops@example.com" autocomplete="off" aria-describedby="notify-to-hint"/>
-						}
+	@ui.Panel(ui.CardProps{ID: "notifications", Title: "Notifications", Description: "Hear about problems without opening the panel. Slack and Discord webhooks are recognized automatically."}) {
+		<form id="notify-form" class="grid gap-5" data-on:submit={ ui.PostForm("/ui/settings/notifications") }>
+			// The address field names the group, so its legend is for screen readers only.
+			<fieldset class="grid gap-3">
+				<legend class="sr-only">{ i18n.T(ctx, "Webhook") }</legend>
+				if n.WebhookKind != "" {
+					<div class="flex flex-wrap items-center gap-2 text-sm">
+						@ui.Pill("success", webhookLabel(n.WebhookKind), nil)
+						<span class="mono">{ n.WebhookHost }</span>
+						<button type="button" class="btn" data-variant="ghost" data-size="sm" data-on:click={ ui.Post("/ui/settings/notifications/webhook/remove") }>{ i18n.T(ctx, "Remove") }</button>
 					</div>
-					if n.Email != nil {
-						<button type="button" class="btn mt-3" data-variant="ghost" data-size="sm" data-on:click={ ui.Post("/ui/settings/notifications/email/remove") }>{ i18n.T(ctx, "Remove email") }</button>
+				}
+				@ui.Field("Webhook address", "notify-webhook", "Leave empty to keep the saved address.", "") {
+					<input id="notify-webhook" name="webhook_url" class="input font-mono" type="url" pattern="https://.+" placeholder="https://hooks.slack.com/services/…" autocomplete="off" spellcheck="false" aria-describedby="notify-webhook-hint"/>
+				}
+				@ui.Field("Signing secret", "notify-secret", "Optional, for your own webhook: requests carry X-Nelcota-Signature (HMAC-SHA256 of the body).", "") {
+					<input id="notify-secret" name="webhook_secret" class="input font-mono" type="password" autocomplete="new-password" aria-describedby="notify-secret-hint"/>
+				}
+			</fieldset>
+			// Email stays folded until it is configured.
+			@ui.Disclosure("", "Email", n.Email != nil, "rounded-xl border p-4", emailState(n)) {
+				<div class="grid gap-4 sm:grid-cols-2">
+					@ui.Field("SMTP server", "notify-host", "", "") {
+						<input id="notify-host" name="smtp_host" class="input" value={ emailValue(n, "host") } placeholder="smtp.example.com" autocomplete="off" spellcheck="false"/>
 					}
-				</details>
-				<fieldset class="grid gap-2">
-					<legend class="mb-1 text-sm font-medium">{ i18n.T(ctx, "Notify me when") }</legend>
-					<div class="grid gap-2 sm:grid-cols-2">
-						for _, ev := range service.NotificationEvents {
-							<label class="flex items-center gap-2 text-sm">
-								<input class="input" type="checkbox" name="event" value={ ev } checked?={ !n.Muted[ev] }/>
-								{ i18n.T(ctx, notificationEvents[ev]) }
-							</label>
-						}
-					</div>
-				</fieldset>
-				<div class="flex flex-wrap gap-2">
-					<button type="submit" class="btn">{ i18n.T(ctx, "Save notifications") }</button>
-					<button type="button" class="btn" data-variant="outline" data-on:click={ ui.Post("/ui/settings/notifications/test") }>{ i18n.T(ctx, "Send a test") }</button>
+					@ui.Field("Port", "notify-port", "TLS is required.", "") {
+						<select id="notify-port" name="smtp_port" class="select w-full" aria-describedby="notify-port-hint">
+							for _, p := range []string{"587", "465", "2525"} {
+								<option
+									value={ p }
+									if emailValue(n, "port") == p {
+										selected
+									}
+								>{ p }</option>
+							}
+						</select>
+					}
+					@ui.Field("Username", "notify-user", "", "") {
+						<input id="notify-user" name="smtp_username" class="input" value={ emailValue(n, "username") } autocomplete="off"/>
+					}
+					@ui.Field("Password", "notify-password", "Leave empty to keep the saved password.", "") {
+						<input id="notify-password" name="smtp_password" class="input" type="password" autocomplete="new-password" aria-describedby="notify-password-hint"/>
+					}
+					@ui.Field("From", "notify-from", "", "") {
+						<input id="notify-from" name="smtp_from" class="input" type="email" value={ emailValue(n, "from") } placeholder="panel@example.com" autocomplete="off"/>
+					}
+					@ui.Field("Send to", "notify-to", "Separate addresses with commas.", "") {
+						<input id="notify-to" name="smtp_to" class="input" value={ emailValue(n, "to") } placeholder="ops@example.com" autocomplete="off" aria-describedby="notify-to-hint"/>
+					}
 				</div>
-			</form>
-		</section>
-	</section>
+				if n.Email != nil {
+					<button type="button" class="btn mt-3" data-variant="ghost" data-size="sm" data-on:click={ ui.Post("/ui/settings/notifications/email/remove") }>{ i18n.T(ctx, "Remove email") }</button>
+				}
+			}
+			<fieldset class="grid gap-2">
+				<legend class="mb-1 text-sm font-medium">{ i18n.T(ctx, "Notify me when") }</legend>
+				<div class="grid gap-2 sm:grid-cols-2">
+					for _, ev := range service.NotificationEvents {
+						<label class="flex items-center gap-2 text-sm">
+							<input class="input" type="checkbox" name="event" value={ ev } checked?={ !n.Muted[ev] }/>
+							{ i18n.T(ctx, notificationEvents[ev]) }
+						</label>
+					}
+				</div>
+			</fieldset>
+			<div class="flex flex-wrap gap-2">
+				<button type="submit" class="btn">{ i18n.T(ctx, "Save notifications") }</button>
+				<button type="button" class="btn" data-variant="outline" data-on:click={ ui.Post("/ui/settings/notifications/test") }>{ i18n.T(ctx, "Send a test") }</button>
+			</div>
+		</form>
+	}
+}
+
+templ emailState(n service.NotificationSettings) {
+	if n.Email != nil {
+		@ui.Pill("success", n.Email.Host, nil)
+	} else {
+		<span class="font-normal text-muted-foreground">{ i18n.T(ctx, "Optional") }</span>
+	}
 }
 
 func webhookLabel(kind string) string {
@@ -512,86 +518,71 @@ func webhookLabel(kind string) string {
 }
 
 templ S3Card(s3 bool) {
-	<section id="s3" class="card">
-		<header>
-			<h2>{ i18n.T(ctx, "S3 storage") }</h2>
-			<p>{ i18n.T(ctx, "Optional off-site copies. Saving replaces the whole configuration.") }</p>
-			<div class="card-action">
-				if s3 {
-					<span class="status" data-tone="success">{ i18n.T(ctx, "Configured") }</span>
-				} else {
-					<span class="status" data-tone="muted">{ i18n.T(ctx, "Not configured") }</span>
-				}
-			</div>
-		</header>
-		<section>
-			<details open?={ s3 }>
-				<summary class="cursor-pointer text-sm font-medium">
-					if s3 {
-						{ i18n.T(ctx, "Change the S3 configuration") }
-					} else {
-						{ i18n.T(ctx, "Set up S3") }
+	@ui.Panel(ui.CardProps{ID: "s3", Title: "S3 storage", Description: "Optional off-site copies. Saving replaces the whole configuration.", Action: s3State(s3)}) {
+		@ui.Disclosure("", s3Summary(s3), s3, "", nil) {
+			<form id="s3-form" class="grid gap-4" data-on:submit={ ui.PostForm("/ui/settings/backup-s3") }>
+				<div class="grid gap-4 sm:grid-cols-2">
+					@ui.Field("Endpoint", "s3-endpoint", "HTTPS URL, for example https://s3.eu-central-1.amazonaws.com.", "") {
+						<input id="s3-endpoint" name="endpoint" class="input" type="url" required pattern="https://.+" autocomplete="off" aria-describedby="s3-endpoint-hint"/>
 					}
-				</summary>
-				<form id="s3-form" class="mt-4 grid gap-4" data-on:submit={ ui.PostForm("/ui/settings/backup-s3") }>
-					<div class="grid gap-4 sm:grid-cols-2">
-						@ui.Field("Endpoint", "s3-endpoint", "HTTPS URL, for example https://s3.eu-central-1.amazonaws.com.", "") {
-							<input id="s3-endpoint" name="endpoint" class="input" type="url" required pattern="https://.+" autocomplete="off" aria-describedby="s3-endpoint-hint"/>
-						}
-						@ui.Field("Region", "s3-region", "", "") {
-							<input id="s3-region" name="region" class="input" required autocomplete="off"/>
-						}
-						@ui.Field("Bucket", "s3-bucket", "", "") {
-							<input id="s3-bucket" name="bucket" class="input" required autocomplete="off"/>
-						}
-						@ui.Field("Prefix", "s3-prefix", "Optional folder inside the bucket.", "") {
-							<input id="s3-prefix" name="prefix" class="input" autocomplete="off"/>
-						}
-						@ui.Field("Access key", "s3-access", "", "") {
-							<input id="s3-access" name="access_key" class="input" required autocomplete="off"/>
-						}
-						@ui.Field("Secret key", "s3-secret", "", "") {
-							<input id="s3-secret" name="secret_key" class="input" type="password" required autocomplete="new-password"/>
-						}
-						@ui.Field("Session token", "s3-session", "Only for temporary credentials.", "") {
-							<input id="s3-session" name="session_token" class="input" type="password" autocomplete="new-password"/>
-						}
-					</div>
-					<div class="flex flex-wrap gap-2">
-						<button type="submit" class="btn" data-variant="outline">{ i18n.T(ctx, "Save S3 configuration") }</button>
-						<button type="button" class="btn" data-variant="ghost" data-on:click={ ui.PostFormOf("/ui/settings/backup-s3/test", "#s3-form") }>{ i18n.T(ctx, "Test connection") }</button>
-					</div>
-				</form>
-			</details>
-		</section>
-	</section>
+					@ui.Field("Region", "s3-region", "", "") {
+						<input id="s3-region" name="region" class="input" required autocomplete="off"/>
+					}
+					@ui.Field("Bucket", "s3-bucket", "", "") {
+						<input id="s3-bucket" name="bucket" class="input" required autocomplete="off"/>
+					}
+					@ui.Field("Prefix", "s3-prefix", "Optional folder inside the bucket.", "") {
+						<input id="s3-prefix" name="prefix" class="input" autocomplete="off"/>
+					}
+					@ui.Field("Access key", "s3-access", "", "") {
+						<input id="s3-access" name="access_key" class="input" required autocomplete="off"/>
+					}
+					@ui.Field("Secret key", "s3-secret", "", "") {
+						<input id="s3-secret" name="secret_key" class="input" type="password" required autocomplete="new-password"/>
+					}
+					@ui.Field("Session token", "s3-session", "Only for temporary credentials.", "") {
+						<input id="s3-session" name="session_token" class="input" type="password" autocomplete="new-password"/>
+					}
+				</div>
+				<div class="flex flex-wrap gap-2">
+					<button type="submit" class="btn" data-variant="outline">{ i18n.T(ctx, "Save S3 configuration") }</button>
+					<button type="button" class="btn" data-variant="ghost" data-on:click={ ui.PostFormOf("/ui/settings/backup-s3/test", "#s3-form") }>{ i18n.T(ctx, "Test connection") }</button>
+				</div>
+			</form>
+		}
+	}
+}
+
+templ s3State(s3 bool) {
+	if s3 {
+		@ui.Pill("success", "Configured", nil)
+	} else {
+		@ui.Pill("muted", "Not configured", nil)
+	}
+}
+
+func s3Summary(s3 bool) string {
+	if s3 {
+		return "Change the S3 configuration"
+	}
+	return "Set up S3"
 }
 
 templ Platform(s Shell, u service.UpdateStatus, v OperationsView) {
 	@SettingsLayout(s, "platform", "System", "") {
 		@BackupCard()
 		@UpdatesCard(u)
-		<section class="card">
-			<header>
-				<h2>{ i18n.T(ctx, "Recent operations") }</h2>
-				<p>{ i18n.T(ctx, "Backups and update steps.") }</p>
-			</header>
-			<section>
-				@OperationsTable(v)
-			</section>
-		</section>
+		@ui.Card("Recent operations", "Backups and update steps.") {
+			@OperationsTable(v)
+		}
 	}
 }
 
 // UpdatesCard offers a newer signed release, the automatic-update switch, and
 // a field to install a specific version.
 templ UpdatesCard(u service.UpdateStatus) {
-	<section id="updates" class="card">
-		<header>
-			<h2>{ i18n.T(ctx, "Updates") }</h2>
-			<p>{ i18n.T(ctx, "Current version:") } <span class="mono">{ u.Current }</span>{ i18n.T(ctx, ". Servers update one at a time, then the panel. Releases must be signed with your key.") }</p>
-		</header>
-		<section class="grid gap-4">
+	@ui.Panel(ui.CardProps{ID: "updates", Title: "Updates", Header: currentVersion(u.Current)}) {
+		<div class="grid gap-4">
 			if u.Available != "" {
 				<div class="notice-row" data-tone="info">
 					@ui.Icon("circle-arrow-up", "")
@@ -617,18 +608,23 @@ templ UpdatesCard(u service.UpdateStatus) {
 					</label>
 				</form>
 			}
-			<details>
-				<summary class="cursor-pointer text-sm font-medium">{ i18n.T(ctx, "Install a specific version") }</summary>
-				<form id="update-form" class="mt-3 flex flex-wrap items-end gap-3" data-on:submit={ ui.Open("confirm-update") }>
+			@ui.Disclosure("", "Install a specific version", false, "", nil) {
+				<form id="update-form" class="flex flex-wrap items-end gap-3" data-on:submit={ ui.Open("confirm-update") }>
 					@ui.Field("Version", "update-version", "", "") {
 						<input id="update-version" name="version" class="input font-mono" required pattern="v[0-9]+\.[0-9]+\.[0-9]+" placeholder="v1.2.3" autocomplete="off"/>
 					}
 					<button type="submit" class="btn" data-variant="outline">{ i18n.T(ctx, "Update") }</button>
 				</form>
-			</details>
-			@ui.ConfirmDialog("confirm-update", "Update the platform?", "Servers update one at a time, then the panel restarts. Deployments wait until it finishes.", "Start update", ui.PostFormOf("/ui/operations/update", "#update-form"), false)
-		</section>
-	</section>
+			}
+			@ui.ConfirmDialog("confirm-update", "Update the system?", "Servers update one at a time, then the panel restarts. Deployments wait until it finishes.", "Start update", ui.PostFormOf("/ui/operations/update", "#update-form"), false)
+		</div>
+	}
+}
+
+templ currentVersion(v string) {
+	<p>
+		@ui.Phrase("Current version: %s. Servers update one at a time, then the panel. Releases must be signed with your key.", ui.Mono(v))
+	</p>
 }
 
 // AuditFilter holds the audit page's query filters.
@@ -648,6 +644,19 @@ type AuditView struct {
 	Err      string
 }
 
+// summary counts what the filters found, in one short sentence.
+func (v AuditView) summary(ctx context.Context) string {
+	filtered := v.Filter.Action != "" || v.Filter.User != "" || v.Filter.Target != ""
+	out := i18n.N(ctx, v.Matching, "%d entry", "%d entries")
+	if filtered {
+		out = i18n.N(ctx, v.Matching, "%d matching entry", "%d matching entries")
+	}
+	if len(v.Entries) < v.Matching {
+		out += " " + i18n.Tf(ctx, "Showing the newest %d.", len(v.Entries))
+	}
+	return out
+}
+
 func (v AuditView) user(id string) string {
 	if name, ok := v.Users[id]; ok {
 		return name
@@ -657,7 +666,7 @@ func (v AuditView) user(id string) string {
 
 templ Audit(s Shell, v AuditView) {
 	@SettingsLayout(s, "audit", "Activity", "Sign-ins and changes, newest first.") {
-		<form method="get" action="/settings/audit" class="grid gap-3 rounded-lg border p-4 sm:grid-cols-[repeat(3,minmax(0,1fr))_auto] sm:items-end">
+		<form method="get" action="/settings/audit" class="grid gap-3 rounded-xl border p-4 sm:grid-cols-[repeat(3,minmax(0,1fr))_auto] sm:items-end">
 			@ui.Field("Action", "audit-action", "", "") {
 				<select id="audit-action" name="action" class="select w-full">
 					<option value="">{ i18n.T(ctx, "All actions") }</option>
@@ -667,13 +676,13 @@ templ Audit(s Shell, v AuditView) {
 							if a == v.Filter.Action {
 								selected
 							}
-						>{ a }</option>
+						>{ i18n.T(ctx, AuditLabel(a)) }</option>
 					}
 				</select>
 			}
 			@ui.Field("User", "audit-user", "", "") {
 				<select id="audit-user" name="user" class="select w-full">
-					<option value="">{ i18n.T(ctx, "All users") }</option>
+					<option value="">{ i18n.T(ctx, "Everyone") }</option>
 					for _, p := range v.People {
 						<option
 							value={ p.ID }
@@ -707,20 +716,20 @@ templ Audit(s Shell, v AuditView) {
 			</div>
 		</form>
 		if v.Err != "" {
-			@ui.ErrorState("Audit log unavailable", v.Err)
+			@ui.ErrorState("Activity unavailable", v.Err)
 		} else {
-			<p class="muted" role="status">{ i18n.Tf(ctx, "Showing %d of %d matching entries among the latest %d.", len(v.Entries), v.Matching, v.Total) }</p>
+			<p class="muted" role="status">{ v.summary(ctx) }</p>
 			if len(v.Entries) == 0 {
 				@ui.Empty("history", "No matching entries", "Change the filters or include HTTP requests.")
 			} else {
-				@ui.Table("Audit entries") {
+				@ui.Table("Activity") {
 					<thead><tr><th scope="col">{ i18n.T(ctx, "Time") }</th><th scope="col">{ i18n.T(ctx, "User") }</th><th scope="col">{ i18n.T(ctx, "Action") }</th><th scope="col">{ i18n.T(ctx, "Target") }</th><th scope="col">{ i18n.T(ctx, "IP") }</th><th scope="col">{ i18n.T(ctx, "Details") }</th></tr></thead>
 					<tbody>
 						for _, a := range v.Entries {
 							<tr>
 								<td class="text-sm whitespace-nowrap"><time datetime={ ui.ISO(a.CreatedAt) } title={ ui.Timestamp(a.CreatedAt) }>{ ui.Timestamp(a.CreatedAt) }</time></td>
 								<td class="text-sm">{ v.user(a.UserID) }</td>
-								<td class="mono">{ a.Action }</td>
+								<td class="text-sm" title={ a.Action }>{ i18n.T(ctx, AuditLabel(a.Action)) }</td>
 								<td class="mono max-w-56 truncate" title={ a.Target }>{ a.Target }</td>
 								<td class="mono">{ a.IP }</td>
 								<td class="mono max-w-64 truncate text-muted-foreground" title={ string(a.Details) }>

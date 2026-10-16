@@ -83,7 +83,9 @@ func TestTOTPSetupFlow(t *testing.T) {
 	e := newEnv(t)
 	s := e.admin()
 	res := s.post("/ui/account/totp/begin", nil)
-	mustContain(t, res.body, `elements <section id="totp-panel"`, `src="data:image/png;base64,`, `id="totp-secret"`, `name="id"`, "Enable two-factor")
+	mustContain(t, res.body, `elements <section id="totp-panel"`, `src="data:image/png;base64,`, `id="totp-secret"`, `name="id"`, "Enable two-factor",
+		// The setup button goes away while setup is open.
+		"selector #totp-begin", "mode remove")
 	mustNotContain(t, res.body, "otpauth://")
 	res = s.post("/ui/account/totp/finish", url.Values{"id": {"bogus"}, "code": {"000000"}})
 	if toast(res.body) != "danger" {

@@ -13,6 +13,8 @@ type AppContext struct {
 	App        service.App
 	ServerName string
 	Tab        string
+	// Repos is true when the panel can read the app's repository on GitHub.
+	Repos bool
 }
 
 func repoName(url string) string {
@@ -22,6 +24,14 @@ func repoName(url string) string {
 type appTab struct{ key, label, icon string }
 
 var appTabs = []appTab{{"overview", "Overview", "activity"}, {"deployments", "History", "history"}, {"logs", "Logs", "terminal"}, {"settings", "Settings", "sliders-horizontal"}}
+
+func appTabLinks(c AppContext) []ui.Tab {
+	tabs := make([]ui.Tab, len(appTabs))
+	for i, t := range appTabs {
+		tabs[i] = ui.Tab{Href: tabHref(c.App.ID, t.key), Icon: t.icon, Label: t.label, Current: t.key == c.Tab}
+	}
+	return tabs
+}
 
 func tabHref(app, key string) string {
 	if key == "overview" {
@@ -33,7 +43,7 @@ func tabHref(app, key string) string {
 // AppHeaderLogo is the logo beside the app's name; uploads redraw it.
 templ AppHeaderLogo(a service.App) {
 	<span id="app-header-logo" class="contents">
-		@AppLogo(a, "size-14 rounded-2xl text-xl")
+		@AppLogo(a, "size-14 rounded-xl text-xl")
 	</span>
 }
 
@@ -56,13 +66,13 @@ templ AppLayout(s Shell, c AppContext, actions templ.Component) {
 					<h1 class="page-title flex flex-wrap items-center gap-2">
 						{ c.App.Name }
 						if c.App.Config.Stopped {
-							<span class="status" data-tone="muted">{ i18n.T(ctx, "Stopped") }</span>
+							@ui.Pill("muted", "Stopped", nil)
 						}
 					</h1>
 					<p class="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground">
 						<a class="inline-flex items-center gap-1 hover:text-foreground" href={ templ.SafeURL(c.App.Repository) } rel="noopener noreferrer" target="_blank">
+							@ui.Icon("github", "size-3.5")
 							{ repoName(c.App.Repository) }
-							@ui.Icon("external-link", "size-3.5")
 							<span class="sr-only">{ i18n.T(ctx, "(opens GitHub)") }</span>
 						</a>
 						<span class="inline-flex items-center gap-1">
@@ -88,33 +98,14 @@ templ AppLayout(s Shell, c AppContext, actions templ.Component) {
 				</div>
 			}
 		</div>
-		// Tabs scroll sideways on narrow screens without showing a scrollbar.
-		<div class="mb-6 flex items-end gap-4 border-b">
-			<nav aria-label={ i18n.T(ctx, "App sections") } class="tabs-nav min-w-0 flex-1">
-				<ul class="flex gap-1">
-					for _, t := range appTabs {
-						<li>
-							<a
-								href={ templ.SafeURL(tabHref(c.App.ID, t.key)) }
-								class="-mb-px inline-flex items-center gap-2 border-b-2 border-transparent px-3 py-2 max-sm:px-2.5 max-sm:[&_svg]:hidden text-sm font-medium whitespace-nowrap text-muted-foreground hover:text-foreground aria-[current=page]:border-primary aria-[current=page]:text-foreground"
-								if t.key == c.Tab {
-									aria-current="page"
-								}
-							>
-								@ui.Icon(t.icon, "")
-								{ i18n.T(ctx, t.label) }
-							</a>
-						</li>
-					}
-				</ul>
-			</nav>
+		@ui.TabNav("App sections", appTabLinks(c), "mb-6") {
 			// Tabs that update live show the connection state at the end of the row.
 			if c.Tab == "overview" || c.Tab == "deployments" {
 				<span class="hidden pb-2.5 sm:block">
 					@Connection()
 				</span>
 			}
-		</div>
+		}
 		{ children... }
 	}
 }

@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/Nelcota/NelcotaDeploy/web/i18n"
+	"github.com/Nelcota/NelcotaDeploy/web/pages"
 	"github.com/Nelcota/NelcotaDeploy/web/ui"
 )
 
@@ -56,16 +57,16 @@ func TestPortuguesePages(t *testing.T) {
 		return v
 	}
 	home := pt("/")
-	mustContain(t, home.body, `<html lang="pt-BR"`, ">"+tr("Home")+"<", tr("Get your first app online"), `id="i18n"`, ui.JS(tr("Copied to clipboard")))
+	mustContain(t, home.body, `<html lang="pt-BR"`, ">"+tr("Home")+"<", tr("Suggested next step"), `id="i18n"`, ui.JS(tr("Copied to clipboard")))
 	// Language and theme are settings, not sidebar controls.
-	mustNotContain(t, home.body, "Get your first app online", "hreflang=", "data-theme-toggle")
+	mustNotContain(t, home.body, "Suggested next step", "hreflang=", "data-theme-toggle")
 	mustContain(t, pt("/apps/dev-app-api").body, tr("Publish latest"), tr("Overview"))
 	mustContain(t, pt("/settings").body, tr("Passkeys"), tr("Preferences"), `href="/settings?lang=en"`, `hreflang="pt-BR"`, `aria-current="true"`, `data-no-prefetch`, `data-theme-select`)
 
 	// Accept-Language picks Portuguese without a stored choice; English stays the default.
 	mustContain(t, s.getWith("/", "Accept-Language", "pt-BR,pt;q=0.9").body, `<html lang="pt-BR"`)
 	en := s.getWith("/", "Accept-Language", "fr-FR,de;q=0.8").body
-	mustContain(t, en, `<html lang="en"`, "Get your first app online")
+	mustContain(t, en, `<html lang="en"`, "Suggested next step")
 	mustNotContain(t, en, `id="i18n"`)
 
 	// Actions answer in the viewer's language.
@@ -77,7 +78,7 @@ func TestPortuguesePages(t *testing.T) {
 	r.AddCookie(s.cookie)
 	r.AddCookie(&http.Cookie{Name: "nelcota_lang", Value: "pt-BR"})
 	res := e.do(r)
-	if toast(res.body) != "success" {
+	if toast(res.body) != "info" {
 		t.Fatal(res.body)
 	}
 	mustContain(t, res.body, strings.TrimSuffix(i18n.Tf(ctx, "Publishing %s at %s.", "api", ""), "."))
@@ -87,4 +88,14 @@ func TestSignInPageOffersLanguages(t *testing.T) {
 	e := newEnv(t)
 	res := e.anon("/login")
 	mustContain(t, res.body, `href="/login?lang=pt-BR"`, i18n.Name(i18n.Portuguese), "English")
+}
+
+// Activity labels are looked up at runtime, so the catalog scan can't see them.
+func TestActivityLabelsAreTranslated(t *testing.T) {
+	pt := i18n.WithLocale(context.Background(), i18n.Portuguese)
+	for code, label := range pages.AuditLabels {
+		if i18n.T(pt, label) == label {
+			t.Errorf("%s: no translation for %q", code, label)
+		}
+	}
 }

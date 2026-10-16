@@ -118,18 +118,20 @@ func T(ctx context.Context, s string) string {
 	return s
 }
 
-// TC translates s in a context, for English words with several meanings: the
-// catalog key is context + "|" + s. Without that entry it falls back to T.
-func TC(ctx context.Context, context, s string) string {
-	if t := T(ctx, context+"|"+s); t != context+"|"+s {
-		return t
-	}
-	return T(ctx, s)
-}
-
 // Tf translates a format string, then fills it like fmt.Sprintf.
 func Tf(ctx context.Context, format string, args ...any) string {
 	return fmt.Sprintf(T(ctx, format), args...)
+}
+
+// N translates a count with its singular or plural form, then fills %d with n:
+// N(ctx, n, "%d change", "%d changes"). Both forms are catalog keys. English
+// uses the singular for 1 only; Brazilian Portuguese also for 0 (CLDR).
+func N(ctx context.Context, n int, one, other string, args ...any) string {
+	form := other
+	if n == 1 || (n == 0 && From(ctx) == Portuguese) {
+		form = one
+	}
+	return fmt.Sprintf(T(ctx, form), append([]any{n}, args...)...)
 }
 
 // Catalog returns a copy of a locale's translations, keyed by English text.

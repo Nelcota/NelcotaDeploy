@@ -9,8 +9,9 @@ import (
 )
 
 // TestPageScriptBudget keeps each page's JavaScript (Brotli) within its budget:
-// most pages carry only Datastar and the panel scripts; logs and servers add
-// xterm.js and uPlot.
+// most pages carry only Datastar and the panel scripts; logs adds xterm.js, and
+// servers adds its metrics script, which fetches uPlot only once a chart has
+// samples to draw.
 func TestPageScriptBudget(t *testing.T) {
 	e := newEnv(t)
 	s := e.admin()

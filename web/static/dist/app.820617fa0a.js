@@ -35,25 +35,48 @@
 	media.addEventListener("change", function () { if (stored() === "system") apply("system"); });
 
 	function toast(tone, message) {
+		var tpl = document.querySelector('template[data-toast-template="' + tone + '"]');
 		var host = document.getElementById("toaster");
-		if (!host) return;
-		var el = document.createElement("div");
-		el.className = "toast";
-		el.dataset.tone = tone;
-		el.setAttribute("role", tone === "danger" ? "alert" : "status");
-		var p = document.createElement("p");
-		p.className = "flex-1";
-		p.textContent = message;
-		var b = document.createElement("button");
-		b.type = "button";
-		b.className = "btn";
-		b.dataset.variant = "ghost";
-		b.dataset.size = "xs";
-		b.textContent = tr("Dismiss");
-		b.onclick = function () { el.remove(); };
-		el.append(p, b);
+		if (!host || !tpl) return;
+		var el = tpl.content.firstElementChild.cloneNode(true);
+		el.querySelector("[data-toast-message]").textContent = message;
 		host.append(el);
-		setTimeout(function () { el.remove(); }, 6000);
+	}
+	function stream(url, on, hooks) {
+		var es, retry = 1000, stopped = false;
+		function call(name) { if (!stopped && hooks[name]) hooks[name](); }
+		function connect() {
+			es = new EventSource(url);
+			Object.keys(on).forEach(function (name) {
+				es.addEventListener(name, function (e) { on[name](JSON.parse(e.data)); });
+			});
+			es.onopen = function () { retry = 1000; call("open"); };
+			es.onerror = function () {
+				call("reconnecting");
+				if (stopped || es.readyState !== EventSource.CLOSED) return;
+				fetch("/api/session", { credentials: "same-origin" }).then(function (r) { return r.status === 401; }, function () {}).then(function (out) {
+					if (out) return call("signedOut");
+					setTimeout(connect, retry);
+					retry = Math.min(retry * 2, 30000);
+				});
+			};
+		}
+		connect();
+		return { close: function () { stopped = true; es.close(); } };
+	}
+
+	function tabs() {
+		document.querySelectorAll("[data-tabs]").forEach(function (nav) {
+			function edges() {
+				var max = nav.scrollWidth - nav.clientWidth;
+				nav.toggleAttribute("data-fade-start", nav.scrollLeft > 1);
+				nav.toggleAttribute("data-fade-end", nav.scrollLeft < max - 1);
+			}
+			var cur = nav.querySelector("[aria-current]");
+			if (cur) nav.scrollLeft = cur.offsetLeft - (nav.clientWidth - cur.offsetWidth) / 2;
+			nav.addEventListener("scroll", edges);
+			new ResizeObserver(edges).observe(nav);
+		});
 	}
 
 	async function api(method, url, body) {
@@ -75,6 +98,11 @@
 	function pad(n) { return n < 10 ? "0" + n : "" + n; }
 	function tick() {
 		var now = Date.now();
+		document.querySelectorAll("#toaster [data-toast]").forEach(function (el) {
+			if (el.matches(":hover, :focus-within")) return;
+			el.dataset.left = (el.dataset.left || 6) - 1;
+			if (el.dataset.left < 1) el.remove();
+		});
 		document.querySelectorAll("[data-expires]").forEach(function (el) {
 			var left = Math.max(0, Math.floor((Date.parse(el.dataset.expires) - now) / 1000));
 			el.textContent = left > 0 ? tr("%s remaining", Math.floor(left / 60) + ":" + pad(left % 60)) : tr("Expired");
@@ -111,6 +139,8 @@
 		var t = e.target instanceof Element ? e.target : null;
 		if (!t) return;
 		closeMenus(t.closest("details.menu"));
+		var dismiss = t.closest("[data-toast-dismiss]");
+		if (dismiss) { dismiss.closest("[data-toast]").remove(); return; }
 		var copy = t.closest("[data-copy]");
 		if (copy) {
 			var src = document.getElementById(copy.dataset.copy);
@@ -143,6 +173,7 @@
 
 	document.addEventListener("DOMContentLoaded", function () {
 		tick();
+		tabs();
 		try {
 			var pending = sessionStorage.getItem("nelcota-toast");
 			if (pending) { sessionStorage.removeItem("nelcota-toast"); toast("success", pending); }
@@ -153,10 +184,6 @@
 		});
 	});
 
-	function tc(context, s) {
-		var k = context + "|" + s;
-		return catalog()[k] !== undefined ? catalog()[k] : tr(s);
-	}
 	async function shrink(file) {
 		var b = await createImageBitmap(file), side = Math.min(b.width, b.height), n = Math.min(512, side);
 		var c = document.createElement("canvas"), g = c.getContext("2d");
@@ -189,5 +216,5 @@
 		input.files = files.files;
 		input.form.requestSubmit();
 	});
-	window.Nelcota = { api: api, csrf: csrf, toast: toast, t: tr, tc: tc };
+	window.Nelcota = { api: api, csrf: csrf, toast: toast, stream: stream, t: tr };
 })();

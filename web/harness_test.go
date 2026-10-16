@@ -196,8 +196,10 @@ func sseEvents(body string) [][2]string {
 func toast(body string) string {
 	for _, ev := range sseEvents(body) {
 		if strings.Contains(ev[1], "selector #toaster") {
-			if strings.Contains(ev[1], `data-tone="danger"`) {
-				return "danger"
+			for _, tone := range []string{"danger", "info"} {
+				if strings.Contains(ev[1], `data-tone="`+tone+`"`) {
+					return tone
+				}
 			}
 			return "success"
 		}

@@ -51,8 +51,22 @@ async function signOut(page) {
 	await page.getByRole("button", { name: "Sign out" }).first().click();
 }
 
+// settled waits until web fonts are loaded and every finite animation or
+// transition has finished, so screenshots and contrast checks see the final state.
+async function settled(page) {
+	await page.waitForFunction(() => document.fonts.status === "loaded" && document.getAnimations().every((a) => a.playState !== "running" || a.effect.getComputedTiming().iterations === Infinity));
+}
+
 async function toast(page, text) {
 	await expect(page.locator("#toaster").getByText(text)).toBeVisible();
 }
 
-module.exports = { virtualAuthenticator, devLogin, totp, nextWindow, toast, newClient, signOut };
+// connected waits until the page's live updates are flowing. The indicator is
+// visually hidden while connected (it appears only when updates stop), so this
+// checks its state instead of looking for visible text.
+async function connected(page, locator = page.locator(".conn").first()) {
+	await expect(locator).toHaveAttribute("data-state", "live");
+	await expect(locator).toHaveText("Connected");
+}
+
+module.exports = { virtualAuthenticator, devLogin, totp, nextWindow, settled, toast, newClient, signOut, connected };

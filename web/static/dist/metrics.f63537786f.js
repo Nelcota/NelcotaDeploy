@@ -2,7 +2,7 @@
 	"use strict";
 	var tr = window.Nelcota.t;
 	var list = document.getElementById("servers-list");
-	if (!list || !window.uPlot) return;
+	if (!list) return;
 	var names = {};
 	try { names = JSON.parse(list.dataset.apps || "{}"); } catch (e) {}
 	var conn = document.getElementById("metrics-conn");
@@ -20,19 +20,34 @@
 		var el = card.querySelector('[data-metric="' + key + '"]');
 		if (el) el.textContent = value;
 	}
+	var plot;
+	function uplot() {
+		return plot || (plot = new Promise(function (done, fail) {
+			var s = document.createElement("script");
+			s.src = list.dataset.uplot;
+			s.onload = done;
+			s.onerror = function () { plot = null; fail(); };
+			document.head.append(s);
+		}));
+	}
 	function chart(id, card) {
 		var host = card.querySelector("[data-chart]");
 		var data = series[id];
 		if (data[0].length < 2) return;
+		if (!window.uPlot) { uplot().then(function () { chart(id, card); }, function () {}); return; }
 		var empty = host.querySelector("[data-chart-empty]");
 		if (empty) empty.remove();
 		if (charts[id]) { charts[id].setData(data); return; }
-		var axis = { stroke: css("--muted-foreground"), grid: { stroke: css("--border"), width: 1 }, ticks: { stroke: css("--border"), width: 1 }, font: "11px system-ui, sans-serif" };
+		var axis = { stroke: css("--muted-foreground"), grid: { stroke: css("--border"), width: 1 }, ticks: { show: false }, font: "11px system-ui, sans-serif" };
+		var line = { width: 1.5, points: { show: false } };
 		charts[id] = new uPlot({
-			width: host.clientWidth, height: host.clientHeight, legend: { show: false }, cursor: { points: { size: 6 } },
+			width: host.clientWidth, height: host.clientHeight, legend: { show: false }, cursor: { points: { size: 5 } },
 			scales: { x: { time: true }, y: { range: [0, 100] } },
-			axes: [Object.assign({}, axis), Object.assign({ values: function (u, v) { return v.map(function (x) { return x + "%"; }); }, size: 44 }, axis)],
-			series: [{}, { label: "CPU", stroke: css("--chart-2"), width: 2, fill: css("--chart-2") + "22" }, { label: tr("Memory"), stroke: css("--warning"), width: 2 }],
+			axes: [
+				Object.assign({}, axis, { grid: { show: false }, space: 90, size: 24, values: function (u, v) { return v.map(function (t) { return new Date(t * 1e3).toTimeString().slice(0, 8); }); } }),
+				Object.assign({}, axis, { splits: function () { return [50]; }, values: function () { return ["50%"]; }, size: 36 }),
+			],
+			series: [{}, Object.assign({ stroke: css("--primary"), fill: css("--primary") + "1f" }, line), Object.assign({ stroke: css("--muted-foreground"), dash: [4, 3] }, line)],
 		}, data, host);
 		new ResizeObserver(function () { charts[id] && charts[id].setSize({ width: host.clientWidth, height: host.clientHeight }); }).observe(host);
 	}
@@ -83,23 +98,10 @@
 		Object.keys(charts).forEach(function (id) { charts[id].destroy(); delete charts[id]; chart(id, document.querySelector('[data-server="' + CSS.escape(id) + '"]')); });
 	});
 
-	var retry = 1000;
-	function connect() {
-		var es = new EventSource("/api/events?topic=servers");
-		es.addEventListener("server.metrics", function (e) { sample(JSON.parse(e.data)); });
-		es.addEventListener("server.offline", function (e) { offline(JSON.parse(e.data)); });
-		es.onopen = function () { retry = 1000; conn.dataset.state = "live"; conn.textContent = window.Nelcota.tc("connection", "Live"); };
-		es.onerror = function () {
-			conn.dataset.state = "reconnecting";
-			conn.textContent = tr("Reconnecting…");
-			if (es.readyState === EventSource.CLOSED) {
-				fetch("/api/session", { credentials: "same-origin" }).then(function (r) {
-					if (r.status === 401) { conn.dataset.state = "offline"; conn.textContent = tr("Signed out"); return; }
-					setTimeout(connect, retry);
-					retry = Math.min(retry * 2, 30000);
-				}).catch(function () { setTimeout(connect, retry); retry = Math.min(retry * 2, 30000); });
-			}
-		};
-	}
-	connect();
+	function state(name, text) { conn.dataset.state = name; conn.textContent = text; }
+	window.Nelcota.stream("/api/events?topic=servers", { "server.metrics": sample, "server.offline": offline }, {
+		open: function () { state("live", tr("Connected")); },
+		reconnecting: function () { state("reconnecting", tr("Reconnecting…")); },
+		signedOut: function () { state("offline", tr("Signed out")); },
+	});
 })();

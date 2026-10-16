@@ -367,7 +367,7 @@ func (h *handler) importEnv(w http.ResponseWriter, r *http.Request) {
 		if err := h.s.Apps.SetEnvironment(r.Context(), id, vars); err != nil {
 			return err
 		}
-		return h.refreshEnv(s, r, id, i18n.Tf(r.Context(), "%d change(s) saved.", len(vars)))
+		return h.refreshEnv(s, r, id, i18n.N(r.Context(), len(vars), "%d change saved.", "%d changes saved."))
 	})
 }
 
@@ -396,7 +396,11 @@ func (h *handler) appAction(w http.ResponseWriter, r *http.Request) {
 			return err
 		}
 		messages := map[string]string{"start": "starting.", "stop": "stopped.", "restart": "restarting."}
-		return s.toast("success", app.Name+" "+messages[action])
+		tone := "info" // starting and restarting are still under way
+		if action == "stop" {
+			tone = "success"
+		}
+		return s.toast(tone, app.Name+" "+messages[action])
 	})
 }
 

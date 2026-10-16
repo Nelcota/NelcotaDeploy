@@ -390,7 +390,7 @@ func Enroll(s Shell) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = authHeading("Set up your passkey", "Paste the invitation token you received. It can be used once and expires after 15 minutes.").Render(ctx, templ_7745c5c3_Buffer)
+			templ_7745c5c3_Err = authHeading("Set up your passkey", "Open the invitation link you received, or paste its token here. It works once.").Render(ctx, templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}

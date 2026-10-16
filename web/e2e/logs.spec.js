@@ -1,6 +1,6 @@
 const fs = require("node:fs");
 const { test, expect } = require("./fixtures");
-const { devLogin, toast, newClient } = require("./helpers");
+const { devLogin, toast, newClient, connected } = require("./helpers");
 
 const screenText = (page) => page.locator("#terminal .xterm-rows").innerText();
 
@@ -8,7 +8,7 @@ test("deploy and watch build logs live", async ({ page }) => {
 	await newClient(page);
 	await devLogin(page);
 	await page.goto("/apps/dev-app-api/deployments");
-	await expect(page.getByRole("status").filter({ hasText: "Live" })).toBeVisible();
+	await connected(page);
 	await page.getByRole("button", { name: "Publish latest" }).click();
 	await toast(page, "Publishing api at");
 	await page.locator("#deployments > ul > li").first().getByRole("link", { name: /Logs for/ }).click();
@@ -27,11 +27,11 @@ test("runtime logs follow live and can be paused", async ({ page }) => {
 	await newClient(page);
 	await devLogin(page);
 	await page.goto("/apps/dev-app-api/logs?deployment=runtime");
-	await expect(page.locator("#log-conn")).toHaveText("Live");
+	await connected(page, page.locator("#log-conn"));
 	await expect.poll(() => screenText(page), { timeout: 10_000 }).toContain("GET /health 200");
 	await page.getByRole("button", { name: "Pause" }).click();
 	await expect(page.getByRole("button", { name: "Resume" })).toHaveAttribute("aria-pressed", "true");
-	await expect(page.locator("#log-held")).toContainText("new lines held while paused", { timeout: 10_000 });
+	await expect(page.locator("#log-held")).toContainText(/new lines? arrived while paused/i, { timeout: 10_000 });
 	const before = await page.evaluate(() => window.NelcotaLogs.lines());
 	await page.getByRole("button", { name: "Resume" }).click();
 	await expect(page.locator("#log-held")).toBeHidden();

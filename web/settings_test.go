@@ -31,7 +31,10 @@ func TestUsersPageAndInvite(t *testing.T) {
 	res := s.get("/settings/users")
 	mustContain(t, res.body, "Team", "dev@localhost", "(you)", "Administrator", "Invite someone")
 	res = s.post("/ui/users", url.Values{"email": {"ana@example.com"}, "name": {"Ana"}, "role": {"member"}})
-	mustContain(t, res.body, `elements <section id="user-invite-result"`, "Invitation for Ana", "http://localhost:8080/enroll", `id="enrollment-token"`, "data-expires=")
+	// A one-click link with the token in the fragment, and the token for manual entry.
+	mustContain(t, res.body, `elements <section id="user-invite-result"`, "Invitation for Ana", `id="enrollment-link"`, "http://localhost:8080/enroll#token=", "Copy link",
+		`id="enrollment-token"`, "Works for 24 hours", "They can open")
+	mustNotContain(t, res.body, "data-expires=", "/enroll?token=")
 	if !strings.Contains(s.get("/settings/users").body, "ana@example.com") {
 		t.Fatal("user not listed")
 	}
@@ -46,7 +49,7 @@ func TestGitHubSettings(t *testing.T) {
 	e := newEnv(t)
 	s := e.admin()
 	res := s.get("/settings/github")
-	mustContain(t, res.body, "Create GitHub App", `data-github-manifest`, "Not set", "http://localhost:8080/api/webhooks/github", "/assets/settings.")
+	mustContain(t, res.body, "Create GitHub App", `data-github-manifest`, "Not configured", "http://localhost:8080/api/webhooks/github", "/assets/settings.")
 	res = s.post("/ui/settings/github", url.Values{"github.app_id": {"12345"}, "github.webhook_secret": {"whsec-very-secret"}})
 	mustContain(t, res.body, `elements <section id="github-status"`, "GitHub credentials saved.")
 	mustNotContain(t, res.body, "whsec-very-secret")
@@ -113,7 +116,7 @@ func TestPlatformUpdateAndCancel(t *testing.T) {
 	res = s.post("/ui/operations/update", url.Values{"version": {"v1.0.0"}})
 	mustContain(t, res.body, "Version must be newer than the installed version")
 	res = s.post("/ui/operations/update", url.Values{"version": {"v1.3.0"}})
-	mustContain(t, res.body, "Update to v1.3.0 queued.", "Update to <span class=\"mono\">v1.3.0</span>", "panel", "Cancel batch")
+	mustContain(t, res.body, "Update to v1.3.0 is waiting to start.", "Update to <span class=\"mono\">v1.3.0</span>", "panel", "Cancel batch")
 	ops, _ := e.core.Operations.List(withUser(e, "development-user"))
 	if len(ops) == 0 {
 		t.Fatal("no operations")
@@ -130,7 +133,10 @@ func TestAuditFilters(t *testing.T) {
 	s.post("/ui/apps/dev-app-api/deploy", nil)
 	s.post("/ui/users", url.Values{"email": {"zoe@example.com"}, "name": {"Zoe"}, "role": {"member"}})
 	res := s.get("/settings/audit")
-	mustContain(t, res.body, "deploy.enqueue", "user.create", "auth.login", "Development", `value="deploy.enqueue"`, "matching entries")
+	mustContain(t, res.body, "deploy.enqueue", "user.create", "auth.login", "Development", `value="deploy.enqueue"`, " entries",
+		// Actions read as words; the code stays in the title.
+		"Started publishing", `title="deploy.enqueue"`, "Invited someone", "Signed in")
+	mustNotContain(t, res.body, "matching entries among")
 	mustNotContain(t, res.body, ">http.request<")
 	res = s.get("/settings/audit?action=deploy.enqueue")
 	mustContain(t, res.body, "deploy.enqueue")

@@ -45,65 +45,74 @@ templ AppForm(v AppFormView, logo templ.Component) {
 						<input id="app-branch" name="branch" class="input" required maxlength="200" value={ v.Input.Branch } aria-describedby="app-branch-hint"/>
 					}
 					<div id="section-domains" class="scroll-mt-6 sm:col-span-2">
-						@ui.Field("Web addresses", "app-domains", "One per line, like app.example.com. HTTPS certificates are issued automatically.", "") {
-							<textarea id="app-domains" name="domains" class="textarea font-mono" rows="2" spellcheck="false" placeholder="app.example.com" aria-describedby="app-domains-hint">{ strings.Join(v.Input.Config.Domains, "\n") }</textarea>
-						}
+						@domainsField(v.Input.Config.Domains)
 					</div>
 					<div id="section-health" class="contents">
-						@ui.Field("Your app listens on port", "app-port", "", "") {
-							<input id="app-port" name="port" class="input" type="number" min="1" max="65535" required value={ u32(v.Input.Config.Port) }/>
-						}
-						@ui.Field("Health check path", "app-health", "A new version gets traffic only after this answers with 2xx or 3xx.", "") {
-							<input id="app-health" name="health_path" class="input font-mono" required pattern="/.*" value={ v.Input.Config.HealthPath } aria-describedby="app-health-hint"/>
-						}
+						@portField(v.Input.Config.Port)
+						@healthPathField(v.Input.Config.HealthPath)
 					</div>
 				</div>
 			}
 		</div>
-		<details id="section-advanced" class="surface scroll-mt-6 p-5 sm:p-6">
-			<summary class="cursor-pointer font-medium">{ i18n.T(ctx, "Advanced") }</summary>
-			<div class="mt-5 grid gap-4 sm:grid-cols-2">
+		@ui.Disclosure("section-advanced", "Advanced", false, "surface scroll-mt-6 p-5 sm:p-6", nil) {
+			<div class="grid gap-4 sm:grid-cols-2">
 				@ui.Field("Repository", "app-repo", "", "") {
 					<input id="app-repo" name="repository" class="input" type="url" required pattern="https://github\.com/[^/]+/[^/]+/?" value={ v.Input.Repository }/>
-				}
-				@ui.Field("Dockerfile path", "app-dockerfile", "", "") {
-					<input id="app-dockerfile" name="dockerfile" class="input font-mono" value={ v.Input.Config.Dockerfile }/>
 				}
 				@ui.Field("GitHub App installation ID", "app-installation", "Optional. Found automatically when the GitHub App can read the repository.", "") {
 					<input id="app-installation" name="installation_id" class="input" type="number" min="0" value={ i64(v.Input.Config.InstallationID) } aria-describedby="app-installation-hint"/>
 				}
-				@ui.Field("Seconds to wait for the health check", "app-timeout", "Up to 600.", "") {
-					<input id="app-timeout" name="health_timeout" class="input" type="number" min="1" max="600" required value={ u32(v.Input.Config.HealthTimeout) } aria-describedby="app-timeout-hint"/>
-				}
-				@ui.Field("Memory per copy (MiB)", "app-memory", "", "") {
-					<input id="app-memory" name="memory_mib" class="input" type="number" min="32" max="65536" required value={ ui.MiB(v.Input.Config.MemoryBytes) }/>
-				}
-				@ui.Field("CPU per copy (cores)", "app-cpu", "", "") {
-					<input id="app-cpu" name="cpus" class="input" type="number" min="0.01" max="64" step="0.01" required value={ ui.CPUs(v.Input.Config.NanoCPUs) }/>
-				}
-				@ui.Field("Copies", "app-replicas", "1 to 16. More copies handle more traffic.", "") {
-					<input id="app-replicas" name="replicas" class="input" type="number" min="1" max="16" required value={ u32(v.Input.Config.Replicas) } aria-describedby="app-replicas-hint"/>
-				}
-				<label class="flex items-start gap-3 text-sm sm:col-span-2">
-					<input
-						class="input mt-0.5"
-						type="checkbox"
-						role="switch"
-						name="cache_enabled"
-						value="true"
-						if v.Input.Config.CacheEnabled {
-							checked
-						}
-					/>
-					<span><span class="font-medium">{ i18n.T(ctx, "Reuse the build cache") }</span><span class="block text-muted-foreground">{ i18n.T(ctx, "Faster builds. Turn off only to rule out a cache problem.") }</span></span>
-				</label>
+				@runtimeFields(v.Input.Config)
 			</div>
-		</details>
-		<div class="sticky bottom-24 z-10 hidden flex-wrap items-center justify-end gap-3 rounded-2xl border bg-background/90 p-3 shadow-lg shadow-black/10 backdrop-blur lg:bottom-6" data-class:hidden="!$_dirty" data-class:flex="$_dirty">
+		}
+		<div class="sticky bottom-24 z-10 hidden flex-wrap items-center justify-end gap-3 rounded-[1.5rem] border bg-background/90 p-3 shadow-lg shadow-black/10 backdrop-blur lg:bottom-6" data-class:hidden="!$_dirty" data-class:flex="$_dirty">
 			<p class="me-auto text-sm text-muted-foreground">{ i18n.T(ctx, "Saving restarts the app with the new settings.") }</p>
 			<button type="submit" class="btn">{ i18n.T(ctx, "Save changes") }</button>
 		</div>
 	</form>
+}
+
+// The new-app wizard and the settings tab share these fields, so labels,
+// limits, and hints stay the same in both.
+templ domainsField(domains []string) {
+	@ui.Field("Web addresses", "app-domains", "One per line, like app.example.com. HTTPS certificates are issued automatically.", "") {
+		<textarea id="app-domains" name="domains" class="textarea font-mono" rows="2" spellcheck="false" autocomplete="off" placeholder="app.example.com" aria-describedby="app-domains-hint">{ strings.Join(domains, "\n") }</textarea>
+	}
+}
+
+templ portField(port uint32) {
+	@ui.Field("Your app listens on port", "app-port", "", "") {
+		<input id="app-port" name="port" class="input" type="number" min="1" max="65535" required value={ u32(port) }/>
+	}
+}
+
+templ healthPathField(path string) {
+	@ui.Field("Health check path", "app-health", "A new version gets traffic only after this answers with 2xx or 3xx.", "") {
+		<input id="app-health" name="health_path" class="input font-mono" required pattern="/.*" value={ path } aria-describedby="app-health-hint"/>
+	}
+}
+
+// runtimeFields are the build and resource settings under Advanced.
+templ runtimeFields(c service.AppConfig) {
+	@ui.Field("Dockerfile path", "app-dockerfile", "", "") {
+		<input id="app-dockerfile" name="dockerfile" class="input font-mono" value={ c.Dockerfile }/>
+	}
+	@ui.Field("Seconds to wait for the health check", "app-timeout", "Up to 600.", "") {
+		<input id="app-timeout" name="health_timeout" class="input" type="number" min="1" max="600" required value={ u32(c.HealthTimeout) } aria-describedby="app-timeout-hint"/>
+	}
+	@ui.Field("Memory per copy (MiB)", "app-memory", "", "") {
+		<input id="app-memory" name="memory_mib" class="input" type="number" min="32" max="65536" required value={ ui.MiB(c.MemoryBytes) }/>
+	}
+	@ui.Field("CPU per copy (cores)", "app-cpu", "", "") {
+		<input id="app-cpu" name="cpus" class="input" type="number" min="0.01" max="64" step="0.01" required value={ ui.CPUs(c.NanoCPUs) }/>
+	}
+	@ui.Field("Copies", "app-replicas", "1 to 16. More copies handle more traffic.", "") {
+		<input id="app-replicas" name="replicas" class="input" type="number" min="1" max="16" required value={ u32(c.Replicas) } aria-describedby="app-replicas-hint"/>
+	}
+	<label class="flex items-start gap-3 text-sm sm:col-span-2">
+		<input class="input mt-0.5" type="checkbox" role="switch" name="cache_enabled" value="true" checked?={ c.CacheEnabled }/>
+		<span><span class="font-medium">{ i18n.T(ctx, "Reuse the build cache") }</span><span class="block text-muted-foreground">{ i18n.T(ctx, "Faster builds. Turn off only to rule out a cache problem.") }</span></span>
+	</label>
 }
 
 // WizardView carries the new-app flow between steps.
@@ -127,31 +136,40 @@ templ NewApp(s Shell, v WizardView) {
 				}
 			}
 		} else {
-			<div id="wizard" class="grid max-w-2xl gap-6">
-				@WizardRepository(v, "")
-			</div>
+			@WizardRepository(v, "")
 		}
 	}
 }
 
 templ wizardSteps(current int) {
-	<ol class="steps" aria-label={ i18n.T(ctx, "Steps") }>
+	<ol class="stages" aria-label={ i18n.T(ctx, "Steps") }>
 		for i, label := range []string{"Repository", "Settings"} {
 			<li
-				class="step"
-				if i < current {
-					data-state="done"
-				}
-				else
+				class="stage"
+				data-state={ wizardStepState(i, current) }
 				if i == current {
-					data-state="now"
 					aria-current="step"
 				}
 			>
-				{ strconv.Itoa(i + 1) } { i18n.T(ctx, label) }
+				if i < current {
+					@ui.Icon("check", "size-3.5")
+				}
+				// The number is its own element so the flex gap spaces it at every font weight.
+				<span class="tabular-nums">{ strconv.Itoa(i + 1) }</span>
+				<span>{ i18n.T(ctx, label) }</span>
 			</li>
 		}
 	</ol>
+}
+
+func wizardStepState(i, current int) string {
+	switch {
+	case i < current:
+		return "done"
+	case i == current:
+		return "current"
+	}
+	return ""
 }
 
 templ WizardRepository(v WizardView, err string) {
@@ -165,14 +183,11 @@ templ WizardRepository(v WizardView, err string) {
 			@ui.Field("GitHub repository", "wizard-repo", "", err) {
 				<input id="wizard-repo" name="repository" class="input" type="url" required autofocus placeholder="https://github.com/you/your-app" value={ v.Repository } autocomplete="off" spellcheck="false" aria-describedby="wizard-repo-error"/>
 			}
-			<details class="text-sm" open?={ v.InstallationID > 0 }>
-				<summary class="cursor-pointer text-muted-foreground">{ i18n.T(ctx, "Private repository?") }</summary>
-				<div class="mt-3">
-					@ui.Field("GitHub App installation ID", "wizard-installation", "Optional. Found automatically when the GitHub App can read the repository.", "") {
-						<input id="wizard-installation" name="installation_id" class="input" type="number" min="0" value={ i64(v.InstallationID) } aria-describedby="wizard-installation-hint"/>
-					}
-				</div>
-			</details>
+			@ui.Disclosure("", "Private repository?", v.InstallationID > 0, "", nil) {
+				@ui.Field("GitHub App installation ID", "wizard-installation", "Optional. Found automatically when the GitHub App can read the repository.", "") {
+					<input id="wizard-installation" name="installation_id" class="input" type="number" min="0" value={ i64(v.InstallationID) } aria-describedby="wizard-installation-hint"/>
+				}
+			}
 			<div class="flex justify-end gap-2">
 				@ui.LinkButton("/apps", "ghost", "", nil) {
 					{ i18n.T(ctx, "Cancel") }
@@ -193,44 +208,48 @@ templ WizardSettings(v WizardView) {
 			<input type="hidden" name="publish_message" value={ v.Info.Head.Message }/>
 			<div class="grid gap-1">
 				<h2 class="section-title">{ i18n.T(ctx, "Check the settings") }</h2>
-				<p class="muted mono break-all">{ v.Repository }</p>
+				<p class="muted mono flex items-center gap-1.5 break-all">
+					@ui.Icon("github", "size-3.5 shrink-0")
+					{ v.Repository }
+				</p>
 			</div>
 			if v.Inspected {
 				<ul class="grid gap-1.5 text-sm">
 					if v.Info.Dockerfile {
-						<li class="flex items-center gap-2">
-							@ui.Icon("circle-check", "size-4 text-success")
+						@found() {
 							{ i18n.T(ctx, "Dockerfile found") }
-						</li>
+						}
 					} else {
 						<li class="flex items-center gap-2 text-warning">
-							@ui.Icon("circle-alert", "size-4")
+							@ui.Icon("circle-alert", "size-4 shrink-0")
 							{ i18n.T(ctx, "No Dockerfile at the root. Set its path under Advanced, or add one to the repository.") }
 						</li>
 					}
 					if v.Info.Port > 0 {
-						<li class="flex items-center gap-2">
-							@ui.Icon("circle-check", "size-4 text-success")
+						@found() {
 							{ i18n.Tf(ctx, "Port %s read from EXPOSE", u32(v.Info.Port)) }
-						</li>
+						}
 					}
 					if v.Info.HealthPath != "" {
-						<li class="flex items-center gap-2">
-							@ui.Icon("circle-check", "size-4 text-success")
+						@found() {
 							{ i18n.Tf(ctx, "Health check %s read from HEALTHCHECK", v.Info.HealthPath) }
-						</li>
+						}
 					}
 					if v.InstallationID == 0 && v.Info.InstallationID > 0 {
-						<li class="flex items-center gap-2">
-							@ui.Icon("circle-check", "size-4 text-success")
+						@found() {
 							{ i18n.T(ctx, "GitHub App access found") }
-						</li>
+						}
 					}
 					if v.Info.Head.SHA != "" {
-						<li class="flex items-center gap-2">
-							@ui.Icon("circle-check", "size-4 text-success")
-							<span>{ i18n.T(ctx, "Latest commit") } <span class="mono">{ ui.ShortSHA(v.Info.Head.SHA) }</span>: { v.Info.Head.Message }</span>
-						</li>
+						@found() {
+							<span>
+								if v.Info.Head.Message != "" {
+									@ui.Phrase("Latest commit %s: %s", ui.Mono(ui.ShortSHA(v.Info.Head.SHA)), ui.Text(v.Info.Head.Message))
+								} else {
+									@ui.Phrase("Latest commit %s", ui.Mono(ui.ShortSHA(v.Info.Head.SHA)))
+								}
+							</span>
+						}
 					}
 				</ul>
 			} else {
@@ -258,12 +277,7 @@ templ WizardSettings(v WizardView) {
 						<input id="app-branch" name="branch" class="input" required value="main" aria-describedby="app-branch-hint"/>
 					}
 				}
-				@ui.Field("Web address", "app-domain", "Optional. Point its DNS to your server.", "") {
-					<input id="app-domain" name="domains" class="input" placeholder="app.example.com" autocomplete="off" spellcheck="false" aria-describedby="app-domain-hint"/>
-				}
-				@ui.Field("Your app listens on port", "app-port", "", "") {
-					<input id="app-port" name="port" class="input" type="number" min="1" max="65535" required value={ wizardPort(v) }/>
-				}
+				@portField(wizardPort(v))
 				if len(v.Servers) > 1 {
 					@ui.Field("Server", "app-server", "", "") {
 						<select id="app-server" name="server_id" class="select w-full">
@@ -275,32 +289,17 @@ templ WizardSettings(v WizardView) {
 				} else {
 					<input type="hidden" name="server_id" value={ v.Servers[0].ID }/>
 				}
+				<div class="sm:col-span-2">
+					@domainsField(nil)
+				</div>
 			</div>
 			@wizardEnv(v.Info.EnvKeys)
-			<details class="rounded-xl border p-4">
-				<summary class="cursor-pointer text-sm font-medium">{ i18n.T(ctx, "Advanced") }</summary>
-				<div class="mt-4 grid gap-4 sm:grid-cols-2">
-					@ui.Field("Dockerfile path", "app-dockerfile", "", "") {
-						<input id="app-dockerfile" name="dockerfile" class="input font-mono" value="Dockerfile"/>
-					}
-					@ui.Field("Health check path", "app-health", "Must answer with 2xx or 3xx.", "") {
-						<input id="app-health" name="health_path" class="input font-mono" value={ v.healthPath() } pattern="/.*" aria-describedby="app-health-hint"/>
-					}
-					@ui.Field("Seconds to wait for it", "app-timeout", "", "") {
-						<input id="app-timeout" name="health_timeout" class="input" type="number" min="1" max="600" value="60"/>
-					}
-					@ui.Field("Memory (MiB)", "app-memory", "", "") {
-						<input id="app-memory" name="memory_mib" class="input" type="number" min="32" max="65536" value="256"/>
-					}
-					@ui.Field("CPU (cores)", "app-cpu", "", "") {
-						<input id="app-cpu" name="cpus" class="input" type="number" min="0.01" max="64" step="0.01" value="1"/>
-					}
-					@ui.Field("Copies", "app-replicas", "More copies handle more traffic.", "") {
-						<input id="app-replicas" name="replicas" class="input" type="number" min="1" max="16" value="1" aria-describedby="app-replicas-hint"/>
-					}
-					<label class="flex items-center gap-2 text-sm sm:col-span-2"><input class="input" type="checkbox" role="switch" name="cache_enabled" value="true" checked/> { i18n.T(ctx, "Reuse the build cache") }</label>
+			@ui.Disclosure("", "Advanced", false, "rounded-xl border p-4", nil) {
+				<div class="grid gap-4 sm:grid-cols-2">
+					@healthPathField(v.healthPath())
+					@runtimeFields(v.config())
 				</div>
-			</details>
+			}
 			<div class="flex flex-wrap items-center justify-end gap-2">
 				<button type="button" class="btn" data-variant="ghost" data-on:click={ ui.PostFormOf("/ui/apps/new/back", "#wizard form") }>{ i18n.T(ctx, "Back") }</button>
 				if v.Info.Head.SHA != "" {
@@ -319,6 +318,19 @@ func (v WizardView) installation() int64 {
 		return v.InstallationID
 	}
 	return v.Info.InstallationID
+}
+
+// config is the wizard's starting point for the Advanced fields.
+func (v WizardView) config() service.AppConfig {
+	return NewAppInput().Config
+}
+
+// found is one thing the panel read from the repository.
+templ found() {
+	<li class="flex items-center gap-2">
+		@ui.Icon("circle-check", "size-4 shrink-0 text-success")
+		{ children... }
+	</li>
 }
 
 func (v WizardView) healthPath() string {
@@ -346,11 +358,11 @@ templ wizardEnv(keys []string) {
 	}
 }
 
-func wizardPort(v WizardView) string {
+func wizardPort(v WizardView) uint32 {
 	if v.Info.Port > 0 {
-		return u32(v.Info.Port)
+		return v.Info.Port
 	}
-	return "8080"
+	return NewAppInput().Config.Port
 }
 
 // AppSettingsView holds the settings tab.
@@ -369,11 +381,6 @@ templ AppSettings(s Shell, c AppContext, v AppSettingsView) {
 		}
 		<div class="grid gap-6">
 			if s.Admin() {
-				<nav aria-label={ i18n.T(ctx, "Settings sections") } class="flex flex-wrap gap-2">
-					for _, l := range [][2]string{{"section-general", "General"}, {"env", "Environment variables"}, {"section-advanced", "Advanced"}, {"runtime", "Start, stop, delete"}} {
-						<a class="rounded-full border px-3 py-1.5 text-sm text-muted-foreground hover:bg-muted hover:text-foreground" href={ templ.SafeURL("#" + l[0]) }>{ i18n.T(ctx, l[1]) }</a>
-					}
-				</nav>
 				@AppForm(v.Form, LogoSettings(c.App))
 				@LogoForm(c.App)
 				@EnvCard(c.App, v.Env, v.EnvErr)
@@ -440,12 +447,8 @@ templ configSummary(a service.App) {
 }
 
 templ EnvCard(a service.App, vars []service.EnvInfo, err string) {
-	<section id="env" class="card scroll-mt-6">
-		<header>
-			<h2>{ i18n.T(ctx, "Environment variables") }</h2>
-			<p>{ i18n.T(ctx, "Values are encrypted and can't be viewed after saving.") }</p>
-		</header>
-		<section class="grid gap-4">
+	@ui.Panel(ui.CardProps{ID: "env", Class: "scroll-mt-6", Title: "Environment variables", Description: "Values are encrypted and can't be viewed after saving."}) {
+		<div class="grid gap-4">
 			if err != "" {
 				@ui.ErrorState("Variables unavailable", err)
 			} else if len(vars) == 0 {
@@ -504,9 +507,11 @@ templ EnvCard(a service.App, vars []service.EnvInfo, err string) {
 				<div><button type="submit" class="btn" data-variant="outline" data-size="sm">{ i18n.T(ctx, "Review changes") }</button></div>
 				<div id="env-review"></div>
 			</form>
-			<p class="text-xs text-muted-foreground">{ i18n.T(ctx, "Build variables reach the build as secrets:") } <span class="mono">RUN --mount=type=secret,id=KEY</span>.</p>
-		</section>
-	</section>
+			<p class="text-xs text-muted-foreground">
+				@ui.Phrase("Build variables reach the build as secrets: %s.", ui.Mono("RUN --mount=type=secret,id=KEY"))
+			</p>
+		</div>
+	}
 }
 
 // EnvChange is one line of the review before saving variables.
@@ -516,7 +521,7 @@ type EnvChange struct {
 
 templ EnvReview(appID string, changes []EnvChange) {
 	<div id="env-review" class="grid gap-3 rounded-xl bg-muted/50 p-4" aria-live="polite">
-		<p class="text-sm font-medium">{ i18n.Tf(ctx, "Review %d change(s)", len(changes)) }</p>
+		<p class="text-sm font-medium">{ i18n.N(ctx, len(changes), "Review %d change", "Review %d changes") }</p>
 		<ul class="grid gap-1 font-mono text-sm">
 			for _, c := range changes {
 				<li class="env-change" data-kind={ c.Kind }>
@@ -532,7 +537,7 @@ templ EnvReview(appID string, changes []EnvChange) {
 			}
 		</ul>
 		<div class="flex flex-wrap items-center gap-3">
-			<button type="button" class="btn" data-size="sm" data-on:click={ ui.PostFormOf("/ui/apps/"+appID+"/env/import", "#env-paste") }>{ i18n.Tf(ctx, "Save %d change(s)", len(changes)) }</button>
+			<button type="button" class="btn" data-size="sm" data-on:click={ ui.PostFormOf("/ui/apps/"+appID+"/env/import", "#env-paste") }>{ i18n.N(ctx, len(changes), "Save %d change", "Save %d changes") }</button>
 			<span class="text-xs text-muted-foreground">{ i18n.T(ctx, "The app restarts with the new values.") }</span>
 		</div>
 	</div>
@@ -550,22 +555,8 @@ templ secretInput(id, label string) {
 }
 
 templ RuntimeCard(a service.App) {
-	<section id="runtime" class="card scroll-mt-6">
-		<header>
-			<h2>{ i18n.T(ctx, "Runtime") }</h2>
-			<p>
-				if a.Config.Stopped {
-					{ i18n.T(ctx, "The app is stopped and serves no traffic.") }
-				} else {
-					if a.Config.Replicas == 1 {
-						{ i18n.T(ctx, "Running as one copy.") }
-					} else {
-						{ i18n.Tf(ctx, "Running as %s copies.", u32(a.Config.Replicas)) }
-					}
-				}
-			</p>
-		</header>
-		<section class="flex flex-wrap gap-2">
+	@ui.Panel(ui.CardProps{ID: "runtime", Class: "scroll-mt-6", Title: "Runtime", Header: runtimeSummary(a)}) {
+		<div class="flex flex-wrap gap-2">
 			if a.Config.Stopped {
 				@ui.Button("", "sm", templ.Attributes{"data-on:click": ui.Post("/ui/apps/" + a.ID + "/action/start")}) {
 					@ui.Icon("play", "")
@@ -583,8 +574,8 @@ templ RuntimeCard(a service.App) {
 				@ui.ConfirmDialog("confirm-restart", i18n.Tf(ctx, "Restart %s?", a.Name), "Requests may fail for a few seconds while containers restart.", "Restart", ui.Post("/ui/apps/"+a.ID+"/action/restart"), false)
 				@ui.ConfirmDialog("confirm-stop", i18n.Tf(ctx, "Stop %s?", a.Name), "The app stops serving traffic until you start it again.", "Stop app", ui.Post("/ui/apps/"+a.ID+"/action/stop"), true)
 			}
-		</section>
-		<section class="mt-2 grid gap-3 border-t pt-6">
+		</div>
+		<div class="mt-6 grid gap-3 border-t pt-6">
 			<h3 class="text-sm font-medium text-destructive">{ i18n.T(ctx, "Delete app") }</h3>
 			<p class="muted">{ i18n.T(ctx, "Deleting removes the app, its deployments, and its environment variables. Stop the app and wait for pending deployments first.") }</p>
 			<div>
@@ -594,7 +585,7 @@ templ RuntimeCard(a service.App) {
 				}
 			</div>
 			<dialog id="confirm-delete" class="dialog" aria-labelledby="confirm-delete-title" data-on:click="evt.target === el && el.close()" data-ignore-morph>
-				<form class="w-[calc(100%-2rem)] max-w-md gap-4 rounded-lg border bg-background p-6 shadow-lg" data-on:submit={ ui.PostForm("/ui/apps/" + a.ID + "/delete") }>
+				<form class="w-[calc(100%-2rem)] max-w-md gap-4 rounded-[1.5rem] border bg-background p-6 shadow-lg" data-on:submit={ ui.PostForm("/ui/apps/" + a.ID + "/delete") }>
 					<header class="gap-1.5">
 						<h2 id="confirm-delete-title" class="text-lg font-semibold">{ i18n.Tf(ctx, "Delete %s?", a.Name) }</h2>
 						<p class="text-sm text-muted-foreground">{ i18n.T(ctx, "This cannot be undone. Type the app name to confirm.") }</p>
@@ -608,6 +599,18 @@ templ RuntimeCard(a service.App) {
 					</footer>
 				</form>
 			</dialog>
-		</section>
-	</section>
+		</div>
+	}
+}
+
+templ runtimeSummary(a service.App) {
+	<p>
+		if a.Config.Stopped {
+			{ i18n.T(ctx, "The app is stopped and serves no traffic.") }
+		} else if a.Config.Replicas == 1 {
+			{ i18n.T(ctx, "Running as one copy.") }
+		} else {
+			{ i18n.Tf(ctx, "Running as %s copies.", u32(a.Config.Replicas)) }
+		}
+	</p>
 }

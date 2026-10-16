@@ -85,7 +85,11 @@ func (h *handler) beginTOTP(w http.ResponseWriter, r *http.Request) {
 			return err
 		}
 		qr := "data:image/png;base64," + base64.StdEncoding.EncodeToString(b.Bytes())
-		return s.patch(pages.TOTPSetup(setup.ID, qr, groupSecret(key.Secret())), "", "")
+		if err := s.patch(pages.TOTPSetup(setup.ID, qr, groupSecret(key.Secret())), "", ""); err != nil {
+			return err
+		}
+		// The setup is open below; a second "Set up authenticator" would start over.
+		return s.patch(nil, "#totp-begin", modeRemove)
 	})
 }
 

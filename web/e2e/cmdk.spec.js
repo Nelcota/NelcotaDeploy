@@ -1,11 +1,11 @@
 const { test, expect } = require("./fixtures");
-const { devLogin, toast, newClient } = require("./helpers");
+const { devLogin, toast, newClient, connected } = require("./helpers");
 
 test("command palette navigates and runs actions from the keyboard", async ({ page }) => {
 	await newClient(page);
 	await devLogin(page);
 	// Deferred scripts are running once the live stream reports in.
-	await expect(page.getByRole("status").filter({ hasText: "Live" })).toBeVisible();
+	await connected(page);
 	await page.keyboard.press("Control+K");
 	const palette = page.getByRole("dialog", { name: "Command palette" });
 	const input = palette.getByRole("combobox");
@@ -18,7 +18,7 @@ test("command palette navigates and runs actions from the keyboard", async ({ pa
 	await expect(palette.getByRole("option")).toHaveCount(1);
 	await input.press("Enter");
 	await expect(page).toHaveURL("/apps/dev-app-blog/logs?deployment=runtime");
-	await expect(page.locator("#log-conn")).toHaveText("Live");
+	await connected(page, page.locator("#log-conn"));
 
 	// Arrow keys move the selection; Enter runs a Datastar action.
 	await page.keyboard.press("Control+K");
@@ -28,6 +28,8 @@ test("command palette navigates and runs actions from the keyboard", async ({ pa
 	await input.press("ArrowUp"); // wraps to the last match
 	await input.press("ArrowDown"); // and back to the first
 	await expect(options.first()).toHaveAttribute("aria-selected", "true");
+	// Exactly one option is selected, including those the filter hid.
+	await expect(page.locator('#cmdk-list [role=option][aria-selected="true"]')).toHaveCount(1);
 	await input.fill("publish store");
 	await expect(options).toHaveCount(1);
 	const action = palette.getByRole("option", { name: /Publish store/ });

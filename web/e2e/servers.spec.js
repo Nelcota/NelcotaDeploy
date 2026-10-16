@@ -1,12 +1,12 @@
 const { test, expect } = require("./fixtures");
-const { devLogin, toast, newClient } = require("./helpers");
+const { devLogin, toast, newClient, connected } = require("./helpers");
 
 test("servers show live metrics, invitations, and cache cleanup", async ({ page, context }) => {
 	await context.grantPermissions(["clipboard-read", "clipboard-write"]);
 	await newClient(page);
 	await devLogin(page);
 	await page.goto("/servers");
-	await expect(page.locator("#metrics-conn")).toHaveText("Live");
+	await connected(page, page.locator("#metrics-conn"));
 	const api = page.locator('[data-server="dev-server-api"]');
 	await expect(api.locator('[data-metric="cpu"]')).toHaveText(/\d+\.\d%/, { timeout: 10_000 });
 	// Two samples draw the chart.

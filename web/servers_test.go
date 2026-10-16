@@ -82,7 +82,7 @@ func TestServerLimitsAndPrune(t *testing.T) {
 		t.Fatal(res.body)
 	}
 	res = s.post("/ui/servers/dev-server-api/limits", url.Values{"build_limit": {"1"}, "cache_gib": {"lots"}})
-	mustContain(t, res.body, "Cache limit must be a number of GiB")
+	mustContain(t, res.body, "Build cache size must be a number of GiB")
 	// Without a connected agent the service reports it instead of pretending.
 	res = s.post("/ui/servers/dev-server-api/prune/cache", nil)
 	mustContain(t, res.body, "Agent unavailable")

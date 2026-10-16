@@ -1,13 +1,13 @@
 const { test, expect } = require("./fixtures");
 const AxeBuilder = require("@axe-core/playwright").default;
-const { devLogin, newClient } = require("./helpers");
+const { devLogin, newClient, connected } = require("./helpers");
 
 const axe = (page) => new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21aa", "wcag22aa"]).analyze();
 
 test("skip link, visible focus, and keyboard-operable dialogs", async ({ page }) => {
 	await newClient(page);
 	await devLogin(page);
-	await expect(page.getByRole("status").filter({ hasText: "Live" })).toBeVisible();
+	await connected(page);
 
 	// The first Tab reaches the skip link, which moves focus to the main content.
 	await page.keyboard.press("Tab");

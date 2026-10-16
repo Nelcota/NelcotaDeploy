@@ -20,7 +20,8 @@ func (h *handler) serversPage(w http.ResponseWriter, r *http.Request) {
 	}
 	v.Apps, _ = h.s.Apps.List(r.Context())
 	s := h.shell(r, "Servers", "servers")
-	s.Scripts = append(s.Scripts, "uplot.js", "metrics.js")
+	// metrics.js loads uPlot itself once a chart has samples to draw.
+	s.Scripts = append(s.Scripts, "metrics.js")
 	s.Styles = []string{"uplot.css"}
 	render(w, r, http.StatusOK, pages.Servers(s, v))
 }
@@ -29,7 +30,7 @@ func (h *handler) serversPage(w http.ResponseWriter, r *http.Request) {
 func cacheBytes(v string) (int64, error) {
 	f, err := strconv.ParseFloat(strings.TrimSpace(v), 64)
 	if err != nil || math.IsNaN(f) || f <= 0 {
-		return 0, invalid("Cache limit must be a number of GiB")
+		return 0, invalid("Build cache size must be a number of GiB")
 	}
 	return int64(math.Round(f * (1 << 30))), nil
 }
@@ -41,7 +42,7 @@ func (h *handler) inviteServer(w http.ResponseWriter, r *http.Request) {
 		}
 		builds, err := strconv.Atoi(strings.TrimSpace(r.PostForm.Get("build_limit")))
 		if err != nil {
-			return invalid("Concurrent builds must be a whole number")
+			return invalid("Builds at the same time must be a whole number")
 		}
 		cache, err := cacheBytes(r.PostForm.Get("cache_gib"))
 		if err != nil {
@@ -55,14 +56,8 @@ func (h *handler) inviteServer(w http.ResponseWriter, r *http.Request) {
 		if err := s.patch(pages.InviteResult(h.inviteView(name, inv)), "", ""); err != nil {
 			return err
 		}
-		if servers, err := h.s.Servers.List(r.Context()); err == nil {
-			for _, srv := range servers {
-				if srv.ID == inv.ServerID {
-					if err := s.patch(pages.ServerPanel(h.shell(r, "", ""), srv), "#servers-list", modeAppend); err != nil {
-						return err
-					}
-				}
-			}
+		if err := s.patch(pages.ServerPanel(h.shell(r, "", ""), inv.Server), "#servers-list", modeAppend); err != nil {
+			return err
 		}
 		return s.closeAndReset("#invite")
 	})
@@ -75,9 +70,9 @@ func (h *handler) pruneServer(w http.ResponseWriter, r *http.Request) {
 			return err
 		}
 		if scope == "cache" {
-			return s.toast("success", "Clearing the build cache.")
+			return s.toast("info", "Clearing the build cache.")
 		}
-		return s.toast("success", "Removing unused images.")
+		return s.toast("info", "Removing unused images.")
 	})
 }
 
@@ -88,7 +83,7 @@ func (h *handler) serverLimits(w http.ResponseWriter, r *http.Request) {
 		}
 		builds, err := strconv.Atoi(strings.TrimSpace(r.PostForm.Get("build_limit")))
 		if err != nil {
-			return invalid("Concurrent builds must be a whole number")
+			return invalid("Builds at the same time must be a whole number")
 		}
 		cache, err := cacheBytes(r.PostForm.Get("cache_gib"))
 		if err != nil {

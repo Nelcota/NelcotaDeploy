@@ -21,7 +21,7 @@ test("switch to Portuguese in account settings and back", async ({ page }) => {
 	// Scripts render their text in the same language, and the choice survives navigation.
 	await page.goto("/servers");
 	const words = await catalog(page);
-	await expect(page.getByRole("status").filter({ hasText: words["connection|Live"] })).toBeVisible();
+	await expect(page.locator("#metrics-conn")).toHaveText(words["Connected"]);
 	await page.locator('aside a.rail-link[href="/"]').click();
 	await page.locator("#app-row-dev-app-api button[aria-label$=' api']").first().click();
 	const toaster = page.locator("#toaster");

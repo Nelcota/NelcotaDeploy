@@ -69,6 +69,22 @@ func CurrentStage(d service.Deployment) string {
 	return FailedStage(d)
 }
 
+// StageState reports how far deployment d got with stage: "done" once the
+// stage has a recorded duration, "current" for the stage a running deployment
+// is in, "failed" for the stage a failed deployment stopped at, or "".
+func StageState(d service.Deployment, stage string) string {
+	if _, ok := d.Timings[stage]; ok {
+		return "done"
+	}
+	switch {
+	case d.Status == "failed" && FailedStage(d) == stage:
+		return "failed"
+	case (d.Status == "building" || d.Status == "starting") && CurrentStage(d) == stage:
+		return "current"
+	}
+	return ""
+}
+
 // Explanation tells people what went wrong and what to do next.
 type Explanation struct {
 	What string

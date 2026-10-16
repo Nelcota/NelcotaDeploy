@@ -1,6 +1,6 @@
 const { test, expect } = require("./fixtures");
 const AxeBuilder = require("@axe-core/playwright").default;
-const { devLogin, newClient } = require("./helpers");
+const { devLogin, newClient, settled } = require("./helpers");
 
 // Every screen, in both themes, must have no WCAG 2.2 A/AA violations
 // (including color contrast) according to axe-core.
@@ -29,7 +29,7 @@ for (const scheme of ["light", "dark"]) {
 			for (const path of pages) {
 				await page.goto(path);
 				await page.waitForLoadState("load");
-				await page.waitForTimeout(400);
+				await settled(page);
 				const result = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21aa", "wcag22aa"]).analyze();
 				for (const v of result.violations) violations.push(`${path}: ${v.id} (${v.impact}) ${v.nodes.slice(0, 3).map((n) => n.target.join(" ") + " — " + n.failureSummary.split("\n").slice(1, 2).join("")).join(" | ")}`);
 			}

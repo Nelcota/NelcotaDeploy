@@ -17,7 +17,7 @@
 			document.body.append(form);
 			form.submit();
 		} catch (err) {
-			if (err.status === 403) { var d = document.getElementById("reauth"); if (d) d.showModal(); }
+			if (err.status === 403) window.Nelcota.reauth();
 			else window.Nelcota.toast("danger", err.message);
 			b.disabled = false;
 		}

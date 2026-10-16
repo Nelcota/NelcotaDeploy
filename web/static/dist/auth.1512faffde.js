@@ -159,6 +159,7 @@
 		var d = document.getElementById("reauth");
 		if (d && !d.open) d.showModal();
 	}
+	N.reauth = openReauth;
 
 	document.addEventListener("DOMContentLoaded", function () {
 		var root = document.querySelector("[data-auth]");

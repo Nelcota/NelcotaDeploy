@@ -36,7 +36,8 @@ var icons = func() map[string]string {
 	return m
 }()
 
-// Icon renders a decorative Lucide icon. Unknown names panic so tests catch typos.
+// Icon renders a decorative Lucide icon, or a brand mark vendored next to them
+// (github). Unknown names panic so tests catch typos.
 func Icon(name, class string) templ.Component {
 	inner, ok := icons[name]
 	if !ok {

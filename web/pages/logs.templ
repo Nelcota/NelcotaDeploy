@@ -52,7 +52,7 @@ templ Logs(s Shell, c AppContext, v LogsView) {
 				<noscript><button type="submit" class="btn" data-variant="outline">{ i18n.T(ctx, "Show") }</button></noscript>
 				<div class="flex min-h-9 items-center gap-2 text-sm">
 					if !v.Runtime {
-						<span id="log-status" class="status" data-tone={ ui.Tone(v.Selected.Status) } data-status={ v.Selected.Status }>{ i18n.T(ctx, ui.StatusLabel(v.Selected.Status)) }</span>
+						@ui.Pill(ui.Tone(v.Selected.Status), ui.StatusLabel(v.Selected.Status), templ.Attributes{"id": "log-status", "data-status": v.Selected.Status})
 						<span class="mono text-muted-foreground" title={ v.Selected.SHA }>{ ui.ShortSHA(v.Selected.SHA) }</span>
 					}
 					<span id="log-conn" class="conn" data-state="connecting" role="status" hidden?={ v.finished() }>{ i18n.T(ctx, "Connecting…") }</span>
@@ -62,7 +62,8 @@ templ Logs(s Shell, c AppContext, v LogsView) {
 				@ui.ErrorState("Logs unavailable", v.Err)
 			} else {
 				<div class="flex flex-wrap items-center gap-2" role="toolbar" aria-label={ i18n.T(ctx, "Log controls") } aria-controls="terminal">
-					<div class="flex min-w-0 flex-1 items-center gap-1 sm:max-w-sm">
+					// Phones give the search its own full-width line.
+					<div class="flex w-full min-w-0 items-center gap-1 sm:w-auto sm:max-w-sm sm:flex-1">
 						<label for="log-search" class="sr-only">{ i18n.T(ctx, "Search logs") }</label>
 						<input id="log-search" type="search" class="input h-8 min-w-0 flex-1" placeholder={ i18n.T(ctx, "Search logs") } autocomplete="off" spellcheck="false" aria-describedby="log-matches"/>
 						@ui.Button("outline", "icon-sm", templ.Attributes{"data-log": "prev", "aria-label": i18n.T(ctx, "Previous match")}) {
@@ -72,7 +73,7 @@ templ Logs(s Shell, c AppContext, v LogsView) {
 							@ui.Icon("chevron-right", "")
 						}
 					</div>
-					<span id="log-matches" class="min-w-20 text-xs text-muted-foreground tabular-nums" aria-live="polite"></span>
+					<span id="log-matches" class="text-xs whitespace-nowrap text-muted-foreground tabular-nums empty:hidden" aria-live="polite"></span>
 					<div class="flex flex-wrap items-center gap-1 sm:ms-auto">
 						// A finished build doesn't grow, so following and pausing are hidden
 						// (kept in the page because logs.js drives them).

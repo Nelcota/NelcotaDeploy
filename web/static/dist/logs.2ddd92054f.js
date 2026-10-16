@@ -16,7 +16,7 @@
 	fit.fit();
 	new ResizeObserver(function () { try { fit.fit(); } catch (e) {} }).observe(el);
 
-	var lines = [], partial = "", queue = [], held = [], paused = false, follow = true, scheduled = false;
+	var lines = [], partial = "", queue = [], held = [], heldLines = 0, paused = false, follow = true, scheduled = false;
 	var MAX_LINES = 200000;
 	var conn = document.getElementById("log-conn");
 	var heldNote = document.getElementById("log-held");
@@ -48,7 +48,8 @@
 		record(text);
 		if (paused) {
 			held.push(text);
-			heldNote.textContent = held.length + " new lines held while paused.";
+			heldLines += (text.match(/\n/g) || []).length;
+			heldNote.textContent = tr(heldLines === 1 ? "%d new line arrived while paused." : "%d new lines arrived while paused.", heldLines);
 			heldNote.classList.remove("hidden");
 			return;
 		}
@@ -57,7 +58,7 @@
 	}
 	function reset() {
 		term.reset();
-		lines = []; partial = ""; queue = []; held = [];
+		lines = []; partial = ""; queue = []; held = []; heldLines = 0;
 	}
 
 	el.addEventListener("wheel", function (e) { if (e.deltaY < 0 && follow) setFollow(false); }, { passive: true });
@@ -77,7 +78,7 @@
 	}
 
 	var statusEl = document.getElementById("log-status");
-	var labels = { queued: [tr("Waiting"), "warning"], building: [tr("Building"), "info"], starting: [tr("Starting"), "info"], success: [tr("Published"), "success"], failed: [tr("Failed"), "danger"], cancelled: [tr("Cancelled"), "muted"] };
+	var labels = { queued: [tr("Waiting"), "warning"], building: [tr("Building"), "progress"], starting: [tr("Starting"), "progress"], success: [tr("Published"), "success"], failed: [tr("Failed"), "danger"], cancelled: [tr("Cancelled"), "muted"] };
 	function terminal(s) { return s === "success" || s === "failed" || s === "cancelled"; }
 	function showStatus(s) {
 		if (!statusEl || !labels[s]) return;
@@ -86,7 +87,7 @@
 		statusEl.textContent = labels[s][0];
 	}
 
-	var es = null, retry = 1000, finished = mode === "build" && terminal(el.dataset.status), connectedOnce = false;
+	var live = null, finished = mode === "build" && terminal(el.dataset.status), connectedOnce = false;
 	function snapshot() {
 		return fetch("/api/deployments/" + encodeURIComponent(el.dataset.deployment) + "/logs", { credentials: "same-origin" })
 			.then(function (r) { if (!r.ok) throw r; return r.json(); })
@@ -95,48 +96,37 @@
 	function connect() {
 		state("connecting", tr("Connecting…"));
 		var buffered = [], ready = mode === "runtime";
-		es = new EventSource("/api/events?topic=" + encodeURIComponent(topic));
-		es.addEventListener("deploy.log", function (e) { var d = JSON.parse(e.data); ready ? write(d.line) : buffered.push(d.line); });
-		es.addEventListener("runtime.log", function (e) { write(JSON.parse(e.data).line); });
-		es.addEventListener("deploy.status", function (e) {
-			var d = JSON.parse(e.data);
-			showStatus(d.status);
-			if (terminal(d.status)) { finished = true; es.close(); state("done", tr("Finished")); }
+		live = N.stream("/api/events?topic=" + encodeURIComponent(topic), {
+			"deploy.log": function (d) { ready ? write(d.line) : buffered.push(d.line); },
+			"runtime.log": function (d) { write(d.line); },
+			"deploy.status": function (d) {
+				showStatus(d.status);
+				if (terminal(d.status)) { finished = true; live.close(); state("done", tr("Finished")); }
+			},
+		}, {
+			open: function () {
+				state("live", tr("Connected"));
+				if (mode === "runtime") {
+					if (connectedOnce) write("\x1b[2m[" + tr("reconnected; lines sent while offline are missing") + "]\x1b[0m\n");
+					connectedOnce = true;
+					return;
+				}
+				ready = false;
+				snapshot().then(function (text) {
+					reset();
+					write(text);
+					var tail = new Set(text.split("\n").slice(-2000));
+					buffered.forEach(function (l) { if (!tail.has(l.replace(/\n$/, ""))) write(l); });
+					buffered = [];
+					ready = true;
+				}).catch(function () { write("\x1b[31m" + tr("The stored log could not be loaded.") + "\x1b[0m\n"); ready = true; });
+			},
+			reconnecting: function () { state("reconnecting", tr("Reconnecting…")); },
+			signedOut: function () {
+				state("offline", tr("Signed out"));
+				N.toast("danger", tr("Your session ended. Sign in again to keep following logs."));
+			},
 		});
-		es.onopen = function () {
-			retry = 1000;
-			state("live", N.tc("connection", "Live"));
-			if (mode === "runtime") {
-				if (connectedOnce) write("\x1b[2m[" + tr("reconnected; lines sent while offline are missing") + "]\x1b[0m\n");
-				connectedOnce = true;
-				return;
-			}
-			snapshot().then(function (text) {
-				reset();
-				write(text);
-				var tail = new Set(text.split("\n").slice(-2000));
-				buffered.forEach(function (l) { if (!tail.has(l.replace(/\n$/, ""))) write(l); });
-				buffered = [];
-				ready = true;
-			}).catch(function () { write("\x1b[31m" + tr("The stored log could not be loaded.") + "\x1b[0m\n"); ready = true; });
-		};
-		es.onerror = function () {
-			if (finished) return;
-			if (es.readyState === EventSource.CLOSED) {
-				fetch("/api/session", { credentials: "same-origin" }).then(function (r) {
-					if (r.status === 401) { state("offline", tr("Signed out")); N.toast("danger", tr("Your session ended. Sign in again to keep following logs.")); return; }
-					state("reconnecting", tr("Reconnecting…"));
-					setTimeout(connect, retry);
-					retry = Math.min(retry * 2, 30000);
-				}).catch(function () {
-					state("reconnecting", tr("Reconnecting…"));
-					setTimeout(connect, retry);
-					retry = Math.min(retry * 2, 30000);
-				});
-			} else {
-				state("reconnecting", tr("Reconnecting…"));
-			}
-		};
 	}
 
 	if (finished) {
@@ -159,7 +149,7 @@
 				while (x >= 0) { matches.push([y, x]); x = text.indexOf(q, x + q.length); }
 			}
 		}
-		counter.textContent = q ? (matches.length ? tr("%d matches", matches.length) : tr("No matches")) : "";
+		counter.textContent = q ? (matches.length ? tr(matches.length === 1 ? "%d match" : "%d matches", matches.length) : tr("No matches")) : "";
 		if (!q) term.clearSelection();
 	}
 	function go(step) {
@@ -188,7 +178,7 @@
 			paused = !paused;
 			press("pause", paused).querySelector("span").textContent = paused ? tr("Resume") : tr("Pause");
 			if (!paused) {
-				queue = queue.concat(held); held = [];
+				queue = queue.concat(held); held = []; heldLines = 0;
 				heldNote.classList.add("hidden");
 				schedule();
 			}

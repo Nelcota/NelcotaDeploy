@@ -1,10 +1,10 @@
 const { test, expect } = require("./fixtures");
-const { devLogin, toast, newClient } = require("./helpers");
+const { devLogin, toast, newClient, connected } = require("./helpers");
 
 test("home shows live metrics, and Publish updates the app's status live", async ({ page }) => {
 	await newClient(page);
 	await devLogin(page);
-	await expect(page.getByRole("status").filter({ hasText: "Live" })).toBeVisible();
+	await connected(page);
 	// Nothing needs attention, so Home says so in one line.
 	await expect(page.getByText("Everything is running normally.")).toBeVisible();
 	await expect(page.locator("#server-dev-server-api").getByText("CPU")).toBeVisible();

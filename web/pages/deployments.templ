@@ -37,7 +37,7 @@ templ deployActions(c AppContext, v DeploymentsView) {
 			{ i18n.T(ctx, "Publish latest") }
 		}
 	}
-	@ui.Button("outline", "sm", templ.Attributes{"data-on:click": ui.Open("deploy-commit")}) {
+	@ui.Button("outline", "sm", templ.Attributes{"data-on:click": openDeployCommit(c)}) {
 		{ i18n.T(ctx, "Publish a commit") }
 	}
 }
@@ -46,7 +46,7 @@ templ Deployments(s Shell, c AppContext, v DeploymentsView) {
 	@AppLayout(s, c, deployActions(c, v)) {
 		@LiveStream("/ui/stream/apps/" + c.App.ID + "/deployments")
 		@DeploymentsTable(c.App, v)
-		@DeployCommitDialog(c.App)
+		@DeployCommitDialog(c)
 	}
 }
 
@@ -55,7 +55,7 @@ templ DeploymentsTable(app service.App, v DeploymentsView) {
 		if v.Err != "" {
 			@ui.ErrorState("Deployments unavailable", v.Err)
 		} else if len(v.Deployments) == 0 {
-			@ui.Empty("rocket", "No deployments yet", i18n.Tf(ctx, "Pushes to %s deploy automatically once the GitHub App is installed.", app.Branch))
+			@ui.Empty("rocket", "No deployments yet", i18n.Tf(ctx, "Pushes to %s publish automatically once the GitHub App is installed.", app.Branch))
 		} else {
 			<ul class="rows" aria-label={ i18n.T(ctx, "Deployment history") }>
 				for _, d := range v.Deployments {
@@ -64,6 +64,14 @@ templ DeploymentsTable(app service.App, v DeploymentsView) {
 			</ul>
 		}
 	</div>
+}
+
+// originLabel names how a deployment started. A rollback reads as a restore.
+func originLabel(origin string) string {
+	if origin == "rollback" {
+		return "restore"
+	}
+	return origin
 }
 
 func statusIcon(status string) string {
@@ -88,23 +96,6 @@ func message(ctx context.Context, d service.Deployment) string {
 	return i18n.Tf(ctx, "Deployment %s", ui.ShortSHA(d.SHA))
 }
 
-// stageState reports how far the pipeline got: done stages have timings; the
-// first missing stage of an active deployment is the current one.
-func stageState(d service.Deployment, i int) string {
-	if _, ok := d.Timings[Stages[i]]; ok {
-		return "done"
-	}
-	if ui.Active(d.Status) && d.Status != "queued" {
-		for j := 0; j < i; j++ {
-			if _, ok := d.Timings[Stages[j]]; !ok {
-				return ""
-			}
-		}
-		return "current"
-	}
-	return ""
-}
-
 templ deploymentRow(app service.App, d service.Deployment, live bool) {
 	<li id={ "deployment-" + d.ID } class="row" data-deployment-status={ d.Status }>
 		<div class="row-main items-start">
@@ -120,7 +111,7 @@ templ deploymentRow(app service.App, d service.Deployment, live bool) {
 					<span class="max-w-full truncate font-medium" title={ d.Message }>{ message(ctx, d) }</span>
 					@ui.Status(d.Status)
 					if live {
-						<span class="status" data-tone="success">{ i18n.T(ctx, "Online now") }</span>
+						@ui.Pill("success", "Online now", nil)
 					}
 					if d.CancelRequested && ui.Active(d.Status) {
 						<span class="text-xs text-muted-foreground">{ i18n.T(ctx, "Cancelling…") }</span>
@@ -131,7 +122,7 @@ templ deploymentRow(app service.App, d service.Deployment, live bool) {
 						<span class="mono">{ ui.ShortSHA(d.SHA) }</span>
 					</span>
 					<span>
-						@ui.Badge("outline", d.Origin)
+						@ui.Badge("outline", originLabel(d.Origin))
 						if d.Clean {
 							@ui.Badge("secondary", "clean")
 						}
@@ -163,19 +154,10 @@ templ deploymentRow(app service.App, d service.Deployment, live bool) {
 					}
 				</p>
 				// Older deployments have no stage timings; nothing is shown for them.
-				if len(d.Timings) > 0 {
-					<ol class="mt-3 flex flex-wrap gap-1.5" aria-label={ i18n.T(ctx, "Stage durations") }>
-						for i, stage := range Stages {
-							<li class="stage" data-state={ stageState(d, i) }>
-								<span>{ i18n.T(ctx, ui.StageLabel(stage)) }</span>
-								if ms, ok := d.Timings[stage]; ok {
-									<span class="tabular-nums">{ ui.Millis(ms) }</span>
-								} else {
-									<span aria-label={ i18n.T(ctx, "not recorded") }>—</span>
-								}
-							</li>
-						}
-					</ol>
+				if len(d.Timings) > 0 || d.Status == "building" || d.Status == "starting" {
+					<div class="mt-3">
+						@StageProgress(d)
+					</div>
 				}
 			</div>
 		</div>

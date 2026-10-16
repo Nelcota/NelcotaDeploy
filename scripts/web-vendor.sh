@@ -34,13 +34,16 @@ cp "$basecoat/styles/vega.css" "$vendor/basecoat/styles/"
 cp "$modules/basecoat-css/LICENSE"* "$vendor/basecoat/" 2>/dev/null || true
 
 # Lucide icons used by web/ui. Add a name here, then run make web-vendor.
-for name in layout-dashboard server settings rocket git-branch git-commit-horizontal terminal scroll-text users \
-	key-round shield-check bell database-backup history download refresh-cw x check circle-alert circle-check \
-	circle-x loader-circle sun moon monitor search command plus trash-2 eye eye-off copy pause play square \
-	rotate-ccw undo-2 circle-arrow-up log-out menu chevron-right chevron-down cpu memory-stick hard-drive wifi-off \
-	clock info triangle-alert external-link lock fingerprint smartphone user-plus filter circle-dashed ban power \
-	sliders-horizontal globe package layers arrow-down-to-line hammer brush-cleaning circle-pause activity box \
-	git-pull-request plug user camera image-up; do
+for name in layout-dashboard server settings rocket git-branch terminal scroll-text users key-round \
+	database-backup history download refresh-cw x check circle-alert circle-check circle-x loader-circle \
+	sun moon monitor search plus trash-2 eye copy pause play square rotate-ccw undo-2 circle-arrow-up \
+	log-out menu chevron-right cpu clock info triangle-alert external-link lock fingerprint smartphone \
+	user-plus filter ban sliders-horizontal globe arrow-down-to-line brush-cleaning activity box link \
+	user camera image-up; do
 	cp "$modules/lucide-static/icons/$name.svg" "$icons/"
 done
 cp "$modules/lucide-static/LICENSE" "$icons/LICENSE"
+# Lucide has no brand marks: the GitHub mark comes from Octicons. Icons render
+# as outlines (fill="none"), so the filled mark sets its own fill.
+sed 's/<path /<path fill="currentColor" stroke="none" /' "$modules/@primer/octicons/build/svg/mark-github-24.svg" >"$icons/github.svg"
+cp "$modules/@primer/octicons/LICENSE" "$icons/LICENSE-octicons"

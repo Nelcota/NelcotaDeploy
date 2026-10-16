@@ -17,12 +17,12 @@ func (h *handler) commandPalette(w http.ResponseWriter, r *http.Request) {
 		{Label: "Home", Icon: "layout-dashboard", Href: "/", Keywords: "overview dashboard attention"},
 		{Label: "Apps", Icon: "box", Href: "/apps"},
 		{Label: "Servers", Icon: "server", Href: "/servers", Keywords: "metrics cache"},
-		{Label: "Account", Hint: "Settings", Icon: "fingerprint", Href: "/settings", Keywords: "passkeys two-factor totp tokens"},
+		{Label: "Account", Hint: "Settings", Icon: "user", Href: "/settings", Keywords: "passkeys two-factor totp tokens"},
 	}
 	if admin {
 		nav = append(nav,
 			pages.Command{Label: "Team", Hint: "Settings", Icon: "users", Href: "/settings/users", Keywords: "users invite roles"},
-			pages.Command{Label: "Connections", Hint: "Settings", Icon: "plug", Href: "/settings/github", Keywords: "github webhook s3"},
+			pages.Command{Label: "Connections", Hint: "Settings", Icon: "link", Href: "/settings/github", Keywords: "github webhook s3"},
 			pages.Command{Label: "Activity", Hint: "Settings", Icon: "history", Href: "/settings/audit", Keywords: "audit log"},
 			pages.Command{Label: "System", Hint: "Settings", Icon: "circle-arrow-up", Href: "/settings/platform", Keywords: "backup update version"},
 		)

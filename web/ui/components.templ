@@ -39,7 +39,13 @@ templ LinkButton(href templ.SafeURL, variant, size string, attrs templ.Attribute
 
 // Status renders a colored status pill with a text label (never color alone).
 templ Status(value string) {
-	<span class="status" data-tone={ Tone(value) } data-status={ value }>{ i18n.T(ctx, StatusLabel(value)) }</span>
+	@Pill(Tone(value), StatusLabel(value), templ.Attributes{"data-status": value})
+}
+
+// Pill renders a status pill in a tone (success, danger, warning, progress,
+// info, muted) with a translated label and optional attributes.
+templ Pill(tone, label string, attrs templ.Attributes) {
+	<span class="status" data-tone={ tone } { attrs... }>{ i18n.T(ctx, label) }</span>
 }
 
 // Badge renders a neutral Basecoat badge.
@@ -66,24 +72,135 @@ templ Field(label, id, hint, err string) {
 
 // Card renders a titled card. Omit title for a plain panel.
 templ Card(title, description string) {
-	<section class="card">
-		if title != "" {
+	@Panel(CardProps{Title: title, Description: description}) {
+		{ children... }
+	}
+}
+
+// CardProps configures Panel. Title and Description are translated.
+type CardProps struct {
+	ID, Class   string
+	Title       string
+	Description string
+	// TitleExtra follows the title text inside the heading, such as a count or a status.
+	TitleExtra templ.Component
+	// Header replaces the description with richer content.
+	Header templ.Component
+	// Action fills the top-right header slot.
+	Action templ.Component
+	// HeaderOnly leaves out the body for cards that are all header.
+	HeaderOnly bool
+}
+
+func (p CardProps) titleID() string {
+	if p.ID == "" {
+		return ""
+	}
+	return p.ID + "-title"
+}
+
+// Panel renders a card with an optional id, header content, and action slot.
+templ Panel(p CardProps) {
+	<section
+		if p.ID != "" {
+			id={ p.ID }
+		}
+		class={ "card", templ.KV(p.Class, p.Class != "") }
+		if p.Title != "" && p.ID != "" {
+			aria-labelledby={ p.titleID() }
+		}
+	>
+		if p.Title != "" {
 			<header>
-				<h2>{ i18n.T(ctx, title) }</h2>
-				if description != "" {
-					<p>{ i18n.T(ctx, description) }</p>
+				<h2
+					if p.ID != "" {
+						id={ p.titleID() }
+					}
+				>
+					{ i18n.T(ctx, p.Title) }
+					if p.TitleExtra != nil {
+						@p.TitleExtra
+					}
+				</h2>
+				if p.Header != nil {
+					@p.Header
+				} else if p.Description != "" {
+					<p>{ i18n.T(ctx, p.Description) }</p>
+				}
+				if p.Action != nil {
+					<div class="card-action">
+						@p.Action
+					</div>
 				}
 			</header>
 		}
-		<section>
-			{ children... }
-		</section>
+		if !p.HeaderOnly {
+			<section>
+				{ children... }
+			</section>
+		}
 	</section>
+}
+
+// Disclosure is a <details> block with a rotating chevron instead of the
+// native marker. extra follows the summary text, such as a status.
+templ Disclosure(id, summary string, open bool, class string, extra templ.Component) {
+	<details
+		if id != "" {
+			id={ id }
+		}
+		class={ "disclosure", templ.KV(class, class != "") }
+		open?={ open }
+	>
+		<summary>
+			@Icon("chevron-right", "disclosure-chevron")
+			<span>{ i18n.T(ctx, summary) }</span>
+			if extra != nil {
+				@extra
+			}
+		</summary>
+		<div class="disclosure-body">
+			{ children... }
+		</div>
+	</details>
+}
+
+// Tab is one link of a TabNav.
+type Tab struct {
+	Href, Icon, Label string
+	Current           bool
+}
+
+// TabNav renders underlined section tabs. They scroll sideways on narrow
+// screens with faded edges (app.js marks the overflowing sides); children
+// sit at the end of the row.
+templ TabNav(label string, tabs []Tab, class string) {
+	<div class={ "tabs-row", templ.KV(class, class != "") }>
+		<nav aria-label={ i18n.T(ctx, label) } class="tabs-nav" data-tabs>
+			<ul class="flex gap-1">
+				for _, t := range tabs {
+					<li>
+						<a
+							href={ templ.SafeURL(t.Href) }
+							class="tab-link"
+							if t.Current {
+								aria-current="page"
+							}
+						>
+							@Icon(t.Icon, "")
+							{ i18n.T(ctx, t.Label) }
+						</a>
+					</li>
+				}
+			</ul>
+		</nav>
+		{ children... }
+	</div>
 }
 
 // Table wraps a table so it scrolls horizontally inside narrow screens.
 templ Table(label string) {
-	<div class="relative min-w-0 max-w-full overflow-x-auto rounded-lg border" role="region" aria-label={ i18n.T(ctx, label) } tabindex="0">
+	<div class="relative min-w-0 max-w-full overflow-x-auto rounded-xl border" role="region" aria-label={ i18n.T(ctx, label) } tabindex="0">
 		<table class="table">
 			{ children... }
 		</table>
@@ -92,7 +209,7 @@ templ Table(label string) {
 
 // Empty renders an empty state with optional actions as children.
 templ Empty(icon, title, body string) {
-	<div class="empty rounded-lg border border-dashed">
+	<div class="empty rounded-xl border border-dashed">
 		<header>
 			<figure>
 				@Icon(icon, "size-5")
@@ -139,7 +256,8 @@ templ Notice(icon, title string) {
 	</div>
 }
 
-// Toast is appended to #toaster by server responses and removes itself.
+// Toast is appended to #toaster by server responses. app.js removes it after
+// a few seconds, pausing while it is hovered or focused.
 templ Toast(tone, message string) {
 	<div
 		class="toast"
@@ -149,7 +267,7 @@ templ Toast(tone, message string) {
 		} else {
 			role="status"
 		}
-		data-init="setTimeout(() => el.remove(), 6000)"
+		data-toast
 	>
 		switch tone {
 			case "danger":
@@ -159,11 +277,20 @@ templ Toast(tone, message string) {
 			default:
 				@Icon("info", "mt-0.5 size-4 shrink-0")
 		}
-		<p class="flex-1">{ i18n.T(ctx, message) }</p>
-		<button type="button" class="btn" data-variant="ghost" data-size="icon-xs" aria-label={ i18n.T(ctx, "Dismiss notification") } data-on:click="el.closest('.toast').remove()">
+		<p class="flex-1" data-toast-message>{ i18n.T(ctx, message) }</p>
+		<button type="button" class="btn" data-variant="ghost" data-size="icon-xs" aria-label={ i18n.T(ctx, "Dismiss notification") } data-toast-dismiss>
 			@Icon("x", "")
 		</button>
 	</div>
+}
+
+// ToastTemplates lets scripts build toasts identical to the server's.
+templ ToastTemplates() {
+	for _, tone := range []string{"success", "info", "danger"} {
+		<template data-toast-template={ tone }>
+			@Toast(tone, "")
+		</template>
+	}
 }
 
 // ConfirmDialog asks for explicit confirmation before running action.
@@ -171,7 +298,7 @@ templ Toast(tone, message string) {
 // morphing so live re-renders never close one the user has open.
 templ ConfirmDialog(id, title, body, confirmLabel, action string, destructive bool) {
 	<dialog id={ id } class="dialog" aria-labelledby={ id + "-title" } aria-describedby={ id + "-body" } data-on:click="evt.target === el && el.close()" data-ignore-morph>
-		<div class="w-[calc(100%-2rem)] max-w-md gap-4 rounded-lg border bg-background p-6 shadow-lg">
+		<div class="w-[calc(100%-2rem)] max-w-md gap-4 rounded-[1.5rem] border bg-background p-6 shadow-lg">
 			<header class="gap-1.5">
 				<h2 id={ id + "-title" } class="text-lg font-semibold">{ i18n.T(ctx, title) }</h2>
 				<p id={ id + "-body" } class="text-sm text-muted-foreground">{ i18n.T(ctx, body) }</p>
@@ -196,7 +323,7 @@ templ ConfirmDialog(id, title, body, confirmLabel, action string, destructive bo
 // Dialog renders a general modal with a close button.
 templ Dialog(id, title, description string) {
 	<dialog id={ id } class="dialog" aria-labelledby={ id + "-title" } data-on:click="evt.target === el && el.close()" data-ignore-morph>
-		<div class="w-[calc(100%-2rem)] max-w-lg gap-4 overflow-y-auto rounded-lg border bg-background p-6 shadow-lg">
+		<div class="w-[calc(100%-2rem)] max-w-lg gap-4 overflow-y-auto rounded-[1.5rem] border bg-background p-6 shadow-lg">
 			<header class="gap-1.5 pr-8">
 				<h2 id={ id + "-title" } class="text-lg font-semibold">{ i18n.T(ctx, title) }</h2>
 				if description != "" {
@@ -227,25 +354,6 @@ templ Copy(target, label string) {
 // Redirect navigates after a Datastar response.
 templ Redirect(url string) {
 	<script data-redirect={ url }>location.assign(document.currentScript.dataset.redirect)</script>
-}
-
-// Meter shows a usage ratio with an accessible label.
-templ Meter(label string, used, total int64) {
-	<div class="grid gap-1">
-		<div class="flex justify-between gap-2 text-xs">
-			<span class="text-muted-foreground">{ i18n.T(ctx, label) }</span>
-			<span class="tabular-nums">{ Usage(used, total) }</span>
-		</div>
-		<progress
-			class="meter"
-			max="1000"
-			value={ Permille(used, total) }
-			aria-label={ i18n.T(ctx, label) + " " + Usage(used, total) }
-			if total > 0 && used*100/total >= 90 {
-				data-level="high"
-			}
-		></progress>
-	</div>
 }
 
 // Run executes a Datastar expression once after a server response, for example

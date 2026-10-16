@@ -18,7 +18,7 @@ func (h *handler) appContext(r *http.Request, tab string) (pages.AppContext, err
 	if err != nil {
 		return pages.AppContext{}, err
 	}
-	c := pages.AppContext{App: app, Tab: tab}
+	c := pages.AppContext{App: app, Tab: tab, Repos: h.s.Repos != nil}
 	if servers, err := h.s.Servers.List(r.Context()); err == nil {
 		for _, s := range servers {
 			if s.ID == app.ServerID {
@@ -83,7 +83,7 @@ func (h *handler) cancelDeployment(w http.ResponseWriter, r *http.Request) {
 		if err := h.s.Deploys.Cancel(r.Context(), chi.URLParam(r, "id")); err != nil {
 			return err
 		}
-		return s.toast("success", "Cancelling. The current version keeps running.")
+		return s.toast("info", "Cancelling. The current version keeps running.")
 	})
 }
 
@@ -96,6 +96,6 @@ func (h *handler) rollbackDeployment(w http.ResponseWriter, r *http.Request) {
 		if _, err := h.s.Deploys.Rollback(r.Context(), d.AppID, d.SHA); err != nil {
 			return err
 		}
-		return s.toast("success", i18n.Tf(r.Context(), "Restoring version %s.", ui.ShortSHA(d.SHA)))
+		return s.toast("info", i18n.Tf(r.Context(), "Restoring version %s.", ui.ShortSHA(d.SHA)))
 	})
 }

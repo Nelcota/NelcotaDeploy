@@ -12,21 +12,26 @@ test("invite a member who enrolls a passkey and gets member access", async ({ pa
 	await page.getByRole("button", { name: "Create invitation" }).click();
 	const result = page.locator("#user-invite-result");
 	await expect(result).toContainText("Invitation for Mia Member");
-	await expect(result.locator("[data-expires]")).toHaveText(/remaining/);
+	await expect(result).toContainText("Works for 24 hours");
+	const link = (await result.locator("#enrollment-link").textContent()).trim();
+	expect(link).toMatch(/\/enroll#token=/);
+	await result.getByText("If the link doesn't open").click();
 	const token = (await result.locator("#enrollment-token").textContent()).trim();
+	expect(link.endsWith(token)).toBe(true);
 	await expect(page.getByLabel("Email")).toHaveValue("");
 
-	// The invited person uses their own browser.
+	// The invited person opens the link in their own browser: one click creates the passkey.
 	const other = await browser.newContext();
 	const guest = await other.newPage();
 	await guest.setExtraHTTPHeaders({ "X-Forwarded-For": "203.0.113.10" });
 	await virtualAuthenticator(guest);
-	await guest.goto("/enroll");
-	await guest.getByLabel("Invitation token").fill(token);
+	await guest.goto(link);
+	// The token leaves the address bar as soon as the page reads it.
+	await expect(guest).toHaveURL(/\/enroll$/);
 	await guest.getByRole("button", { name: "Create passkey" }).click();
 	await expect(guest.getByText("Passkey created")).toBeVisible();
-	// Invitations work once.
-	await guest.reload();
+	// Invitations work once, also when the token is pasted by hand.
+	await guest.goto("/enroll");
 	await guest.getByLabel("Invitation token").fill(token);
 	await guest.getByRole("button", { name: "Create passkey" }).click();
 	await expect(guest.getByRole("alert").filter({ hasText: "Invalid invitation" })).toBeVisible();
@@ -43,7 +48,8 @@ test("invite a member who enrolls a passkey and gets member access", async ({ pa
 
 	// The administrator sees both events in the audit log.
 	await page.goto("/settings/audit?action=user.create");
-	await expect(page.locator("tbody")).toContainText("user.create");
+	await expect(page.locator("tbody")).toContainText("Invited someone");
+	await expect(page.getByRole("status").filter({ hasText: "matching entry" })).toBeVisible();
 	await page.goto("/settings/audit?action=auth.passkey.register");
 	await expect(page.locator("tbody")).toContainText("Mia Member");
 });
@@ -79,7 +85,7 @@ test("backups and updates under System", async ({ page }) => {
 	await page.getByText("Install a specific version").click();
 	await page.getByLabel("Version").fill("v99.0.0");
 	await page.getByRole("button", { name: "Update", exact: true }).click();
-	await page.getByRole("dialog", { name: "Update the platform?" }).getByRole("button", { name: "Start update" }).click();
+	await page.getByRole("dialog", { name: "Update the system?" }).getByRole("button", { name: "Start update" }).click();
 	await toast(page, "Release identity not configured");
 });
 

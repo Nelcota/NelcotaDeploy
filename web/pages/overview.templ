@@ -15,7 +15,11 @@ type OverviewView struct {
 	LogTail     []string
 	Usage       []Container
 	CanLatest   bool
-	Err         string
+	// SuggestedPort is the port a failed app's log says it listens on, when it
+	// differs from the configured one; Admin may change the port.
+	SuggestedPort uint32
+	Admin         bool
+	Err           string
 }
 
 // previousDuration is how long the last successful deployment took, in seconds.
@@ -28,24 +32,9 @@ func (v OverviewView) previousDuration() string {
 	return ""
 }
 
-// recent returns up to eight deployments, oldest first.
-// recent is the newest deployments, newest first.
+// recent is the four newest deployments, newest first.
 func (v OverviewView) recent() []service.Deployment {
 	return v.Deployments[:min(len(v.Deployments), 4)]
-}
-
-// stepState is done, current, failed, or "" for a stage of deployment d.
-func stepState(d service.Deployment, stage string) string {
-	if _, ok := d.Timings[stage]; ok {
-		return "done"
-	}
-	switch {
-	case d.Status == "failed" && FailedStage(d) == stage:
-		return "fail"
-	case (d.Status == "building" || d.Status == "starting") && CurrentStage(d) == stage:
-		return "now"
-	}
-	return ""
 }
 
 func errorLine(line string) bool {
@@ -67,7 +56,7 @@ templ overviewActions(c AppContext, v OverviewView) {
 				{ i18n.T(ctx, "Publish latest") }
 			}
 		}
-		@ui.Button("outline", "sm", templ.Attributes{"data-on:click": ui.Open("deploy-commit")}) {
+		@ui.Button("outline", "sm", templ.Attributes{"data-on:click": openDeployCommit(c)}) {
 			{ i18n.T(ctx, "Publish a commit") }
 		}
 	}
@@ -81,15 +70,46 @@ templ Overview(s Shell, c AppContext, v OverviewView) {
 		} else {
 			@OverviewBody(c, v)
 		}
-		@DeployCommitDialog(c.App)
+		@DeployCommitDialog(c)
 	}
 }
 
-templ DeployCommitDialog(app service.App) {
+// openDeployCommit opens the "Publish a commit" dialog and, when the panel can
+// read GitHub, loads the branch's recent commits into it.
+func openDeployCommit(c AppContext) string {
+	if !c.Repos {
+		return ui.Open("deploy-commit")
+	}
+	return ui.Open("deploy-commit") + "; " + ui.Get("/ui/apps/"+c.App.ID+"/commits")
+}
+
+templ DeployCommitDialog(c AppContext) {
 	@ui.Dialog("deploy-commit", "Publish a commit", "") {
-		<form class="grid gap-4" data-on:submit={ ui.PostForm("/ui/apps/" + app.ID + "/deploy") }>
-			@ui.Field("Commit SHA", "deploy-sha", "The full 40-character SHA from GitHub.", "") {
-				<input id="deploy-sha" name="sha" class="input font-mono" required pattern="[0-9a-fA-F]{40}|[0-9a-fA-F]{64}" autocomplete="off" spellcheck="false" aria-describedby="deploy-sha-hint"/>
+		<form class="grid gap-4" data-on:submit={ ui.PostForm("/ui/apps/" + c.App.ID + "/deploy") }>
+			if c.Repos {
+				<fieldset class="grid gap-2">
+					<legend class="mb-2 text-sm font-medium">{ i18n.Tf(ctx, "Recent commits on %s", c.App.Branch) }</legend>
+					<div id="deploy-commit-list" class="grid gap-1.5">
+						@ui.Loading("Loading commits…")
+					</div>
+				</fieldset>
+			}
+			@ui.Field(commitFieldLabel(c), "deploy-sha", commitFieldHint(c), "") {
+				<input
+					id="deploy-sha"
+					name="sha_input"
+					class="input font-mono"
+					if c.Repos {
+						pattern="[0-9a-fA-F]{7,64}"
+					} else {
+						required
+						pattern="[0-9a-fA-F]{40}|[0-9a-fA-F]{64}"
+					}
+					autocomplete="off"
+					spellcheck="false"
+					aria-describedby="deploy-sha-hint"
+					data-on:input="el.value && el.form.querySelectorAll('input[name=sha]').forEach(r => r.checked = false)"
+				/>
 			}
 			@ui.Field("Description", "deploy-message", "", "") {
 				<input id="deploy-message" name="message" class="input" maxlength="1000" placeholder={ i18n.T(ctx, "Manual deployment") }/>
@@ -103,6 +123,59 @@ templ DeployCommitDialog(app service.App) {
 	}
 }
 
+func commitFieldLabel(c AppContext) string {
+	if c.Repos {
+		return "Or enter a commit SHA"
+	}
+	return "Commit SHA"
+}
+
+func commitFieldHint(c AppContext) string {
+	if c.Repos {
+		return "At least the first 7 characters."
+	}
+	return "The full 40-character SHA. Connect GitHub to pick from recent commits."
+}
+
+// CommitList is the branch's recent commits as choices in the "Publish a
+// commit" dialog. Err explains why the list is unavailable; the SHA field
+// still works then.
+templ CommitList(commits []service.Commit, err string) {
+	<div id="deploy-commit-list" class="grid gap-1.5">
+		if err != "" {
+			<p class="text-sm text-muted-foreground">{ i18n.T(ctx, "Recent commits couldn't be loaded. Enter the SHA below instead.") } { i18n.T(ctx, err) }</p>
+		} else if len(commits) == 0 {
+			<p class="text-sm text-muted-foreground">{ i18n.T(ctx, "No commits found on this branch.") }</p>
+		} else {
+			for i, cm := range commits {
+				<label class="commit-choice">
+					<input
+						type="radio"
+						name="sha"
+						value={ cm.SHA }
+						if i == 0 {
+							checked
+						}
+						data-on:change="el.form.querySelector('#deploy-sha').value = ''"
+					/>
+					<span class="min-w-0 flex-1">
+						<span class="block truncate">
+							<span class="mono">{ ui.ShortSHA(cm.SHA) }</span>
+							{ cm.Message }
+						</span>
+						<span class="block text-xs text-muted-foreground">
+							{ cm.Author }
+							if cm.Date > 0 {
+								· <time datetime={ ui.ISO(cm.Date) } title={ ui.Timestamp(cm.Date) }>{ i18n.T(ctx, ui.Ago(cm.Date)) }</time>
+							}
+						</span>
+					</span>
+				</label>
+			}
+		}
+	</div>
+}
+
 templ OverviewBody(c AppContext, v OverviewView) {
 	<div id="overview" class="grid gap-6">
 		switch v.State.Key {
@@ -114,7 +187,7 @@ templ OverviewBody(c AppContext, v OverviewView) {
 		@liveCard(c, v)
 		<div class="grid gap-4 md:grid-cols-3">
 			<section class="surface grid content-start gap-3 p-5" aria-labelledby="recent-title">
-				<h2 id="recent-title" class="text-sm font-medium text-muted-foreground">{ i18n.T(ctx, "Recent releases") }</h2>
+				<h2 id="recent-title" class="text-sm font-medium text-muted-foreground">{ i18n.T(ctx, "Recent deployments") }</h2>
 				if len(v.Deployments) == 0 {
 					<p class="text-sm">{ i18n.T(ctx, "None yet") }</p>
 				} else {
@@ -141,25 +214,28 @@ templ OverviewBody(c AppContext, v OverviewView) {
 	</div>
 }
 
-templ stageSteps(d service.Deployment) {
-	<ol class="steps" aria-label={ i18n.T(ctx, "Deployment steps") }>
+// StageProgress shows each pipeline stage of d with its state and duration.
+// The overview and the history both use it, so they always agree.
+templ StageProgress(d service.Deployment) {
+	<ol class="stages" aria-label={ i18n.T(ctx, "Deployment steps") }>
 		for _, st := range Stages {
-			<li class="step" data-state={ stepState(d, st) }>
-				if stepState(d, st) == "now" {
-					@ui.Icon("loader-circle", "size-3.5 animate-spin")
-				} else if stepState(d, st) == "done" {
-					@ui.Icon("check", "size-3.5")
-				} else if stepState(d, st) == "fail" {
-					@ui.Icon("x", "size-3.5")
+			<li class="stage" data-state={ StageState(d, st) }>
+				switch StageState(d, st) {
+					case "current":
+						@ui.Icon("loader-circle", "size-3.5 animate-spin")
+					case "done":
+						@ui.Icon("check", "size-3.5")
+					case "failed":
+						@ui.Icon("x", "size-3.5")
 				}
 				{ i18n.T(ctx, ui.StageLabel(st)) }
 				if ms, ok := d.Timings[st]; ok {
 					<span class="tabular-nums opacity-70">{ ui.Millis(ms) }</span>
 				}
-				switch stepState(d, st) {
-					case "now":
+				switch StageState(d, st) {
+					case "current":
 						<span class="sr-only">{ i18n.T(ctx, "(in progress)") }</span>
-					case "fail":
+					case "failed":
 						<span class="sr-only">{ i18n.T(ctx, "(failed)") }</span>
 				}
 			</li>
@@ -185,10 +261,10 @@ templ publishingCard(c AppContext, v OverviewView) {
 		if v.State.Latest.Message != "" {
 			<p class="text-sm">{ v.State.Latest.Message }</p>
 		}
-		@stageSteps(v.State.Latest)
+		@StageProgress(v.State.Latest)
 		<p class="text-sm text-muted-foreground">
 			if v.State.Live.ID != "" {
-				{ i18n.T(ctx, "Version") } <span class="mono">{ ui.ShortSHA(v.State.Live.SHA) }</span> { i18n.T(ctx, "stays online until the new one is ready.") }
+				@ui.Phrase("Version %s stays online until the new one is ready.", ui.Mono(ui.ShortSHA(v.State.Live.SHA)))
 			} else {
 				{ i18n.T(ctx, "The app goes online once the health check passes.") }
 			}
@@ -201,15 +277,20 @@ templ failureCard(c AppContext, v OverviewView) {
 	<section class="failure grid gap-4 p-5 sm:p-6" aria-labelledby="failure-title">
 		<h2 id="failure-title" class="section-title">
 			if v.State.Key == "update_failed" {
-				{ i18n.T(ctx, "Version") } <span class="mono">{ ui.ShortSHA(v.State.Latest.SHA) }</span> { i18n.T(ctx, "didn't go live. Your site is still running the previous version.") }
+				@ui.Phrase("Version %s didn't go live. Your site is still running the previous version.", ui.Mono(ui.ShortSHA(v.State.Latest.SHA)))
 			} else {
-				{ i18n.T(ctx, "Version") } <span class="mono">{ ui.ShortSHA(v.State.Latest.SHA) }</span> { i18n.T(ctx, "didn't go live.") }
+				@ui.Phrase("Version %s didn't go live.", ui.Mono(ui.ShortSHA(v.State.Latest.SHA)))
 			}
 		</h2>
-		@stageSteps(v.State.Latest)
+		@StageProgress(v.State.Latest)
+		{{ why := Explain(ctx, v.State.Latest.ErrorCode, c.App) }}
 		<div class="grid gap-1">
-			<p>{ Explain(ctx, v.State.Latest.ErrorCode, c.App).What }</p>
-			<p class="text-sm text-muted-foreground">{ Explain(ctx, v.State.Latest.ErrorCode, c.App).Fix }</p>
+			<p>{ why.What }</p>
+			if v.SuggestedPort > 0 {
+				<p>{ i18n.Tf(ctx, "Its log says it listens on port %d, but the health check uses port %d.", v.SuggestedPort, c.App.Config.Port) }</p>
+			} else {
+				<p class="text-sm text-muted-foreground">{ why.Fix }</p>
+			}
 		</div>
 		if len(v.LogTail) > 0 {
 			<pre class="log-tail" aria-label={ i18n.T(ctx, "Last log lines") }>
@@ -223,7 +304,22 @@ templ failureCard(c AppContext, v OverviewView) {
 			</pre>
 		}
 		<div class="flex flex-wrap gap-2">
-			<button type="button" class="btn" data-size="sm" data-on:click={ ui.Post("/ui/apps/" + c.App.ID + "/deploy?sha=" + v.State.Latest.SHA) }>
+			// When the log names the real port, switching to it is the likely fix.
+			if v.Admin && v.SuggestedPort > 0 {
+				<button type="button" class="btn" data-size="sm" data-on:click={ ui.Post("/ui/deployments/" + v.State.Latest.ID + "/port?port=" + u32(v.SuggestedPort)) }>
+					@ui.Icon("rocket", "")
+					{ i18n.Tf(ctx, "Use port %d and publish", v.SuggestedPort) }
+				</button>
+			}
+			<button
+				type="button"
+				class="btn"
+				data-size="sm"
+				if v.Admin && v.SuggestedPort > 0 {
+					data-variant="outline"
+				}
+				data-on:click={ ui.Post("/ui/apps/" + c.App.ID + "/deploy?sha=" + v.State.Latest.SHA) }
+			>
 				@ui.Icon("rotate-ccw", "")
 				{ i18n.T(ctx, "Try again") }
 			</button>
@@ -296,10 +392,14 @@ templ DNSResults(checks []service.DomainCheck) {
 			<li class="flex flex-wrap items-center gap-2">
 				if d.Resolves {
 					@ui.Icon("circle-check", "size-4 text-success")
-					<span class="mono">{ d.Host }</span> { i18n.T(ctx, "points to") } <span class="mono">{ strings.Join(d.Addresses, ", ") }</span>
+					<span>
+						@ui.Phrase("%s points to %s.", ui.Mono(d.Host), ui.Mono(strings.Join(d.Addresses, ", ")))
+					</span>
 				} else {
 					@ui.Icon("circle-alert", "size-4 text-warning")
-					<span class="mono">{ d.Host }</span> { i18n.T(ctx, "doesn't resolve yet. Add an A record for your server's public IP.") }
+					<span>
+						@ui.Phrase("%s doesn't resolve yet. Add an A record for your server's public IP.", ui.Mono(d.Host))
+					</span>
 				}
 			</li>
 		}
@@ -315,7 +415,7 @@ templ UsageCard(app service.App, usage []Container) {
 			for _, u := range usage {
 				<p class="text-sm"><span class="font-medium tabular-nums">{ ui.Percent(u.CPUPercent) }</span> CPU · <span class="font-medium tabular-nums">{ ui.Bytes(u.MemoryUsed) }</span> { i18n.Tf(ctx, "of %s", ui.Bytes(u.MemoryLimit)) }</p>
 			}
-			<p class="text-xs text-muted-foreground">{ i18n.Tf(ctx, "%d container(s)", len(usage)) }</p>
+			<p class="text-xs text-muted-foreground">{ i18n.N(ctx, len(usage), "%d container", "%d containers") }</p>
 		}
 	</section>
 }

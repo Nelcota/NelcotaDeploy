@@ -19,7 +19,7 @@ func markup(t *testing.T, c templ.Component) string {
 }
 
 func TestStatusUsesTextAndTone(t *testing.T) {
-	for status, want := range map[string][2]string{"success": {"success", "Published"}, "failed": {"danger", "Failed"}, "building": {"info", "Building"}, "queued": {"warning", "Waiting"}, "cancelled": {"muted", "Cancelled"}, "not_ready": {"warning", "Recovering"}, "": {"muted", "Not published"}} {
+	for status, want := range map[string][2]string{"success": {"success", "Published"}, "failed": {"danger", "Failed"}, "building": {"progress", "Building"}, "queued": {"warning", "Waiting"}, "cancelled": {"muted", "Cancelled"}, "not_ready": {"warning", "Recovering"}, "": {"muted", "Not published"}} {
 		out := markup(t, Status(status))
 		if !strings.Contains(out, `data-tone="`+want[0]+`"`) || !strings.Contains(out, ">"+want[1]+"<") {
 			t.Fatal(status, out)
@@ -100,11 +100,30 @@ func TestFormatting(t *testing.T) {
 	}
 }
 
-func TestMeterMarksHighUsage(t *testing.T) {
-	if out := markup(t, Meter("Disk", 95, 100)); !strings.Contains(out, `data-level="high"`) || !strings.Contains(out, `value="950"`) || !strings.Contains(out, `aria-label="Disk`) {
-		t.Fatal(out)
+func TestToastAndDisclosure(t *testing.T) {
+	out := markup(t, Toast("info", "Publishing api at a1b2c3d."))
+	for _, want := range []string{`data-tone="info"`, `role="status"`, `data-toast-dismiss`, `aria-label="Dismiss notification"`, "Publishing api at a1b2c3d."} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("toast lacks %s: %s", want, out)
+		}
 	}
-	if out := markup(t, Meter("Disk", 10, 100)); strings.Contains(out, "data-level") {
-		t.Fatal(out)
+	if strings.Contains(out, "setTimeout") {
+		t.Fatalf("toast schedules its own removal: %s", out)
+	}
+	out = markup(t, Disclosure("adv", "Advanced", true, "", nil))
+	for _, want := range []string{`id="adv"`, `class="disclosure"`, " open", "disclosure-chevron", "Advanced"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("disclosure lacks %s: %s", want, out)
+		}
+	}
+}
+
+func TestPhraseEscapesTextAndParts(t *testing.T) {
+	var b strings.Builder
+	if err := Phrase("Version %s <didn't> go live.", Mono("<a1b2>")).Render(context.Background(), &b); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := b.String(), `Version <span class="mono">&lt;a1b2&gt;</span> &lt;didn&#39;t&gt; go live.`; got != want {
+		t.Fatalf("%s, want %s", got, want)
 	}
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"regexp"
 	"strings"
 
 	"github.com/Nelcota/NelcotaDeploy/internal/events"
@@ -41,10 +42,16 @@ func (h *handler) appRows(ctx context.Context) ([]pages.AppRow, []service.Server
 	return rows, servers, nil
 }
 
-// firstSteps is the setup checklist for administrators, derived from existing data.
-func (h *handler) firstSteps(ctx context.Context, rows []pages.AppRow, servers []service.Server) []pages.Step {
+// firstSteps is the setup checklist for administrators, derived from existing
+// data. Until an app is live it lists every step; afterwards only the optional
+// ones that remain, shown as one compact suggestion. Hiding it is a per-person
+// preference.
+func (h *handler) firstSteps(ctx context.Context, rows []pages.AppRow, servers []service.Server) pages.FirstSteps {
 	if p, _ := service.CurrentUser(ctx); p.Role != "admin" {
-		return nil
+		return pages.FirstSteps{}
+	}
+	if prefs, err := h.s.Auth.Preferences(ctx); err != nil || prefs.FirstStepsHidden {
+		return pages.FirstSteps{}
 	}
 	passkey := false
 	if f, err := h.s.Auth.Factors(ctx); err == nil {
@@ -66,17 +73,39 @@ func (h *handler) firstSteps(ctx context.Context, rows []pages.AppRow, servers [
 		}
 	}
 	t := func(s string) string { return i18n.T(ctx, s) }
-	publish := pages.Step{Label: t("Publish your first app"), Done: live != ""}
-	if len(rows) > 0 && live == "" {
+	optional := []pages.Step{
+		{Label: t("Add a passkey to your account"), Hint: t("You'll use it to sign in on this and other devices."), Href: "/settings", Action: t("Add passkey"), Done: passkey},
+		{Label: t("Connect GitHub"), Hint: t("Needed for private repositories and for publishing on every push."), Href: "/settings/github", Action: t("Connect"), Icon: "github", Done: github},
+	}
+	if live != "" {
+		// An app is online: the checklist has done its job. What remains is optional.
+		var left []pages.Step
+		for _, st := range optional {
+			if !st.Done {
+				left = append(left, st)
+			}
+		}
+		return pages.FirstSteps{Steps: left, Compact: true}
+	}
+	publish := pages.Step{Label: t("Publish your first app")}
+	if len(rows) > 0 {
 		publish.Href, publish.Action, publish.Hint = "/apps/"+rows[0].App.ID, t("Open"), t("Its first version goes live after the health check passes.")
 	}
-	return []pages.Step{
-		{Label: t("Add a passkey to your account"), Hint: t("You'll use it to sign in on this and other devices."), Href: "/settings", Action: t("Add passkey"), Done: passkey},
-		{Label: t("Connect GitHub"), Hint: t("Needed for private repositories and for publishing on every push."), Href: "/settings/github", Action: t("Connect"), Done: github},
-		{Label: t("Add a server"), Hint: t("Copy one command and run it on your VPS."), Href: "/servers", Action: t("Add server"), Done: online},
-		{Label: t("Create an app"), Hint: t("Paste a GitHub repository that has a Dockerfile."), Href: "/apps/new", Action: t("New app"), Done: len(rows) > 0},
+	return pages.FirstSteps{Steps: append(optional,
+		pages.Step{Label: t("Add a server"), Hint: t("Copy one command and run it on your server."), Href: "/servers", Action: t("Add server"), Done: online},
+		pages.Step{Label: t("Create an app"), Hint: t("Paste a GitHub repository that has a Dockerfile."), Href: "/apps/new", Action: t("New app"), Done: len(rows) > 0},
 		publish,
-	}
+	)}
+}
+
+// hideFirstSteps dismisses the setup checklist for the signed-in person.
+func (h *handler) hideFirstSteps(w http.ResponseWriter, r *http.Request) {
+	h.act(w, r, func(s *stream) error {
+		if err := h.s.Auth.HideFirstSteps(r.Context()); err != nil {
+			return err
+		}
+		return s.patch(nil, "#first-steps", modeRemove)
+	})
 }
 
 // attention lists what needs a person: failed releases, offline servers, full disks.
@@ -187,6 +216,14 @@ func (h *handler) componentsPage(w http.ResponseWriter, r *http.Request) {
 	render(w, r, http.StatusOK, pages.Gallery(h.shell(r, "Components", "")))
 }
 
+// fullSHA is a complete commit SHA; anything shorter is resolved on GitHub.
+var fullSHA = regexp.MustCompile(`^(?:[0-9a-fA-F]{40}|[0-9a-fA-F]{64})$`)
+
+// repoQuery identifies an app's repository for the Repos service.
+func repoQuery(app service.App) service.RepoQuery {
+	return service.RepoQuery{Repository: app.Repository, Branch: app.Branch, Dockerfile: app.Config.Dockerfile, InstallationID: app.Config.InstallationID}
+}
+
 // deployApp queues a manual deployment. "latest=1" publishes the branch head
 // when the panel can read the repository; otherwise, and without an explicit
 // SHA, it rebuilds the newest deployed commit.
@@ -200,11 +237,39 @@ func (h *handler) deployApp(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			return err
 		}
-		sha := strings.TrimSpace(r.Form.Get("sha"))
+		// A typed SHA wins over a commit picked from the list.
+		sha := strings.TrimSpace(r.Form.Get("sha_input"))
+		if sha == "" {
+			sha = strings.TrimSpace(r.Form.Get("sha"))
+		}
 		message := strings.TrimSpace(r.Form.Get("message"))
 		head := false
+		if picked := strings.TrimSpace(r.Form.Get("sha")); picked != "" && sha == picked && message == "" && r.Form.Has("sha_input") && h.s.Repos != nil {
+			// A commit picked from the list keeps its message; without it the
+			// deployment is still published under the default description.
+			if c, err := h.s.Repos.Commit(r.Context(), repoQuery(app), sha); err == nil && c.SHA == strings.ToLower(sha) {
+				message = c.Message
+			}
+		}
+		if sha != "" && !fullSHA.MatchString(sha) {
+			// A short SHA is looked up on GitHub.
+			if h.s.Repos == nil {
+				return invalid("Enter the full 40-character SHA. Connect GitHub to use a shorter one.")
+			}
+			c, err := h.s.Repos.Commit(r.Context(), repoQuery(app), sha)
+			if err != nil {
+				return err
+			}
+			sha = c.SHA
+			if message == "" {
+				message = c.Message
+			}
+		}
+		if sha == "" && r.Form.Has("sha_input") {
+			return invalid("Choose a commit or enter its SHA.")
+		}
 		if sha == "" && r.Form.Get("latest") == "1" && h.s.Repos != nil {
-			info, err := h.s.Repos.Inspect(r.Context(), service.RepoQuery{Repository: app.Repository, Branch: app.Branch, Dockerfile: app.Config.Dockerfile, InstallationID: app.Config.InstallationID})
+			info, err := h.s.Repos.Inspect(r.Context(), repoQuery(app))
 			if err != nil {
 				return err
 			}
@@ -248,6 +313,7 @@ func (h *handler) deployApp(w http.ResponseWriter, r *http.Request) {
 		case !head && r.Form.Get("latest") == "1":
 			label = i18n.Tf(r.Context(), "Publishing %s again at %s. Connect GitHub to publish new commits.", app.Name, ui.ShortSHA(d.SHA))
 		}
-		return s.toast("success", label)
+		// The build only started; success is for actions that are done.
+		return s.toast("info", label)
 	})
 }

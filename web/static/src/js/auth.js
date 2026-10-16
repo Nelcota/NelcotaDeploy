@@ -163,6 +163,8 @@
 		var d = document.getElementById("reauth");
 		if (d && !d.open) d.showModal();
 	}
+	// Other scripts ask for re-authentication when the server answers 403.
+	N.reauth = openReauth;
 
 	document.addEventListener("DOMContentLoaded", function () {
 		var root = document.querySelector("[data-auth]");

@@ -84,6 +84,7 @@ templ Document(s Shell) {
 			}
 			{ children... }
 			<div id="toaster" class="toaster" aria-live="polite"></div>
+			@ui.ToastTemplates()
 		</body>
 	</html>
 }
@@ -304,7 +305,7 @@ templ PageHeader(title, description string) {
 // Connection shows live-update state driven by the $_conn signal.
 templ Connection() {
 	<span class="conn" data-state="connecting" data-attr:data-state="$_conn" role="status">
-		<span data-text={ "$_conn === 'live' ? " + ui.JS(i18n.TC(ctx, "connection", "Live")) + " : $_conn === 'reconnecting' ? " + ui.JS(i18n.T(ctx, "Reconnecting…")) + " : $_conn === 'offline' ? " + ui.JS(i18n.T(ctx, "Disconnected")) + " : " + ui.JS(i18n.T(ctx, "Connecting…")) }>{ i18n.T(ctx, "Connecting…") }</span>
+		<span data-text={ "$_conn === 'live' ? " + ui.JS(i18n.T(ctx, "Connected")) + " : $_conn === 'reconnecting' ? " + ui.JS(i18n.T(ctx, "Reconnecting…")) + " : $_conn === 'offline' ? " + ui.JS(i18n.T(ctx, "Disconnected")) + " : " + ui.JS(i18n.T(ctx, "Connecting…")) }>{ i18n.T(ctx, "Connecting…") }</span>
 	</span>
 }
 
@@ -319,7 +320,7 @@ templ LiveStream(url string) {
 
 templ CommandPalette() {
 	<dialog id="cmdk" class="dialog" aria-label={ i18n.T(ctx, "Command palette") }>
-		<div class="top-[12vh] w-[calc(100%-2rem)] max-w-xl -translate-y-0 gap-0 overflow-hidden rounded-lg border bg-popover p-0 text-popover-foreground shadow-lg">
+		<div class="top-[12vh] w-[calc(100%-2rem)] max-w-xl -translate-y-0 gap-0 overflow-hidden rounded-[1.5rem] border bg-popover p-0 text-popover-foreground shadow-lg">
 			<div class="flex items-center gap-2 border-b px-3">
 				@ui.Icon("search", "size-4 text-muted-foreground")
 				<input id="cmdk-input" class="h-12 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground" type="text" placeholder={ i18n.T(ctx, "Search apps, pages, and actions") } autocomplete="off" spellcheck="false" role="combobox" aria-expanded="true" aria-controls="cmdk-list" aria-autocomplete="list"/>
@@ -395,14 +396,14 @@ templ LanguageMenu(path, opens string) {
 // language name is always shown or announced next to it.
 templ flag(l i18n.Locale) {
 	if l == i18n.Portuguese {
-		<svg class="flag" viewBox="0 0 20 14" aria-hidden="true">
+		<svg class="flag" viewBox="0 0 20 14" aria-hidden="true" focusable="false">
 			<rect width="20" height="14" fill="#009c3b"></rect>
 			<path d="M10 1.6 18.2 7 10 12.4 1.8 7z" fill="#ffdf00"></path>
 			<circle cx="10" cy="7" r="3.1" fill="#002776"></circle>
 			<path d="M7.05 6.2c1.9-.35 4.1.05 5.85 1.2" stroke="#fff" stroke-width=".55" fill="none"></path>
 		</svg>
 	} else {
-		<svg class="flag" viewBox="0 0 20 14" aria-hidden="true">
+		<svg class="flag" viewBox="0 0 20 14" aria-hidden="true" focusable="false">
 			<rect width="20" height="14" fill="#b22234"></rect>
 			<path d="M0 1.6h20M0 3.75h20M0 5.9h20M0 8.05h20M0 10.2h20M0 12.35h20" stroke="#fff" stroke-width="1.08"></path>
 			<rect width="8.6" height="7.55" fill="#3c3b6e"></rect>

@@ -24,7 +24,7 @@ func TestDeploymentsPage(t *testing.T) {
 	}
 	mustContain(t, res.body,
 		"Deployment history", `id="deployment-newer"`, "Fix login", "Ana", "ddddddd", "Online now",
-		"1.2 s", "8.0 s", "300 ms", "40 ms", "Getting code", "Checking it responds", `aria-label="Stage durations"`,
+		"1.2 s", "8.0 s", "300 ms", "40 ms", "Getting code", "Checking it responds", `class="stages"`,
 		`href="/apps/dev-app-api/logs?deployment=newer"`,
 		// The older success can be rolled back; the running one cannot.
 		`id="rollback-dev-deploy-api-success"`, "Restore version bbbbbbb?", "goes live after its health check passes.",
@@ -39,7 +39,7 @@ func TestDeploymentsPage(t *testing.T) {
 func TestCancelAndRollback(t *testing.T) {
 	e := newEnv(t)
 	s := e.member()
-	if res := s.post("/ui/apps/dev-app-store/deploy", nil); toast(res.body) != "success" {
+	if res := s.post("/ui/apps/dev-app-store/deploy", nil); toast(res.body) != "info" {
 		t.Fatal(res.body)
 	}
 	list, _ := e.services().Deploys.List(withUser(e, "development-user"), "dev-app-store")
@@ -47,7 +47,7 @@ func TestCancelAndRollback(t *testing.T) {
 	page := s.get("/apps/dev-app-store/deployments")
 	mustContain(t, page.body, `id="cancel-`+queued.ID+`"`, "Waiting for a build slot", "Cancel this deployment?")
 	res := s.post("/ui/deployments/"+queued.ID+"/cancel", nil)
-	if toast(res.body) != "success" {
+	if toast(res.body) != "info" {
 		t.Fatal(res.body)
 	}
 	d, _ := e.services().Deploys.Get(withUser(e, "development-user"), queued.ID)

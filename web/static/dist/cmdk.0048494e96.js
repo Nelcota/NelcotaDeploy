@@ -7,7 +7,7 @@
 	}
 	function select(i) {
 		var all = items();
-		all.forEach(function (el) { el.setAttribute("aria-selected", "false"); });
+		list.querySelectorAll("[role=option]").forEach(function (el) { el.setAttribute("aria-selected", "false"); });
 		active = all.length ? (i + all.length) % all.length : -1;
 		if (active >= 0) {
 			all[active].setAttribute("aria-selected", "true");
@@ -30,15 +30,16 @@
 		select(0);
 	}
 	async function load() {
-		if (loaded) return;
-		try {
-			var res = await fetch("/ui/cmdk", { credentials: "same-origin" });
-			if (!res.ok) throw new Error();
-			list.innerHTML = await res.text();
-			loaded = true;
-		} catch (e) {
-			list.innerHTML = '<li class="p-3 text-sm text-destructive" role="alert"></li>';
-			list.firstChild.textContent = window.Nelcota.t("Commands could not be loaded.");
+		if (!loaded) {
+			try {
+				var res = await fetch("/ui/cmdk", { credentials: "same-origin" });
+				if (!res.ok) throw new Error();
+				list.innerHTML = await res.text();
+				loaded = true;
+			} catch (e) {
+				list.innerHTML = '<li class="p-3 text-sm text-destructive" role="alert"></li>';
+				list.firstChild.textContent = window.Nelcota.t("Commands could not be loaded.");
+			}
 		}
 		filter();
 	}
@@ -47,12 +48,12 @@
 		input.value = "";
 		dialog.showModal();
 		input.focus();
-		load().then(filter);
+		load();
 	}
-	function run(el) {
+	function run(el, clicked) {
 		dialog.close();
 		if (el.dataset.href) location.assign(el.dataset.href);
-		else el.click();
+		else if (!clicked) el.click();
 	}
 
 	document.addEventListener("DOMContentLoaded", function () {
@@ -76,9 +77,7 @@
 		});
 		list.addEventListener("click", function (e) {
 			var opt = e.target instanceof Element && e.target.closest("[role=option]");
-			if (!opt) return;
-			dialog.close();
-			if (opt.dataset.href) location.assign(opt.dataset.href);
+			if (opt) run(opt, true);
 		});
 		dialog.addEventListener("click", function (e) { if (e.target === dialog) dialog.close(); });
 		document.querySelectorAll("[data-cmdk-open]").forEach(function (b) { b.addEventListener("click", open); });

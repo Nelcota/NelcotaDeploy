@@ -1,4 +1,5 @@
 const { test, expect } = require("./fixtures");
+const { settled } = require("./helpers");
 
 // Budgets on a local network: first contentful paint and largest contentful
 // paint under 1 s, layout shift during loading under 0.05, and instant
@@ -15,7 +16,8 @@ for (const path of ["/", "/apps/dev-app-api", "/apps/dev-app-api/deployments", "
 		});
 		await page.request.post("/api/dev/session", { data: {}, headers: { Origin: new URL(baseURL).origin } });
 		await page.goto(path, { waitUntil: "load" });
-		await page.waitForTimeout(500);
+		await page.waitForFunction(() => window.__vitals.lcp > 0);
+		await settled(page);
 		const v = await page.evaluate(() => ({ fcp: performance.getEntriesByName("first-contentful-paint")[0]?.startTime ?? null, ...window.__vitals }));
 		console.log(`${path}: FCP ${Math.round(v.fcp)} ms, LCP ${Math.round(v.lcp)} ms, CLS ${v.cls.toFixed(3)}`);
 		expect(v.fcp).not.toBeNull();
@@ -30,8 +32,9 @@ test("hovering a link prefetches the next page", async ({ page, baseURL }) => {
 	await page.setExtraHTTPHeaders({ "X-Forwarded-For": "192.0.2.78" });
 	await page.request.post("/api/dev/session", { data: {}, headers: { Origin: new URL(baseURL).origin } });
 	await page.goto("/");
+	const prefetched = page.waitForRequest((r) => new URL(r.url()).pathname === "/servers");
 	await page.locator('aside a.rail-link[href="/servers"]').hover();
-	await page.waitForTimeout(800);
+	await prefetched;
 	await page.locator('aside a.rail-link[href="/servers"]').click();
 	await page.waitForLoadState("load");
 	expect(await page.evaluate(() => performance.getEntriesByType("navigation")[0].deliveryType)).toBe("navigational-prefetch");

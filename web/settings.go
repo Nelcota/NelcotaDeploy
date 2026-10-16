@@ -30,7 +30,7 @@ func (h *handler) usersPage(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		msg = publicMessage(err)
 	}
-	render(w, r, http.StatusOK, pages.Users(h.shell(r, "Users", "settings"), users, msg))
+	render(w, r, http.StatusOK, pages.Users(h.shell(r, "Team", "settings"), users, msg))
 }
 
 func (h *handler) inviteUser(w http.ResponseWriter, r *http.Request) {
@@ -241,7 +241,7 @@ func (h *handler) startBackup(w http.ResponseWriter, r *http.Request) {
 		if err := s.patch(pages.OperationsTable(h.operations(r, "")), "", ""); err != nil {
 			return err
 		}
-		return s.toast("success", "Backup started.")
+		return s.toast("info", "Backup started.")
 	})
 }
 
@@ -257,7 +257,7 @@ func (h *handler) startUpdate(w http.ResponseWriter, r *http.Request) {
 		if err := s.patch(pages.OperationsTable(h.operations(r, "")), "", ""); err != nil {
 			return err
 		}
-		return s.toast("success", i18n.Tf(r.Context(), "Update to %s queued.", version))
+		return s.toast("info", i18n.Tf(r.Context(), "Update to %s is waiting to start.", version))
 	})
 }
 
@@ -291,7 +291,7 @@ func (h *handler) platformPage(w http.ResponseWriter, r *http.Request) {
 		h.failPage(w, r, "settings", err)
 		return
 	}
-	render(w, r, http.StatusOK, pages.Platform(h.shell(r, "Platform", "settings"), u, h.operations(r, "")))
+	render(w, r, http.StatusOK, pages.Platform(h.shell(r, "System", "settings"), u, h.operations(r, "")))
 }
 
 func (h *handler) setAutomaticUpdates(w http.ResponseWriter, r *http.Request) {
@@ -354,5 +354,5 @@ func (h *handler) auditPage(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	slices.Sort(v.Actions)
-	render(w, r, http.StatusOK, pages.Audit(h.shell(r, "Audit log", "settings"), v))
+	render(w, r, http.StatusOK, pages.Audit(h.shell(r, "Activity", "settings"), v))
 }

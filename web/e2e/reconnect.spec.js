@@ -34,6 +34,8 @@ test.use({ baseURL: origin });
 test.beforeAll(async () => { fs.rmSync(data, { recursive: true, force: true }); await start(); });
 test.afterAll(stop);
 
+const width = (el) => el.evaluate((n) => n.getBoundingClientRect().width);
+
 async function signIn(page) {
 	await page.goto("/login");
 	await page.getByRole("button", { name: "Continue as development administrator" }).click();
@@ -44,11 +46,14 @@ test("dashboard shows the outage and recovers with a fresh snapshot after a rest
 	await signIn(page);
 	const conn = page.locator(".conn").first();
 	await expect(conn).toHaveAttribute("data-state", "live");
+	// A working connection is announced but not shown: "Live" belongs to apps.
+	expect(await width(conn)).toBeLessThanOrEqual(1);
 	await stop();
 	await expect(conn).toHaveText("Reconnecting…", { timeout: 15_000 });
+	expect(await width(conn)).toBeGreaterThan(1);
 	await start();
 	// The session survives in SQLite; the stream reconnects and resends the snapshot.
-	await expect(conn).toHaveText("Live", { timeout: 40_000 });
+	await expect(conn).toHaveText("Connected", { timeout: 40_000 });
 	await expect(page.locator("#server-dev-server-api")).toContainText("CPU", { timeout: 10_000 });
 });
 
@@ -56,10 +61,10 @@ test("log streams reconnect after a restart and mark the gap", async ({ page }) 
 	await signIn(page);
 	await page.goto("/apps/dev-app-api/logs?deployment=runtime");
 	const conn = page.locator("#log-conn");
-	await expect(conn).toHaveText("Live");
+	await expect(conn).toHaveText("Connected");
 	await stop();
 	await expect(conn).toHaveText("Reconnecting…", { timeout: 15_000 });
 	await start();
-	await expect(conn).toHaveText("Live", { timeout: 40_000 });
+	await expect(conn).toHaveText("Connected", { timeout: 40_000 });
 	await expect.poll(() => page.locator("#terminal .xterm-rows").innerText(), { timeout: 15_000 }).toContain("reconnected");
 });

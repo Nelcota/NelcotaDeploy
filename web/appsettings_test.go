@@ -104,13 +104,13 @@ func TestEnvironmentReviewAndSecrecy(t *testing.T) {
 
 	paste := url.Values{"dotenv": {"DATABASE_URL=new-value\nTOKEN=abc123secret\n# comment"}}
 	res = s.post("/ui/apps/dev-app-api/env/preview", paste)
-	mustContain(t, res.body, `elements <div id="env-review"`, `data-kind="replace"`, "DATABASE_URL", `data-kind="add"`, "TOKEN", "Save 2 change(s)", "#env-paste")
+	mustContain(t, res.body, `elements <div id="env-review"`, `data-kind="replace"`, "DATABASE_URL", `data-kind="add"`, "TOKEN", "Save 2 changes", "#env-paste")
 	mustNotContain(t, res.body, "abc123secret", "new-value")
 	if vars, _ := e.services().Apps.Environment(withUser(e, "development-user"), "dev-app-api"); len(vars) != 1 {
 		t.Fatal("preview changed the environment", vars)
 	}
 	res = s.post("/ui/apps/dev-app-api/env/import", paste)
-	mustContain(t, res.body, "2 change(s) saved.")
+	mustContain(t, res.body, "2 changes saved.")
 	// Pruning removes keys missing from the list after review.
 	prune := url.Values{"dotenv": {"TOKEN=x"}, "prune": {"true"}}
 	mustContain(t, s.post("/ui/apps/dev-app-api/env/preview", prune).body, `data-kind="remove"`, "DATABASE_URL")

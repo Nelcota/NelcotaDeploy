@@ -14,7 +14,7 @@ test("create an app with the wizard and it publishes right away", async ({ page 
 	await expect(page.getByLabel("Your app listens on port")).toHaveValue("8080");
 	await page.getByLabel("Branch").selectOption("main");
 	await page.getByLabel("Server").selectOption({ label: "Server blog" });
-	await page.getByLabel("Web address").fill("docs.example.org");
+	await page.getByLabel("Web addresses").fill("docs.example.org");
 	await page.getByRole("button", { name: "Create and publish" }).click();
 	await expect(page).toHaveURL(/\/apps\/[^/]+$/);
 	await expect(page.getByRole("heading", { level: 1 })).toHaveText("docs");
@@ -42,8 +42,8 @@ test("environment variables: paste, review, save, and they stay hidden", async (
 	const review = page.locator("#env-review");
 	await expect(review).toContainText("API_SECRET");
 	await expect(review.locator('[data-kind="add"]')).toHaveCount(2);
-	await review.getByRole("button", { name: "Save 2 change(s)" }).click();
-	await toast(page, "2 change(s) saved.");
+	await review.getByRole("button", { name: "Save 2 changes" }).click();
+	await toast(page, "2 changes saved.");
 	await expect(env.locator("#env-API_SECRET")).toContainText("••••••••");
 	await expect(env.getByLabel("Add or change variables")).toHaveValue("");
 	expect(await page.content()).not.toContain("hunter2-secret");

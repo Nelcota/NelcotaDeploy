@@ -4,11 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/Nelcota/NelcotaDeploy/internal/events"
 	"github.com/Nelcota/NelcotaDeploy/internal/service"
+	"github.com/Nelcota/NelcotaDeploy/web/i18n"
 	"github.com/Nelcota/NelcotaDeploy/web/pages"
+	"github.com/Nelcota/NelcotaDeploy/web/ui"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -41,8 +44,34 @@ func (h *handler) overview(ctx context.Context, app service.App, usage []pages.C
 	v := pages.OverviewView{State: pages.StateOf(app, deploys), Deployments: deploys, Usage: usage, CanLatest: h.s.Repos != nil}
 	if v.State.Latest.Status == "failed" {
 		v.LogTail = h.logTail(ctx, v.State.Latest.ID, 8)
+		// The app's own log may name the port it really listens on.
+		if port, err := h.s.Deploys.SuggestedPort(ctx, v.State.Latest.ID); err == nil {
+			v.SuggestedPort = port
+		}
+		p, _ := service.CurrentUser(ctx)
+		v.Admin = p.Role == "admin"
 	}
 	return v
+}
+
+// publishOnPort switches a failed deployment's app to the port its log
+// reported and publishes the same commit again.
+func (h *handler) publishOnPort(w http.ResponseWriter, r *http.Request) {
+	h.act(w, r, func(s *stream) error {
+		port, err := strconv.ParseUint(r.URL.Query().Get("port"), 10, 16)
+		if err != nil {
+			return invalid("Enter a port between 1 and 65535")
+		}
+		d, err := h.s.Deploys.PublishOnPort(r.Context(), chi.URLParam(r, "id"), uint32(port))
+		if err != nil {
+			return err
+		}
+		app, err := h.s.Apps.Get(r.Context(), d.AppID)
+		if err != nil {
+			return err
+		}
+		return s.toast("info", i18n.Tf(r.Context(), "Publishing %s at %s on port %d.", app.Name, ui.ShortSHA(d.SHA), port))
+	})
 }
 
 func (h *handler) overviewPage(w http.ResponseWriter, r *http.Request) {
@@ -125,4 +154,26 @@ func (h *handler) checkDNS(w http.ResponseWriter, r *http.Request) {
 		}
 		return s.patch(pages.DNSResults(checks), "#dns-results", modeReplace)
 	})
+}
+
+// recentCommits fills the "Publish a commit" dialog with the branch's newest
+// commits. When GitHub can't be read, it says so and the SHA field remains.
+func (h *handler) recentCommits(w http.ResponseWriter, r *http.Request) {
+	s := newStream(w, r)
+	app, err := h.s.Apps.Get(r.Context(), chi.URLParam(r, "id"))
+	if err != nil {
+		_ = s.toast("danger", publicMessage(err))
+		return
+	}
+	if h.s.Repos == nil {
+		_ = s.patch(pages.CommitList(nil, "GitHub isn't connected."), "#deploy-commit-list", modeReplace)
+		return
+	}
+	commits, err := h.s.Repos.Commits(r.Context(), repoQuery(app))
+	if err != nil {
+		_ = s.patch(pages.CommitList(nil, publicMessage(err)), "#deploy-commit-list", modeReplace)
+		return
+	}
+	// The dialog is excluded from morphing, so the list is replaced outright.
+	_ = s.patch(pages.CommitList(commits, ""), "#deploy-commit-list", modeReplace)
 }

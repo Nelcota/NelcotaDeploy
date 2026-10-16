@@ -18,7 +18,7 @@ func Tone(status string) string {
 	case "failed", "offline", "error", "not_live", "update_failed":
 		return "danger"
 	case "building", "starting", "waiting", "deploying", "publishing":
-		return "info"
+		return "progress"
 	case "queued", "pending", "not_ready":
 		return "warning"
 	default:
