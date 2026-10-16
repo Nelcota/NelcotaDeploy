@@ -400,3 +400,12 @@ func TestVerifyTestRestoresWithoutTouchingData(t *testing.T) {
 		t.Fatal("damaged backup passed verification", e)
 	}
 }
+
+func writeMarker(path string) error {
+	dir, e := os.OpenRoot(filepath.Dir(path))
+	if e != nil {
+		return e
+	}
+	defer dir.Close()
+	return writeMarkerIn(dir, filepath.Base(path))
+}

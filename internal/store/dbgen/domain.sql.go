@@ -178,7 +178,7 @@ func (q *Queries) GetServer(ctx context.Context, id string) (Server, error) {
 }
 
 const getUser = `-- name: GetUser :one
-SELECT id, email, name, role, created_at FROM users WHERE id = ?
+SELECT id, email, name, role, created_at, first_steps_hidden FROM users WHERE id = ?
 `
 
 func (q *Queries) GetUser(ctx context.Context, id string) (User, error) {
@@ -190,12 +190,13 @@ func (q *Queries) GetUser(ctx context.Context, id string) (User, error) {
 		&i.Name,
 		&i.Role,
 		&i.CreatedAt,
+		&i.FirstStepsHidden,
 	)
 	return i, err
 }
 
 const getUserByEmail = `-- name: GetUserByEmail :one
-SELECT id, email, name, role, created_at FROM users WHERE email = ?
+SELECT id, email, name, role, created_at, first_steps_hidden FROM users WHERE email = ?
 `
 
 func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error) {
@@ -207,6 +208,7 @@ func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error
 		&i.Name,
 		&i.Role,
 		&i.CreatedAt,
+		&i.FirstStepsHidden,
 	)
 	return i, err
 }

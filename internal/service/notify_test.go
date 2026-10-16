@@ -34,7 +34,12 @@ func TestWebhookAddressesMustBePublicHTTPS(t *testing.T) {
 			t.Errorf("accepted %s", bad)
 		}
 	}
-	for ip, public := range map[string]bool{"8.8.8.8": true, "2606:4700::1111": true, "127.0.0.1": false, "10.0.0.1": false, "172.16.0.1": false, "192.168.1.1": false, "169.254.169.254": false, "100.64.1.1": false, "0.0.0.0": false, "::1": false, "fe80::1": false, "fc00::1": false, "::ffff:10.0.0.1": false, "224.0.0.1": false} {
+	addresses := map[string]bool{
+		"8.8.8.8": true, "2606:4700::1111": true,
+		"127.0.0.1": false, "10.0.0.1": false, "172.16.0.1": false, "192.168.1.1": false, "169.254.169.254": false,
+		"100.64.1.1": false, "0.0.0.0": false, "::1": false, "fe80::1": false, "fc00::1": false, "::ffff:10.0.0.1": false, "224.0.0.1": false,
+	}
+	for ip, public := range addresses {
 		if publicIP(net.ParseIP(ip)) != public {
 			t.Errorf("%s: public=%v", ip, !public)
 		}

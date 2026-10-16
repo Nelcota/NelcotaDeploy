@@ -8,6 +8,8 @@ import (
 	"os"
 	"path/filepath"
 	"syscall"
+
+	"github.com/Nelcota/NelcotaDeploy/internal/host"
 )
 
 func queueFile(p, data string, r Request) error {
@@ -59,7 +61,7 @@ func queueFile(p, data string, r Request) error {
 	if e = dir.Link(name, filepath.Base(rel)); e != nil {
 		return errors.New("an update is already requested")
 	}
-	return syncRoot(dir)
+	return host.SyncRoot(dir)
 }
 func readDataRequest(data, relative string) (Request, error) {
 	root, e := os.OpenRoot(data)
@@ -122,7 +124,7 @@ func writeResult(data string, result Result) error {
 	if e = dir.Rename(name, "result.json"); e != nil {
 		return e
 	}
-	return syncRoot(dir)
+	return host.SyncRoot(dir)
 }
 func removeRequest(data, relative string) {
 	root, e := os.OpenRoot(data)
@@ -131,12 +133,4 @@ func removeRequest(data, relative string) {
 	}
 	defer root.Close()
 	_ = root.Remove(relative)
-}
-func syncRoot(root *os.Root) error {
-	f, e := root.Open(".")
-	if e != nil {
-		return e
-	}
-	defer f.Close()
-	return f.Sync()
 }

@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
-	"path/filepath"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -105,33 +104,7 @@ func (m *Certificates) Update(bundle CertificateBundle) error {
 	if e != nil {
 		return e
 	}
-	if e = os.MkdirAll(filepath.Dir(m.path), 0700); e != nil {
-		return e
-	}
-	f, e := os.CreateTemp(filepath.Dir(m.path), ".certificate-")
-	if e != nil {
-		return e
-	}
-	defer func() { _ = f.Close(); _ = os.Remove(f.Name()) }()
-	if _, e = f.Write(b); e != nil {
-		return e
-	}
-	if e = f.Sync(); e != nil {
-		return e
-	}
-	if e = f.Close(); e != nil {
-		return e
-	}
-	if e = os.Rename(f.Name(), m.path); e != nil {
-		return e
-	}
-	dir, e := os.Open(filepath.Dir(m.path))
-	if e != nil {
-		return e
-	}
-	e = dir.Sync()
-	_ = dir.Close()
-	if e != nil {
+	if e = host.WriteFileAtomic(m.path, b, 0600); e != nil {
 		return e
 	}
 	m.pair.Store(pair)

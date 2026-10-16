@@ -51,16 +51,39 @@ func TestDockerBuildKitCaddy(t *testing.T) {
 		return addr
 	}
 	adminAddr, proxyAddr := free(), free()
-	config, _ := json.Marshal(map[string]any{"admin": map[string]any{"listen": adminAddr}, "apps": map[string]any{"http": map[string]any{"servers": map[string]any{"nelcota": map[string]any{"listen": []string{proxyAddr}, "routes": []any{}, "automatic_https": map[string]any{"disable": true}}}}}})
-	caddy, e := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{ContainerRequest: testcontainers.ContainerRequest{Image: "caddy:2.10.2", Files: []testcontainers.ContainerFile{{Reader: bytes.NewReader(config), ContainerFilePath: "/etc/caddy/caddy.json", FileMode: 0644}}, Cmd: []string{"caddy", "run", "--config", "/etc/caddy/caddy.json"}, HostConfigModifier: func(h *container.HostConfig) { h.NetworkMode = "host" }, WaitingFor: wait.ForLog("serving initial configuration")}, Started: true})
+	server := map[string]any{"listen": []string{proxyAddr}, "routes": []any{}, "automatic_https": map[string]any{"disable": true}}
+	config, _ := json.Marshal(map[string]any{
+		"admin": map[string]any{"listen": adminAddr},
+		"apps":  map[string]any{"http": map[string]any{"servers": map[string]any{"nelcota": server}}},
+	})
+	caddy, e := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
+		ContainerRequest: testcontainers.ContainerRequest{
+			Image:              "caddy:2.10.2",
+			Files:              []testcontainers.ContainerFile{{Reader: bytes.NewReader(config), ContainerFilePath: "/etc/caddy/caddy.json", FileMode: 0644}},
+			Cmd:                []string{"caddy", "run", "--config", "/etc/caddy/caddy.json"},
+			HostConfigModifier: func(h *container.HostConfig) { h.NetworkMode = "host" },
+			WaitingFor:         wait.ForLog("serving initial configuration"),
+		},
+		Started: true,
+	})
 	if e != nil {
 		t.Fatal(e)
 	}
 	defer testcontainers.TerminateContainer(caddy)
-	builder, e := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{ContainerRequest: testcontainers.ContainerRequest{Image: "moby/buildkit:v0.34.0", ExposedPorts: []string{"1234/tcp"}, Privileged: true, Cmd: []string{"--addr", "tcp://0.0.0.0:1234"}, HostConfigModifier: func(h *container.HostConfig) {
-		h.Privileged = true
-		h.PortBindings = network.PortMap{network.MustParsePort("1234/tcp"): []network.PortBinding{{HostIP: netip.MustParseAddr("127.0.0.1")}}}
-	}, WaitingFor: wait.ForListeningPort("1234/tcp")}, Started: true})
+	builder, e := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
+		ContainerRequest: testcontainers.ContainerRequest{
+			Image:        "moby/buildkit:v0.34.0",
+			ExposedPorts: []string{"1234/tcp"},
+			Privileged:   true,
+			Cmd:          []string{"--addr", "tcp://0.0.0.0:1234"},
+			HostConfigModifier: func(h *container.HostConfig) {
+				h.Privileged = true
+				h.PortBindings = network.PortMap{network.MustParsePort("1234/tcp"): []network.PortBinding{{HostIP: netip.MustParseAddr("127.0.0.1")}}}
+			},
+			WaitingFor: wait.ForListeningPort("1234/tcp"),
+		},
+		Started: true,
+	})
 	if e != nil {
 		t.Fatal(e)
 	}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"math"
 	"strings"
 	"sync"
@@ -16,9 +17,17 @@ import (
 
 const DevUserID = "development-user"
 
+// Seed adds demonstration data. It is idempotent by id; rows that clash with
+// other data under a different id fail loudly instead of being skipped.
 func (c *Core) Seed(ctx context.Context) error {
+	if e := c.seed(ctx); e != nil {
+		return fmt.Errorf("development data could not be seeded; remove the development data directory (.local/dev by default) to reset it: %w", e)
+	}
+	return nil
+}
+func (c *Core) seed(ctx context.Context) error {
 	ctx = systemContext(ctx)
-	_, e := c.DB.Write.ExecContext(ctx, "INSERT INTO users(id,email,name,role,created_at) VALUES(?,?,?,'admin',?) ON CONFLICT DO NOTHING", DevUserID, "dev@localhost", "Development", time.Now().Unix())
+	_, e := c.DB.Write.ExecContext(ctx, "INSERT INTO users(id,email,name,role,created_at) VALUES(?,?,?,'admin',?) ON CONFLICT(id) DO NOTHING", DevUserID, "dev@localhost", "Development", time.Now().Unix())
 	if e != nil {
 		return e
 	}
@@ -28,15 +37,24 @@ func (c *Core) Seed(ctx context.Context) error {
 		cfg := AppConfig{Domains: []string{name + ".example.test"}, MemoryBytes: 256 << 20, NanoCPUs: 1e9, Port: 8080, HealthPath: "/", HealthTimeout: 60, Replicas: 1, CacheEnabled: true, Dockerfile: "Dockerfile"}
 		b, _ := json.Marshal(cfg)
 		e = c.mutate(ctx, func(tx *sql.Tx) error {
-			if _, e := tx.ExecContext(ctx, "INSERT INTO servers(id,name,wireguard_ip,status,heartbeat_at,fingerprint,agent_ready) VALUES(?,?,?,'online',?,'development',1) ON CONFLICT DO NOTHING", server, "Server "+name, "10.77.0."+string(rune('2'+i)), time.Now().Unix()); e != nil {
+			_, e := tx.ExecContext(ctx, `INSERT INTO servers(id,name,wireguard_ip,status,heartbeat_at,fingerprint,agent_ready)
+				VALUES(?,?,?,'online',?,'development',1) ON CONFLICT(id) DO NOTHING`,
+				server, "Server "+name, "10.77.0."+string(rune('2'+i)), time.Now().Unix())
+			if e != nil {
 				return e
 			}
-			if _, e := tx.ExecContext(ctx, "INSERT INTO apps(id,name,server_id,repository,branch,config) VALUES(?,?,?,?,'main',?) ON CONFLICT DO NOTHING", app, name, server, "https://github.com/example/"+name, string(b)); e != nil {
+			_, e = tx.ExecContext(ctx, "INSERT INTO apps(id,name,server_id,repository,branch,config) VALUES(?,?,?,?,'main',?) ON CONFLICT(id) DO NOTHING",
+				app, name, server, "https://github.com/example/"+name, string(b))
+			if e != nil {
 				return e
 			}
 			for j, status := range []string{"success", "failed", "cancelled"} {
-				id := "dev-deploy-" + name + "-" + status
-				if _, e := tx.ExecContext(ctx, "INSERT INTO deployments(id,app_id,sha,message,author,origin,status,queued_at,started_at,finished_at) VALUES(?,?,?,?,?,'push',?,?,?,?) ON CONFLICT DO NOTHING", id, app, strings.Repeat(string(rune('a'+i)), 40), "Demo deployment", "Development", status, time.Now().Unix()-int64((j+1)*3600), time.Now().Unix()-int64((j+1)*3600)+1, time.Now().Unix()-int64((j+1)*3600)+8); e != nil {
+				queued := time.Now().Unix() - int64((j+1)*3600)
+				_, e := tx.ExecContext(ctx, `INSERT INTO deployments(id,app_id,sha,message,author,origin,status,queued_at,started_at,finished_at)
+					VALUES(?,?,?,?,?,'push',?,?,?,?) ON CONFLICT(id) DO NOTHING`,
+					"dev-deploy-"+name+"-"+status, app, strings.Repeat(string(rune('a'+i)), 40), "Demo deployment", "Development",
+					status, queued, queued+1, queued+8)
+				if e != nil {
 					return e
 				}
 			}
@@ -67,10 +85,19 @@ func devMetrics(now time.Time, index int, server string, apps []dbgen.App) map[s
 	containers := []map[string]any{}
 	for _, a := range apps {
 		if a.ServerID == server {
-			containers = append(containers, map[string]any{"app_id": a.ID, "container_id": "dev-" + a.ID, "cpu_percent": 2 + 18*wave, "memory_used": int64(96<<20) + int64(wave*float64(64<<20)), "memory_limit": 256 << 20, "network_rx": now.Unix() * 1024, "network_tx": now.Unix() * 512, "pids": 12})
+			containers = append(containers, map[string]any{
+				"app_id": a.ID, "container_id": "dev-" + a.ID, "cpu_percent": 2 + 18*wave,
+				"memory_used": int64(96<<20) + int64(wave*float64(64<<20)), "memory_limit": 256 << 20,
+				"network_rx": now.Unix() * 1024, "network_tx": now.Unix() * 512, "pids": 12,
+			})
 		}
 	}
-	return map[string]any{"cpu_percent": 6 + 40*wave, "memory_used": int64(float64(4<<30) * (0.22 + 0.12*wave)), "memory_total": 4 << 30, "disk_used": int64(12<<30) + int64(index)<<30, "disk_total": 40 << 30, "network_rx": now.Unix() * 4096, "network_tx": now.Unix() * 2048, "containers": containers, "cache_used": int64(1<<30) + int64(index)*(512<<20)}
+	return map[string]any{
+		"cpu_percent": 6 + 40*wave, "memory_used": int64(float64(4<<30) * (0.22 + 0.12*wave)), "memory_total": 4 << 30,
+		"disk_used": int64(12<<30) + int64(index)<<30, "disk_total": 40 << 30,
+		"network_rx": now.Unix() * 4096, "network_tx": now.Unix() * 2048,
+		"containers": containers, "cache_used": int64(1<<30) + int64(index)*(512<<20),
+	}
 }
 func (a *AuthService) DevelopmentSession(ctx context.Context) (LoginResult, error) {
 	return a.issueSession(ctx, DevUserID)
@@ -165,7 +192,8 @@ var devStages = []struct {
 }
 
 // simulate walks one deployment through the pipeline. Commits whose SHA starts
-// with "dead" fail the health check, so failure screens can be exercised.
+// with "dead" fail the health check, so failure screens can be exercised: the
+// simulated app listens on port 3000, so they pass once the app uses that port.
 func (d *DevDispatcher) simulate(job, ctx context.Context, server string, dep *agentv1.Deploy) {
 	peer := transport.Peer{ID: server}
 	var seq uint64
@@ -177,7 +205,7 @@ func (d *DevDispatcher) simulate(job, ctx context.Context, server string, dep *a
 		seq++
 		_ = d.Core.AgentEvent(ctx, peer, &agentv1.Event{Payload: &agentv1.Event_DeployLog{DeployLog: &agentv1.DeployLog{DeployId: dep.DeployId, AppId: dep.App.AppId, Sequence: seq, Line: []byte(line + "\n")}}})
 	}
-	failing := strings.HasPrefix(dep.Sha, "dead")
+	failing := strings.HasPrefix(dep.Sha, "dead") && dep.App.GetPort() != 3000
 	for _, st := range devStages {
 		if st.name == "start" {
 			send(&agentv1.DeployStatus{Status: "starting"})
@@ -194,7 +222,7 @@ func (d *DevDispatcher) simulate(job, ctx context.Context, server string, dep *a
 		}
 		if failing && st.name == "healthcheck" {
 			log("[start] listening on 0.0.0.0:3000")
-			log("[healthcheck] no response on port 8080 at / within the timeout")
+			log(fmt.Sprintf("[healthcheck] no response on port %d at / within the timeout", dep.App.GetPort()))
 			send(&agentv1.DeployStatus{Status: "failed", ErrorCode: "health_no_response"})
 			return
 		}

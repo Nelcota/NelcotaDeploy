@@ -133,9 +133,20 @@ func (d *DockerEngine) Build(ctx context.Context, dep *agentv1.Deploy, dir strin
 	if e != nil {
 		return "", e
 	}
-	options := bk.SolveOpt{Frontend: "dockerfile.v0", LocalMounts: map[string]fsutil.FS{"context": contextFS, "dockerfile": contextFS}, FrontendAttrs: attrs, SharedKey: key(dep.App.AppId), Session: []session.Attachable{secretsprovider.FromMap(secretMap)}, Exports: []bk.ExportEntry{{Type: "docker", Attrs: map[string]string{"name": tag}, Output: func(map[string]string) (io.WriteCloser, error) {
-		return os.OpenFile(name, os.O_WRONLY|os.O_TRUNC, 0600)
-	}}}}
+	options := bk.SolveOpt{
+		Frontend:      "dockerfile.v0",
+		LocalMounts:   map[string]fsutil.FS{"context": contextFS, "dockerfile": contextFS},
+		FrontendAttrs: attrs,
+		SharedKey:     key(dep.App.AppId),
+		Session:       []session.Attachable{secretsprovider.FromMap(secretMap)},
+		Exports: []bk.ExportEntry{{
+			Type:  "docker",
+			Attrs: map[string]string{"name": tag},
+			Output: func(map[string]string) (io.WriteCloser, error) {
+				return os.OpenFile(name, os.O_WRONLY|os.O_TRUNC, 0600)
+			},
+		}},
+	}
 	status := make(chan *bk.SolveStatus, 32)
 	g, gctx := errgroup.WithContext(ctx)
 	g.Go(func() error {
@@ -183,7 +194,23 @@ func HardenedConfig(app *agentv1.AppConfig, img string) (*container.Config, *con
 		env = append(env, k+"="+v)
 	}
 	pids := int64(128)
-	return &container.Config{Image: img, User: "65532:65532", Env: env, ExposedPorts: network.PortSet{port: {}}, Labels: map[string]string{"nelcota.managed": "true", "nelcota.app": app.AppId}}, &container.HostConfig{ReadonlyRootfs: true, CapDrop: []string{"ALL"}, SecurityOpt: []string{"no-new-privileges:true"}, Resources: container.Resources{Memory: app.MemoryBytes, NanoCPUs: app.NanoCpus, PidsLimit: &pids}, Tmpfs: map[string]string{"/tmp": "rw,noexec,nosuid,size=64m,uid=65532,gid=65532"}, RestartPolicy: container.RestartPolicy{Name: "unless-stopped"}, LogConfig: container.LogConfig{Type: "json-file", Config: map[string]string{"max-size": "10m", "max-file": "2"}}}
+	config := &container.Config{
+		Image:        img,
+		User:         "65532:65532",
+		Env:          env,
+		ExposedPorts: network.PortSet{port: {}},
+		Labels:       map[string]string{"nelcota.managed": "true", "nelcota.app": app.AppId},
+	}
+	hostConfig := &container.HostConfig{
+		ReadonlyRootfs: true,
+		CapDrop:        []string{"ALL"},
+		SecurityOpt:    []string{"no-new-privileges:true"},
+		Resources:      container.Resources{Memory: app.MemoryBytes, NanoCPUs: app.NanoCpus, PidsLimit: &pids},
+		Tmpfs:          map[string]string{"/tmp": "rw,noexec,nosuid,size=64m,uid=65532,gid=65532"},
+		RestartPolicy:  container.RestartPolicy{Name: "unless-stopped"},
+		LogConfig:      container.LogConfig{Type: "json-file", Config: map[string]string{"max-size": "10m", "max-file": "2"}},
+	}
+	return config, hostConfig
 }
 func (d *DockerEngine) Start(ctx context.Context, app *agentv1.AppConfig, img string) (Running, error) {
 	r := Running{AppID: app.AppId, Image: img, Revision: app.Revision}
@@ -412,7 +439,15 @@ func (c *Caddy) Route(ctx context.Context, id string, domains, addresses []strin
 	for _, a := range addresses {
 		ups = append(ups, map[string]string{"dial": a})
 	}
-	route := map[string]any{"@id": "nelcota-" + key(id), "match": []any{map[string]any{"host": domains}}, "handle": []any{map[string]any{"handler": "encode", "encodings": map[string]any{"zstd": map[string]any{}, "gzip": map[string]any{}}}, map[string]any{"handler": "reverse_proxy", "upstreams": ups, "flush_interval": -1}}, "terminal": true}
+	route := map[string]any{
+		"@id":   "nelcota-" + key(id),
+		"match": []any{map[string]any{"host": domains}},
+		"handle": []any{
+			map[string]any{"handler": "encode", "encodings": map[string]any{"zstd": map[string]any{}, "gzip": map[string]any{}}},
+			map[string]any{"handler": "reverse_proxy", "upstreams": ups, "flush_interval": -1},
+		},
+		"terminal": true,
+	}
 	code, e := c.request(ctx, "PATCH", "/id/nelcota-"+key(id), route)
 	if code == 404 {
 		_, e = c.request(ctx, "POST", "/config/apps/http/servers/nelcota/routes", route)

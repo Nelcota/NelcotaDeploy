@@ -4,9 +4,10 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"github.com/Nelcota/NelcotaDeploy/internal/security"
 	"net/url"
 	"path/filepath"
+
+	"github.com/Nelcota/NelcotaDeploy/internal/security"
 )
 
 // Validate master-key compatibility before installing any restored files.

@@ -6,13 +6,13 @@ import (
 	"errors"
 	"io"
 	"os"
-	"path/filepath"
 	"runtime"
 	"sort"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/Nelcota/NelcotaDeploy/internal/host"
 	"github.com/distribution/reference"
 	bk "github.com/moby/buildkit/client"
 	"github.com/moby/buildkit/client/llb"
@@ -147,28 +147,11 @@ func (d *DockerEngine) saveBases(records map[string]baseRecord) error {
 			delete(records, ref)
 		}
 	}
-	if e := os.MkdirAll(filepath.Dir(d.BaseImagesPath), 0700); e != nil {
-		return e
-	}
 	b, e := json.Marshal(records)
 	if e != nil {
 		return e
 	}
-	f, e := os.CreateTemp(filepath.Dir(d.BaseImagesPath), ".bases-")
-	if e != nil {
-		return e
-	}
-	defer func() { _ = f.Close(); _ = os.Remove(f.Name()) }()
-	if _, e = f.Write(b); e != nil {
-		return e
-	}
-	if e = f.Sync(); e != nil {
-		return e
-	}
-	if e = f.Close(); e != nil {
-		return e
-	}
-	return os.Rename(f.Name(), d.BaseImagesPath)
+	return host.WriteFileAtomic(d.BaseImagesPath, b, 0600)
 }
 
 // RefreshBases refreshes due tags in BuildKit's own content store, with no RUN,

@@ -5,11 +5,12 @@ package integration
 import (
 	"bytes"
 	"context"
-	"github.com/testcontainers/testcontainers-go"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/testcontainers/testcontainers-go"
 )
 
 func TestInstallerSyntaxDebianUbuntu(t *testing.T) {

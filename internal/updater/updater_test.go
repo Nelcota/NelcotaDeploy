@@ -10,7 +10,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"golang.org/x/crypto/blake2b"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -18,6 +17,8 @@ import (
 	"strings"
 	"syscall"
 	"testing"
+
+	"golang.org/x/crypto/blake2b"
 )
 
 func signedFixture(t *testing.T) (Trust, map[string][]byte) {

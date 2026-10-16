@@ -17,6 +17,7 @@ import (
 	"net/http"
 	"net/smtp"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -188,9 +189,6 @@ func (d *delivery) post(ctx context.Context, w webhookTarget, n Notification) er
 	return nil
 }
 
-// headerSafe removes line breaks so values can't add mail headers.
-func headerSafe(s string) string { return oneLine(s) }
-
 func messageID(host string) string {
 	b := make([]byte, 12)
 	_, _ = rand.Read(b)
@@ -201,9 +199,9 @@ func messageID(host string) string {
 func buildMail(m emailTarget, subject, body string, now time.Time) []byte {
 	var b bytes.Buffer
 	domain := m.From[strings.LastIndex(m.From, "@")+1:]
-	fmt.Fprintf(&b, "From: NelcotaDeploy <%s>\r\n", headerSafe(m.From))
-	fmt.Fprintf(&b, "To: %s\r\n", headerSafe(strings.Join(m.To, ", ")))
-	fmt.Fprintf(&b, "Subject: %s\r\n", mime.QEncoding.Encode("utf-8", headerSafe(subject)))
+	fmt.Fprintf(&b, "From: NelcotaDeploy <%s>\r\n", oneLine(m.From))
+	fmt.Fprintf(&b, "To: %s\r\n", oneLine(strings.Join(m.To, ", ")))
+	fmt.Fprintf(&b, "Subject: %s\r\n", mime.QEncoding.Encode("utf-8", oneLine(subject)))
 	fmt.Fprintf(&b, "Date: %s\r\n", now.Format(time.RFC1123Z))
 	fmt.Fprintf(&b, "Message-ID: %s\r\n", messageID(domain))
 	b.WriteString("MIME-Version: 1.0\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Transfer-Encoding: 8bit\r\nAuto-Submitted: auto-generated\r\n\r\n")
@@ -229,7 +227,7 @@ func (d *delivery) tlsConfig(host string) *tls.Config {
 func (d *delivery) mail(ctx context.Context, m emailTarget, subject, body string) error {
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
-	addr := net.JoinHostPort(m.Host, portString(m.Port))
+	addr := net.JoinHostPort(m.Host, strconv.Itoa(m.Port))
 	dialer := &net.Dialer{Timeout: 10 * time.Second}
 	var conn net.Conn
 	var e error

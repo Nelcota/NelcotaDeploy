@@ -89,7 +89,14 @@ func (k *virtualKey) assertion(t *testing.T, c Ceremony) json.RawMessage {
 	if e != nil {
 		t.Fatal(e)
 	}
-	b, _ := json.Marshal(map[string]any{"id": encoded(k.id), "rawId": encoded(k.id), "type": "public-key", "response": map[string]any{"clientDataJSON": encoded(client), "authenticatorData": encoded(auth), "signature": encoded(signature), "userHandle": encoded([]byte(k.user))}, "clientExtensionResults": map[string]any{}})
+	b, _ := json.Marshal(map[string]any{
+		"id": encoded(k.id), "rawId": encoded(k.id), "type": "public-key",
+		"response": map[string]any{
+			"clientDataJSON": encoded(client), "authenticatorData": encoded(auth),
+			"signature": encoded(signature), "userHandle": encoded([]byte(k.user)),
+		},
+		"clientExtensionResults": map[string]any{},
+	})
 	return b
 }
 func TestWebAuthnVirtualAuthenticator(t *testing.T) {

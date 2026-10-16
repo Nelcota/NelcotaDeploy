@@ -8,7 +8,6 @@ import (
 	"net/mail"
 	"net/url"
 	"slices"
-	"strconv"
 	"strings"
 )
 
@@ -290,15 +289,15 @@ func (s *notificationsService) SendInvitation(ctx context.Context, to, name, tok
 	}
 	m := *cfg.Email
 	m.To = []string{addr.Address}
-	body := "Hello " + oneLine(name) + ",\n\nYou were invited to NelcotaDeploy. Open this link within 15 minutes and create a passkey:\n\n" + s.d.origin + "/enroll#token=" + url.QueryEscape(token) + "\n\nThe link works once. If you didn't expect it, ignore this email.\n"
+	body := "Hello " + oneLine(name) + ",\n\nYou were invited to NelcotaDeploy. Open this link within 24 hours and create a passkey:\n\n" + s.d.origin + "/enroll#token=" + url.QueryEscape(token) + "\n\nThe link works once. If you didn't expect it, ignore this email.\n"
 	if e := s.d.mail(ctx, m, "Your NelcotaDeploy invitation", body); e != nil {
 		return fail(Unavailable, "The invitation email couldn't be sent: "+e.Error())
 	}
 	return nil
 }
 
+// oneLine collapses whitespace and line breaks; header values use it so they
+// cannot add mail headers.
 func oneLine(s string) string {
 	return strings.Join(strings.Fields(strings.NewReplacer("\r", " ", "\n", " ").Replace(s)), " ")
 }
-
-func portString(p int) string { return strconv.Itoa(p) }

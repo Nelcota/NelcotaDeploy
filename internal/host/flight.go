@@ -3,6 +3,7 @@ package host
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"io"
 	"os"
 	"path/filepath"
 	"runtime/trace"
@@ -35,26 +36,13 @@ func CaptureSlow(dir, id string, elapsed, threshold time.Duration) bool {
 	return f.capture(dir, id)
 }
 func (f *flight) capture(dir, id string) bool {
-	if e := os.MkdirAll(dir, 0700); e != nil {
-		return false
-	}
-	file, e := os.CreateTemp(dir, ".trace-")
-	if e != nil {
-		return false
-	}
-	defer func() { _ = file.Close(); _ = os.Remove(file.Name()) }()
-	if _, e = f.recorder.WriteTo(file); e != nil {
-		return false
-	}
-	if e = file.Sync(); e != nil {
-		return false
-	}
-	if e = file.Close(); e != nil {
-		return false
-	}
 	digest := sha256.Sum256([]byte(id))
 	name := time.Now().UTC().Format("20060102T150405.000000000") + "-" + hex.EncodeToString(digest[:8]) + ".trace"
-	if e = os.Rename(file.Name(), filepath.Join(dir, name)); e != nil {
+	e := WriteAtomic(filepath.Join(dir, name), 0600, func(w io.Writer) error {
+		_, e := f.recorder.WriteTo(w)
+		return e
+	})
+	if e != nil {
 		return false
 	}
 	f.last = time.Now()

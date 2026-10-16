@@ -3,9 +3,10 @@ package security
 import (
 	"crypto/ed25519"
 	"crypto/rand"
-	agentv1 "github.com/Nelcota/NelcotaDeploy/internal/gen/agent/v1"
 	"testing"
 	"time"
+
+	agentv1 "github.com/Nelcota/NelcotaDeploy/internal/gen/agent/v1"
 )
 
 func TestVault(t *testing.T) {

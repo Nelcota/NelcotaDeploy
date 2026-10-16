@@ -8,6 +8,15 @@ import (
 	"database/sql"
 )
 
+type ActiveDeployment struct {
+	ID              string `json:"id"`
+	AppID           string `json:"app_id"`
+	Sha             string `json:"sha"`
+	Status          string `json:"status"`
+	StartedAt       int64  `json:"started_at"`
+	CancelRequested int64  `json:"cancel_requested"`
+}
+
 type ApiToken struct {
 	ID        string `json:"id"`
 	UserID    string `json:"user_id"`
@@ -167,11 +176,12 @@ type Setting struct {
 }
 
 type User struct {
-	ID        string `json:"id"`
-	Email     string `json:"email"`
-	Name      string `json:"name"`
-	Role      string `json:"role"`
-	CreatedAt int64  `json:"created_at"`
+	ID               string `json:"id"`
+	Email            string `json:"email"`
+	Name             string `json:"name"`
+	Role             string `json:"role"`
+	CreatedAt        int64  `json:"created_at"`
+	FirstStepsHidden int64  `json:"first_steps_hidden"`
 }
 
 type WebhookDelivery struct {

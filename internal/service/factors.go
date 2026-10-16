@@ -57,7 +57,7 @@ func (a *AuthService) Factors(ctx context.Context) (Factors, error) {
 // interactive authentication and always keeps at least one passkey, because
 // passkeys are the only primary sign-in factor.
 func (a *AuthService) RemovePasskey(ctx context.Context, id string) error {
-	p, e := freshInteractive(ctx)
+	p, e := freshInteractive(ctx, false)
 	if e != nil {
 		return e
 	}

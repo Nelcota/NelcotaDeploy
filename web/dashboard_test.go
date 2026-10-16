@@ -53,7 +53,7 @@ func TestPublishLatestUsesBranchHead(t *testing.T) {
 	res := s.post("/ui/apps/dev-app-api/deploy?latest=1", nil)
 	mustContain(t, res.body, "Publishing api at")
 	deploys, _ := e.services().Deploys.List(withUser(e, "development-user"), "dev-app-api")
-	if deploys[0].Status != "queued" || deploys[0].SHA == strings.Repeat("b", 40) || deploys[0].Message != "Latest commit on main" || deploys[0].Origin != "manual" || deploys[0].Author != "Development" {
+	if deploys[0].Status != "queued" || deploys[0].SHA == strings.Repeat("b", 40) || deploys[0].Message != "Update the landing page" || deploys[0].Origin != "manual" || deploys[0].Author != "Development" {
 		t.Fatal(deploys[0])
 	}
 	// Explicit SHA and clean build.

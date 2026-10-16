@@ -187,7 +187,7 @@ func (p *Provisioner) HostKey(ctx context.Context, t SSHTarget) (string, error) 
 // Install checks the invitation and the confirmed host key, then runs the
 // install script in the background. It returns the job to follow.
 func (p *Provisioner) Install(ctx context.Context, in SSHInstall) (string, error) {
-	if e := interactiveAdmin(ctx); e != nil {
+	if _, e := freshInteractive(ctx, true); e != nil {
 		return "", e
 	}
 	if e := in.validate(); e != nil {

@@ -155,3 +155,48 @@ func TestDevReposIsStable(t *testing.T) {
 		t.Fatal(a, b)
 	}
 }
+
+func TestRecentCommitsAndShortSHA(t *testing.T) {
+	c, ctx, _ := fixture(t)
+	head, older := strings.Repeat("a", 40), "abcdef1"+strings.Repeat("0", 33)
+	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		commit := func(sha, msg string) map[string]any {
+			return map[string]any{"sha": sha, "commit": map[string]any{"message": msg + "\n\nBody", "author": map[string]any{"name": "Ana", "date": "2026-10-01T12:00:00Z"}}}
+		}
+		switch r.URL.Path {
+		case "/repos/acme/shop/commits":
+			if r.URL.Query().Get("sha") != "staging" || r.URL.Query().Get("per_page") != "10" {
+				http.Error(w, "bad query", 400)
+				return
+			}
+			_ = json.NewEncoder(w).Encode([]map[string]any{commit(head, "Add cart"), commit(older, "Fix tax")})
+		case "/repos/acme/shop/commits/abcdef1":
+			_ = json.NewEncoder(w).Encode(commit(older, "Fix tax"))
+		default:
+			w.WriteHeader(422)
+			_, _ = w.Write([]byte(`{"message":"No commit found for SHA"}`))
+		}
+	}))
+	defer api.Close()
+	base, _ := url.Parse(api.URL + "/")
+	g := &GitHubService{Core: c, APIBase: base}
+	q := RepoQuery{Repository: "https://github.com/acme/shop", Branch: "staging"}
+	list, e := g.Commits(ctx, q)
+	if e != nil || len(list) != 2 || list[0].SHA != head || list[0].Message != "Add cart" || list[1].Author != "Ana" || list[1].Date != time.Date(2026, 10, 1, 12, 0, 0, 0, time.UTC).Unix() {
+		t.Fatalf("%+v %v", list, e)
+	}
+	got, e := g.Commit(ctx, q, "ABCDEF1")
+	if e != nil || got.SHA != older || got.Message != "Fix tax" {
+		t.Fatalf("%+v %v", got, e)
+	}
+	if _, e := g.Commit(ctx, q, "1234567"); !Is(e, NotFound) {
+		t.Fatal(e)
+	}
+	if _, e := g.Commit(ctx, q, "abc"); !Is(e, Validation) {
+		t.Fatal("a 3-character SHA was looked up", e)
+	}
+	if _, e := g.Commits(WithPrincipal(ctx, Principal{}), q); !Is(e, Unauthenticated) {
+		t.Fatal(e)
+	}
+}

@@ -54,7 +54,9 @@ func (s *EnrollmentService) Renew(ctx context.Context, peer transport.Peer) (sec
 		if e != nil {
 			return e
 		}
-		if _, e = tx.ExecContext(ctx, "UPDATE servers SET previous_fingerprint=fingerprint,previous_cert_until=?,fingerprint=?,cert_expires_at=?,pending_certificate=? WHERE id=?", time.Now().Add(7*24*time.Hour).Unix(), hex.EncodeToString(fingerprint[:]), parsed.NotAfter.Unix(), encrypted, peer.ID); e != nil {
+		_, e = tx.ExecContext(ctx, "UPDATE servers SET previous_fingerprint=fingerprint,previous_cert_until=?,fingerprint=?,cert_expires_at=?,pending_certificate=? WHERE id=?",
+			time.Now().Add(7*24*time.Hour).Unix(), hex.EncodeToString(fingerprint[:]), parsed.NotAfter.Unix(), encrypted, peer.ID)
+		if e != nil {
 			return e
 		}
 		return s.Core.audit(systemContext(ctx), tx, "server.certificate.renew", peer.ID)

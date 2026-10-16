@@ -23,11 +23,13 @@ type RepoQuery struct {
 	InstallationID int64  `json:"installation_id"`
 }
 
-// Commit is the head of a branch.
+// Commit is one commit of a repository: a branch head or a recent commit.
 type Commit struct {
 	SHA     string `json:"sha"`
 	Message string `json:"message"`
 	Author  string `json:"author"`
+	// Date is the author date in Unix seconds, when known.
+	Date int64 `json:"date,omitempty"`
 }
 
 // RepoInfo is what the panel can learn about a repository without cloning it.
@@ -51,7 +53,17 @@ type RepoInfo struct {
 // GitHub access, in which case the interface asks for values directly.
 type Repos interface {
 	Inspect(context.Context, RepoQuery) (RepoInfo, error)
+	// Commits lists the newest commits on the query's branch, newest first.
+	Commits(context.Context, RepoQuery) ([]Commit, error)
+	// Commit finds the commit a SHA or SHA prefix (at least 7 characters) names.
+	Commit(context.Context, RepoQuery, string) (Commit, error)
 }
+
+// RecentCommits is how many commits Commits lists.
+const RecentCommits = 10
+
+// shaPrefix is a full or abbreviated commit SHA.
+var shaPrefix = regexp.MustCompile(`^[0-9a-fA-F]{7,64}$`)
 
 var (
 	exposePattern      = regexp.MustCompile(`(?im)^\s*EXPOSE\s+(\d{1,5})`)
@@ -123,27 +135,12 @@ func repoParts(repository string) (string, string, error) {
 // App installation that covers the repository; public repositories also work
 // without one.
 func (g *GitHubService) Inspect(ctx context.Context, q RepoQuery) (RepoInfo, error) {
-	if _, e := authorize(ctx, "apps:read", false); e != nil {
-		return RepoInfo{}, e
-	}
-	owner, name, e := repoParts(q.Repository)
+	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	client, owner, name, e := g.repoClient(ctx, &q)
 	if e != nil {
 		return RepoInfo{}, e
 	}
-	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
-	defer cancel()
-	if q.InstallationID == 0 {
-		q.InstallationID = g.findInstallation(ctx, owner, name)
-	}
-	tr := g.baseTransport()
-	if q.InstallationID > 0 {
-		inst, e := g.installation(ctx, q.InstallationID)
-		if e != nil {
-			return RepoInfo{}, fail(Unavailable, "GitHub App is not configured")
-		}
-		tr = inst
-	}
-	client := g.client(tr)
 	repo, _, e := client.Repositories.Get(ctx, owner, name)
 	if e != nil {
 		return RepoInfo{}, githubError(e)
@@ -178,6 +175,87 @@ func (g *GitHubService) Inspect(ctx context.Context, q RepoQuery) (RepoInfo, err
 		info.EnvKeys = EnvExampleKeys(text)
 	}
 	return info, nil
+}
+
+// repoClient authorizes the caller and returns a GitHub client that can read
+// the repository: through the GitHub App installation that covers it, found
+// automatically when q has none, or anonymously for public repositories.
+func (g *GitHubService) repoClient(ctx context.Context, q *RepoQuery) (*github.Client, string, string, error) {
+	if _, e := authorize(ctx, "apps:read", false); e != nil {
+		return nil, "", "", e
+	}
+	owner, name, e := repoParts(q.Repository)
+	if e != nil {
+		return nil, "", "", e
+	}
+	if q.InstallationID == 0 {
+		q.InstallationID = g.findInstallation(ctx, owner, name)
+	}
+	tr := g.baseTransport()
+	if q.InstallationID > 0 {
+		inst, e := g.installation(ctx, q.InstallationID)
+		if e != nil {
+			return nil, "", "", fail(Unavailable, "GitHub App is not configured")
+		}
+		tr = inst
+	}
+	return g.client(tr), owner, name, nil
+}
+
+func commitOf(c *github.RepositoryCommit) Commit {
+	author := c.GetCommit().GetAuthor()
+	out := Commit{SHA: c.GetSHA(), Message: firstLine(c.GetCommit().GetMessage()), Author: author.GetName()}
+	if !author.GetDate().IsZero() {
+		out.Date = author.GetDate().Unix()
+	}
+	return out
+}
+
+// Commits lists the newest commits on the query's branch through the GitHub API.
+func (g *GitHubService) Commits(ctx context.Context, q RepoQuery) ([]Commit, error) {
+	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	client, owner, name, e := g.repoClient(ctx, &q)
+	if e != nil {
+		return nil, e
+	}
+	list, _, e := client.Repositories.ListCommits(ctx, owner, name, &github.CommitsListOptions{SHA: q.Branch, ListOptions: github.ListOptions{PerPage: RecentCommits}})
+	if e != nil {
+		return nil, githubError(e)
+	}
+	out := make([]Commit, 0, len(list))
+	for _, c := range list {
+		if shaPattern.MatchString(c.GetSHA()) {
+			out = append(out, commitOf(c))
+		}
+	}
+	return out, nil
+}
+
+// Commit resolves a full or abbreviated SHA to the repository's commit.
+func (g *GitHubService) Commit(ctx context.Context, q RepoQuery, ref string) (Commit, error) {
+	if !shaPrefix.MatchString(ref) {
+		return Commit{}, fail(Validation, "Enter at least 7 characters of a commit SHA")
+	}
+	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	client, owner, name, e := g.repoClient(ctx, &q)
+	if e != nil {
+		return Commit{}, e
+	}
+	c, _, e := client.Repositories.GetCommit(ctx, owner, name, strings.ToLower(ref), nil)
+	if e != nil {
+		var er *github.ErrorResponse
+		if errors.As(e, &er) && er.Response != nil && (er.Response.StatusCode == http.StatusNotFound || er.Response.StatusCode == http.StatusUnprocessableEntity) {
+			return Commit{}, fail(NotFound, "No commit with that SHA was found in the repository")
+		}
+		return Commit{}, githubError(e)
+	}
+	out := commitOf(c)
+	if !shaPattern.MatchString(out.SHA) || !strings.HasPrefix(out.SHA, strings.ToLower(ref)) {
+		return Commit{}, fail(NotFound, "No commit with that SHA was found in the repository")
+	}
+	return out, nil
 }
 
 // maxInspectedFile bounds files read during inspection.
@@ -235,8 +313,60 @@ func (DevRepos) Inspect(ctx context.Context, q RepoQuery) (RepoInfo, error) {
 	if branch == "" {
 		branch = "main"
 	}
-	// A stable fake SHA per repository and branch, so "Publish latest" is repeatable.
-	sum := sha256.Sum256([]byte(name + "/" + branch))
-	sha := hex.EncodeToString(sum[:20])
-	return RepoInfo{DefaultBranch: "main", Branches: []string{"main", "develop"}, Branch: branch, Head: Commit{SHA: sha, Message: "Latest commit on " + branch, Author: "Development"}, Dockerfile: true, Port: 8080, EnvKeys: []string{"DATABASE_URL", "SECRET_KEY"}}, nil
+	commits := devCommits(name, branch)
+	return RepoInfo{DefaultBranch: "main", Branches: []string{"main", "develop"}, Branch: branch, Head: commits[0], Dockerfile: true, Port: 8080, EnvKeys: []string{"DATABASE_URL", "SECRET_KEY"}}, nil
+}
+
+// devCommits is a repository's simulated history: stable SHAs per repository
+// and branch, so "Publish latest" and the commit list are repeatable.
+func devCommits(name, branch string) []Commit {
+	if branch == "" {
+		branch = "main"
+	}
+	messages := []string{"Update the landing page", "Update dependencies", "Fix the signup form", "Add a health endpoint", "Improve request logging"}
+	base := time.Now().Truncate(time.Hour).Unix()
+	out := make([]Commit, len(messages))
+	for i, m := range messages {
+		key := name + "/" + branch
+		if i > 0 {
+			key += "/" + strconv.Itoa(i)
+		}
+		sum := sha256.Sum256([]byte(key))
+		out[i] = Commit{SHA: hex.EncodeToString(sum[:20]), Message: m, Author: "Development", Date: base - int64(i)*3*3600}
+	}
+	return out
+}
+
+// Commits returns the simulated history of the repository's branch.
+func (DevRepos) Commits(ctx context.Context, q RepoQuery) ([]Commit, error) {
+	if _, e := authorize(ctx, "apps:read", false); e != nil {
+		return nil, e
+	}
+	_, name, e := repoParts(q.Repository)
+	if e != nil {
+		return nil, e
+	}
+	return devCommits(name, q.Branch), nil
+}
+
+// Commit finds a simulated commit by SHA prefix. Full SHAs outside the
+// simulated history (such as the failing "dead…" commits) are accepted as is.
+func (r DevRepos) Commit(ctx context.Context, q RepoQuery, ref string) (Commit, error) {
+	if !shaPrefix.MatchString(ref) {
+		return Commit{}, fail(Validation, "Enter at least 7 characters of a commit SHA")
+	}
+	list, e := r.Commits(ctx, q)
+	if e != nil {
+		return Commit{}, e
+	}
+	ref = strings.ToLower(ref)
+	for _, c := range list {
+		if strings.HasPrefix(c.SHA, ref) {
+			return c, nil
+		}
+	}
+	if shaPattern.MatchString(ref) {
+		return Commit{SHA: ref, Author: "Development"}, nil
+	}
+	return Commit{}, fail(NotFound, "No commit with that SHA was found in the repository")
 }

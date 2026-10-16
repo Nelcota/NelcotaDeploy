@@ -139,3 +139,23 @@ func TestTransientFailureIsRetriedOnce(t *testing.T) {
 		t.Fatal("retried a build failure")
 	}
 }
+
+// Stale development data that clashes with the seed must fail with a reset hint
+// instead of being skipped silently.
+func TestSeedReportsStaleData(t *testing.T) {
+	c, ctx, _ := fixture(t)
+	// The fixture's server holds 10.77.0.2, which the seed uses under another id.
+	if e := c.Seed(ctx); e == nil || !strings.Contains(e.Error(), ".local/dev") {
+		t.Fatal(e)
+	}
+	for _, table := range []string{"invitations", "apps", "servers"} {
+		if _, e := c.DB.Write.ExecContext(ctx, "DELETE FROM "+table); e != nil {
+			t.Fatal(e)
+		}
+	}
+	for range 2 {
+		if e := c.Seed(ctx); e != nil {
+			t.Fatal(e)
+		}
+	}
+}

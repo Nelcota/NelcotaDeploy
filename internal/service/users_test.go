@@ -1,6 +1,11 @@
 package service
 
-import "testing"
+import (
+	"testing"
+	"time"
+
+	"github.com/Nelcota/NelcotaDeploy/internal/security"
+)
 
 func TestSetRoleAndRemove(t *testing.T) {
 	c, ctx, _ := fixture(t)
@@ -56,5 +61,30 @@ func TestSetRoleAndRemove(t *testing.T) {
 	}
 	if e := a.SetRole(WithPrincipal(ctx, Principal{ID: "b", Role: "admin"}), "admin", "member"); !Is(e, Conflict) {
 		t.Fatal("demoted last admin", e)
+	}
+}
+
+func TestInvitationsLastADayAndStoreOnlyAHash(t *testing.T) {
+	c, ctx, _ := fixture(t)
+	a := &AuthService{Core: c}
+	en, e := a.Create(ctx, UserInput{Email: "ana@example.com", Name: "Ana", Role: "member"})
+	if e != nil {
+		t.Fatal(e)
+	}
+	if left := time.Until(en.ExpiresAt); left < InvitationLifetime-time.Minute || left > InvitationLifetime {
+		t.Fatal(left)
+	}
+	var stored int
+	if e := c.DB.Read.QueryRowContext(ctx, "SELECT count(*) FROM challenges WHERE purpose='enroll' AND token_hash=?", security.Hash(en.Token)).Scan(&stored); e != nil || stored != 1 {
+		t.Fatal(stored, e)
+	}
+	// The first administrator's installer invitation stays short.
+	fresh, ctx2, _ := fixture(t)
+	if _, e := fresh.DB.Write.ExecContext(ctx2, "DELETE FROM users"); e != nil {
+		t.Fatal(e)
+	}
+	boot, e := (&AuthService{Core: fresh}).Bootstrap(ctx2, UserInput{Email: "root@example.com", Name: "Root"})
+	if e != nil || time.Until(boot.ExpiresAt) > 15*time.Minute {
+		t.Fatal(boot.ExpiresAt, e)
 	}
 }

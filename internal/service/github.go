@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/Nelcota/NelcotaDeploy/internal/security"
+	"github.com/Nelcota/NelcotaDeploy/internal/store/dbgen"
 	"github.com/bradleyfalzon/ghinstallation/v2"
 	"github.com/google/go-github/v75/github"
 )
@@ -271,7 +272,17 @@ func (g *GitHubService) BeginManifest(ctx context.Context, origin string) (GitHu
 	if e != nil {
 		return GitHubManifest{}, e
 	}
-	manifest := map[string]any{"name": "NelcotaDeploy", "url": origin, "hook_attributes": map[string]any{"url": origin + "/api/webhooks/github", "active": true}, "redirect_url": origin + "/api/github/callback", "setup_url": origin + "/settings/github?github=installed", "setup_on_update": true, "public": false, "default_permissions": map[string]string{"contents": "read", "metadata": "read", "checks": "write"}, "default_events": []string{"push"}}
+	manifest := map[string]any{
+		"name":                "NelcotaDeploy",
+		"url":                 origin,
+		"hook_attributes":     map[string]any{"url": origin + "/api/webhooks/github", "active": true},
+		"redirect_url":        origin + "/api/github/callback",
+		"setup_url":           origin + "/settings/github?github=installed",
+		"setup_on_update":     true,
+		"public":              false,
+		"default_permissions": map[string]string{"contents": "read", "metadata": "read", "checks": "write"},
+		"default_events":      []string{"push"},
+	}
 	b, e := json.Marshal(manifest)
 	return GitHubManifest{Action: "https://github.com/settings/apps/new?state=" + url.QueryEscape(state), Manifest: b, ExpiresAt: expires}, e
 }
@@ -301,7 +312,7 @@ func (g *GitHubService) FinishManifest(ctx context.Context, state, code string) 
 			if e != nil {
 				return e
 			}
-			if _, e = tx.ExecContext(ctx, "INSERT INTO settings(key,encrypted) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET encrypted=excluded.encrypted", k, b); e != nil {
+			if e = dbgen.New(tx).SaveSetting(ctx, dbgen.SaveSettingParams{Key: k, Encrypted: b}); e != nil {
 				return e
 			}
 		}

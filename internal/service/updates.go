@@ -66,7 +66,7 @@ func (s *OperationsService) Updates(ctx context.Context) (UpdateStatus, error) {
 
 // SetAutomaticUpdates turns automatic installation of signed releases on or off.
 func (s *OperationsService) SetAutomaticUpdates(ctx context.Context, on bool) error {
-	if e := interactiveAdmin(ctx); e != nil {
+	if _, e := freshInteractive(ctx, true); e != nil {
 		return e
 	}
 	value := "false"

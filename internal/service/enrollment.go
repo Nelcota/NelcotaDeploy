@@ -10,6 +10,7 @@ import (
 	"errors"
 	"github.com/Nelcota/NelcotaDeploy/internal/provision"
 	"github.com/Nelcota/NelcotaDeploy/internal/security"
+	"github.com/Nelcota/NelcotaDeploy/internal/store/dbgen"
 	"golang.zx2c4.com/wireguard/wgctrl"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 	"net"
@@ -59,12 +60,11 @@ func (s *EnrollmentService) Join(ctx context.Context, in JoinInput) (JoinResult,
 	}
 	var result JoinResult
 	e := s.Core.mutate(ctx, func(tx *sql.Tx) error {
-		var id, ip string
-		var limit, cache int64
-		e := tx.QueryRowContext(ctx, "SELECT s.id,s.wireguard_ip,s.build_limit,s.cache_bytes FROM invitations i JOIN servers s ON s.id=i.server_id WHERE i.token_hash=? AND i.consumed_at=0 AND i.expires_at>?", security.Hash(in.Token), time.Now().Unix()).Scan(&id, &ip, &limit, &cache)
+		inv, e := dbgen.New(tx).PendingInvitation(ctx, dbgen.PendingInvitationParams{TokenHash: security.Hash(in.Token), ExpiresAt: time.Now().Unix()})
 		if e != nil {
 			return fail(Unauthenticated, "Invalid or previously used invitation")
 		}
+		id, ip, limit, cache := inv.ID, inv.WireguardIp, inv.BuildLimit, inv.CacheBytes
 		var duplicates int
 		if e = tx.QueryRowContext(ctx, "SELECT count(*) FROM servers WHERE wg_public_key=? AND id<>?", in.WireGuardPublicKey, id).Scan(&duplicates); e != nil {
 			return e
@@ -97,7 +97,11 @@ func (s *EnrollmentService) Join(ctx context.Context, in JoinInput) (JoinResult,
 		if e != nil {
 			return e
 		}
-		result = JoinResult{ServerID: id, Address: ip, PanelAddress: s.PanelAddress, PanelEndpoint: s.PanelEndpoint, PanelWireGuardKey: s.PanelWireGuardKey, CA: string(root), Certificate: string(cert), PrivateKey: string(key), SigningKey: s.SigningKey, ControlURL: s.ControlURL, BuildLimit: limit, CacheBytes: cache}
+		result = JoinResult{
+			ServerID: id, Address: ip, PanelAddress: s.PanelAddress, PanelEndpoint: s.PanelEndpoint, PanelWireGuardKey: s.PanelWireGuardKey,
+			CA: string(root), Certificate: string(cert), PrivateKey: string(key), SigningKey: s.SigningKey, ControlURL: s.ControlURL,
+			BuildLimit: limit, CacheBytes: cache,
+		}
 		return s.Core.audit(systemContext(ctx), tx, "server.enroll", id)
 	})
 	return result, e

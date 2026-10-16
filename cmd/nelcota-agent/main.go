@@ -38,7 +38,7 @@ func main() {
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
 	if e := command().ExecuteContext(ctx); e != nil && !errors.Is(e, context.Canceled) {
-		slog.Error("agent startup failed; check configuration, permissions, and local services")
+		slog.Error("agent startup failed; check configuration, permissions, and local services", "err", e)
 		os.Exit(1)
 	}
 }
@@ -116,10 +116,24 @@ func command() *cobra.Command {
 		pipeline.QueueUpdate = func(id, version string) error { return updater.Queue(data, updater.Request{ID: id, Version: version}) }
 		pipeline.UpdatePending = func() bool { return updater.PendingFor(data, updater.Version) }
 		g, gctx := errgroup.WithContext(ctx)
-		rpc := &transport.AgentClient{HeartbeatSent: func(ready bool) { _ = updater.WriteHealth(data, updater.Version, ready) }, Version: updater.Version, UpdateResult: func() *agentv1.OperationResult {
-			r := updater.ReadResult(data)
-			return &agentv1.OperationResult{Id: r.ID, Status: r.Status}
-		}, URL: join.ControlURL, ServerID: join.ServerID, TLS: tls, Verifier: &security.Verifier{Key: ed25519.PublicKey(sign), ServerID: join.ServerID, Path: filepath.Join(data, "replay.json")}, Handler: pipeline, Metrics: stats, Active: pipeline.Active, Observed: pipeline.Observed, Ready: pipeline.Ready, Events: engine.Watch}
+		rpc := &transport.AgentClient{
+			HeartbeatSent: func(ready bool) { _ = updater.WriteHealth(data, updater.Version, ready) },
+			Version:       updater.Version,
+			UpdateResult: func() *agentv1.OperationResult {
+				r := updater.ReadResult(data)
+				return &agentv1.OperationResult{Id: r.ID, Status: r.Status}
+			},
+			URL:      join.ControlURL,
+			ServerID: join.ServerID,
+			TLS:      tls,
+			Verifier: &security.Verifier{Key: ed25519.PublicKey(sign), ServerID: join.ServerID, Path: filepath.Join(data, "replay.json")},
+			Handler:  pipeline,
+			Metrics:  stats,
+			Active:   pipeline.Active,
+			Observed: pipeline.Observed,
+			Ready:    pipeline.Ready,
+			Events:   engine.Watch,
+		}
 		// Warm telemetry descriptors once, then discard startup scratch pages.
 		_ = stats(ctx)
 		// Discard the bounded startup working set before entering the steady loop.
@@ -134,14 +148,14 @@ func command() *cobra.Command {
 					return false, nil
 				}
 				return true, nil
-			}, func(error) { slog.Warn("local update request failed") })
+			}, func(e error) { slog.Warn("local update request failed", "err", e) })
 		})
 		g.Go(func() error {
-			return engine.RunMaintenance(gctx, func() bool { return pipeline.Ready() && len(pipeline.Active()) == 0 && !updater.Pending(data) }, func(error) { slog.Warn("base image update failed") })
+			return engine.RunMaintenance(gctx, func() bool { return pipeline.Ready() && len(pipeline.Active()) == 0 && !updater.Pending(data) }, func(e error) { slog.Warn("base image update failed", "err", e) })
 		})
 		g.Go(func() error { return rpc.Run(gctx) })
 		g.Go(func() error {
-			return transport.RunCertificateRenewal(gctx, join.ControlURL, tls, certificates, func(error) { slog.Warn("certificate renewal failed") })
+			return transport.RunCertificateRenewal(gctx, join.ControlURL, tls, certificates, func(e error) { slog.Warn("certificate renewal failed", "err", e) })
 		})
 		g.Go(func() error { return host.Diagnostics(gctx, diag, wg) })
 		return g.Wait()

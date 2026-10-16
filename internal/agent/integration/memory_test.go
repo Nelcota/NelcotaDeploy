@@ -8,10 +8,6 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
-	agentv1 "github.com/Nelcota/NelcotaDeploy/internal/gen/agent/v1"
-	"github.com/Nelcota/NelcotaDeploy/internal/provision"
-	"github.com/Nelcota/NelcotaDeploy/internal/security"
-	"github.com/Nelcota/NelcotaDeploy/internal/transport"
 	"io"
 	"net"
 	"net/http"
@@ -25,6 +21,11 @@ import (
 	"syscall"
 	"testing"
 	"time"
+
+	agentv1 "github.com/Nelcota/NelcotaDeploy/internal/gen/agent/v1"
+	"github.com/Nelcota/NelcotaDeploy/internal/provision"
+	"github.com/Nelcota/NelcotaDeploy/internal/security"
+	"github.com/Nelcota/NelcotaDeploy/internal/transport"
 )
 
 type memorySink struct {

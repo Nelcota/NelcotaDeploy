@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"database/sql"
+	"github.com/Nelcota/NelcotaDeploy/internal/store/dbgen"
 	"github.com/Nelcota/NelcotaDeploy/internal/transport"
 	"github.com/Nelcota/NelcotaDeploy/internal/updater"
 	"time"
@@ -29,8 +30,8 @@ func (c *Core) PrepareAgentUpdate(ctx context.Context, peer transport.Peer, r up
 		if !updater.Newer(r.Version, current) {
 			return fail(Validation, "Version must be newer than the installed version")
 		}
-		var busy int
-		if e := tx.QueryRowContext(ctx, "SELECT count(*) FROM maintenance_jobs WHERE kind='update' AND status IN ('queued','waiting')").Scan(&busy); e != nil {
+		busy, e := dbgen.New(tx).CountPendingOperations(ctx, "update")
+		if e != nil {
 			return e
 		}
 		if busy > 0 {

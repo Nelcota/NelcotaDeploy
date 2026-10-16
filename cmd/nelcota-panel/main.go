@@ -3,8 +3,9 @@ package main
 import (
 	"context"
 	"crypto/ed25519"
+	"crypto/hkdf"
 	"crypto/rand"
-	"database/sql"
+	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -40,17 +41,20 @@ func main() {
 	defer cancel()
 	if e := command().ExecuteContext(ctx); e != nil {
 		if !errors.Is(e, context.Canceled) {
-			slog.Error("command failed", "reason", safeError(e))
+			slog.Error("command failed", failure(e)...)
 			os.Exit(1)
 		}
 	}
 }
-func safeError(e error) string {
+
+// failure describes a failed command: a service error's message, or a generic
+// hint plus the underlying cause for the operator's log.
+func failure(e error) []any {
 	var typed *service.Error
 	if errors.As(e, &typed) {
-		return typed.Message
+		return []any{"reason", typed.Message}
 	}
-	return "check configuration, permissions, and service availability"
+	return []any{"reason", "check configuration, permissions, and service availability", "err", e}
 }
 func command() *cobra.Command {
 	cfg := config{}
@@ -71,12 +75,12 @@ func command() *cobra.Command {
 		if e := initialize(cmd.Context(), cfg); e != nil {
 			return e
 		}
-		c, a, e := open(cmd.Context(), cfg)
+		p, e := open(cmd.Context(), cfg)
 		if e != nil {
 			return e
 		}
-		defer c.DB.Close()
-		en, e := a.Bootstrap(cmd.Context(), service.UserInput{Email: email, Name: name})
+		defer p.core.DB.Close()
+		en, e := p.auth.Bootstrap(cmd.Context(), service.UserInput{Email: email, Name: name})
 		if e != nil {
 			return e
 		}
@@ -99,12 +103,12 @@ func command() *cobra.Command {
 		if e := initialize(cmd.Context(), cfg); e != nil {
 			return e
 		}
-		c, _, e := open(cmd.Context(), cfg)
+		p, e := open(cmd.Context(), cfg)
 		if e != nil {
 			return e
 		}
-		defer c.DB.Close()
-		return c.Seed(cmd.Context())
+		defer p.core.DB.Close()
+		return p.core.Seed(cmd.Context())
 	}})
 	root.AddCommand(maintenanceCommands(&cfg)...)
 	root.AddCommand(updater.Commands("panel", &cfg.data)...)
@@ -125,6 +129,11 @@ func devConfig(c config) config {
 	c.listen = env("NELCOTA_DEV_LISTEN", "127.0.0.1:8080")
 	return c
 }
+
+// backupKeyFile is the backup key used by serve, backup, and restore alike.
+func backupKeyFile(keys string) string {
+	return env("NELCOTA_BACKUP_KEY_FILE", filepath.Join(keys, "backup.key"))
+}
 func initialize(ctx context.Context, c config) error {
 	if e := ctx.Err(); e != nil {
 		return e
@@ -135,100 +144,133 @@ func initialize(ctx context.Context, c config) error {
 	if e := os.MkdirAll(c.keys, 0700); e != nil {
 		return e
 	}
-	for _, name := range []string{"backup.key"} {
-		path := filepath.Join(c.keys, name)
-		if _, e := os.Stat(path); errors.Is(e, os.ErrNotExist) {
-			key := make([]byte, 32)
-			if _, e = rand.Read(key); e != nil {
-				return e
-			}
-			if e = host.WriteExclusive(path, key); e != nil {
-				return e
-			}
-		}
-	}
-	keyPath := filepath.Join(c.keys, "master.key")
-	if _, e := os.Stat(keyPath); errors.Is(e, os.ErrNotExist) {
+	randomKey := func() ([]byte, error) {
 		key := make([]byte, 32)
-		if _, e = rand.Read(key); e != nil {
-			return e
-		}
-		if e = host.WriteExclusive(keyPath, key); e != nil {
-			return e
-		}
+		_, e := rand.Read(key)
+		return key, e
 	}
-	caPath := filepath.Join(c.keys, "ca.pem")
-	if _, e := os.Stat(caPath); errors.Is(e, os.ErrNotExist) {
-		ca, e := security.NewAuthority(time.Now())
-		if e != nil {
-			return e
-		}
-		cert, key, e := ca.PEM()
-		if e != nil {
-			return e
-		}
-		if e = host.WriteExclusive(caPath, cert); e != nil {
-			return e
-		}
-		if e = host.WriteExclusive(filepath.Join(c.keys, "ca.key"), key); e != nil {
-			return e
-		}
-		name, _, e := net.SplitHostPort(c.control)
-		if e != nil {
-			return e
-		}
-		cert, key, e = ca.Issue(name, true, time.Now())
-		if e != nil {
-			return e
-		}
-		if e = host.WriteExclusive(filepath.Join(c.keys, "control.pem"), cert); e != nil {
-			return e
-		}
-		if e = host.WriteExclusive(filepath.Join(c.keys, "control.key"), key); e != nil {
-			return e
-		}
-	}
-	path := filepath.Join(c.keys, "signing.key")
-	if _, e := os.Stat(path); errors.Is(e, os.ErrNotExist) {
+	signingKey := func() ([]byte, error) {
 		_, key, e := ed25519.GenerateKey(rand.Reader)
-		if e != nil {
+		return key, e
+	}
+	// The default backup key is created even when NELCOTA_BACKUP_KEY_FILE points
+	// elsewhere: an operator-managed key must never be replaced by a new one.
+	for name, generate := range map[string]func() ([]byte, error){"backup.key": randomKey, "master.key": randomKey, "signing.key": signingKey} {
+		if e := ensure(filepath.Join(c.keys, name), generate); e != nil {
 			return e
 		}
-		if e = host.WriteExclusive(path, key); e != nil {
+	}
+	if missing, e := absent(filepath.Join(c.keys, "ca.pem")); e != nil || !missing {
+		return e
+	}
+	return createAuthority(c)
+}
+
+// absent reports whether path does not exist; other stat failures are errors.
+func absent(path string) (bool, error) {
+	_, e := os.Stat(path)
+	if errors.Is(e, os.ErrNotExist) {
+		return true, nil
+	}
+	return false, e
+}
+
+// ensure writes a newly generated secret to path unless it already exists.
+func ensure(path string, generate func() ([]byte, error)) error {
+	if missing, e := absent(path); e != nil || !missing {
+		return e
+	}
+	b, e := generate()
+	if e != nil {
+		return e
+	}
+	return host.WriteExclusive(path, b)
+}
+
+// createAuthority writes the control CA and the panel's control certificate.
+func createAuthority(c config) error {
+	name, _, e := net.SplitHostPort(c.control)
+	if e != nil {
+		return e
+	}
+	ca, e := security.NewAuthority(time.Now())
+	if e != nil {
+		return e
+	}
+	caCert, caKey, e := ca.PEM()
+	if e != nil {
+		return e
+	}
+	cert, key, e := ca.Issue(name, true, time.Now())
+	if e != nil {
+		return e
+	}
+	for _, f := range []struct {
+		name string
+		data []byte
+	}{{"ca.pem", caCert}, {"ca.key", caKey}, {"control.pem", cert}, {"control.key", key}} {
+		if e = host.WriteExclusive(filepath.Join(c.keys, f.name), f.data); e != nil {
 			return e
 		}
 	}
 	return nil
 }
-func open(ctx context.Context, c config) (*service.Core, *service.AuthService, error) {
+
+// panel holds what every command needs from the data and key directories.
+type panel struct {
+	core   *service.Core
+	auth   *service.AuthService
+	origin *url.URL
+	backup maintenance.Backup
+	upload func(context.Context, string) error
+	// csrf is derived from the master key so the vault key itself never signs
+	// browser-visible tokens.
+	csrf []byte
+}
+
+func open(ctx context.Context, c config) (*panel, error) {
+	u, e := url.Parse(c.origin)
+	if e != nil || u.Hostname() == "" {
+		return nil, errors.New("invalid origin")
+	}
 	key, e := security.LoadKey(filepath.Join(c.keys, "master.key"))
 	if e != nil {
-		return nil, nil, e
+		return nil, e
 	}
 	v, e := security.NewVault(key)
 	if e != nil {
-		return nil, nil, e
+		return nil, e
+	}
+	csrf, e := hkdf.Key(sha256.New, key, nil, "nelcota csrf v1", 32)
+	if e != nil {
+		return nil, e
 	}
 	db, e := store.Open(ctx, filepath.Join(c.data, "panel.db"))
 	if e != nil {
-		return nil, nil, e
+		return nil, e
 	}
 	logs, e := events.NewLogStore(filepath.Join(c.data, "logs"))
 	if e != nil {
 		_ = db.Close()
-		return nil, nil, e
+		return nil, e
 	}
 	core := &service.Core{DB: db, Vault: v, Hub: events.NewHub(), LogStore: logs}
-	backup := maintenance.Backup{Data: c.data, Config: c.keys, KeyFile: env("NELCOTA_BACKUP_KEY_FILE", filepath.Join(c.keys, "backup.key"))}
+	backup := maintenance.Backup{Data: c.data, Config: c.keys, KeyFile: backupKeyFile(c.keys)}
+	s3File := env("NELCOTA_BACKUP_S3_CONFIG", "")
+	upload := func(ctx context.Context, path string) error { return core.UploadBackup(ctx, path, s3File) }
 	ops := &service.OperationsService{Core: core, Version: updater.Version, PanelResult: func() updater.Result { return updater.ReadResult(c.data) }}
 	ops.CreateBackup = func(ctx context.Context, id string) error {
 		output := filepath.Join(c.data, "backups", "manual-"+id+".nbk")
-		if _, e := os.Stat(output); errors.Is(e, os.ErrNotExist) {
+		missing, e := absent(output)
+		if e != nil {
+			return e
+		}
+		if missing {
 			if e = backup.Create(ctx, output); e != nil {
 				return e
 			}
 		}
-		return uploadBackup(ctx, core, output)
+		return upload(ctx, output)
 	}
 	if trust, e := updater.LoadTrust(updater.TrustPath("panel")); e == nil {
 		ops.VerifyRelease = trust.Check
@@ -238,39 +280,28 @@ func open(ctx context.Context, c config) (*service.Core, *service.AuthService, e
 		}
 	}
 	core.Operations = ops
-	u, e := url.Parse(c.origin)
-	if e != nil || u.Hostname() == "" {
-		_ = db.Close()
-		return nil, nil, errors.New("invalid origin")
-	}
 	auth, e := service.NewAuth(core, u.Hostname(), c.origin)
 	if e != nil {
 		_ = db.Close()
+		return nil, e
 	}
-	return core, auth, e
+	return &panel{core: core, auth: auth, origin: u, backup: backup, upload: upload, csrf: csrf}, nil
 }
 func serve(ctx context.Context, c config, dev bool) error {
-	u, e := url.Parse(c.origin)
-	if e != nil {
-		return e
-	}
-	if !dev && u.Scheme != "https" {
-		return errors.New("production requires HTTPS origin")
-	}
 	bind, _, e := net.SplitHostPort(c.listen)
 	if e != nil || net.ParseIP(bind) == nil || !net.ParseIP(bind).IsLoopback() {
 		return errors.New("public API must bind loopback behind Caddy")
 	}
-	core, auth, e := open(ctx, c)
+	p, e := open(ctx, c)
 	if e != nil {
 		return e
 	}
-	defer core.DB.Close()
-	key, e := security.LoadKey(filepath.Join(c.keys, "master.key"))
-	if e != nil {
-		return e
+	defer p.core.DB.Close()
+	if !dev && p.origin.Scheme != "https" {
+		return errors.New("production requires HTTPS origin")
 	}
-	api := httpapi.Config{Origin: c.origin, Dev: dev, CSRFKey: key, Services: core.Services(auth), AgentScript: scripts.Agent, Version: updater.Version}
+	core, auth := p.core, p.auth
+	api := httpapi.Config{Origin: c.origin, Dev: dev, CSRFKey: p.csrf, Services: core.Services(auth), AgentScript: scripts.Agent, Version: updater.Version}
 	g, gctx := errgroup.WithContext(ctx)
 	if dev {
 		if e = core.Seed(ctx); e != nil {
@@ -286,7 +317,7 @@ func serve(ctx context.Context, c config, dev bool) error {
 		if e = host.RequireInterface(c.control, c.wg); e != nil {
 			return e
 		}
-		cert, e := host.Read(filepath.Join(c.keys, "control.pem"))
+		cert, e := os.ReadFile(filepath.Join(c.keys, "control.pem"))
 		if e != nil {
 			return e
 		}
@@ -294,7 +325,7 @@ func serve(ctx context.Context, c config, dev bool) error {
 		if e != nil {
 			return e
 		}
-		caPEM, e := host.Read(filepath.Join(c.keys, "ca.pem"))
+		caPEM, e := os.ReadFile(filepath.Join(c.keys, "ca.pem"))
 		if e != nil {
 			return e
 		}
@@ -334,7 +365,16 @@ func serve(ctx context.Context, c config, dev bool) error {
 		}
 		tlsConfig.Certificates = nil
 		tlsConfig.GetCertificate = certificates.GetCertificate
-		api.Enrollment = &service.EnrollmentService{Core: core, CA: authority, Peers: service.WireGuard{Device: c.wg}, PanelAddress: panelIP, PanelEndpoint: c.endpoint, PanelWireGuardKey: c.wgPublic, SigningKey: base64.RawStdEncoding.EncodeToString(ed25519.PrivateKey(sign).Public().(ed25519.PublicKey)), ControlURL: "https://" + c.control}
+		api.Enrollment = &service.EnrollmentService{
+			Core:              core,
+			CA:                authority,
+			Peers:             service.WireGuard{Device: c.wg},
+			PanelAddress:      panelIP,
+			PanelEndpoint:     c.endpoint,
+			PanelWireGuardKey: c.wgPublic,
+			SigningKey:        base64.RawStdEncoding.EncodeToString(ed25519.PrivateKey(sign).Public().(ed25519.PublicKey)),
+			ControlURL:        "https://" + c.control,
+		}
 		path, handler := broker.Handler()
 		mux := http.NewServeMux()
 		mux.Handle(path, handler)
@@ -358,12 +398,17 @@ func serve(ctx context.Context, c config, dev bool) error {
 	}
 	g.Go(func() error { return host.Diagnostics(gctx, c.diagnostics, c.wg) })
 	if !dev {
-		b := maintenance.Backup{Data: c.data, Config: c.keys, KeyFile: env("NELCOTA_BACKUP_KEY_FILE", filepath.Join(c.keys, "backup.key"))}
 		g.Go(func() error {
-			return b.Run(gctx, func(ctx context.Context, p string) error { return uploadBackup(ctx, core, p) }, func(error) { slog.Error("backup failed; retrying in one hour"); core.BackupFailed() })
+			return p.backup.Run(gctx, p.upload, func(e error) {
+				slog.Error("backup failed; retrying in one hour", "err", e)
+				core.BackupFailed()
+			})
 		})
 		g.Go(func() error {
-			return b.RunVerification(gctx, func(e error) { slog.Error("backup verification failed", "err", e); core.BackupUnverified() })
+			return p.backup.RunVerification(gctx, func(e error) {
+				slog.Error("backup verification failed", "err", e)
+				core.BackupUnverified()
+			})
 		})
 	}
 	g.Go(func() error { return core.RunScheduler(gctx) })
@@ -379,10 +424,9 @@ func serve(ctx context.Context, c config, dev bool) error {
 	g.Go(func() error { return notifier.Run(gctx) })
 	g.Go(func() error {
 		return updater.RunRequests(gctx, c.data, func(ctx context.Context, r updater.Request) (bool, error) {
-			ctx = service.WithPrincipal(ctx, service.Principal{ID: "system", Role: "admin", TwoFactorAt: time.Now().Unix()})
-			_, e := core.Operations.Update(ctx, r.Version)
+			_, e := core.Operations.LocalUpdate(ctx, r.Version)
 			return e == nil, e
-		}, func(error) { slog.Warn("local update request failed") })
+		}, func(e error) { slog.Warn("local update request failed", "err", e) })
 	})
 	g.Go(func() error {
 		tick := time.NewTicker(time.Minute)
@@ -403,26 +447,4 @@ func serve(ctx context.Context, c config, dev bool) error {
 	g.Go(func() error { return host.Serve(gctx, public, false) })
 	fmt.Printf("NelcotaDeploy: %s\n", c.origin)
 	return g.Wait()
-}
-
-func uploadBackup(ctx context.Context, core *service.Core, path string) error {
-	if p := env("NELCOTA_BACKUP_S3_CONFIG", ""); p != "" {
-		cfg, e := maintenance.LoadS3(p)
-		if e != nil {
-			return e
-		}
-		return cfg.Upload(ctx, path)
-	}
-	value, e := core.Setting(ctx, "backup.s3")
-	if errors.Is(e, sql.ErrNoRows) || (e == nil && value == "") {
-		return nil
-	}
-	if e != nil {
-		return e
-	}
-	var cfg maintenance.S3
-	if json.Unmarshal([]byte(value), &cfg) != nil {
-		return errors.New("invalid S3 configuration")
-	}
-	return cfg.Upload(ctx, path)
 }

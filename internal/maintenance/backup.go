@@ -370,7 +370,7 @@ func (b Backup) Restore(ctx context.Context, input string, replace bool) error {
 	if err = writeMarkerIn(dataRoot, "restore-in-progress"); err != nil {
 		return err
 	}
-	if err = syncRoot(dataRoot); err != nil {
+	if err = host.SyncRoot(dataRoot); err != nil {
 		return err
 	}
 	// Pin each destination directory. os.Root confines every operation even if
@@ -392,7 +392,7 @@ func (b Backup) Restore(ctx context.Context, input string, replace bool) error {
 	if err = dataRoot.Remove("restore-in-progress"); err != nil {
 		return err
 	}
-	return syncRoot(dataRoot)
+	return host.SyncRoot(dataRoot)
 }
 
 // stageArchive decrypts and authenticates a backup, extracts it into stage,
@@ -606,7 +606,7 @@ func installFile(ctx context.Context, root *os.Root, relative, source string, re
 	if e != nil {
 		return e
 	}
-	return syncRoot(dir)
+	return host.SyncRoot(dir)
 }
 
 // Newly created directories inherit the existing parent's service account, so a
@@ -638,7 +638,7 @@ func restoreParent(root *os.Root, relative string) (*os.Root, error) {
 		}
 		next, err := dir.OpenRoot(part)
 		if err == nil {
-			err = syncRoot(dir)
+			err = host.SyncRoot(dir)
 		}
 		_ = dir.Close()
 		if err != nil {
@@ -652,14 +652,6 @@ func restoreParent(root *os.Root, relative string) (*os.Root, error) {
 	return dir, nil
 }
 
-func syncRoot(root *os.Root) error {
-	dir, e := root.Open(".")
-	if e != nil {
-		return e
-	}
-	defer dir.Close()
-	return dir.Sync()
-}
 func safeParents(path string) error {
 	abs, e := filepath.Abs(path)
 	if e != nil {
@@ -777,14 +769,6 @@ func archiveAEAD(key, salt []byte) (cipher.AEAD, error) {
 	return cipher.NewGCM(c)
 }
 
-func writeMarker(path string) error {
-	dir, e := os.OpenRoot(filepath.Dir(path))
-	if e != nil {
-		return e
-	}
-	defer dir.Close()
-	return writeMarkerIn(dir, filepath.Base(path))
-}
 func writeMarkerIn(dir *os.Root, base string) error {
 	name := ".restore-marker-" + rand.Text()
 	f, e := dir.OpenFile(name, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)

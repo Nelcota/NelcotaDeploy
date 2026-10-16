@@ -6,6 +6,8 @@ import (
 	"os"
 	"path/filepath"
 	"time"
+
+	"github.com/Nelcota/NelcotaDeploy/internal/host"
 )
 
 type Health struct {
@@ -17,7 +19,7 @@ type Health struct {
 
 func WriteHealth(data, version string, ready bool) error {
 	b, _ := json.Marshal(Health{PID: os.Getpid(), Version: version, Ready: ready, At: time.Now().Unix()})
-	return atomicFile(filepath.Join(data, "agent-health.json"), b, 0600)
+	return host.WriteFileAtomic(filepath.Join(data, "agent-health.json"), b, 0600)
 }
 func healthyAgent(data, version string, pid int) bool {
 	root, e := os.OpenRoot(data)

@@ -3,14 +3,15 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"io"
+	"sync"
+	"time"
+
 	agentv1 "github.com/Nelcota/NelcotaDeploy/internal/gen/agent/v1"
 	"github.com/Nelcota/NelcotaDeploy/internal/host"
 	bk "github.com/moby/buildkit/client"
 	"github.com/moby/moby/api/types/container"
 	"github.com/moby/moby/client"
-	"io"
-	"sync"
-	"time"
 )
 
 func (d *DockerEngine) Metrics(ctx context.Context, data string) *agentv1.Metrics {

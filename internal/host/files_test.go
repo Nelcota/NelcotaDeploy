@@ -76,3 +76,19 @@ func TestLockExcludesAnotherProcessHandle(t *testing.T) {
 	}
 	_ = f.Close()
 }
+
+func TestWriteFileAtomicReplacesWithModeAndLeavesNoTemp(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "nested")
+	path := filepath.Join(dir, "state")
+	for _, content := range []string{"first", "second"} {
+		if e := WriteFileAtomic(path, []byte(content), 0640); e != nil {
+			t.Fatal(e)
+		}
+	}
+	b, e := os.ReadFile(path)
+	st, _ := os.Stat(path)
+	entries, _ := os.ReadDir(dir)
+	if e != nil || string(b) != "second" || st.Mode().Perm() != 0640 || len(entries) != 1 {
+		t.Fatalf("content %q, mode %v, entries %d, err %v", b, st.Mode().Perm(), len(entries), e)
+	}
+}

@@ -43,20 +43,24 @@ func LoadS3(p string) (*S3, error) {
 	if e = json.Unmarshal(b, &s); e != nil {
 		return nil, errors.New("invalid S3 configuration")
 	}
-	if e = s.validate(); e != nil {
+	if e = s.Validate(); e != nil {
 		return nil, e
 	}
 	return &s, nil
 }
-func (s *S3) validate() error {
+func (s *S3) Validate() error {
 	u, e := url.Parse(s.Endpoint)
-	if e != nil || u.Scheme != "https" || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || (u.Path != "" && u.Path != "/") || s.Region == "" || strings.ContainsAny(s.Region, "/\r\n") || s.AccessKey == "" || s.SecretKey == "" || strings.ContainsAny(s.Bucket, "/\r\n") || s.Bucket == "" || strings.ContainsAny(s.Prefix, "\r\n") || strings.ContainsAny(s.AccessKey+s.SessionToken, "\r\n") {
+	endpoint := e == nil && u.Scheme == "https" && u.Host != "" && u.User == nil && u.RawQuery == "" && u.Fragment == "" && (u.Path == "" || u.Path == "/")
+	fields := s.Region != "" && s.AccessKey != "" && s.SecretKey != "" && s.Bucket != "" &&
+		!strings.ContainsAny(s.Region, "/\r\n") && !strings.ContainsAny(s.Bucket, "/\r\n") &&
+		!strings.ContainsAny(s.Prefix, "\r\n") && !strings.ContainsAny(s.AccessKey+s.SessionToken, "\r\n")
+	if !endpoint || !fields {
 		return errors.New("invalid S3 configuration")
 	}
 	return nil
 }
 func (s *S3) Upload(ctx context.Context, file string) error {
-	if e := s.validate(); e != nil {
+	if e := s.Validate(); e != nil {
 		return e
 	}
 	f, e := os.OpenFile(file, os.O_RDONLY|sysNoFollow, 0)
@@ -128,7 +132,7 @@ func (s *S3) do(req *http.Request, payload string) (int, error) {
 // Test proves the configuration can store backups: it uploads a small object
 // next to where backups go, then deletes it.
 func (s *S3) Test(ctx context.Context) error {
-	if e := s.validate(); e != nil {
+	if e := s.Validate(); e != nil {
 		return e
 	}
 	name := "nelcota-connection-test-" + strconv.FormatInt(time.Now().UnixNano(), 36) + ".txt"
@@ -200,5 +204,3 @@ func s3Encode(s string) string {
 	}
 	return b.String()
 }
-
-func (s *S3) Validate() error { return s.validate() }

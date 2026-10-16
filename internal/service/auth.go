@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/Nelcota/NelcotaDeploy/internal/security"
+	"github.com/Nelcota/NelcotaDeploy/internal/store/dbgen"
 	"github.com/go-webauthn/webauthn/protocol"
 	"github.com/go-webauthn/webauthn/webauthn"
 	"github.com/pquerna/otp"
@@ -41,6 +42,8 @@ type Auth interface {
 	SetAvatar(context.Context, []byte) error
 	RemoveAvatar(context.Context) error
 	Avatar(context.Context, string) (Avatar, error)
+	Preferences(context.Context) (Preferences, error)
+	HideFirstSteps(context.Context) error
 }
 type Users interface {
 	List(context.Context) ([]Principal, error)
@@ -183,12 +186,9 @@ func (a *AuthService) BeginRegistration(ctx context.Context, in RegistrationInpu
 			return Ceremony{}, fail(Unauthenticated, "Invalid invitation")
 		}
 	} else {
-		p, e := require(ctx, false)
+		p, e := freshInteractive(ctx, false)
 		if e != nil {
 			return Ceremony{}, e
-		}
-		if time.Now().Unix()-p.TwoFactorAt > 300 {
-			return Ceremony{}, fail(Forbidden, "Reauthentication required")
 		}
 		id = p.ID
 	}
@@ -335,24 +335,20 @@ func (a *AuthService) issueSessionTx(ctx context.Context, tx *sql.Tx, user strin
 	return LoginResult{Token: token, ExpiresAt: expires}, e
 }
 func (a *AuthService) Session(ctx context.Context, token string) (Principal, error) {
-	var p Principal
-	e := a.Core.DB.Read.QueryRowContext(ctx, "SELECT u.id,u.email,u.name,u.role,s.two_factor_at,COALESCE(a.updated_at,0) FROM sessions s JOIN users u ON u.id=s.user_id LEFT JOIN avatars a ON a.user_id=u.id WHERE s.token_hash=? AND s.expires_at>?", security.Hash(token), time.Now().Unix()).Scan(&p.ID, &p.Email, &p.Name, &p.Role, &p.TwoFactorAt, &p.AvatarAt)
+	r, e := a.Core.DB.Queries.SessionPrincipal(ctx, dbgen.SessionPrincipalParams{TokenHash: security.Hash(token), ExpiresAt: time.Now().Unix()})
 	if e != nil {
-		return p, fail(Unauthenticated, "Invalid session")
+		return Principal{}, fail(Unauthenticated, "Invalid session")
 	}
-	return p, nil
+	return Principal{ID: r.ID, Email: r.Email, Name: r.Name, Role: r.Role, TwoFactorAt: r.TwoFactorAt, AvatarAt: r.AvatarAt}, nil
 }
 func (a *AuthService) Logout(ctx context.Context, token string) error {
 	_, e := a.Core.DB.Write.ExecContext(ctx, "DELETE FROM sessions WHERE token_hash=?", security.Hash(token))
 	return e
 }
 func (a *AuthService) BeginTOTP(ctx context.Context) (TOTPSetup, error) {
-	p, e := require(ctx, false)
+	p, e := freshInteractive(ctx, false)
 	if e != nil {
 		return TOTPSetup{}, e
-	}
-	if time.Now().Unix()-p.TwoFactorAt > 300 {
-		return TOTPSetup{}, fail(Forbidden, "Reauthentication required")
 	}
 	k, e := totp.Generate(totp.GenerateOpts{Issuer: "NelcotaDeploy", AccountName: p.Email})
 	if e != nil {
@@ -377,7 +373,7 @@ func otpCounter(secret, code string, now time.Time) (int64, error) {
 	return 0, fail(Unauthenticated, "Invalid code")
 }
 func (a *AuthService) FinishTOTP(ctx context.Context, id, code string) error {
-	p, e := freshInteractive(ctx)
+	p, e := freshInteractive(ctx, false)
 	if e != nil {
 		return e
 	}
@@ -454,20 +450,27 @@ func (a *AuthService) Create(ctx context.Context, in UserInput) (Enrollment, err
 	if _, e := authorize(ctx, "users:write", true); e != nil {
 		return Enrollment{}, e
 	}
-	return a.create(ctx, in, false)
+	return a.create(ctx, in, false, InvitationLifetime)
 }
+
+// InvitationLifetime is how long a person's invitation link works. It is
+// single use, and only the token's hash is stored.
+const InvitationLifetime = 24 * time.Hour
+
+// Bootstrap creates the first administrator. Its invitation is written to a
+// private file on the panel host by the installer, so it stays short-lived.
 func (a *AuthService) Bootstrap(ctx context.Context, in UserInput) (Enrollment, error) {
 	in.Role = "admin"
-	return a.create(systemContext(ctx), in, true)
+	return a.create(systemContext(ctx), in, true, 15*time.Minute)
 }
-func (a *AuthService) create(ctx context.Context, in UserInput, first bool) (Enrollment, error) {
+func (a *AuthService) create(ctx context.Context, in UserInput, first bool, lifetime time.Duration) (Enrollment, error) {
 	address, e := mail.ParseAddress(in.Email)
 	if e != nil || address.Address != in.Email || len(in.Name) < 1 || len(in.Name) > 120 || (in.Role != "admin" && in.Role != "member") {
 		return Enrollment{}, fail(Validation, "Invalid user")
 	}
 	id := security.Token()
 	token := security.Token()
-	expires := time.Now().Add(15 * time.Minute)
+	expires := time.Now().Add(lifetime)
 	e = a.Core.mutate(ctx, func(tx *sql.Tx) error {
 		if first {
 			var n int

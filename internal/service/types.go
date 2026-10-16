@@ -23,10 +23,13 @@ const (
 type Error struct {
 	Kind    Kind   `json:"code"`
 	Message string `json:"message"`
+	// cause keeps the underlying failure for logs; it is never shown to users.
+	cause error
 }
 
 func (e *Error) Error() string             { return e.Message }
-func fail(kind Kind, message string) error { return &Error{kind, message} }
+func (e *Error) Unwrap() error             { return e.cause }
+func fail(kind Kind, message string) error { return &Error{Kind: kind, Message: message} }
 func Is(err error, kind Kind) bool         { var e *Error; return errors.As(err, &e) && e.Kind == kind }
 
 type Principal struct {
@@ -161,6 +164,8 @@ type Invitation struct {
 	ServerID  string    `json:"server_id"`
 	Token     string    `json:"token"`
 	ExpiresAt time.Time `json:"expires_at"`
+	// Server is the newly created, not yet enrolled server.
+	Server Server `json:"-"`
 }
 type AuditEntry struct {
 	ID        int64           `json:"id"`
@@ -195,6 +200,8 @@ type Deploys interface {
 	Enqueue(context.Context, DeployInput) (Deployment, error)
 	Cancel(context.Context, string) error
 	Rollback(context.Context, string, string) (Deployment, error)
+	SuggestedPort(context.Context, string) (uint32, error)
+	PublishOnPort(context.Context, string, uint32) (Deployment, error)
 }
 type Servers interface {
 	UpdateLimits(context.Context, string, ServerLimitsInput) (Server, error)
