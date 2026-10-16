@@ -1,6 +1,6 @@
 # Development and release automation
 
-This page describes the GitHub workflows, Makefile targets, and scripts that build, check, sign, and publish NelcotaDeploy, plus what each one needs. **None of the new workflows has run on GitHub yet.** The [status table](#verification-status) says what was checked locally and what still needs Docker, a Hetzner token, signing secrets, or GitHub itself.
+This page describes the GitHub workflows, Makefile targets, and scripts that build, check, sign, and publish NelcotaDeploy, plus what each one needs. **`release.yml`, `vps-acceptance.yml`, `vendor-refresh.yml`, and `screenshots.yml` have not run on GitHub yet.** The [verification status](#verification-status) says what was checked locally and what still needs a Hetzner token, signing secrets, or GitHub itself.
 
 ## Makefile targets
 
@@ -14,7 +14,7 @@ This page describes the GitHub workflows, Makefile targets, and scripts that bui
 | `make visual` | Visual regression of the component gallery inside the pinned Playwright container | Docker |
 | `make visual-update` | Regenerate the container baselines; review and commit the PNG files | Docker |
 | `make screenshots` | Regenerate `docs/screenshots` inside the pinned Playwright container | Docker |
-| `make report-numbers` | Rewrite the generated numbers block in `docs/frontend-report.md` | Go; Node and Playwright browsers on the host |
+| `make report-numbers` | Rewrite the generated numbers block in `docs/status.md` | Go; Node and Playwright browsers on the host |
 
 Missing infrastructure is never a passing result ([AGENTS.md](../AGENTS.md)): `make test-integration`, `make visual`, and `make screenshots` stop with an error instead of skipping.
 
@@ -48,7 +48,7 @@ Pull requests opened by `vendor-refresh.yml` and `screenshots.yml` use `GITHUB_T
 4. `publish` downloads the artifact, verifies the signature and hashes again, and runs `gh release create --verify-tag`. This step refuses to replace an existing release, so published versions stay immutable.
 5. `mirror` runs only when `RELEASE_MIRROR_DESTINATION` is set. It publishes the same files to the direct HTTPS mirror with `scripts/release-mirror.sh`.
 
-The BuildKit recipe is still the identified staging rebuild (`v0.34.0-nelcota-hml.1`). Choosing a production BuildKit recipe and signing identity is a maintainer decision ([outstanding work](outstanding-work.md)).
+The BuildKit recipe is still the identified staging rebuild (`v0.34.0-nelcota-hml.1`). Choosing a production BuildKit recipe and signing identity is still open ([status](status.md)).
 
 ### `release` environment
 
@@ -115,13 +115,13 @@ The workflow installs hcloud v1.70.1 with a pinned SHA-256. It reads `HCLOUD_TOK
 
 `scripts/playwright-container.sh` runs a command in `web/` inside `mcr.microsoft.com/playwright:v<version>-noble`. The version is read from the exact `@playwright/test` pin in `web/package.json`, and Dependabot bumps the image together with the package. The host-built `bin/nelcota-panel` is static, so it runs unchanged in the container. `npm ci` runs only when `node_modules` does not hold the pinned version.
 
-- `make visual` uses `web/playwright.visual.config.js`, which stores baselines in `web/e2e/visual.spec.js-snapshots/container/` and never writes missing ones. **No container baselines exist yet**, because Docker was not available when this was set up. Until someone runs `make build visual-update` on a machine with Docker and commits the two PNG files, the CI job fails, says that baselines are missing, and uploads the rendered images.
+- `make visual` uses `web/playwright.visual.config.js`, which stores baselines in `web/e2e/visual.spec.js-snapshots/container/` and never writes missing ones. After an intended visual change, run `make build visual-update` and commit the two PNG files.
 - The host baselines in `web/e2e/visual.spec.js-snapshots/` (`gallery-*-linux.png`) still serve the local `VISUAL=1 npx playwright test e2e/visual.spec.js` path, so they were kept. Delete them only if that path is retired.
-- `make screenshots` runs `SCREENSHOTS=1 npx playwright test e2e/screenshots.spec.js` in the same container. The first container run will change every image, because fonts differ from the workstation that made the current set.
+- `make screenshots` runs `SCREENSHOTS=1 npx playwright test e2e/screenshots.spec.js` in the same container.
 
-## Measured numbers in the frontend report
+## Measured numbers
 
-`make report-numbers` runs `go test -v -run 'TestAssetBudget|TestPageScriptBudget' ./web/...` and the Playwright suite with the JSON reporter. It replaces only the lines between `<!-- generated:numbers:start -->` and `<!-- generated:numbers:end -->` in [the frontend report](frontend-report.md). It refuses to write when a budget test or browser test fails. `--playwright-json FILE` reuses an existing report, and `--skip-playwright` measures only the asset sizes.
+`make report-numbers` runs `go test -v -run 'TestAssetBudget|TestPageScriptBudget' ./web/...` and the Playwright suite with the JSON reporter. It replaces only the lines between `<!-- generated:numbers:start -->` and `<!-- generated:numbers:end -->` in [status](status.md#measured-numbers). It refuses to write when a budget test or browser test fails. `--playwright-json FILE` reuses an existing report, and `--skip-playwright` measures only the asset sizes.
 
 ## English-only check
 
@@ -131,12 +131,12 @@ The workflow installs hcloud v1.70.1 with a pinned SHA-256. It reads `HCLOUD_TOK
 
 | Item | Checked locally | Still unverified |
 | --- | --- | --- |
-| Workflows | actionlint v1.7.12 (with ShellCheck), PyYAML parse | Never run on GitHub |
+| Workflows | actionlint v1.7.12 (with ShellCheck), PyYAML parse; `ci.yml` runs on pull requests | `release.yml`, `vps-acceptance.yml`, `vendor-refresh.yml`, `screenshots.yml` never run on GitHub |
 | `release.sh` password file | Signed a scratch release with a password-protected key and no TTY; Minisign and SHA-256 verified | CI run with real secrets |
 | `release-mirror.sh` | Local and stubbed-SSH destinations: version ordering, pre-release, overwrite refusal, tampered file, unlisted file, wrong key | A real mirror host |
 | `release-notes.sh` | Scratch repository with and without a previous tag | — |
 | `vps-acceptance.sh` | ShellCheck, `bash -n`, stubbed pass and failure runs with cleanup | Hetzner Cloud, sslip.io certificates, reboot timing |
-| `make visual`, `make screenshots` | ShellCheck; clear failure without Docker | Container run; baselines not generated |
+| `make visual`, `make screenshots` | Container run; baselines committed | — |
 | `make test-integration` preflight | Fails with clear messages without Docker or Caddy | — (CI installs both, unchanged) |
-| `make report-numbers` | Clean copy: asset and page budgets parsed into the block; the Playwright path refused to write because one browser test failed (43 pass, 10 skipped, 1 failed) | A full write, after the browser suite passes; the block in the report is empty until then |
+| `make report-numbers` | Full write with asset budgets and the Playwright suite | — |
 | English-only check | `go test ./internal/policy/`, golangci-lint | — |

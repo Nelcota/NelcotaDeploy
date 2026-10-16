@@ -1,6 +1,6 @@
-# VPS installation and backend acceptance testing
+# VPS installation and acceptance testing
 
-Checked against the code on October 15, 2026. The VPS commands below **were not executed during that local validation**. Mark acceptance criteria only after a real test.
+This guide installs NelcotaDeploy on two disposable VPS instances and proves each stage. It has not yet been run end to end; record results in the [acceptance record](#acceptance-record) only after a real test. `scripts/vps-acceptance.sh` automates the unattended parts ([development](development.md#disposable-vps-acceptance)).
 
 Automated installation uses **two VPS instances**, one panel and one deployment agent. Both installers manage Caddy and wg0 and reject existing configurations; combining roles requires a separate manual procedure.
 
@@ -86,7 +86,7 @@ done
 
 Versions may share a source commit in this laboratory to test executable replacement and embedded versions. Real releases also require migration, protocol, and state compatibility review.
 
-The script requires a clean checkout, creates dist/VERSION, and refuses overwrite. Signed build-info.json records commit/toolchain/BuildKit hashes; buildkit-build-info.txt records daemon modules/toolchains. Official v0.34.0 binaries predate the October Go fixes. The prepared packages use the corrected rebuild described in [staging releases](staging-releases.md).
+The script requires a clean checkout, creates dist/VERSION, and refuses overwrite. Signed build-info.json records commit/toolchain/BuildKit hashes; buildkit-build-info.txt records daemon modules/toolchains. Official v0.34.0 binaries predate the October Go fixes. The local staging packages use the corrected rebuild described in [staging releases](staging-releases.md).
 
 Publish **every** file from each version directory at RELEASE_BASE/v1.0.0, /v1.0.1, and /v1.0.2, preserving names/content. Updater downloads require direct HTTPS without redirects. Never overwrite published versions. Example for an already configured HTTPS distribution host with directory write permission:
 

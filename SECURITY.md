@@ -2,7 +2,7 @@
 
 ## Support status
 
-NelcotaDeploy is under development and has no production-approved release. Fixes are applied to `main`. The v1.0.0–v1.0.2 packages described in the laboratory reports are local update-testing artifacts, not a supported stable release line.
+NelcotaDeploy is under development and has no production-approved release. Fixes are applied to `main`. The v1.0.0–v1.0.2 packages in [staging releases](docs/staging-releases.md) are local update-testing artifacts, not a supported release line.
 
 ## Report a vulnerability
 
@@ -19,4 +19,4 @@ Avoid publishing exploitable details in public issues before assessment and reme
 
 The agent controls the Docker daemon; compromising that access can compromise the host. Keep backup, release-signing, and encryption keys separately. Network policy, isolation, installers, and recovery must be validated in the target environment.
 
-Read the [operations guide](docs/backend-operations.md), [security review boundaries](docs/backend-report.md#security-review-boundaries), and [VPS acceptance guide](docs/vps-testing.md).
+Read the [security boundaries](docs/status.md#security-boundaries), [operations guide](docs/operations.md), and [VPS acceptance guide](docs/vps-testing.md).

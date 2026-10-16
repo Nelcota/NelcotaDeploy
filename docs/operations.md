@@ -1,10 +1,6 @@
-# Backend operations
+# Operations
 
-## Memory
-
-On October 15, 2026, the same local scenario—development login, three apps, nine log reads, eight concurrent API reads, and active pprof/flight recorder—improved from 119.2 MiB warmed RSS / 115.6 MiB after GC to 49.8 / 50.5 MiB. Profiling showed approximately 100 MiB of startup allocations, mainly SQLite WASM compilation, but only 9.4 MiB of live heap. `store.Open` returns temporary pages once after startup; no forced GC occurs on query paths. Profiles in `.local/profiles/` must not be published with real data.
-
-Explicit local diagnostics: `nelcota-panel dev --pprof-listen 127.0.0.1:6069 --wg-interface lo`. Keep production diagnostics on WireGuard. With real Docker/BuildKit, mTLS, and two telemetry samples, agent RSS decreased from 32 MiB to 27.3 MiB after startup/GC changes and 24.6–25.0 MiB with `GODEBUG=disablethp=1`. Services set this option to avoid THP amplification for small heaps; the test host used THP always. The agent defaults to GOGC=50 and honors an explicit override. Panel RSS after a complete API backup was 46.7–53.5 MiB with diagnostics active. These are local results, not VPS acceptance. See the [Go Linux/THP guide](https://go.dev/doc/gc-guide#Linux).
+Commands, formats, and limits for running the panel and agent: backups, restore, updates, recovery, automatic jobs, and notifications. Installation is covered by the [VPS acceptance guide](vps-testing.md); what has been verified where is in [status](status.md).
 
 ## Backup and restore
 
@@ -74,3 +70,29 @@ With private diagnostics enabled, deployments exceeding two minutes automaticall
 Agent enrollment accepts invitations only through a mode 0600 file (`--join-file` in the installer, `--join-token-file` in the executable), never process arguments.
 
 Private keys, invitations, S3 credentials, and persisted certificates must be regular files with no symlinks or group/other permissions. Reads validate opened descriptors, enforce size limits, and do not block on FIFOs. Maintenance locks also reject hard links. Enrollment rejects WireGuard public keys already used by the panel or another agent. Initial cache limits use the same 64 MiB minimum as the limits API.
+
+## Automatic jobs
+
+The panel runs these without a person:
+
+- **Disk relief.** When a server reports 85% disk use or more, the panel sends the "remove unused images" cleanup, at most once an hour per server, audited as `server.prune.orphan_images.auto`.
+- **Retry of traffic-switch failures.** A deployment that fails with `route_failed` is queued once more with the same commit, unless it was already a retry, was cancelled, the app is stopped, or a newer deployment exists. Build, start, and health check failures are never retried.
+- **Update checks.** Every six hours the panel reads the unsigned `<release_url>/latest` pointer (at most 64 bytes, no redirects, stable versions only), verifies that release's signature, and announces it. With the `updates.automatic` setting on, it also queues the update. Turning that setting on needs a recent passkey sign-in.
+- **Backup verification.** Weekly, the newest completed backup is test-restored into a temporary directory with the same checks as a restore. Failures are announced as `backup.unverified`.
+- **GitHub App installation.** Signed push webhooks fill in the installation ID for apps that have none; an ID a person set is never replaced.
+
+Deleting apps or people, restores, role changes, and rollbacks stay manual.
+
+## Notifications
+
+Settings › Connections › Notifications configures one webhook and one email destination. Events: failed deployments (not ones being retried), servers going offline, disks at 90% after cleanup, failed or unverified backups, stopped updates, and new versions. Repeated events are throttled (servers offline: hourly; disk and backup: every six hours; new versions: daily). Delivery runs in the background with three attempts and backoff.
+
+- **Webhooks:** Slack and Discord formats are chosen by host; other URLs get generic JSON, signed with `X-Nelcota-Signature: sha256=<HMAC-SHA256>` when a secret is set. HTTPS only, no redirects, and addresses that resolve to private, loopback, link-local, or reserved ranges are refused.
+- **Email:** SMTP on port 465 (TLS) or 587/2525 (STARTTLS required; servers without it are refused before authenticating). With email configured, user invitations are also sent by email; the token is in the URL fragment (`/enroll#token=...`), which browsers do not send to servers.
+- The configuration is stored as one encrypted setting. The webhook URL and SMTP password are never returned; saving with empty secret fields keeps the stored values.
+
+## Memory
+
+A local scenario—development login, three apps, nine log reads, eight concurrent API reads, and active pprof/flight recorder—improved from 119.2 MiB warmed RSS / 115.6 MiB after GC to 49.8 / 50.5 MiB. Profiling showed approximately 100 MiB of startup allocations, mainly SQLite WASM compilation, but only 9.4 MiB of live heap. `store.Open` returns temporary pages once after startup; no forced GC occurs on query paths. Profiles in `.local/profiles/` must not be published with real data.
+
+Explicit local diagnostics: `nelcota-panel dev --pprof-listen 127.0.0.1:6069 --wg-interface lo`. Keep production diagnostics on WireGuard. With real Docker/BuildKit, mTLS, and two telemetry samples, agent RSS decreased from 32 MiB to 27.3 MiB after startup/GC changes and 24.6–25.0 MiB with `GODEBUG=disablethp=1`. Services set this option to avoid THP amplification for small heaps; the test host used THP always. The agent defaults to GOGC=50 and honors an explicit override. Panel RSS after a complete API backup was 46.7–53.5 MiB with diagnostics active. See the [Go Linux/THP guide](https://go.dev/doc/gc-guide#Linux).

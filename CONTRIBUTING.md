@@ -1,6 +1,6 @@
 # Contributing to NelcotaDeploy
 
-The project is under development. The backend and web interface are implemented; VPS acceptance testing is the next milestone. See the [backend report](docs/backend-report.md), [frontend report](docs/frontend-report.md), and [outstanding work](docs/outstanding-work.md) for the current status.
+The project is under development. The backend and web interface are implemented; VPS acceptance testing is the next milestone. See [status](docs/status.md).
 
 ## Language
 
@@ -20,7 +20,7 @@ make dev
 
 Development mode uses local data in `.local/dev`, simulated agents, and its own development session. See the [README](README.md#local-development) for API examples.
 
-Interface changes: edit `.templ` files, `web/static/src`, or vendored libraries (`make web-vendor`), then run `make web` and commit the generated `*_templ.go` files and `web/static/dist`. Run `make e2e` for browser tests; it needs Node and Playwright's Chromium (`cd web && npm ci && npx playwright install chromium`).
+Interface changes: follow the [writing guide](docs/ui-writing.md); edit `.templ` files, `web/static/src`, or vendored libraries (`make web-vendor`), then run `make web` and commit the generated `*_templ.go` files and `web/static/dist`. Run `make e2e` for browser tests; it needs Node and Playwright's Chromium (`cd web && npm ci && npx playwright install chromium`).
 
 ## Propose a change
 

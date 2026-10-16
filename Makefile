@@ -77,7 +77,7 @@ visual-update: build
 # Regenerate docs/screenshots in the same pinned container (requires Docker).
 screenshots: build
 	SCREENSHOTS=1 PLAYWRIGHT_CONTAINER_ENV=SCREENSHOTS ./scripts/playwright-container.sh npx playwright test e2e/screenshots.spec.js
-# Rewrite the generated numbers block in docs/frontend-report.md (runs the budget tests and Playwright).
+# Rewrite the generated numbers block in docs/status.md (runs the budget tests and Playwright).
 report-numbers: build
 	./scripts/report-numbers.sh
 # English-only repository content (AGENTS.md); also part of `make test`.

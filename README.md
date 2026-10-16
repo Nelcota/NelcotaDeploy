@@ -29,7 +29,7 @@ NelcotaDeploy separates application control into two components: a panel stores 
 SQLite, two Go binaries, and familiar services: Docker, BuildKit, and Caddy. The initial version requires a **Dockerfile in your application repository**.
 
 > [!IMPORTANT]
-> **The backend and web interface are implemented and locally tested.** Local tests include real Docker, BuildKit, and Caddy, and browser tests use a virtual passkey authenticator, but complete installation, real devices, and operational targets still require VPS acceptance testing. Read the [backend report](docs/backend-report.md), [frontend report](docs/frontend-report.md), and [outstanding work](docs/outstanding-work.md) before production use.
+> **Not production-ready.** The backend and web interface are implemented and tested locally, including real Docker, BuildKit, and Caddy. Installation on real servers, real passkey devices, and performance targets still need VPS acceptance. See [status](docs/status.md).
 
 ## Implemented capabilities
 
@@ -40,8 +40,9 @@ SQLite, two Go binaries, and familiar services: Docker, BuildKit, and Caddy. The
 | Access | Passkeys, TOTP, recovery codes, invitations, sessions, and scoped API tokens |
 | Communication | mTLS, signed commands, replay protection, and agent reconnection |
 | Observability | Build and runtime logs over SSE, zstd retention, host and container metrics |
-| Operations | Encrypted local/S3 backups, offline restore, signed updates, and executable rollback |
-| Interface | Server-rendered panel (templ, Datastar, Tailwind, Basecoat) with live status, xterm.js logs, uPlot metrics, light/dark themes, and a command palette |
+| Operations | Encrypted local/S3 backups with weekly test restores, offline restore, signed updates with automatic checks, and executable rollback |
+| Notifications | Webhooks (Slack, Discord, signed JSON) and email for failed deployments, offline servers, full disks, backups, and updates |
+| Interface | Server-rendered panel (templ, Datastar, Tailwind, Basecoat) with live status, xterm.js logs, uPlot metrics, light/dark themes, English and Brazilian Portuguese, and a command palette |
 
 ## Architecture
 
@@ -121,16 +122,13 @@ Integration tests fail when required infrastructure is missing. [CI](https://git
 
 ## Documentation
 
-- [Documentation index and reading paths](docs/README.md)
-- [API contract and frontend integration](docs/frontend-contract.md)
+- [Documentation index](docs/README.md)
+- [Status: what is verified and what is open](docs/status.md)
 - [Installation and acceptance testing on two VPS instances](docs/vps-testing.md)
-- [Operations: backups, restore, updates, and recovery](docs/backend-operations.md)
-- [Backend status and validation evidence](docs/backend-report.md)
-- [Frontend status, tests, and screenshots](docs/frontend-report.md)
-- [Local staging releases](docs/staging-releases.md)
+- [Operations: backups, restore, updates, recovery, and notifications](docs/operations.md)
+- [Service and API contract](docs/frontend-contract.md)
+- [Development and release automation](docs/development.md)
 - [Technical decisions](docs/decisions.md)
-
-The staging packages described in the documentation are local artifacts ignored by Git. Official binary distribution will have separate releases and verifiable installation instructions.
 
 ## Roadmap
 
@@ -141,7 +139,7 @@ The staging packages described in the documentation are local artifacts ignored 
 - [ ] Prove performance targets on representative infrastructure.
 - [ ] Publish official signed releases.
 
-Pull request previews, notifications, scale-to-zero, Trivy, and Litestream are planned for phase 2. The [system plan](docs/system-plan.md) describes the vision; the [backend report](docs/backend-report.md) records what has been delivered.
+Pull request previews, scale-to-zero, Trivy, and Litestream are planned for a later phase. The [system plan](docs/system-plan.md) describes the original design.
 
 ## Contributing
 

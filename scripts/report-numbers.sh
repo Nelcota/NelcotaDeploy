@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Measure the numbers quoted in docs/frontend-report.md and rewrite only the block
+# Measure the numbers quoted in docs/status.md and rewrite only the block
 # between <!-- generated:numbers:start --> and <!-- generated:numbers:end -->.
 #
 # Usage: scripts/report-numbers.sh [--playwright-json FILE | --skip-playwright]
@@ -10,7 +10,7 @@
 set -euo pipefail
 fail() { printf 'Error: %s\n' "$1" >&2; exit 1; }
 root=$(cd "$(dirname "$0")/.." && pwd)
-report=$root/docs/frontend-report.md
+report=$root/docs/status.md
 start='<!-- generated:numbers:start -->'
 end='<!-- generated:numbers:end -->'
 playwright_json='' skip_playwright=false
@@ -23,7 +23,7 @@ while (($#)); do
 done
 command -v jq >/dev/null 2>&1 || fail 'jq is required'
 if ! grep -qxF "$start" "$report" || ! grep -qxF "$end" "$report"; then
-	fail "Markers $start / $end are missing in docs/frontend-report.md"
+	fail "Markers $start / $end are missing in docs/status.md"
 fi
 work=$(mktemp -d)
 trap 'rm -rf -- "$work"' EXIT
@@ -87,5 +87,5 @@ $0 == start { while ((getline line < block) > 0) print line; skip = 1; next }
 $0 == end { skip = 0; next }
 !skip { print }' "$report" > "$work/report.md"
 cat "$work/report.md" > "$report"
-printf 'Updated the measured numbers in docs/frontend-report.md:\n'
+printf 'Updated the measured numbers in docs/status.md:\n'
 cat "$work/block.md"

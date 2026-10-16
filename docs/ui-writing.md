@@ -14,7 +14,7 @@ The panel is used by people who want their app online, not by people who want to
 | System term | Interface term |
 | --- | --- |
 | success (deployment) | Published |
-| success (app now) | Live, "Online now" |
+| success (app now) | Live, "Online now". "Live" is only for apps: the live-updates indicator stays hidden while connected and speaks up only when reconnecting or offline |
 | queued | Waiting |
 | building, starting | Publishing, with the current step |
 | failed | Failed (history), "didn't go live" (app) |
@@ -30,7 +30,7 @@ Technical terms stay available where they help: commit SHAs, the Dockerfile path
 
 ## Actions
 
-- A button says exactly what it does: "Publish latest", "Restore this version", "Save 3 change(s)".
+- A button says exactly what it does: "Publish latest", "Restore this version", "Save 3 changes".
 - One primary action per context. The others are outline or ghost buttons.
 - After an action, a toast confirms it in the same words: "Publishing api at a1b2c3d."
 - Confirm only actions that remove something or take a site offline. The confirmation states the consequence in one sentence: "The app restarts without it."
