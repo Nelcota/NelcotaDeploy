@@ -10,7 +10,8 @@ Start with the [project README](../README.md) for an overview and local setup.
 | Use the services and HTTP API, or build pages | [Service and API contract](frontend-contract.md) |
 | Run checks, workflows, and releases | [Development and release automation](development.md) |
 | Write interface text | [Interface writing guide](ui-writing.md) |
-| Understand the original design and later choices | [System plan](system-plan.md) · [Decisions](decisions.md) |
+| Understand the original design and later choices | [System plan](system-plan.md) · [Decisions](decisions.md) · [ADRs](architecture/decisions/README.md) |
+| Understand the current architecture and the modernization plan | [Architecture](architecture/README.md) · [Roadmap](refactoring/roadmap.md) · [Conventions](engineering/conventions.md) |
 | Verify the local v1.0.0–v1.0.2 test packages | [Staging releases](staging-releases.md) |
 | Contribute or report a vulnerability | [Contributing](../CONTRIBUTING.md) · [Security](../SECURITY.md) |
 
