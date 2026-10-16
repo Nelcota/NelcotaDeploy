@@ -6,7 +6,7 @@ toolchain go1.26.9
 
 require (
 	connectrpc.com/connect v1.19.1
-	github.com/VictoriaMetrics/metrics v1.40.2
+	github.com/VictoriaMetrics/metrics v1.44.1
 	github.com/bradleyfalzon/ghinstallation/v2 v2.19.0
 	github.com/containerd/errdefs v1.0.0
 	github.com/distribution/reference v0.6.0
