@@ -1,4 +1,4 @@
-const { test, expect } = require("@playwright/test");
+const { test, expect } = require("./fixtures");
 const { virtualAuthenticator, devLogin, totp, nextWindow, toast, newClient, signOut } = require("./helpers");
 
 test("passkey sign-in, two-factor setup, and recovery codes", async ({ page }) => {

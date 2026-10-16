@@ -43,15 +43,15 @@
 		var rows = (m.containers || []).slice().sort(function (a, b) { return (b.cpu_percent || 0) - (a.cpu_percent || 0); });
 		text(card, "containers-count", "(" + rows.length + ")");
 		body.replaceChildren.apply(body, rows.length ? rows.map(function (c) {
-			var tr = document.createElement("tr");
+			var row = document.createElement("tr");
 			[names[c.app_id] || c.app_id || tr("Unknown"), (c.cpu_percent || 0).toFixed(1) + "%", bytes(c.memory_used || 0) + " / " + bytes(c.memory_limit || 0), String(c.pids || 0)].forEach(function (v, i) {
 				var td = document.createElement("td");
 				td.textContent = v;
 				if (i > 0) td.className = "tabular-nums";
-				tr.append(td);
+				row.append(td);
 			});
-			return tr;
-		}) : [(function () { var tr = document.createElement("tr"), td = document.createElement("td"); td.colSpan = 4; td.className = "text-muted-foreground"; td.textContent = tr("No containers running."); tr.append(td); return tr; })()]);
+			return row;
+		}) : [(function () { var row = document.createElement("tr"), td = document.createElement("td"); td.colSpan = 4; td.className = "text-muted-foreground"; td.textContent = tr("No containers running."); row.append(td); return row; })()]);
 	}
 	function sample(d) {
 		var card = document.querySelector('[data-server="' + CSS.escape(d.server_id) + '"]');

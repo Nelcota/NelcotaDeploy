@@ -29,13 +29,9 @@ func (v OverviewView) previousDuration() string {
 }
 
 // recent returns up to eight deployments, oldest first.
+// recent is the newest deployments, newest first.
 func (v OverviewView) recent() []service.Deployment {
-	n := min(len(v.Deployments), 8)
-	out := make([]service.Deployment, 0, n)
-	for i := n - 1; i >= 0; i-- {
-		out = append(out, v.Deployments[i])
-	}
-	return out
+	return v.Deployments[:min(len(v.Deployments), 4)]
 }
 
 // stepState is done, current, failed, or "" for a stage of deployment d.
@@ -79,9 +75,6 @@ templ overviewActions(c AppContext, v OverviewView) {
 
 templ Overview(s Shell, c AppContext, v OverviewView) {
 	@AppLayout(s, c, overviewActions(c, v)) {
-		<div class="-mt-2 mb-3 flex justify-end">
-			@Connection()
-		</div>
 		@LiveStream("/ui/stream/apps/" + c.App.ID + "/overview")
 		if v.Err != "" {
 			@ui.ErrorState("Overview unavailable", v.Err)
@@ -125,10 +118,13 @@ templ OverviewBody(c AppContext, v OverviewView) {
 				if len(v.Deployments) == 0 {
 					<p class="text-sm">{ i18n.T(ctx, "None yet") }</p>
 				} else {
-					<ol class="flex flex-wrap gap-1.5" aria-label={ i18n.T(ctx, "Oldest to newest") }>
+					<ol class="grid gap-1.5 text-sm">
 						for _, d := range v.recent() {
-							<li class="release-dot" data-tone={ ui.Tone(d.Status) } title={ ui.ShortSHA(d.SHA) + ": " + i18n.T(ctx, ui.StatusLabel(d.Status)) + ", " + i18n.T(ctx, ui.Ago(d.QueuedAt)) }>
-								<span class="sr-only">{ ui.ShortSHA(d.SHA) } { i18n.T(ctx, ui.StatusLabel(d.Status)) }</span>
+							<li class="flex items-center gap-2">
+								<span class="release-dot" data-tone={ ui.Tone(d.Status) } aria-hidden="true"></span>
+								<span class="mono">{ ui.ShortSHA(d.SHA) }</span>
+								<span class="text-muted-foreground">{ i18n.T(ctx, ui.StatusLabel(d.Status)) }</span>
+								<time class="ms-auto text-xs text-muted-foreground" datetime={ ui.ISO(d.QueuedAt) } title={ ui.Timestamp(d.QueuedAt) }>{ i18n.T(ctx, ui.Ago(d.QueuedAt)) }</time>
 							</li>
 						}
 					</ol>
@@ -285,7 +281,7 @@ templ liveCard(c AppContext, v OverviewView) {
 				// so the results are kept out of the morph.
 				<div data-ignore-morph>
 					<div id="dns-results" class="text-sm text-muted-foreground" aria-live="polite" data-init={ ui.Post("/ui/apps/" + c.App.ID + "/dns") }>{ i18n.T(ctx, "Checking DNS…") }</div>
-					<button type="button" class="btn mt-2" data-variant="ghost" data-size="sm" data-on:click={ ui.Post("/ui/apps/" + c.App.ID + "/dns") }>{ i18n.T(ctx, "Check again") }</button>
+					<button type="button" class="mt-1.5 text-sm text-link hover:underline" data-on:click={ ui.Post("/ui/apps/" + c.App.ID + "/dns") }>{ i18n.T(ctx, "Check again") }</button>
 				</div>
 			</div>
 		} else {

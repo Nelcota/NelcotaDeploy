@@ -1,4 +1,4 @@
-const { test, expect } = require("@playwright/test");
+const { test, expect } = require("./fixtures");
 
 // Budgets on a local network: first contentful paint and largest contentful
 // paint under 1 s, layout shift during loading under 0.05, and instant

@@ -1,4 +1,4 @@
-const { test, expect } = require("@playwright/test");
+const { test, expect } = require("./fixtures");
 const { devLogin, toast, newClient } = require("./helpers");
 
 test("servers show live metrics, invitations, and cache cleanup", async ({ page, context }) => {

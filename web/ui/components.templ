@@ -54,7 +54,7 @@ templ Badge(variant, text string) {
 
 // Field wraps a control with its label, hint, and error. The control must use id.
 templ Field(label, id, hint, err string) {
-	<div class="grid gap-1.5" data-field={ id }>
+	<div class="grid content-start gap-1.5" data-field={ id }>
 		<label class="label" for={ id }>{ i18n.T(ctx, label) }</label>
 		{ children... }
 		if hint != "" {

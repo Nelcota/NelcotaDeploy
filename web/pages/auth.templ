@@ -2,6 +2,7 @@ package pages
 
 import (
 	"github.com/Nelcota/NelcotaDeploy/web/i18n"
+	"github.com/Nelcota/NelcotaDeploy/web/static"
 	"github.com/Nelcota/NelcotaDeploy/web/ui"
 )
 
@@ -18,8 +19,10 @@ func LoginNotice(code string) string {
 	return ""
 }
 
+// authHeading welcomes people with the mascot above the title.
 templ authHeading(title, text string) {
 	<div class="grid gap-1.5">
+		<img src={ static.Path("mascot.png") } alt="" width="72" height="72" class="mb-3 size-18 select-none" draggable="false"/>
 		<h1 class="text-2xl font-medium tracking-tight">{ i18n.T(ctx, title) }</h1>
 		<p class="muted">{ i18n.T(ctx, text) }</p>
 	</div>

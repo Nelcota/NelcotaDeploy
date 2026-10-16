@@ -50,7 +50,7 @@ func gib(b int64) string {
 
 templ Servers(s Shell, v ServersView) {
 	@App(s) {
-		@PageHeader("Servers", "Live CPU and memory since you opened this page.") {
+		@PageHeader("Servers", "") {
 			<span id="metrics-conn" class="conn" data-state="connecting" role="status">{ i18n.T(ctx, "Connecting…") }</span>
 			if s.Admin() {
 				@ui.Button("", "sm", templ.Attributes{"data-on:click": ui.Open("invite")}) {
@@ -113,7 +113,7 @@ templ ServerPanel(s Shell, srv service.Server) {
 					<span><span class="inline-block size-2 rounded-full bg-[var(--chart-2)]" aria-hidden="true"></span> { i18n.T(ctx, "CPU") } <span class="font-medium tabular-nums" data-metric="cpu">—</span></span>
 					<span><span class="inline-block size-2 rounded-full bg-warning" aria-hidden="true"></span> { i18n.T(ctx, "Memory") } <span class="font-medium tabular-nums" data-metric="memory">—</span></span>
 				</figcaption>
-				<div class="chart h-40 rounded-md border bg-background" data-chart aria-hidden="true">
+				<div class="chart h-32 rounded-md border bg-background" data-chart aria-hidden="true">
 					<p class="grid h-full place-items-center text-xs text-muted-foreground" data-chart-empty>{ i18n.T(ctx, "Collecting samples…") }</p>
 				</div>
 			</figure>
@@ -124,13 +124,6 @@ templ ServerPanel(s Shell, srv service.Server) {
 						<span class="tabular-nums" data-metric="disk">—</span>
 					</div>
 					<progress class="meter" max="1000" value="0" data-metric="disk-meter" aria-label={ i18n.T(ctx, "Disk usage") }></progress>
-				</div>
-				<div class="grid gap-1">
-					<div class="flex justify-between gap-2 text-xs">
-						<span class="text-muted-foreground">{ i18n.T(ctx, "Build cache") }</span>
-						<span class="tabular-nums" data-metric="cache">{ i18n.Tf(ctx, "— of %s", ui.Bytes(srv.CacheBytes)) }</span>
-					</div>
-					<progress class="meter" max="1000" value="0" data-metric="cache-meter" data-limit={ strconv.FormatInt(srv.CacheBytes, 10) } aria-label={ i18n.T(ctx, "Build cache usage") }></progress>
 				</div>
 				@ServerLimits(srv)
 			</div>
@@ -185,10 +178,20 @@ templ ServerPanel(s Shell, srv service.Server) {
 }
 
 templ ServerLimits(srv service.Server) {
-	<dl id={ "server-limits-" + srv.ID } class="grid grid-cols-2 gap-3 text-sm">
-		<div><dt class="text-xs text-muted-foreground">{ i18n.T(ctx, "Build cache size") }</dt><dd class="font-medium">{ ui.Bytes(srv.CacheBytes) }</dd></div>
-		<div><dt class="text-xs text-muted-foreground">{ i18n.T(ctx, "Builds at the same time") }</dt><dd class="font-medium">{ strconv.FormatInt(srv.BuildLimit, 10) }</dd></div>
-	</dl>
+	// The build cache meter shows the size limit, so saving limits redraws it too.
+	<div id={ "server-limits-" + srv.ID } class="grid gap-4">
+		<div class="grid gap-1">
+			<div class="flex justify-between gap-2 text-xs">
+				<span class="text-muted-foreground">{ i18n.T(ctx, "Build cache") }</span>
+				<span class="tabular-nums" data-metric="cache">{ i18n.Tf(ctx, "— of %s", ui.Bytes(srv.CacheBytes)) }</span>
+			</div>
+			<progress class="meter" max="1000" value="0" data-metric="cache-meter" data-limit={ strconv.FormatInt(srv.CacheBytes, 10) } aria-label={ i18n.T(ctx, "Build cache usage") }></progress>
+		</div>
+		<dl class="text-sm">
+			<dt class="text-xs text-muted-foreground">{ i18n.T(ctx, "Builds at the same time") }</dt>
+			<dd class="font-medium">{ strconv.FormatInt(srv.BuildLimit, 10) }</dd>
+		</dl>
+	</div>
 }
 
 templ InviteDialog(next string) {

@@ -1,7 +1,7 @@
 // Visual regression of the component gallery. Opt in with VISUAL=1; refresh
 // baselines with VISUAL=1 npx playwright test e2e/visual.spec.js --update-snapshots.
 // Baselines are platform-specific, so compare on the machine that created them.
-const { test, expect } = require("@playwright/test");
+const { test, expect } = require("./fixtures");
 const { devLogin, newClient } = require("./helpers");
 
 test.skip(!process.env.VISUAL, "set VISUAL=1 to compare screenshots");

@@ -1,6 +1,6 @@
 // Generates docs/screenshots (run with SCREENSHOTS=1 npx playwright test e2e/screenshots.spec.js).
 const path = require("node:path");
-const { test, expect } = require("@playwright/test");
+const { test, expect } = require("./fixtures");
 const { devLogin, newClient } = require("./helpers");
 
 const out = process.env.SCREENSHOTS_DIR || path.resolve(__dirname, "../../docs/screenshots");

@@ -1,4 +1,4 @@
-const { test, expect } = require("@playwright/test");
+const { test, expect } = require("./fixtures");
 const { devLogin, toast, newClient } = require("./helpers");
 
 test("command palette navigates and runs actions from the keyboard", async ({ page }) => {

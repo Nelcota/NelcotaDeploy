@@ -1,5 +1,5 @@
 const path = require("node:path");
-const { test, expect } = require("@playwright/test");
+const { test, expect } = require("./fixtures");
 const { devLogin, toast, newClient } = require("./helpers");
 
 test("add, see, and remove a profile photo", async ({ page }) => {

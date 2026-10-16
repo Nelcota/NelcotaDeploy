@@ -40,22 +40,12 @@ templ deployActions(c AppContext, v DeploymentsView) {
 	@ui.Button("outline", "sm", templ.Attributes{"data-on:click": ui.Open("deploy-commit")}) {
 		{ i18n.T(ctx, "Publish a commit") }
 	}
-	if v.redeploySHA(c.App) != "" {
-		@ui.Button("ghost", "sm", templ.Attributes{"data-on:click": ui.Open("confirm-clean")}) {
-			{ i18n.T(ctx, "Build without cache") }
-		}
-	}
 }
 
 templ Deployments(s Shell, c AppContext, v DeploymentsView) {
 	@AppLayout(s, c, deployActions(c, v)) {
-		<div class="mb-3 flex items-center justify-between">
-			<h2 class="section-title">{ i18n.T(ctx, "History") }</h2>
-			@Connection()
-		</div>
 		@LiveStream("/ui/stream/apps/" + c.App.ID + "/deployments")
 		@DeploymentsTable(c.App, v)
-		@ui.ConfirmDialog("confirm-clean", "Build without cache?", i18n.Tf(ctx, "Rebuilds %s from scratch. Slower than a normal build.", ui.ShortSHA(v.redeploySHA(c.App))), "Start build", ui.Post("/ui/apps/"+c.App.ID+"/deploy?clean=true"), false)
 		@DeployCommitDialog(c.App)
 	}
 }
@@ -172,15 +162,8 @@ templ deploymentRow(app service.App, d service.Deployment, live bool) {
 						<span class="mono text-destructive">{ d.ErrorCode }</span>
 					}
 				</p>
-				if len(d.Timings) == 0 {
-					<p class="mt-2 text-xs text-muted-foreground">
-						if ui.Active(d.Status) {
-							{ i18n.T(ctx, "Stage timings not reported yet") }
-						} else {
-							{ i18n.T(ctx, "Stage timings not recorded") }
-						}
-					</p>
-				} else {
+				// Older deployments have no stage timings; nothing is shown for them.
+				if len(d.Timings) > 0 {
 					<ol class="mt-3 flex flex-wrap gap-1.5" aria-label={ i18n.T(ctx, "Stage durations") }>
 						for i, stage := range Stages {
 							<li class="stage" data-state={ stageState(d, i) }>

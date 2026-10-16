@@ -1,9 +1,9 @@
 package pages
 
 import (
-	"strings"
 	"github.com/Nelcota/NelcotaDeploy/web/i18n"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/Nelcota/NelcotaDeploy/internal/service"
@@ -162,7 +162,7 @@ type GitHubView struct {
 	// Result is "installed" or "failed" after returning from GitHub.
 	Result string
 	// Notify is nil when the panel sends no notifications.
-	Notify *service.NotificationSettings
+	Notify     *service.NotificationSettings
 	Configured map[string]bool
 	Err        string
 	Origin     string
@@ -438,14 +438,17 @@ templ NotificationsCard(n service.NotificationSettings) {
 						<input id="notify-secret" name="webhook_secret" class="input font-mono" type="password" autocomplete="new-password" aria-describedby="notify-secret-hint"/>
 					}
 				</fieldset>
-				<fieldset class="grid gap-3">
-					<legend class="mb-1 flex items-center gap-2 text-sm font-medium">
+				// Email stays folded until it is configured.
+				<details class="group rounded-xl border p-4" open?={ n.Email != nil }>
+					<summary class="flex cursor-pointer items-center gap-2 text-sm font-medium">
 						{ i18n.T(ctx, "Email") }
 						if n.Email != nil {
-							<button type="button" class="btn" data-variant="ghost" data-size="sm" data-on:click={ ui.Post("/ui/settings/notifications/email/remove") }>{ i18n.T(ctx, "Remove") }</button>
+							<span class="status" data-tone="success">{ n.Email.Host }</span>
+						} else {
+							<span class="font-normal text-muted-foreground">{ i18n.T(ctx, "Optional") }</span>
 						}
-					</legend>
-					<div class="grid gap-4 sm:grid-cols-2">
+					</summary>
+					<div class="mt-4 grid gap-4 sm:grid-cols-2">
 						@ui.Field("SMTP server", "notify-host", "", "") {
 							<input id="notify-host" name="smtp_host" class="input" value={ emailValue(n, "host") } placeholder="smtp.example.com" autocomplete="off" spellcheck="false"/>
 						}
@@ -474,7 +477,10 @@ templ NotificationsCard(n service.NotificationSettings) {
 							<input id="notify-to" name="smtp_to" class="input" value={ emailValue(n, "to") } placeholder="ops@example.com" autocomplete="off" aria-describedby="notify-to-hint"/>
 						}
 					</div>
-				</fieldset>
+					if n.Email != nil {
+						<button type="button" class="btn mt-3" data-variant="ghost" data-size="sm" data-on:click={ ui.Post("/ui/settings/notifications/email/remove") }>{ i18n.T(ctx, "Remove email") }</button>
+					}
+				</details>
 				<fieldset class="grid gap-2">
 					<legend class="mb-1 text-sm font-medium">{ i18n.T(ctx, "Notify me when") }</legend>
 					<div class="grid gap-2 sm:grid-cols-2">
@@ -519,35 +525,44 @@ templ S3Card(s3 bool) {
 			</div>
 		</header>
 		<section>
-			<form id="s3-form" class="grid gap-4" data-on:submit={ ui.PostForm("/ui/settings/backup-s3") }>
-				<div class="grid gap-4 sm:grid-cols-2">
-					@ui.Field("Endpoint", "s3-endpoint", "HTTPS URL, for example https://s3.eu-central-1.amazonaws.com.", "") {
-						<input id="s3-endpoint" name="endpoint" class="input" type="url" required pattern="https://.+" autocomplete="off" aria-describedby="s3-endpoint-hint"/>
+			<details open?={ s3 }>
+				<summary class="cursor-pointer text-sm font-medium">
+					if s3 {
+						{ i18n.T(ctx, "Change the S3 configuration") }
+					} else {
+						{ i18n.T(ctx, "Set up S3") }
 					}
-					@ui.Field("Region", "s3-region", "", "") {
-						<input id="s3-region" name="region" class="input" required autocomplete="off"/>
-					}
-					@ui.Field("Bucket", "s3-bucket", "", "") {
-						<input id="s3-bucket" name="bucket" class="input" required autocomplete="off"/>
-					}
-					@ui.Field("Prefix", "s3-prefix", "Optional folder inside the bucket.", "") {
-						<input id="s3-prefix" name="prefix" class="input" autocomplete="off"/>
-					}
-					@ui.Field("Access key", "s3-access", "", "") {
-						<input id="s3-access" name="access_key" class="input" required autocomplete="off"/>
-					}
-					@ui.Field("Secret key", "s3-secret", "", "") {
-						<input id="s3-secret" name="secret_key" class="input" type="password" required autocomplete="new-password"/>
-					}
-					@ui.Field("Session token", "s3-session", "Only for temporary credentials.", "") {
-						<input id="s3-session" name="session_token" class="input" type="password" autocomplete="new-password"/>
-					}
-				</div>
-				<div class="flex flex-wrap gap-2">
-					<button type="submit" class="btn" data-variant="outline">{ i18n.T(ctx, "Save S3 configuration") }</button>
-					<button type="button" class="btn" data-variant="ghost" data-on:click={ ui.PostFormOf("/ui/settings/backup-s3/test", "#s3-form") }>{ i18n.T(ctx, "Test connection") }</button>
-				</div>
-			</form>
+				</summary>
+				<form id="s3-form" class="mt-4 grid gap-4" data-on:submit={ ui.PostForm("/ui/settings/backup-s3") }>
+					<div class="grid gap-4 sm:grid-cols-2">
+						@ui.Field("Endpoint", "s3-endpoint", "HTTPS URL, for example https://s3.eu-central-1.amazonaws.com.", "") {
+							<input id="s3-endpoint" name="endpoint" class="input" type="url" required pattern="https://.+" autocomplete="off" aria-describedby="s3-endpoint-hint"/>
+						}
+						@ui.Field("Region", "s3-region", "", "") {
+							<input id="s3-region" name="region" class="input" required autocomplete="off"/>
+						}
+						@ui.Field("Bucket", "s3-bucket", "", "") {
+							<input id="s3-bucket" name="bucket" class="input" required autocomplete="off"/>
+						}
+						@ui.Field("Prefix", "s3-prefix", "Optional folder inside the bucket.", "") {
+							<input id="s3-prefix" name="prefix" class="input" autocomplete="off"/>
+						}
+						@ui.Field("Access key", "s3-access", "", "") {
+							<input id="s3-access" name="access_key" class="input" required autocomplete="off"/>
+						}
+						@ui.Field("Secret key", "s3-secret", "", "") {
+							<input id="s3-secret" name="secret_key" class="input" type="password" required autocomplete="new-password"/>
+						}
+						@ui.Field("Session token", "s3-session", "Only for temporary credentials.", "") {
+							<input id="s3-session" name="session_token" class="input" type="password" autocomplete="new-password"/>
+						}
+					</div>
+					<div class="flex flex-wrap gap-2">
+						<button type="submit" class="btn" data-variant="outline">{ i18n.T(ctx, "Save S3 configuration") }</button>
+						<button type="button" class="btn" data-variant="ghost" data-on:click={ ui.PostFormOf("/ui/settings/backup-s3/test", "#s3-form") }>{ i18n.T(ctx, "Test connection") }</button>
+					</div>
+				</form>
+			</details>
 		</section>
 	</section>
 }

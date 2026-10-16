@@ -235,6 +235,9 @@ func (h *handler) saveAppSettings(w http.ResponseWriter, r *http.Request) {
 		if _, err := h.s.Apps.Update(r.Context(), current.ID, in); err != nil {
 			return err
 		}
+		if err := s.signals(map[string]any{"_dirty": false}); err != nil {
+			return err
+		}
 		return s.toast("success", "Settings saved.")
 	})
 }

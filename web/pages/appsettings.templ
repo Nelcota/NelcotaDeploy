@@ -25,33 +25,41 @@ func NewAppInput() service.AppInput {
 	return service.AppInput{Branch: "main", Config: service.AppConfig{MemoryBytes: 256 << 20, NanoCPUs: 1e9, Port: 8080, HealthPath: "/", HealthTimeout: 60, Replicas: 1, CacheEnabled: true, Dockerfile: "Dockerfile"}}
 }
 
-templ AppForm(v AppFormView) {
-	<form id="app-form" class="grid gap-6" data-on:submit={ ui.PostForm("/ui/apps/" + v.ID + "/settings") }>
+// AppForm edits the app's settings. The save bar appears once something
+// changes ($_dirty), and saving clears it.
+templ AppForm(v AppFormView, logo templ.Component) {
+	<form id="app-form" class="grid gap-6" data-signals:_dirty="false" data-on:input="evt.target.form === el && ($_dirty = true)" data-on:change="evt.target.form === el && ($_dirty = true)" data-on:submit={ ui.PostForm("/ui/apps/" + v.ID + "/settings") }>
 		<input type="hidden" name="server_id" value={ v.Input.ServerID }/>
-		<div id="section-general" class="-mb-6 h-0 scroll-mt-6" aria-hidden="true"></div>
-		@ui.Card("General", "") {
-			<div class="grid gap-4 sm:grid-cols-2">
-				@ui.Field("Name", "app-name", "", "") {
-					<input id="app-name" name="name" class="input" required maxlength="80" value={ v.Input.Name } autocomplete="off"/>
+		<div id="section-general" class="scroll-mt-6">
+			@ui.Card("General", "") {
+				if logo != nil {
+					<div class="mb-5 border-b pb-5">
+						@logo
+					</div>
 				}
-				@ui.Field("Branch", "app-branch", "Pushes to this branch publish automatically.", "") {
-					<input id="app-branch" name="branch" class="input" required maxlength="200" value={ v.Input.Branch } aria-describedby="app-branch-hint"/>
-				}
-				<div id="section-domains" class="scroll-mt-6 sm:col-span-2">
-					@ui.Field("Web addresses", "app-domains", "One per line, like app.example.com. HTTPS certificates are issued automatically.", "") {
-						<textarea id="app-domains" name="domains" class="textarea font-mono" rows="2" spellcheck="false" placeholder="app.example.com" aria-describedby="app-domains-hint">{ strings.Join(v.Input.Config.Domains, "\n") }</textarea>
+				<div class="grid gap-4 sm:grid-cols-2">
+					@ui.Field("Name", "app-name", "", "") {
+						<input id="app-name" name="name" class="input" required maxlength="80" value={ v.Input.Name } autocomplete="off"/>
 					}
+					@ui.Field("Branch", "app-branch", "Pushes to this branch publish automatically.", "") {
+						<input id="app-branch" name="branch" class="input" required maxlength="200" value={ v.Input.Branch } aria-describedby="app-branch-hint"/>
+					}
+					<div id="section-domains" class="scroll-mt-6 sm:col-span-2">
+						@ui.Field("Web addresses", "app-domains", "One per line, like app.example.com. HTTPS certificates are issued automatically.", "") {
+							<textarea id="app-domains" name="domains" class="textarea font-mono" rows="2" spellcheck="false" placeholder="app.example.com" aria-describedby="app-domains-hint">{ strings.Join(v.Input.Config.Domains, "\n") }</textarea>
+						}
+					</div>
+					<div id="section-health" class="contents">
+						@ui.Field("Your app listens on port", "app-port", "", "") {
+							<input id="app-port" name="port" class="input" type="number" min="1" max="65535" required value={ u32(v.Input.Config.Port) }/>
+						}
+						@ui.Field("Health check path", "app-health", "A new version gets traffic only after this answers with 2xx or 3xx.", "") {
+							<input id="app-health" name="health_path" class="input font-mono" required pattern="/.*" value={ v.Input.Config.HealthPath } aria-describedby="app-health-hint"/>
+						}
+					</div>
 				</div>
-				<div id="section-health" class="contents">
-					@ui.Field("Your app listens on port", "app-port", "", "") {
-						<input id="app-port" name="port" class="input" type="number" min="1" max="65535" required value={ u32(v.Input.Config.Port) }/>
-					}
-					@ui.Field("Health check path", "app-health", "A new version gets traffic only after this answers with 2xx or 3xx.", "") {
-						<input id="app-health" name="health_path" class="input font-mono" required pattern="/.*" value={ v.Input.Config.HealthPath } aria-describedby="app-health-hint"/>
-					}
-				</div>
-			</div>
-		}
+			}
+		</div>
 		<details id="section-advanced" class="surface scroll-mt-6 p-5 sm:p-6">
 			<summary class="cursor-pointer font-medium">{ i18n.T(ctx, "Advanced") }</summary>
 			<div class="mt-5 grid gap-4 sm:grid-cols-2">
@@ -91,7 +99,7 @@ templ AppForm(v AppFormView) {
 				</label>
 			</div>
 		</details>
-		<div class="sticky bottom-24 z-10 flex flex-wrap items-center justify-end gap-3 rounded-2xl border bg-background/90 p-3 shadow-lg shadow-black/10 backdrop-blur lg:bottom-6">
+		<div class="sticky bottom-24 z-10 hidden flex-wrap items-center justify-end gap-3 rounded-2xl border bg-background/90 p-3 shadow-lg shadow-black/10 backdrop-blur lg:bottom-6" data-class:hidden="!$_dirty" data-class:flex="$_dirty">
 			<p class="me-auto text-sm text-muted-foreground">{ i18n.T(ctx, "Saving restarts the app with the new settings.") }</p>
 			<button type="submit" class="btn">{ i18n.T(ctx, "Save changes") }</button>
 		</div>
@@ -119,7 +127,7 @@ templ NewApp(s Shell, v WizardView) {
 				}
 			}
 		} else {
-			<div id="wizard" class="mx-auto grid max-w-2xl gap-6">
+			<div id="wizard" class="grid max-w-2xl gap-6">
 				@WizardRepository(v, "")
 			</div>
 		}
@@ -147,7 +155,7 @@ templ wizardSteps(current int) {
 }
 
 templ WizardRepository(v WizardView, err string) {
-	<div id="wizard" class="mx-auto grid max-w-2xl gap-6">
+	<div id="wizard" class="grid max-w-2xl gap-6">
 		@wizardSteps(0)
 		<form class="surface grid gap-5 p-5 sm:p-6" data-on:submit={ ui.PostForm("/ui/apps/new/inspect") }>
 			<div class="grid gap-1">
@@ -176,7 +184,7 @@ templ WizardRepository(v WizardView, err string) {
 }
 
 templ WizardSettings(v WizardView) {
-	<div id="wizard" class="mx-auto grid max-w-2xl gap-6">
+	<div id="wizard" class="grid max-w-2xl gap-6">
 		@wizardSteps(1)
 		<form class="surface grid gap-5 p-5 sm:p-6" data-on:submit={ ui.PostForm("/ui/apps") }>
 			<input type="hidden" name="repository" value={ v.Repository }/>
@@ -366,10 +374,8 @@ templ AppSettings(s Shell, c AppContext, v AppSettingsView) {
 						<a class="rounded-full border px-3 py-1.5 text-sm text-muted-foreground hover:bg-muted hover:text-foreground" href={ templ.SafeURL("#" + l[0]) }>{ i18n.T(ctx, l[1]) }</a>
 					}
 				</nav>
-				@ui.Card("Logo", "Shown next to the app's name across the panel.") {
-					@LogoSettings(c.App)
-				}
-				@AppForm(v.Form)
+				@AppForm(v.Form, LogoSettings(c.App))
+				@LogoForm(c.App)
 				@EnvCard(c.App, v.Env, v.EnvErr)
 				@RuntimeCard(c.App)
 			} else {
@@ -381,18 +387,19 @@ templ AppSettings(s Shell, c AppContext, v AppSettingsView) {
 	}
 }
 
+// LogoForm submits a new logo. It sits outside the settings form (forms can't
+// nest); the file input in LogoSettings belongs to it through its form attribute.
+templ LogoForm(a service.App) {
+	<form id="logo-form" hidden enctype="multipart/form-data" data-on:submit={ ui.PostForm("/ui/apps/" + a.ID + "/logo") }></form>
+}
+
 // LogoSettings shows the app's logo with upload and remove controls. The
 // browser shrinks the chosen image before sending it (app.js).
 templ LogoSettings(a service.App) {
 	<div id="app-logo" class="flex flex-wrap items-center gap-4">
 		@AppLogo(a, "")
-		<form
-			id="logo-form"
-			class="grid gap-1"
-			enctype="multipart/form-data"
-			data-on:submit={ ui.PostForm("/ui/apps/" + a.ID + "/logo") }
-		>
-			<input id="logo-file" class="sr-only" type="file" name="logo" tabindex="-1" aria-hidden="true" accept="image/jpeg,image/png,image/webp,image/gif" data-logo-input/>
+		<div class="grid gap-1">
+			<input id="logo-file" form="logo-form" class="sr-only" type="file" name="logo" tabindex="-1" aria-hidden="true" accept="image/jpeg,image/png,image/webp,image/gif" data-logo-input/>
 			<span class="flex flex-wrap gap-2">
 				<button type="button" class="btn" data-variant="outline" data-size="sm" data-on:click="document.getElementById('logo-file').click()">
 					@ui.Icon("image-up", "")
@@ -407,7 +414,7 @@ templ LogoSettings(a service.App) {
 				}
 			</span>
 			<span class="text-xs text-muted-foreground">{ i18n.T(ctx, "JPEG, PNG, or WebP. Transparent backgrounds are kept.") }</span>
-		</form>
+		</div>
 	</div>
 }
 

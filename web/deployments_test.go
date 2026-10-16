@@ -28,7 +28,7 @@ func TestDeploymentsPage(t *testing.T) {
 		`href="/apps/dev-app-api/logs?deployment=newer"`,
 		// The older success can be rolled back; the running one cannot.
 		`id="rollback-dev-deploy-api-success"`, "Restore version bbbbbbb?", "goes live after its health check passes.",
-		"Publish latest", "Publish a commit", "Build without cache", `id="confirm-clean"`,
+		"Publish latest", "Publish a commit", "Build without cache",
 		`data-init="@get(&#34;/ui/stream/apps/dev-app-api/deployments&#34;`, `aria-current="page"`, "https://github.com/example/api")
 	mustNotContain(t, res.body, `id="rollback-newer"`, `id="cancel-`)
 	if res := e.admin().get("/apps/nope/deployments"); res.code != http.StatusNotFound {

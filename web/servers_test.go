@@ -76,7 +76,7 @@ func TestServerLimitsAndPrune(t *testing.T) {
 	e := newEnv(t)
 	s := e.admin()
 	res := s.post("/ui/servers/dev-server-api/limits", url.Values{"build_limit": {"3"}, "cache_gib": {"10"}})
-	mustContain(t, res.body, `elements <dl id="server-limits-dev-server-api"`, "10.0 GiB", ">3<", "Limits saved for Server api.")
+	mustContain(t, res.body, `elements <div id="server-limits-dev-server-api"`, "10.0 GiB", ">3<", "Limits saved for Server api.")
 	res = s.post("/ui/servers/dev-server-api/limits", url.Values{"build_limit": {"9"}, "cache_gib": {"10"}})
 	if toast(res.body) != "danger" {
 		t.Fatal(res.body)

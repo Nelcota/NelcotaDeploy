@@ -21,6 +21,11 @@ func (v LogsView) fileName(app string) string {
 	return app + "-" + ui.ShortSHA(v.Selected.SHA) + "-" + v.Selected.ID + ".log"
 }
 
+// finished reports whether the selected build log is complete.
+func (v LogsView) finished() bool {
+	return !v.Runtime && v.Selected.ID != "" && !ui.Active(v.Selected.Status)
+}
+
 templ Logs(s Shell, c AppContext, v LogsView) {
 	@AppLayout(s, c, nil) {
 		<div class="grid gap-3">
@@ -50,7 +55,7 @@ templ Logs(s Shell, c AppContext, v LogsView) {
 						<span id="log-status" class="status" data-tone={ ui.Tone(v.Selected.Status) } data-status={ v.Selected.Status }>{ i18n.T(ctx, ui.StatusLabel(v.Selected.Status)) }</span>
 						<span class="mono text-muted-foreground" title={ v.Selected.SHA }>{ ui.ShortSHA(v.Selected.SHA) }</span>
 					}
-					<span id="log-conn" class="conn" data-state="connecting" role="status">{ i18n.T(ctx, "Connecting…") }</span>
+					<span id="log-conn" class="conn" data-state="connecting" role="status" hidden?={ v.finished() }>{ i18n.T(ctx, "Connecting…") }</span>
 				</div>
 			</form>
 			if v.Err != "" {
@@ -69,11 +74,13 @@ templ Logs(s Shell, c AppContext, v LogsView) {
 					</div>
 					<span id="log-matches" class="min-w-20 text-xs text-muted-foreground tabular-nums" aria-live="polite"></span>
 					<div class="flex flex-wrap items-center gap-1 sm:ms-auto">
-						@ui.Button("outline", "sm", templ.Attributes{"data-log": "pause", "aria-pressed": "false"}) {
+						// A finished build doesn't grow, so following and pausing are hidden
+						// (kept in the page because logs.js drives them).
+						@ui.Button("outline", "sm", templ.Attributes{"data-log": "pause", "aria-pressed": "false", "hidden": v.finished()}) {
 							@ui.Icon("pause", "")
 							<span>{ i18n.T(ctx, "Pause") }</span>
 						}
-						@ui.Button("outline", "sm", templ.Attributes{"data-log": "follow", "aria-pressed": "true"}) {
+						@ui.Button("outline", "sm", templ.Attributes{"data-log": "follow", "aria-pressed": "true", "hidden": v.finished()}) {
 							@ui.Icon("arrow-down-to-line", "")
 							<span>{ i18n.T(ctx, "Follow") }</span>
 						}

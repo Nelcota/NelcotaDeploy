@@ -1,7 +1,7 @@
 const { spawn } = require("node:child_process");
 const path = require("node:path");
 const fs = require("node:fs");
-const { test, expect } = require("@playwright/test");
+const { test, expect } = require("./fixtures");
 
 // These tests run their own panel so they can stop and restart it while the
 // browser holds live streams, exactly like a panel restart or network loss.

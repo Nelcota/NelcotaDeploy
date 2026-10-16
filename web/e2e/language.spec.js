@@ -1,4 +1,4 @@
-const { test, expect } = require("@playwright/test");
+const { test, expect } = require("./fixtures");
 const { devLogin, newClient } = require("./helpers");
 
 // Expected Portuguese text comes from the catalog the page embeds for scripts,

@@ -270,10 +270,8 @@ templ Public(s Shell) {
 		<a href="#main" class="skip-link">{ i18n.T(ctx, "Skip to content") }</a>
 		<div class="flex min-h-dvh flex-col p-3 lg:p-4">
 			<header class="flex h-14 items-center justify-between px-1">
-				<span class="flex items-center gap-3 font-medium">
-					@Brand()
-					NelcotaDeploy
-				</span>
+				// The sign-in pages show the mascot by the form, so the bar has the name only.
+				<span class="font-medium">NelcotaDeploy</span>
 				<span class="flex items-center gap-2">
 					@LanguageMenu(s.Path, "down")
 					@ThemeToggle()

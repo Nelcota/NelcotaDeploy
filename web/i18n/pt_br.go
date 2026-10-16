@@ -941,6 +941,11 @@ var ptBR = map[string]string{
 	"the installation took too long":                                   "a instalação demorou demais",
 	"sudo needs a password; use root or allow passwordless sudo":       "o sudo pede senha; use root ou permita sudo sem senha",
 	"the connection ended before the script finished":                  "a conexão terminou antes de o script acabar",
+	"Optional":                    "Opcional",
+	"Remove email":                "Remover e-mail",
+	"Change the S3 configuration": "Alterar a configuração do S3",
+	"Set up S3":                   "Configurar o S3",
+	"Done:":                       "Concluído:",
 }
 
 // ScriptKeys are the strings scripts render in the browser; pages embed their

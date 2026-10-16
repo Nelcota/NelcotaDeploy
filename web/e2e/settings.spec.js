@@ -1,4 +1,4 @@
-const { test, expect } = require("@playwright/test");
+const { test, expect } = require("./fixtures");
 const { virtualAuthenticator, devLogin, toast, newClient } = require("./helpers");
 
 test("invite a member who enrolls a passkey and gets member access", async ({ page, browser }) => {
@@ -107,17 +107,20 @@ test("notifications: save a webhook and email, then remove the webhook", async (
 	await page.goto("/settings/github");
 	const card = page.locator("#notifications");
 	await card.getByLabel("Webhook address").fill("https://hooks.slack.com/services/T0/B0/secret-path");
+	// Email is folded until it is configured.
+	await card.locator("summary", { hasText: "Email" }).click();
 	await card.getByLabel("SMTP server").fill("smtp.example.com");
 	await card.getByLabel("From").fill("panel@example.com");
 	await card.getByLabel("Send to").fill("ops@example.com");
 	await card.getByLabel("A new version is available").uncheck();
 	await card.getByRole("button", { name: "Save notifications" }).click();
 	await toast(page, "Notifications saved.");
-	await expect(card.locator(".status")).toHaveText("Slack");
+	await expect(card.locator(".status", { hasText: "Slack" })).toBeVisible();
+	await expect(card.locator(".status", { hasText: "smtp.example.com" })).toBeVisible();
 	await expect(card).not.toContainText("secret-path");
 	await expect(card.getByLabel("A new version is available")).not.toBeChecked();
 	await expect(card.getByLabel("Webhook address")).toHaveValue("");
 	await card.getByRole("button", { name: "Remove" }).first().click();
 	await toast(page, "Webhook removed.");
-	await expect(card.locator(".status")).toHaveCount(0);
+	await expect(card.locator(".status", { hasText: "Slack" })).toHaveCount(0);
 });

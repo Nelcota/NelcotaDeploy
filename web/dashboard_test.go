@@ -17,10 +17,12 @@ func TestHomePage(t *testing.T) {
 	if res.code != http.StatusOK {
 		t.Fatal(res.code)
 	}
+	// Nothing needs attention: a quiet line, no section heading.
+	mustNotContain(t, res.body, "Needs your attention")
 	mustContain(t, res.body, "Home", `data-init="@get(&#34;/ui/stream/dashboard&#34;`, `id="dashboard"`,
 		// Setup checklist derived from data: passkey and GitHub still pending.
 		"Get your first app online", "3 of 5 done", "Add a passkey to your account", "Connect GitHub",
-		"Needs your attention", "Everything is running normally.",
+		"Everything is running normally.", "Done:", "Add a server · Create an app · Publish your first app",
 		`id="app-row-dev-app-api"`, `href="/apps/dev-app-api"`, `data-state="live"`, ">Live<", "api.example.test", "bbbbbbb",
 		`aria-label="Publish the latest version of api"`, "deploy?latest=1", `id="server-dev-server-api"`, "Waiting for metrics", "New app")
 	member := e.member().get("/")

@@ -89,24 +89,32 @@ templ AppLayout(s Shell, c AppContext, actions templ.Component) {
 			}
 		</div>
 		// Tabs scroll sideways on narrow screens without showing a scrollbar.
-		<nav aria-label={ i18n.T(ctx, "App sections") } class="tabs-nav mb-6 border-b">
-			<ul class="flex gap-1">
-				for _, t := range appTabs {
-					<li>
-						<a
-							href={ templ.SafeURL(tabHref(c.App.ID, t.key)) }
-							class="-mb-px inline-flex items-center gap-2 border-b-2 border-transparent px-3 py-2 max-sm:px-2.5 max-sm:[&_svg]:hidden text-sm font-medium whitespace-nowrap text-muted-foreground hover:text-foreground aria-[current=page]:border-primary aria-[current=page]:text-foreground"
-							if t.key == c.Tab {
-								aria-current="page"
-							}
-						>
-							@ui.Icon(t.icon, "")
-							{ i18n.T(ctx, t.label) }
-						</a>
-					</li>
-				}
-			</ul>
-		</nav>
+		<div class="mb-6 flex items-end gap-4 border-b">
+			<nav aria-label={ i18n.T(ctx, "App sections") } class="tabs-nav min-w-0 flex-1">
+				<ul class="flex gap-1">
+					for _, t := range appTabs {
+						<li>
+							<a
+								href={ templ.SafeURL(tabHref(c.App.ID, t.key)) }
+								class="-mb-px inline-flex items-center gap-2 border-b-2 border-transparent px-3 py-2 max-sm:px-2.5 max-sm:[&_svg]:hidden text-sm font-medium whitespace-nowrap text-muted-foreground hover:text-foreground aria-[current=page]:border-primary aria-[current=page]:text-foreground"
+								if t.key == c.Tab {
+									aria-current="page"
+								}
+							>
+								@ui.Icon(t.icon, "")
+								{ i18n.T(ctx, t.label) }
+							</a>
+						</li>
+					}
+				</ul>
+			</nav>
+			// Tabs that update live show the connection state at the end of the row.
+			if c.Tab == "overview" || c.Tab == "deployments" {
+				<span class="hidden pb-2.5 sm:block">
+					@Connection()
+				</span>
+			}
+		</div>
 		{ children... }
 	}
 }

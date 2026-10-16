@@ -1,5 +1,5 @@
 const fs = require("node:fs");
-const { test, expect } = require("@playwright/test");
+const { test, expect } = require("./fixtures");
 const { devLogin, toast, newClient } = require("./helpers");
 
 const screenText = (page) => page.locator("#terminal .xterm-rows").innerText();
@@ -62,7 +62,9 @@ test("large build logs render quickly and support search and download", async ({
 	await page.getByLabel("Search logs").press("Enter");
 	await expect(page.locator("#log-matches")).toHaveText("1 of 1");
 	await expect.poll(() => screenText(page)).toContain("step 12345 ok");
-	await expect(page.getByRole("button", { name: "Follow" })).toHaveAttribute("aria-pressed", "false");
+	// A finished build doesn't grow, so there is nothing to follow or pause.
+	await expect(page.getByRole("button", { name: "Follow" })).toBeHidden();
+	await expect(page.getByRole("button", { name: "Pause" })).toBeHidden();
 
 	const [download] = await Promise.all([page.waitForEvent("download"), page.getByRole("button", { name: "Download" }).click()]);
 	expect(download.suggestedFilename()).toBe("api-bbbbbbb-dev-deploy-api-success.log");

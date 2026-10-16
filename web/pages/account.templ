@@ -105,7 +105,7 @@ templ Account(s Shell, v AccountView) {
 			<dl class="mt-5 grid gap-3 text-sm sm:grid-cols-3">
 				<div><dt class="text-muted-foreground">{ i18n.T(ctx, "Name") }</dt><dd class="font-medium">{ s.User.Name }</dd></div>
 				<div><dt class="text-muted-foreground">{ i18n.T(ctx, "Email") }</dt><dd class="font-medium break-all">{ s.User.Email }</dd></div>
-				<div><dt class="text-muted-foreground">{ i18n.T(ctx, "Role") }</dt><dd class="font-medium capitalize">{ s.User.Role }</dd></div>
+				<div><dt class="text-muted-foreground">{ i18n.T(ctx, "Role") }</dt><dd class="font-medium">{ i18n.T(ctx, RoleLabel(s.User.Role)) }</dd></div>
 			</dl>
 			<div class="mt-4">
 				<button type="button" class="btn" data-variant="outline" data-size="sm" data-logout>
@@ -223,7 +223,7 @@ templ TwoFactor(f service.Factors) {
 			} else {
 				<p class="muted">{ i18n.T(ctx, "Turning this on signs you out everywhere and revokes your API tokens.") }</p>
 				<div>
-					@ui.Button("", "sm", templ.Attributes{"data-on:click": ui.Post("/ui/account/totp/begin")}) {
+					@ui.Button("outline", "sm", templ.Attributes{"data-on:click": ui.Post("/ui/account/totp/begin")}) {
 						@ui.Icon("smartphone", "")
 						{ i18n.T(ctx, "Set up authenticator") }
 					}
