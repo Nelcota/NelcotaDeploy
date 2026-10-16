@@ -415,6 +415,13 @@ func stageArchive(ctx context.Context, input, stage string, key []byte) (map[str
 	if err != nil {
 		return nil, err
 	}
+	// Entries are written through an os.Root, so even a name that slipped past
+	// the checks below could not leave the stage directory.
+	root, err := os.OpenRoot(stage)
+	if err != nil {
+		return nil, err
+	}
+	defer root.Close()
 	tr := tar.NewReader(sr)
 	seen := map[string]bool{}
 	var total int64
@@ -427,7 +434,7 @@ func stageArchive(ctx context.Context, input, stage string, key []byte) (map[str
 			return nil, e
 		}
 		name := h.Name
-		if h.Typeflag != tar.TypeReg || name == "config/backup.key" || name != filepath.ToSlash(filepath.Clean(name)) || strings.Contains(name, "\\") || (name != "panel.db" && !strings.HasPrefix(name, "config/")) || strings.HasPrefix(name, "/") || strings.Contains("/"+name+"/", "/../") || seen[name] {
+		if h.Typeflag != tar.TypeReg || !filepath.IsLocal(name) || name == "config/backup.key" || name != filepath.ToSlash(filepath.Clean(name)) || strings.Contains(name, "\\") || (name != "panel.db" && !strings.HasPrefix(name, "config/")) || strings.HasPrefix(name, "/") || strings.Contains("/"+name+"/", "/../") || seen[name] {
 			return nil, errors.New("invalid archive path or entry")
 		}
 		if h.Size < 0 || h.Size > 2<<30 || (name != "panel.db" && h.Size > 32<<20) {
@@ -441,11 +448,11 @@ func stageArchive(ctx context.Context, input, stage string, key []byte) (map[str
 		if len(seen) > maxEntries {
 			return nil, errors.New("too many backup entries")
 		}
-		dest := filepath.Join(stage, filepath.FromSlash(name))
-		if e = os.MkdirAll(filepath.Dir(dest), 0700); e != nil {
+		dest := filepath.FromSlash(name)
+		if e = root.MkdirAll(filepath.Dir(dest), 0700); e != nil {
 			return nil, e
 		}
-		out, e := os.OpenFile(dest, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
+		out, e := root.OpenFile(dest, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
 		if e != nil {
 			return nil, e
 		}

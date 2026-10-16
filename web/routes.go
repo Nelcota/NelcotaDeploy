@@ -242,7 +242,7 @@ func isReauth(err error) bool {
 // Browsers drop tabs and newlines from URLs, so "/\t/host" would become
 // "//host"; any control character, space, or backslash is refused.
 func safeNext(next string) string {
-	if len(next) == 0 || next[0] != '/' || (len(next) > 1 && next[1] == '/') {
+	if len(next) == 0 || next[0] != '/' || (len(next) > 1 && (next[1] == '/' || next[1] == '\\')) {
 		return "/"
 	}
 	for _, c := range next {
