@@ -47,6 +47,9 @@ func TestLockRejectsSpecialFilesLinksAndPublicPermissions(t *testing.T) {
 				e = os.Link(other, path)
 			case "public":
 				e = os.WriteFile(path, nil, 0644)
+				if e == nil {
+					e = os.Chmod(path, 0644)
+				}
 			}
 			if e != nil {
 				t.Fatal(e)

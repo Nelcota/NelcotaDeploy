@@ -1,0 +1,9 @@
+{
+  "name": "nelcota-deploy-browser-tests",
+  "private": true,
+  "scripts": {
+    "test": "node --test --test-concurrency=1 web/browser.test.cjs",
+    "check": "node --check web/assets/app.js"
+  },
+  "devDependencies": { "playwright": "1.62.1" }
+}

@@ -23,6 +23,7 @@ import (
 	"github.com/nelcota/nelcota-deploy/internal/agent"
 	agentv1 "github.com/nelcota/nelcota-deploy/internal/gen/agent/v1"
 	"github.com/nelcota/nelcota-deploy/internal/security"
+	"github.com/nelcota/nelcota-deploy/internal/testinfra"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
 	"google.golang.org/protobuf/proto"
@@ -56,8 +57,9 @@ func TestDockerBuildKitCaddy(t *testing.T) {
 		t.Fatal(e)
 	}
 	defer testcontainers.TerminateContainer(caddy)
-	builder, e := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{ContainerRequest: testcontainers.ContainerRequest{Image: "moby/buildkit:v0.34.0", ExposedPorts: []string{"1234/tcp"}, Privileged: true, Cmd: []string{"--addr", "tcp://0.0.0.0:1234"}, HostConfigModifier: func(h *legacycontainer.HostConfig) {
+	builder, e := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{ContainerRequest: testcontainers.ContainerRequest{Image: "moby/buildkit:v0.34.0", Env: testinfra.Environment(), Files: testinfra.Files(), ExposedPorts: []string{"1234/tcp"}, Privileged: true, Cmd: []string{"--addr", "tcp://0.0.0.0:1234"}, HostConfigModifier: func(h *legacycontainer.HostConfig) {
 		h.Privileged = true
+		h.ExtraHosts = append(h.ExtraHosts, testinfra.Hosts()...)
 		h.PortBindings = nat.PortMap{nat.Port("1234/tcp"): []nat.PortBinding{{HostIP: "127.0.0.1"}}}
 	}, WaitingFor: wait.ForListeningPort("1234/tcp")}, Started: true})
 	if e != nil {

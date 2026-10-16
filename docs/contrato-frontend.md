@@ -1,6 +1,6 @@
 # Contrato com o frontend
 
-O ponto de extensão é `web.Register(r chi.Router, services service.Services)`, chamado por `internal/httpapi.New`. Substituir a página placeholder por rotas templ/Datastar nesse arquivo. A composição de processos fica em `cmd/`; nenhuma regra de negócio deve ir para as páginas.
+O ponto de extensão é `web.Register(r chi.Router, services service.Services, development ...bool)`, chamado por `internal/httpapi.New`. A interface em `web/assets` usa as APIs abaixo, com shell HTML escapado e assets locais versionados e comprimidos. A composição de processos fica em `cmd/`; nenhuma regra de negócio deve ir para as páginas.
 
 ## Convenções
 
@@ -168,7 +168,7 @@ func Register(r chi.Router, services service.Services) {
 
 ## Desenvolvimento sem VPS
 
-`make dev-seed` cria/atualiza dados em `.local/dev`. `make dev` executa o painel somente em `http://127.0.0.1:8080`, com três apps, servidores, deploys e logs falsos, sem Docker/GitHub. Fazer POST `/api/dev/session` com Origin correto e JSON `{}`; então buscar `/api/session`. O endpoint dev não é registrado no modo serve. O dispatcher simula deploys, logs de runtime e métricas; não representa desempenho real.
+`make dev-seed` cria/atualiza dados em `.local/dev`. `make dev` executa o painel somente em `http://localhost:8080`, com três apps, servidores, deploys e logs falsos, sem Docker/GitHub. Fazer POST `/api/dev/session` com Origin correto e JSON `{}`; então buscar `/api/session`. O endpoint dev não é registrado no modo serve. O dispatcher simula deploys, logs de runtime e métricas; não representa desempenho real.
 
 ## Tokens de API com escopos
 
@@ -202,3 +202,16 @@ Servers adiciona UpdateLimits(ctx,id,ServerLimitsInput) e os campos version e re
 `server.metrics` mantém server_id e metrics. metrics.containers contém até 256 entradas: app_id, container_id, cpu_percent (100% por core), memory_used (sem cache inativo), memory_limit, network_rx, network_tx, pids. Primeira amostra de CPU pode ser zero; valores são snapshots, não série persistida.
 
 S3: PUT /api/settings/backup.s3 recebe value como string JSON com endpoint HTTPS, region, bucket, prefix, access_key, secret_key e session_token opcional. Get só indica a presença da configuração; nunca preencher inputs com um segredo lido. Arquivo 0600 definido por ambiente tem precedência. Backup não oferece download público nem devolve a chave pela API; operação detalhada em operacao-backend.md.
+
+
+## Interface e contratos acrescentados
+
+- Páginas autenticadas: `/`, `/apps/{id}`, `/servers`, `/settings`, `/security`. Páginas públicas: `/login` e `/register`. O botão de login simulado só aparece no modo dev.
+- `GET /api/overview` reúne `apps`, `servers` e o último deployment por app; exige `apps:read`, `servers:read` e `deploys:read`. A consulta de últimos deployments é indexada e não faz uma requisição por app.
+- Streams globais exigem `logs:read` e o escopo do tópico (`apps:read`, `servers:read` ou `deploys:read`). `app.deleted` contém `{id}`.
+- “Reiniciar” exige app iniciada, envia somente o comando de restart e não altera a revisão. “Parar” e “escalar” modificam apenas seus campos, dentro de transação.
+- A exclusão registra uma fila durável para remover logs do disco. A limpeza automática é idempotente, limitada por lote e repetida após erro/reinício; eventos atrasados não recriam logs de uma app removida.
+- O callback GitHub redireciona navegações HTML para a instalação da App; clientes JSON continuam recebendo `installation_url`. `state` permanece obrigatório e de uso único.
+- Logs de tela mantêm os últimos 256 KiB em memória; pausar não aumenta esse limite. O buffer de eventos durante a leitura inicial também é limitado. Reconexões recarregam snapshots e logs disponíveis, sem prometer replay durável ou ausência de sobreposição.
+- A UI conserva sessão/CSRF, desafios, tokens e convites apenas em memória. Apenas a preferência de tema é gravada em localStorage. Segredos são apagados dos diálogos e inputs ao navegar.
+- `GET` pode repetir uma única vez após HTTP 429 respeitando `Retry-After`; mutações não são repetidas automaticamente. Assets e páginas não consomem o orçamento do limitador de APIs.

@@ -12,16 +12,21 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/bradleyfalzon/ghinstallation/v2"
 	"github.com/google/go-github/v75/github"
 	"github.com/nelcota/nelcota-deploy/internal/security"
+	"github.com/nelcota/nelcota-deploy/internal/store/dbgen"
 )
 
 type GitHubService struct {
-	Core      *Core
-	Transport http.RoundTripper
+	transportMu   sync.Mutex
+	identity      [32]byte
+	installations map[int64]*ghinstallation.Transport
+	Core          *Core
+	Transport     http.RoundTripper
 }
 
 func (g *GitHubService) installation(ctx context.Context, id int64) (*ghinstallation.Transport, error) {
@@ -41,9 +46,29 @@ func (g *GitHubService) installation(ctx context.Context, id int64) (*ghinstalla
 	if tr == nil {
 		tr = http.DefaultTransport
 	}
-	return ghinstallation.New(tr, appID, id, []byte(key))
+	identity := sha256.Sum256([]byte(app + "\x00" + key))
+	g.transportMu.Lock()
+	defer g.transportMu.Unlock()
+	if g.installations == nil || g.identity != identity {
+		g.identity = identity
+		g.installations = map[int64]*ghinstallation.Transport{}
+	}
+	if cached := g.installations[id]; cached != nil {
+		return cached, nil
+	}
+	created, e := ghinstallation.New(tr, appID, id, []byte(key))
+	if e != nil {
+		return nil, e
+	}
+	if len(g.installations) >= 128 {
+		g.installations = map[int64]*ghinstallation.Transport{}
+	}
+	g.installations[id] = created
+	return created, nil
 }
 func (g *GitHubService) Token(ctx context.Context, id int64) (string, error) {
+	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
+	defer cancel()
 	tr, e := g.installation(ctx, id)
 	if e != nil {
 		return "", e
@@ -156,11 +181,12 @@ func (g *GitHubService) Webhook(ctx context.Context, in WebhookInput) error {
 	if !shaPattern.MatchString(push.After) {
 		return fail(Validation, "SHA inválido")
 	}
-	apps, e := g.Core.DB.Queries.ListApps(ctx)
-	if e != nil {
-		return e
-	}
-	return g.Core.mutate(systemContext(ctx), func(tx *sql.Tx) error {
+	queued := []string{}
+	e = g.Core.mutate(systemContext(ctx), func(tx *sql.Tx) error {
+		apps, e := dbgen.New(tx).ListApps(ctx)
+		if e != nil {
+			return e
+		}
 		r, e := tx.ExecContext(ctx, "INSERT INTO webhook_deliveries(id,received_at) VALUES(?,?) ON CONFLICT DO NOTHING", in.Delivery, time.Now().Unix())
 		if e != nil {
 			return e
@@ -170,16 +196,27 @@ func (g *GitHubService) Webhook(ctx context.Context, in WebhookInput) error {
 			return nil
 		}
 		for _, a := range apps {
-			if strings.TrimSuffix(a.Repository, ".git") != push.Repository.HTMLURL || push.Ref != "refs/heads/"+a.Branch {
+			if !strings.EqualFold(strings.TrimSuffix(strings.TrimRight(a.Repository, "/"), ".git"), strings.TrimRight(push.Repository.HTMLURL, "/")) || push.Ref != "refs/heads/"+a.Branch {
 				continue
 			}
 			input := DeployInput{AppID: a.ID, SHA: push.After, Message: truncate(push.Head.Message, 1000), Author: truncate(push.Head.Author.Name, 200), Origin: "push"}
-			if e := (&deploysService{g.Core}).enqueue(systemContext(ctx), tx, security.Token(), input); e != nil {
+			id := security.Token()
+			if e := (&deploysService{g.Core}).enqueue(systemContext(ctx), tx, id, input); e != nil {
 				return e
 			}
+			queued = append(queued, id)
 		}
 		return nil
 	})
+	if e != nil {
+		return e
+	}
+	for _, id := range queued {
+		if deployment, err := (&deploysService{g.Core}).Get(systemContext(ctx), id); err == nil {
+			g.Core.publish("deployments", "deploy.queued", deployment)
+		}
+	}
+	return nil
 }
 func truncate(s string, n int) string {
 	if len(s) > n {
@@ -222,7 +259,7 @@ func (g *GitHubService) FinishManifest(ctx context.Context, state, code string) 
 	if e != nil || u.Role != "admin" {
 		return nil, fail(Forbidden, "Administrador necessário")
 	}
-	client := github.NewClient(&http.Client{Timeout: 20 * time.Second})
+	client := github.NewClient(&http.Client{Transport: g.Transport, Timeout: 20 * time.Second})
 	app, _, e := client.Apps.CompleteAppManifest(ctx, code)
 	if e != nil {
 		return nil, fail(Unavailable, "GitHub recusou a configuração")
@@ -241,5 +278,5 @@ func (g *GitHubService) FinishManifest(ctx context.Context, state, code string) 
 		}
 		return g.Core.audit(ctx, tx, "github.configure", strconv.FormatInt(app.GetID(), 10))
 	})
-	return map[string]string{"installation_url": "https://github.com/apps/" + app.GetSlug() + "/installations/new"}, e
+	return map[string]string{"installation_url": "https://github.com/apps/" + url.PathEscape(app.GetSlug()) + "/installations/new"}, e
 }

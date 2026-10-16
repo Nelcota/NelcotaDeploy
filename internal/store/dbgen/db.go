@@ -48,6 +48,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getUserByEmailStmt, err = db.PrepareContext(ctx, getUserByEmail); err != nil {
 		return nil, fmt.Errorf("error preparing query GetUserByEmail: %w", err)
 	}
+	if q.latestDeploymentsStmt, err = db.PrepareContext(ctx, latestDeployments); err != nil {
+		return nil, fmt.Errorf("error preparing query LatestDeployments: %w", err)
+	}
 	if q.listAppsStmt, err = db.PrepareContext(ctx, listApps); err != nil {
 		return nil, fmt.Errorf("error preparing query ListApps: %w", err)
 	}
@@ -106,6 +109,11 @@ func (q *Queries) Close() error {
 	if q.getUserByEmailStmt != nil {
 		if cerr := q.getUserByEmailStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getUserByEmailStmt: %w", cerr)
+		}
+	}
+	if q.latestDeploymentsStmt != nil {
+		if cerr := q.latestDeploymentsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing latestDeploymentsStmt: %w", cerr)
 		}
 	}
 	if q.listAppsStmt != nil {
@@ -170,39 +178,41 @@ func (q *Queries) queryRow(ctx context.Context, stmt *sql.Stmt, query string, ar
 }
 
 type Queries struct {
-	db                  DBTX
-	tx                  *sql.Tx
-	getAppStmt          *sql.Stmt
-	getCredentialsStmt  *sql.Stmt
-	getDeploymentStmt   *sql.Stmt
-	getDomainsStmt      *sql.Stmt
-	getEnvironmentStmt  *sql.Stmt
-	getServerStmt       *sql.Stmt
-	getUserStmt         *sql.Stmt
-	getUserByEmailStmt  *sql.Stmt
-	listAppsStmt        *sql.Stmt
-	listAuditStmt       *sql.Stmt
-	listDeploymentsStmt *sql.Stmt
-	listServersStmt     *sql.Stmt
-	listUsersStmt       *sql.Stmt
+	db                    DBTX
+	tx                    *sql.Tx
+	getAppStmt            *sql.Stmt
+	getCredentialsStmt    *sql.Stmt
+	getDeploymentStmt     *sql.Stmt
+	getDomainsStmt        *sql.Stmt
+	getEnvironmentStmt    *sql.Stmt
+	getServerStmt         *sql.Stmt
+	getUserStmt           *sql.Stmt
+	getUserByEmailStmt    *sql.Stmt
+	latestDeploymentsStmt *sql.Stmt
+	listAppsStmt          *sql.Stmt
+	listAuditStmt         *sql.Stmt
+	listDeploymentsStmt   *sql.Stmt
+	listServersStmt       *sql.Stmt
+	listUsersStmt         *sql.Stmt
 }
 
 func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 	return &Queries{
-		db:                  tx,
-		tx:                  tx,
-		getAppStmt:          q.getAppStmt,
-		getCredentialsStmt:  q.getCredentialsStmt,
-		getDeploymentStmt:   q.getDeploymentStmt,
-		getDomainsStmt:      q.getDomainsStmt,
-		getEnvironmentStmt:  q.getEnvironmentStmt,
-		getServerStmt:       q.getServerStmt,
-		getUserStmt:         q.getUserStmt,
-		getUserByEmailStmt:  q.getUserByEmailStmt,
-		listAppsStmt:        q.listAppsStmt,
-		listAuditStmt:       q.listAuditStmt,
-		listDeploymentsStmt: q.listDeploymentsStmt,
-		listServersStmt:     q.listServersStmt,
-		listUsersStmt:       q.listUsersStmt,
+		db:                    tx,
+		tx:                    tx,
+		getAppStmt:            q.getAppStmt,
+		getCredentialsStmt:    q.getCredentialsStmt,
+		getDeploymentStmt:     q.getDeploymentStmt,
+		getDomainsStmt:        q.getDomainsStmt,
+		getEnvironmentStmt:    q.getEnvironmentStmt,
+		getServerStmt:         q.getServerStmt,
+		getUserStmt:           q.getUserStmt,
+		getUserByEmailStmt:    q.getUserByEmailStmt,
+		latestDeploymentsStmt: q.latestDeploymentsStmt,
+		listAppsStmt:          q.listAppsStmt,
+		listAuditStmt:         q.listAuditStmt,
+		listDeploymentsStmt:   q.listDeploymentsStmt,
+		listServersStmt:       q.listServersStmt,
+		listUsersStmt:         q.listUsersStmt,
 	}
 }

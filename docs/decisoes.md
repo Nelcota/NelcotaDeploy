@@ -62,3 +62,12 @@ O Docker foi disponibilizado durante o trabalho. Testes passaram com app em brid
 - Update só aceita versão estável posterior e manifesto Minisign prehashed ED, inclusive comentário confiável. O helper root tem comando e destino fixos e revalida os downloads. Paths de requests/results ficam confinados com os.Root. O serviço controla ordem, ociosidade, prontidão e confirmação; agente por CLI também reserva manutenção no painel por mTLS antes de pedir instalação.
 - Rotação de certificados preserva CA e identidade, guarda o par novo atomicamente em data-dir e oferece sete dias para repetição pelo fingerprint anterior. O par pendente no painel fica cifrado. A CA de cinco anos não muda automaticamente a confiança dos peers.
 - Métricas têm no máximo 256 containers por amostra, quatro chamadas concorrentes e dez segundos de orçamento. Bases são parseadas pelo parser Dockerfile oficial, com defaults ARG, sem executar comandos; tags são materializadas no content store do BuildKit e digest pins permanecem imutáveis.
+
+
+## 2026-10-15 — Interface funcional e revisão completa
+
+A interface foi implementada com `html/template` (alternativa já admitida pelo contrato), CSS local e JavaScript sem framework. A escolha preserva binário único, fronteira de serviços e CSP, com menos de 100 KiB de JavaScript antes da compressão. Node/Playwright são dependências somente de QA. templ/Datastar/Tailwind deixam de ser pré-requisito para usar o painel; eventual migração não deve reintroduzir dependência de CDN ou substituir a autorização dos serviços.
+
+WebAuthn não aceita RP ID de endereço IP: o modo dev usa a origem canônica `http://localhost:8080`, mantendo bind em `127.0.0.1`. O fluxo foi exercitado com autenticador virtual Chromium; dispositivos físicos permanecem um gate externo.
+
+As duas revisões e suas evidências estão em `entrega-revisoes.md`. Previews, notificações externas, scale-to-zero, Trivy e Litestream continuam explicitamente na fase 2 do escopo documentado; não são anunciados por controles que não funcionam. Instalação/reboot/firewall/SSH reais e publicação assinada exigem infraestrutura/identidade do mantenedor, sem credenciais inventadas ou alterações de produção nesta tarefa.

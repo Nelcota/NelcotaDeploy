@@ -121,6 +121,8 @@ func TestWebhookSignatureAndDedupe(t *testing.T) {
 	mac.Write(body)
 	in := WebhookInput{Signature: "sha256=" + hex.EncodeToString(mac.Sum(nil)), Delivery: "delivery-1", Event: "push", Body: body}
 	g := &GitHubService{Core: c}
+	sub := c.Hub.Subscribe(ctx, "deployments", 4)
+	defer sub.Cancel()
 	for range 2 {
 		if e := g.Webhook(ctx, in); e != nil {
 			t.Fatal(e)
@@ -129,6 +131,19 @@ func TestWebhookSignatureAndDedupe(t *testing.T) {
 	d, e := (&deploysService{c}).List(ctx, a.ID)
 	if e != nil || len(d) != 1 {
 		t.Fatal(d, e)
+	}
+	select {
+	case event := <-sub.C:
+		if event.Kind != "deploy.queued" {
+			t.Fatal("webhook queue event missing")
+		}
+	default:
+		t.Fatal("queued webhook invisible to connected dashboard")
+	}
+	select {
+	case <-sub.C:
+		t.Fatal("deduplicated webhook emitted another queue event")
+	default:
 	}
 	in.Signature = "sha256=bad"
 	if e = g.Webhook(ctx, in); !Is(e, Unauthenticated) {

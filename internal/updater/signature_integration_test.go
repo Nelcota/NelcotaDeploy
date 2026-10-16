@@ -3,6 +3,8 @@
 package updater
 
 import (
+	legacycontainer "github.com/docker/docker/api/types/container"
+	"github.com/nelcota/nelcota-deploy/internal/testinfra"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
 	"io"
@@ -13,7 +15,7 @@ import (
 
 func TestOfficialMinisignInteroperability(t *testing.T) {
 	ctx := t.Context()
-	c, e := testcontainers.Run(ctx, "debian:12-slim", testcontainers.WithCmd("sh", "-ec", `apt-get update -qq && apt-get install -y -qq minisign >/dev/null
+	c, e := testcontainers.Run(ctx, "debian:12-slim", testcontainers.WithEnv(testinfra.Environment()), testcontainers.WithHostConfigModifier(func(h *legacycontainer.HostConfig) { h.ExtraHosts = append(h.ExtraHosts, testinfra.Hosts()...) }), testcontainers.WithFiles(testinfra.Files()...), testcontainers.WithCmd("sh", "-ec", `apt-get update -qq && apt-get install -y -qq minisign >/dev/null
 printf 'interoperability fixture\n' > /message
 minisign -G -W -p /public -s /secret
 minisign -S -W -s /secret -m /message -x /signature`), testcontainers.WithWaitStrategy(wait.ForExit().WithExitTimeout(90*time.Second)))

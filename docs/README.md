@@ -1,13 +1,14 @@
 # Documentação do Nelcota Deploy
 
-O backend está implementado e testado localmente. O frontend e a homologação completa em VPS continuam pendentes. Para uma visão rápida, comece pelo [README principal](../README.md).
+O backend e a interface estão implementados e testados localmente. A homologação operacional em VPS continua pendente. Para uma visão rápida, comece pelo [README principal](../README.md).
 
 ## Por onde começar
 
 | Objetivo | Documento |
 | --- | --- |
 | Entender a arquitetura e a visão do produto | [Plano original](Nelcota%20Deploy.md) |
-| Conferir o que está implementado e foi validado | [Relatório do backend](relatorio-backend.md) |
+| Conferir as entregas atuais e as duas revisões | [Relatório de entrega e revisões](entrega-revisoes.md) |
+| Consultar o histórico anterior do backend | [Relatório do backend](relatorio-backend.md) |
 | Identificar pendências e validações externas | [Pendências](pendencias.md) |
 | Construir a interface ou integrar as APIs | [Contrato do frontend](contrato-frontend.md) |
 | Testar instalação e operação em duas VPS | [Roteiro de homologação](testar-em-vps.md) |

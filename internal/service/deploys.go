@@ -15,6 +15,26 @@ import (
 
 type deploysService struct{ c *Core }
 
+// Latest returns one deployment per app in one indexed query, avoiding an HTTP
+// request and history query per dashboard card.
+func (s *deploysService) Latest(ctx context.Context) ([]Deployment, error) {
+	if _, e := authorize(ctx, "deploys:read", false); e != nil {
+		return nil, e
+	}
+	if _, e := authorize(ctx, "apps:read", false); e != nil {
+		return nil, e
+	}
+	rows, e := s.c.DB.Queries.LatestDeployments(ctx)
+	if e != nil {
+		return nil, dbError(e)
+	}
+	out := make([]Deployment, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, decodeDeploy(row))
+	}
+	return out, nil
+}
+
 func (s *deploysService) List(ctx context.Context, app string) ([]Deployment, error) {
 	if _, e := authorize(ctx, "deploys:read", false); e != nil {
 		return nil, e
@@ -78,18 +98,21 @@ func (s *deploysService) Cancel(ctx context.Context, id string) error {
 	if _, e := authorize(ctx, "deploys:write", false); e != nil {
 		return e
 	}
-	d, e := s.Get(ctx, id)
-	if e != nil {
+	if _, e := authorize(ctx, "apps:read", false); e != nil {
 		return e
 	}
-	if d.Status == "success" || d.Status == "failed" || d.Status == "cancelled" {
-		return fail(Conflict, "Deploy já finalizado")
-	}
-	e = s.c.mutate(ctx, func(tx *sql.Tx) error {
+	var status, server string
+	e := s.c.mutate(ctx, func(tx *sql.Tx) error {
+		if e := tx.QueryRowContext(ctx, "SELECT d.status,a.server_id FROM deployments d JOIN apps a ON a.id=d.app_id WHERE d.id=?", id).Scan(&status, &server); e != nil {
+			return dbError(e)
+		}
+		if status == "success" || status == "failed" || status == "cancelled" {
+			return fail(Conflict, "Deploy já finalizado")
+		}
 		if _, e := tx.ExecContext(ctx, "UPDATE deployments SET status=CASE WHEN status='queued' THEN 'cancelled' ELSE status END,finished_at=CASE WHEN status='queued' THEN ? ELSE finished_at END,cancel_requested=1 WHERE id=?", time.Now().Unix(), id); e != nil {
 			return e
 		}
-		if d.Status == "queued" && s.c.GitHub != nil {
+		if status == "queued" && s.c.GitHub != nil {
 			if e := queueCheck(ctx, tx, id, "cancelled"); e != nil {
 				return e
 			}
@@ -99,18 +122,14 @@ func (s *deploysService) Cancel(ctx context.Context, id string) error {
 	if e != nil {
 		return e
 	}
-	updated, _ := s.Get(ctx, id)
+	updated, e := s.Get(ctx, id)
+	if e != nil {
+		return e
+	}
 	s.c.publish("deployments", "deploy.status", updated)
 	s.c.publish("deploy/"+id, "deploy.status", updated)
-	if d.Status != "queued" {
-		a, e := (&appsService{s.c}).Get(ctx, d.AppID)
-		if e != nil {
-			return e
-		}
-		if s.c.Control == nil {
-			return fail(Unavailable, "Cancelamento pendente até agent conectar")
-		}
-		return s.c.send(ctx, a.ServerID, &agentv1.Command{Action: &agentv1.Command_Cancel{Cancel: &agentv1.Cancel{DeployId: id}}})
+	if status != "queued" {
+		return s.c.send(ctx, server, &agentv1.Command{Action: &agentv1.Command_Cancel{Cancel: &agentv1.Cancel{DeployId: id}}})
 	}
 	return nil
 }
@@ -274,6 +293,8 @@ func (c *Core) AgentEvent(ctx context.Context, p transport.Peer, e *agentv1.Even
 			c.publish("app/"+l.AppId, "runtime.log", map[string]any{"line": mustMaskRuntime(c, ctx, a.ID, string(l.Line)), "sequence": l.Sequence})
 			return nil
 		}
+		c.deployLogMu.Lock()
+		defer c.deployLogMu.Unlock()
 		d, err := c.DB.Queries.GetDeployment(ctx, l.DeployId)
 		if err != nil {
 			return err
@@ -321,6 +342,13 @@ func (c *Core) AgentEvent(ctx context.Context, p transport.Peer, e *agentv1.Even
 		}
 		terminal := s.Status == "success" || s.Status == "failed" || s.Status == "cancelled"
 		err = c.mutate(ctx, func(tx *sql.Tx) error {
+			var current string
+			if err := tx.QueryRowContext(ctx, "SELECT status FROM deployments WHERE id=?", d.ID).Scan(&current); err != nil {
+				return err
+			}
+			if !validTransition(current, s.Status) {
+				return nil
+			}
 			finished := int64(0)
 			if terminal {
 				finished = time.Now().Unix()
@@ -370,18 +398,44 @@ func (c *Core) AgentEvent(ctx context.Context, p transport.Peer, e *agentv1.Even
 			return fail(Validation, "Métricas excedem limite")
 		}
 		ownedMetrics := make([]*agentv1.ContainerMetrics, 0, len(v.Metrics.Containers))
+		owners := map[string]string{}
+		ids := []any{}
+		unique := map[string]bool{}
 		for _, metric := range v.Metrics.Containers {
 			if metric == nil {
 				return fail(Validation, "Métrica inválida")
 			}
-			app, err := c.DB.Queries.GetApp(ctx, metric.AppId)
-			if errors.Is(err, sql.ErrNoRows) {
-				continue
+			if !unique[metric.AppId] {
+				ids = append(ids, metric.AppId)
+				unique[metric.AppId] = true
 			}
+		}
+		if len(ids) > 0 {
+			placeholders := strings.TrimSuffix(strings.Repeat("?,", len(ids)), ",")
+			rows, err := c.DB.Read.QueryContext(ctx, "SELECT id,server_id FROM apps WHERE id IN ("+placeholders+")", ids...)
 			if err != nil {
 				return err
 			}
-			if app.ServerID != p.ID {
+			for rows.Next() {
+				var id, owner string
+				if err = rows.Scan(&id, &owner); err != nil {
+					rows.Close()
+					return err
+				}
+				owners[id] = owner
+			}
+			err = rows.Err()
+			rows.Close()
+			if err != nil {
+				return err
+			}
+		}
+		for _, metric := range v.Metrics.Containers {
+			owner, exists := owners[metric.AppId]
+			if !exists {
+				continue
+			}
+			if owner != p.ID {
 				return fail(Forbidden, "Métrica não pertence ao server")
 			}
 			ownedMetrics = append(ownedMetrics, metric)

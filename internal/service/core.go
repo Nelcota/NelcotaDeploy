@@ -28,6 +28,7 @@ type GitHub interface {
 	Check(context.Context, string, string, string, int64) (int64, error)
 }
 type Core struct {
+	deployLogMu     sync.Mutex
 	logMu           sync.Mutex
 	runtimeWatchers map[string]int
 	DB              *store.Store
@@ -236,20 +237,29 @@ func (s *appsService) Delete(ctx context.Context, id string, confirmed bool) err
 	if !confirmed {
 		return fail(Validation, "Confirmação obrigatória")
 	}
-	a, e := s.Get(ctx, id)
-	if e != nil {
-		return e
-	}
-	if !a.Config.Stopped {
-		return fail(Conflict, "Pare a app antes de excluir")
-	}
-	return s.c.mutate(ctx, func(tx *sql.Tx) error {
+	s.c.deployLogMu.Lock()
+	defer s.c.deployLogMu.Unlock()
+	e := s.c.mutate(ctx, func(tx *sql.Tx) error {
+		var config string
+		if e := tx.QueryRowContext(ctx, "SELECT config FROM apps WHERE id=?", id).Scan(&config); e != nil {
+			return dbError(e)
+		}
+		var cfg AppConfig
+		if e := json.Unmarshal([]byte(config), &cfg); e != nil {
+			return e
+		}
+		if !cfg.Stopped {
+			return fail(Conflict, "Pare a app antes de excluir")
+		}
 		var n int
 		if e := tx.QueryRowContext(ctx, "SELECT count(*) FROM deployments WHERE app_id=? AND status IN ('queued','building','starting')", id).Scan(&n); e != nil {
 			return e
 		}
 		if n > 0 {
 			return fail(Conflict, "App possui deploys pendentes")
+		}
+		if _, e := tx.ExecContext(ctx, "INSERT OR IGNORE INTO log_cleanup(deployment_id) SELECT id FROM deployments WHERE app_id=?", id); e != nil {
+			return e
 		}
 		if _, e := tx.ExecContext(ctx, "DELETE FROM deployments WHERE app_id=?", id); e != nil {
 			return e
@@ -259,6 +269,10 @@ func (s *appsService) Delete(ctx context.Context, id string, confirmed bool) err
 		}
 		return s.c.audit(ctx, tx, "app.delete", id)
 	})
+	if e == nil {
+		s.c.publish("apps", "app.deleted", map[string]string{"id": id})
+	}
+	return e
 }
 func (s *appsService) Environment(ctx context.Context, id string) ([]EnvInfo, error) {
 	if _, e := authorize(ctx, "apps:write", true); e != nil {
@@ -326,38 +340,59 @@ func (s *appsService) Action(ctx context.Context, id, action string, replicas ui
 	if _, e := authorize(ctx, "apps:write", true); e != nil {
 		return e
 	}
-	a, e := s.Get(ctx, id)
-	if e != nil {
-		return e
-	}
 	if action == "stop" && !confirmed {
 		return fail(Validation, "Confirmação obrigatória")
 	}
 	switch action {
-	case "start":
-		a.Config.Stopped = false
-	case "stop":
-		a.Config.Stopped = true
+	case "start", "stop", "restart":
 	case "scale":
 		if replicas < 1 || replicas > 16 {
 			return fail(Validation, "Réplicas inválidas")
 		}
-		a.Config.Replicas = replicas
-	case "restart":
 	default:
 		return fail(Validation, "Ação inválida")
 	}
-	_, e = s.Update(ctx, id, AppInput{a.Name, a.ServerID, a.Repository, a.Branch, a.Config})
+	var server string
+	var stopped bool
+	e := s.c.mutate(ctx, func(tx *sql.Tx) error {
+		if e := tx.QueryRowContext(ctx, "SELECT server_id,COALESCE(json_extract(config,'$.stopped'),0) FROM apps WHERE id=?", id).Scan(&server, &stopped); e != nil {
+			return dbError(e)
+		}
+		if action == "restart" && stopped {
+			return fail(Conflict, "Inicie a app antes de reiniciar")
+		}
+		switch action {
+		case "start", "stop":
+			value := "false"
+			if action == "stop" {
+				value = "true"
+			}
+			if _, e := tx.ExecContext(ctx, "UPDATE apps SET config=json_set(config,'$.stopped',json(?)),revision=revision+1 WHERE id=?", value, id); e != nil {
+				return e
+			}
+		case "scale":
+			if _, e := tx.ExecContext(ctx, "UPDATE apps SET config=json_set(config,'$.replicas',?),revision=revision+1 WHERE id=?", replicas, id); e != nil {
+				return e
+			}
+		}
+		return s.c.audit(ctx, tx, "app."+action, id)
+	})
 	if e != nil {
 		return e
 	}
 	if action == "restart" {
-		if s.c.Control == nil {
-			return fail(Unavailable, "Agent indisponível")
-		}
-		return s.c.send(ctx, a.ServerID, &agentv1.Command{Action: &agentv1.Command_Restart{Restart: &agentv1.AppAction{AppId: id}}})
+		return s.c.send(ctx, server, &agentv1.Command{Action: &agentv1.Command_Restart{Restart: &agentv1.AppAction{AppId: id}}})
 	}
+	app, e := s.Get(ctx, id)
+	if e != nil {
+		return e
+	}
+	s.c.publish("apps", "app.updated", app)
 	return nil
+}
+
+func decodeServer(r dbgen.Server) Server {
+	return Server{ID: r.ID, Name: r.Name, WireGuardIP: r.WireguardIp, Status: r.Status, HeartbeatAt: r.HeartbeatAt, BuildLimit: r.BuildLimit, CacheBytes: r.CacheBytes, Version: r.AgentVersion, Ready: r.AgentReady != 0}
 }
 
 type serversService struct{ c *Core }
@@ -369,7 +404,7 @@ func (s *serversService) List(ctx context.Context) ([]Server, error) {
 	rows, e := s.c.DB.Queries.ListServers(ctx)
 	out := make([]Server, 0, len(rows))
 	for _, r := range rows {
-		out = append(out, Server{ID: r.ID, Name: r.Name, WireGuardIP: r.WireguardIp, Status: r.Status, HeartbeatAt: r.HeartbeatAt, BuildLimit: r.BuildLimit, CacheBytes: r.CacheBytes, Version: r.AgentVersion, Ready: r.AgentReady != 0})
+		out = append(out, decodeServer(r))
 	}
 	return out, dbError(e)
 }
@@ -525,7 +560,18 @@ func (s *logsService) Subscribe(ctx context.Context, topic string) (events.Subsc
 		return events.Subscription{}, e
 	}
 	switch {
-	case topic == "apps" || topic == "servers" || topic == "deployments":
+	case topic == "apps":
+		if _, e := authorize(ctx, "apps:read", false); e != nil {
+			return events.Subscription{}, e
+		}
+	case topic == "servers":
+		if _, e := authorize(ctx, "servers:read", false); e != nil {
+			return events.Subscription{}, e
+		}
+	case topic == "deployments":
+		if _, e := authorize(ctx, "deploys:read", false); e != nil {
+			return events.Subscription{}, e
+		}
 	case strings.HasPrefix(topic, "deploy/"):
 		if _, e := (&deploysService{s.c}).Get(ctx, strings.TrimPrefix(topic, "deploy/")); e != nil {
 			return events.Subscription{}, e

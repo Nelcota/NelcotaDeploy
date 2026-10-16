@@ -119,7 +119,7 @@ func env(key, fallback string) string {
 func devConfig(c config) config {
 	c.data = env("NELCOTA_DEV_DATA_DIR", ".local/dev")
 	c.keys = filepath.Join(c.data, "keys")
-	c.origin = "http://127.0.0.1:8080"
+	c.origin = "http://localhost:8080"
 	c.listen = "127.0.0.1:8080"
 	return c
 }
@@ -360,6 +360,7 @@ func serve(ctx context.Context, c config, dev bool) error {
 	}
 	g.Go(func() error { return core.RunScheduler(gctx) })
 	g.Go(func() error { return core.RunChecks(gctx) })
+	g.Go(func() error { return core.RunLogCleanup(gctx) })
 	g.Go(func() error { return core.Operations.Run(gctx) })
 	g.Go(func() error {
 		return updater.RunRequests(gctx, c.data, func(ctx context.Context, r updater.Request) (bool, error) {

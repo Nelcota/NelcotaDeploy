@@ -210,6 +210,52 @@ func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error
 	return i, err
 }
 
+const latestDeployments = `-- name: LatestDeployments :many
+SELECT d.id, d.app_id, d.sha, d.message, d.author, d.origin, d.status, d.queued_at, d.started_at, d.finished_at, d.log_ref, d.error_code, d.clean, d.check_id, d.cancel_requested, d.timings FROM apps a JOIN deployments d ON d.rowid = (
+    SELECT rowid FROM deployments WHERE app_id = a.id ORDER BY queued_at DESC, rowid DESC LIMIT 1
+)
+`
+
+func (q *Queries) LatestDeployments(ctx context.Context) ([]Deployment, error) {
+	rows, err := q.query(ctx, q.latestDeploymentsStmt, latestDeployments)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Deployment{}
+	for rows.Next() {
+		var i Deployment
+		if err := rows.Scan(
+			&i.ID,
+			&i.AppID,
+			&i.Sha,
+			&i.Message,
+			&i.Author,
+			&i.Origin,
+			&i.Status,
+			&i.QueuedAt,
+			&i.StartedAt,
+			&i.FinishedAt,
+			&i.LogRef,
+			&i.ErrorCode,
+			&i.Clean,
+			&i.CheckID,
+			&i.CancelRequested,
+			&i.Timings,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listApps = `-- name: ListApps :many
 SELECT id, name, server_id, repository, branch, config, desired_sha, revision FROM apps ORDER BY name
 `

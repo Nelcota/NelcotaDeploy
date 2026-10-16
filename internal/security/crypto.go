@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -92,7 +93,7 @@ type Verifier struct {
 }
 
 func (v *Verifier) Verify(c *agentv1.Command, now time.Time) error {
-	if c.Id == "" || c.ServerId != v.ServerID || c.IssuedUnix > now.Unix()+5 || c.ExpiresUnix < now.Unix() || c.ExpiresUnix-c.IssuedUnix > 60 || c.ExpiresUnix <= c.IssuedUnix {
+	if c.Id == "" || len(c.Id) > 128 || c.ServerId != v.ServerID || c.IssuedUnix > now.Unix()+5 || c.ExpiresUnix < now.Unix() || c.ExpiresUnix-c.IssuedUnix > 60 || c.ExpiresUnix <= c.IssuedUnix {
 		return errors.New("invalid command envelope")
 	}
 	if c.Action == nil && c.Desired == nil {
@@ -108,7 +109,7 @@ func (v *Verifier) Verify(c *agentv1.Command, now time.Time) error {
 		v.seen = make(map[string]int64)
 	}
 	if !v.loaded && v.Path != "" {
-		b, e := os.ReadFile(v.Path)
+		b, e := host.ReadPrivate(v.Path, 2<<20)
 		if e != nil && !errors.Is(e, os.ErrNotExist) {
 			return errors.New("replay journal unavailable")
 		}
@@ -174,6 +175,7 @@ func NewRedactor(values []string) *Redactor {
 			r.secrets = append(r.secrets, s, url.QueryEscape(s), url.PathEscape(s), base64.StdEncoding.EncodeToString([]byte(s)), base64.RawURLEncoding.EncodeToString([]byte(s)))
 		}
 	}
+	sort.Slice(r.secrets, func(i, j int) bool { return len(r.secrets[i]) > len(r.secrets[j]) })
 	return r
 }
 func (r *Redactor) Mask(s string) string {

@@ -1,5 +1,7 @@
 # Pendências e validações externas
 
+O painel web e as duas jornadas de revisão estão concluídos no escopo local da v1. Consulte [Entrega e revisões](entrega-revisoes.md) para os resultados atuais; as seções abaixo preservam a entrega anterior e os gates externos.
+
 ## Implementação local concluída em 2026-10-15
 
 - Memória investigada com perfis: liberação única do espaço temporário do compilador SQLite e do startup do agent; GOGC=50 no agent (respeita override) e THP desabilitado apenas nos processos dos serviços.

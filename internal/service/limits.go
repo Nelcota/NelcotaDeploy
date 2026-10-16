@@ -26,14 +26,6 @@ func (s *serversService) UpdateLimits(ctx context.Context, id string, in ServerL
 	if e != nil {
 		return Server{}, e
 	}
-	servers, e := s.List(ctx)
-	if e != nil {
-		return Server{}, e
-	}
-	for _, server := range servers {
-		if server.ID == id {
-			return server, nil
-		}
-	}
-	return Server{}, fail(NotFound, "Server não encontrado")
+	server, e := s.c.DB.Queries.GetServer(ctx, id)
+	return decodeServer(server), dbError(e)
 }
