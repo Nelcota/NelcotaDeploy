@@ -531,7 +531,7 @@ var ptBR = map[string]string{
 	"Publish":                          "Publicar",
 	"Publish %s":                       "Publicar %s",
 	"Publish a commit":                 "Publicar um commit",
-	"Publish latest":                   "Publicar a mais recente",
+	"Publish latest":                   "Publicar última versão",
 	"Publish the latest version of %s": "Publicar a versão mais recente de %s",
 	"Publish your first app":           "Publique seu primeiro app",
 	"Published":                        "Publicado",

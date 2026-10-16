@@ -69,10 +69,10 @@ templ AppLayout(s Shell, c AppContext, actions templ.Component) {
 							@ui.Icon("git-branch", "size-3.5")
 							{ c.App.Branch }
 						</span>
-						<span class="inline-flex items-center gap-1">
+						<a class="inline-flex items-center gap-1 hover:text-foreground" href={ templ.SafeURL("/servers#server-" + c.App.ServerID) }>
 							@ui.Icon("server", "size-3.5")
 							{ c.ServerName }
-						</span>
+						</a>
 						for _, d := range c.App.Config.Domains {
 							<a class="inline-flex items-center gap-1 hover:text-foreground" href={ templ.SafeURL("https://" + d) } rel="noopener noreferrer" target="_blank">
 								@ui.Icon("globe", "size-3.5")
@@ -88,13 +88,14 @@ templ AppLayout(s Shell, c AppContext, actions templ.Component) {
 				</div>
 			}
 		</div>
-		<nav aria-label={ i18n.T(ctx, "App sections") } class="mb-6 overflow-x-auto border-b">
+		// Tabs scroll sideways on narrow screens without showing a scrollbar.
+		<nav aria-label={ i18n.T(ctx, "App sections") } class="tabs-nav mb-6 border-b">
 			<ul class="flex gap-1">
 				for _, t := range appTabs {
 					<li>
 						<a
 							href={ templ.SafeURL(tabHref(c.App.ID, t.key)) }
-							class="-mb-px inline-flex items-center gap-2 border-b-2 border-transparent px-3 py-2 text-sm font-medium whitespace-nowrap text-muted-foreground hover:text-foreground aria-[current=page]:border-primary aria-[current=page]:text-foreground"
+							class="-mb-px inline-flex items-center gap-2 border-b-2 border-transparent px-3 py-2 max-sm:px-2.5 max-sm:[&_svg]:hidden text-sm font-medium whitespace-nowrap text-muted-foreground hover:text-foreground aria-[current=page]:border-primary aria-[current=page]:text-foreground"
 							if t.key == c.Tab {
 								aria-current="page"
 							}
