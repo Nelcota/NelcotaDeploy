@@ -75,3 +75,14 @@ for (const slug of process.argv.slice(1).sort()) {
 }
 process.stdout.write(JSON.stringify(out, null, "\t") + "\n");
 ' "${brand_slugs[@]}") >"$brands/brands.json"
+
+# Full-color logos from Devicon (MIT) where the official mark has more than one
+# color or Simple Icons draws it differently. Each is saved under its Simple
+# Icons slug and replaces that mark wherever it is shown. Go, Node.js, Deno,
+# Rust, and nginx keep their Simple Icons marks: those are the official ones
+# or stay visible on the dark theme.
+mkdir -p "$brands/color"
+for pair in python:python openjdk:java php:php dotnet:dotnetcore ruby:ruby elixir:elixir bun:bun apache:apache; do
+	cp "$modules/devicon/icons/${pair#*:}/${pair#*:}-original.svg" "$brands/color/${pair%%:*}.svg"
+done
+cp "$modules/devicon/LICENSE" "$brands/color/LICENSE"

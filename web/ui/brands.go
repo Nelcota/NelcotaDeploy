@@ -3,6 +3,7 @@ package ui
 import (
 	"context"
 	"embed"
+	"encoding/base64"
 	"encoding/json"
 	"html"
 	"io"
@@ -18,7 +19,7 @@ import (
 // scripts/web-vendor.sh copies them with their official colors. The marks
 // remain their owners' trademarks and only name the product next to it.
 //
-//go:embed brands/*.svg brands/brands.json
+//go:embed brands/*.svg brands/brands.json brands/color/*.svg
 var brandFiles embed.FS
 
 // BrandInfo is a vendored brand mark.
@@ -31,6 +32,9 @@ type BrandInfo struct {
 	// fill is the official color, or currentColor for near-black marks that
 	// would disappear on the dark theme.
 	fill string
+	// color is a data URI of the full-color logo (brands/color, from
+	// Devicon), when there is one; it replaces the one-color mark.
+	color string
 }
 
 var brandPath = regexp.MustCompile(`<path d="([^"]+)"`)
@@ -57,6 +61,11 @@ var brands = func() map[string]BrandInfo {
 		b.fill = "#" + b.Hex
 		if luminance(b.Hex) < 0.05 {
 			b.fill = "currentColor"
+		}
+		// An <img> keeps each logo's gradient IDs from clashing when the same
+		// logo appears more than once on a page.
+		if logo, err := brandFiles.ReadFile("brands/color/" + slug + ".svg"); err == nil {
+			b.color = "data:image/svg+xml;base64," + base64.StdEncoding.EncodeToString(logo)
 		}
 		m[slug] = b
 	}
@@ -92,6 +101,16 @@ func Brand(slug, class string, decorative bool) templ.Component {
 	}
 	if class == "" {
 		class = "size-4"
+	}
+	if b.color != "" {
+		alt := `alt="` + html.EscapeString(b.Title) + `"`
+		if decorative {
+			alt = `alt="" aria-hidden="true"`
+		}
+		return templ.ComponentFunc(func(_ context.Context, w io.Writer) error {
+			_, err := io.WriteString(w, `<img src="`+b.color+`" `+alt+` class="`+html.EscapeString(class)+` object-contain" draggable="false">`)
+			return err
+		})
 	}
 	a11y := `role="img" aria-label="` + html.EscapeString(b.Title) + `"`
 	if decorative {
