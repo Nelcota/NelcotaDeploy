@@ -14,7 +14,7 @@ func TestLogsPage(t *testing.T) {
 		t.Fatal(res.code)
 	}
 	// Default: newest deployment's build log, loaded by the browser from /api.
-	mustContain(t, res.body, `data-mode="build"`, `data-topic="deploy/dev-deploy-api-success"`, `data-deployment="dev-deploy-api-success"`, `data-status="success"`, `role="log"`, `for="log-search"`, "Search logs", "Pause", "Follow", "Download", `value="runtime"`, "Build bbbbbbb · Published", `data-file="api-bbbbbbb-dev-deploy-api-success.log"`, "/assets/xterm.", "/assets/logs.")
+	mustContain(t, res.body, `data-mode="build"`, `data-topic="deploy/dev-deploy-api-success"`, `data-deployment="dev-deploy-api-success"`, `data-status="success"`, `role="log"`, `for="log-search"`, "Search logs", "Pause", "Follow", "Download", `value="runtime"`, "Build bbbbbbb · Published", `data-file="api-bbbbbbb-dev-deploy-api-success.log"`, "/assets/xterm.", "/assets/logs.", "Demo deployment", `title="Duration"`)
 	// Log text is never inlined into the page.
 	mustNotContain(t, res.body, "SHA verified")
 	policy := res.header.Get("Content-Security-Policy")

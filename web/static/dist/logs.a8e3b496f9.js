@@ -31,12 +31,26 @@
 		for (var i = 0; i < parts.length; i++) lines.push(parts[i]);
 		if (lines.length > MAX_LINES) lines.splice(0, lines.length - MAX_LINES);
 	}
+	function size() {
+		var b = term.buffer.active, row = el.querySelector(".xterm-rows > div");
+		el.style.setProperty("--log-lines", b.baseY + b.cursorY + (b.cursorX ? 1 : 0));
+		if (row && row.offsetHeight) el.style.setProperty("--log-cell", row.offsetHeight + "px");
+	}
+	var red = "\x1b[38;2;248;113;113m", amber = "\x1b[38;2;251;191;36m", green = "\x1b[38;2;131;232;176m", off = "\x1b[0m";
+	function paint(text) {
+		return text.replace(/^[^\n\x1b]+$/gm, function (l) {
+			if (/\b(error|failed|fatal|panic)\b/i.test(l)) return red + l + off;
+			if (/\bwarn(ing)?\b/i.test(l)) return amber + l + off;
+			return l.replace(/^\[[\w.-]+\]/, function (p) { return green + p + off; });
+		});
+	}
 	function flush() {
 		scheduled = false;
 		if (!queue.length) return;
 		var chunk = "", n = 0;
 		while (queue.length && n < 262144) { var s = queue.shift(); chunk += s; n += s.length; }
-		term.write(chunk, function () {
+		term.write(paint(chunk), function () {
+			size();
 			if (follow) term.scrollToBottom();
 			if (queue.length) schedule();
 		});
@@ -59,6 +73,7 @@
 	function reset() {
 		term.reset();
 		lines = []; partial = ""; queue = []; held = []; heldLines = 0;
+		size();
 	}
 
 	el.addEventListener("wheel", function (e) { if (e.deltaY < 0 && follow) setFollow(false); }, { passive: true });

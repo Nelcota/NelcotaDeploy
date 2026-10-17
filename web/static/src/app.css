@@ -541,8 +541,16 @@
   .setting-label > p {
     @apply text-sm text-muted-foreground;
   }
+  /* The log viewer grows with its content (logs.js sets --log-lines and
+     --log-cell) between a short minimum and 70% of the screen, so a short
+     build log doesn't leave a tall empty box. */
   .log-view {
-    @apply h-[60vh] min-h-72 overflow-hidden rounded-xl border bg-[#0b0d10] p-2;
+    @apply overflow-hidden rounded-xl border bg-[#0b0d10] px-3 py-2.5;
+    height: clamp(14rem, calc(var(--log-lines, 0) * var(--log-cell, 15px) + 1.25rem), 70vh);
+  }
+  .log-view .xterm-viewport {
+    scrollbar-width: thin;
+    scrollbar-color: #3a414b transparent;
   }
   .chart {
     @apply w-full overflow-hidden;

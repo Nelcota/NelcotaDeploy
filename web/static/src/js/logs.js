@@ -34,13 +34,30 @@
 		for (var i = 0; i < parts.length; i++) lines.push(parts[i]);
 		if (lines.length > MAX_LINES) lines.splice(0, lines.length - MAX_LINES);
 	}
+	// The box grows with the content; CSS caps it (.log-view).
+	function size() {
+		var b = term.buffer.active, row = el.querySelector(".xterm-rows > div");
+		el.style.setProperty("--log-lines", b.baseY + b.cursorY + (b.cursorX ? 1 : 0));
+		if (row && row.offsetHeight) el.style.setProperty("--log-cell", row.offsetHeight + "px");
+	}
+	// Color plain lines: errors red, warnings amber, the [stage] prefix in the
+	// brand color. Lines that already carry ANSI colors are left alone.
+	var red = "\x1b[38;2;248;113;113m", amber = "\x1b[38;2;251;191;36m", green = "\x1b[38;2;131;232;176m", off = "\x1b[0m";
+	function paint(text) {
+		return text.replace(/^[^\n\x1b]+$/gm, function (l) {
+			if (/\b(error|failed|fatal|panic)\b/i.test(l)) return red + l + off;
+			if (/\bwarn(ing)?\b/i.test(l)) return amber + l + off;
+			return l.replace(/^\[[\w.-]+\]/, function (p) { return green + p + off; });
+		});
+	}
 	function flush() {
 		scheduled = false;
 		if (!queue.length) return;
 		// Bound each write so a 4 MiB snapshot does not block the main thread.
 		var chunk = "", n = 0;
 		while (queue.length && n < 262144) { var s = queue.shift(); chunk += s; n += s.length; }
-		term.write(chunk, function () {
+		term.write(paint(chunk), function () {
+			size();
 			if (follow) term.scrollToBottom();
 			if (queue.length) schedule();
 		});
@@ -63,6 +80,7 @@
 	function reset() {
 		term.reset();
 		lines = []; partial = ""; queue = []; held = []; heldLines = 0;
+		size();
 	}
 
 	// Stop following when the user scrolls up; resume when they reach the bottom.

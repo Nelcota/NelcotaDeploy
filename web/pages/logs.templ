@@ -50,10 +50,20 @@ templ Logs(s Shell, c AppContext, v LogsView) {
 					</select>
 				</div>
 				<noscript><button type="submit" class="btn" data-variant="outline">{ i18n.T(ctx, "Show") }</button></noscript>
-				<div class="flex min-h-9 items-center gap-2 text-sm">
+				// The source list already names the build; this line adds what it
+				// can't: the live status, the commit message, and how long it took.
+				<div class="flex min-h-9 min-w-0 basis-full flex-wrap items-center gap-x-3 gap-y-1 text-sm sm:basis-0 sm:flex-1">
 					if !v.Runtime {
 						@ui.Pill(ui.Tone(v.Selected.Status), ui.StatusLabel(v.Selected.Status), templ.Attributes{"id": "log-status", "data-status": v.Selected.Status})
-						<span class="mono text-muted-foreground" title={ v.Selected.SHA }>{ ui.ShortSHA(v.Selected.SHA) }</span>
+						if v.Selected.Message != "" {
+							<span class="min-w-0 truncate text-muted-foreground" title={ v.Selected.Message }>{ v.Selected.Message }</span>
+						}
+						if v.Selected.StartedAt > 0 && v.finished() {
+							<span class="flex shrink-0 items-center gap-1 text-muted-foreground tabular-nums" title={ i18n.T(ctx, "Duration") }>
+								@ui.Icon("clock", "size-3.5")
+								{ ui.Span(v.Selected.StartedAt, v.Selected.FinishedAt) }
+							</span>
+						}
 					}
 					<span id="log-conn" class="conn" data-state="connecting" role="status" hidden?={ v.finished() }>{ i18n.T(ctx, "Connecting…") }</span>
 				</div>
