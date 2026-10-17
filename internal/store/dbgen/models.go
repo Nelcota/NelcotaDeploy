@@ -8,6 +8,15 @@ import (
 	"database/sql"
 )
 
+type ActiveDeployment struct {
+	ID              string `json:"id"`
+	AppID           string `json:"app_id"`
+	Sha             string `json:"sha"`
+	Status          string `json:"status"`
+	StartedAt       int64  `json:"started_at"`
+	CancelRequested int64  `json:"cancel_requested"`
+}
+
 type ApiToken struct {
 	ID        string `json:"id"`
 	UserID    string `json:"user_id"`
@@ -29,6 +38,12 @@ type App struct {
 	Revision   int64  `json:"revision"`
 }
 
+type AppLogo struct {
+	AppID     string `json:"app_id"`
+	Image     []byte `json:"image"`
+	UpdatedAt int64  `json:"updated_at"`
+}
+
 type AuditLog struct {
 	ID        int64  `json:"id"`
 	UserID    string `json:"user_id"`
@@ -37,6 +52,12 @@ type AuditLog struct {
 	Details   string `json:"details"`
 	Ip        string `json:"ip"`
 	CreatedAt int64  `json:"created_at"`
+}
+
+type Avatar struct {
+	UserID    string `json:"user_id"`
+	Image     []byte `json:"image"`
+	UpdatedAt int64  `json:"updated_at"`
 }
 
 type Challenge struct {
@@ -79,6 +100,7 @@ type Deployment struct {
 	CheckID         int64  `json:"check_id"`
 	CancelRequested int64  `json:"cancel_requested"`
 	Timings         string `json:"timings"`
+	RetryOf         string `json:"retry_of"`
 }
 
 type Domain struct {
@@ -154,11 +176,12 @@ type Setting struct {
 }
 
 type User struct {
-	ID        string `json:"id"`
-	Email     string `json:"email"`
-	Name      string `json:"name"`
-	Role      string `json:"role"`
-	CreatedAt int64  `json:"created_at"`
+	ID               string `json:"id"`
+	Email            string `json:"email"`
+	Name             string `json:"name"`
+	Role             string `json:"role"`
+	CreatedAt        int64  `json:"created_at"`
+	FirstStepsHidden int64  `json:"first_steps_hidden"`
 }
 
 type WebhookDelivery struct {

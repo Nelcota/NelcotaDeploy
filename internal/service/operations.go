@@ -8,6 +8,7 @@ import (
 
 	agentv1 "github.com/Nelcota/NelcotaDeploy/internal/gen/agent/v1"
 	"github.com/Nelcota/NelcotaDeploy/internal/security"
+	"github.com/Nelcota/NelcotaDeploy/internal/store/dbgen"
 	"github.com/Nelcota/NelcotaDeploy/internal/updater"
 )
 
@@ -28,6 +29,8 @@ type Operations interface {
 	Backup(context.Context) (Operation, error)
 	Update(context.Context, string) ([]Operation, error)
 	Cancel(context.Context, string) error
+	Updates(context.Context) (UpdateStatus, error)
+	SetAutomaticUpdates(context.Context, bool) error
 }
 type OperationsService struct {
 	Core          *Core
@@ -36,39 +39,27 @@ type OperationsService struct {
 	CreateBackup  func(context.Context, string) error
 	QueuePanel    func(string, string) error
 	PanelResult   func() updater.Result
+	// LatestRelease reads the release location's unsigned "latest" pointer.
+	LatestRelease func(context.Context) (string, error)
+	updates       updateState
 }
 
-func interactiveAdmin(ctx context.Context) error {
-	p, e := require(ctx, true)
-	if e != nil {
-		return e
-	}
-	if p.Scopes != nil || time.Now().Unix()-p.TwoFactorAt > 300 {
-		return fail(Forbidden, "Interactive reauthentication required")
-	}
-	return nil
-}
 func (s *OperationsService) List(ctx context.Context) ([]Operation, error) {
 	if _, e := authorize(ctx, "settings:write", true); e != nil {
 		return nil, e
 	}
-	rows, e := s.Core.DB.Read.QueryContext(ctx, "SELECT id,batch,kind,target,version,status,created_at,started_at,finished_at,error_code FROM maintenance_jobs ORDER BY ordinal DESC LIMIT 100")
+	rows, e := s.Core.DB.Queries.ListOperations(ctx)
 	if e != nil {
 		return nil, e
 	}
-	defer rows.Close()
-	out := []Operation{}
-	for rows.Next() {
-		var o Operation
-		if e = rows.Scan(&o.ID, &o.Batch, &o.Kind, &o.Target, &o.Version, &o.Status, &o.CreatedAt, &o.StartedAt, &o.FinishedAt, &o.ErrorCode); e != nil {
-			return nil, e
-		}
-		out = append(out, o)
+	out := make([]Operation, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, Operation(r))
 	}
-	return out, rows.Err()
+	return out, nil
 }
 func (s *OperationsService) Backup(ctx context.Context) (Operation, error) {
-	if e := interactiveAdmin(ctx); e != nil {
+	if _, e := freshInteractive(ctx, true); e != nil {
 		return Operation{}, e
 	}
 	if s.CreateBackup == nil {
@@ -77,8 +68,8 @@ func (s *OperationsService) Backup(ctx context.Context) (Operation, error) {
 	o := Operation{ID: security.Token(), Kind: "backup", Target: "panel", Status: "queued", CreatedAt: time.Now().Unix()}
 	o.Batch = o.ID
 	e := s.Core.mutate(ctx, func(tx *sql.Tx) error {
-		var n int
-		if e := tx.QueryRowContext(ctx, "SELECT count(*) FROM maintenance_jobs WHERE kind='backup' AND status IN ('queued','waiting')").Scan(&n); e != nil {
+		n, e := dbgen.New(tx).CountPendingOperations(ctx, "backup")
+		if e != nil {
 			return e
 		}
 		if n != 0 {
@@ -92,13 +83,25 @@ func (s *OperationsService) Backup(ctx context.Context) (Operation, error) {
 	return o, e
 }
 func insertOperation(ctx context.Context, tx *sql.Tx, o Operation) error {
-	_, e := tx.ExecContext(ctx, "INSERT INTO maintenance_jobs(id,batch,kind,target,version,status,created_at) VALUES(?,?,?,?,?,?,?)", o.ID, o.Batch, o.Kind, o.Target, o.Version, o.Status, o.CreatedAt)
-	return e
+	return dbgen.New(tx).InsertOperation(ctx, dbgen.InsertOperationParams{ID: o.ID, Batch: o.Batch, Kind: o.Kind, Target: o.Target, Version: o.Version, Status: o.Status, CreatedAt: o.CreatedAt})
 }
 func (s *OperationsService) Update(ctx context.Context, version string) ([]Operation, error) {
-	if e := interactiveAdmin(ctx); e != nil {
+	if _, e := freshInteractive(ctx, true); e != nil {
 		return nil, e
 	}
+	return s.queueUpdate(ctx, version)
+}
+
+// LocalUpdate queues an update requested by root on the panel host itself; the
+// request file's permissions are its authorization.
+func (s *OperationsService) LocalUpdate(ctx context.Context, version string) ([]Operation, error) {
+	return s.queueUpdate(systemContext(ctx), version)
+}
+
+// queueUpdate verifies a signed release and queues it for every server, then
+// the panel. Callers authorize: people through Update, the panel itself for
+// automatic updates.
+func (s *OperationsService) queueUpdate(ctx context.Context, version string) ([]Operation, error) {
 	if s.VerifyRelease == nil || s.QueuePanel == nil {
 		return nil, fail(Unavailable, "Release identity not configured")
 	}
@@ -113,8 +116,8 @@ func (s *OperationsService) Update(ctx context.Context, version string) ([]Opera
 	batch := security.Token()
 	out := []Operation{}
 	e := s.Core.mutate(ctx, func(tx *sql.Tx) error {
-		var n int
-		if e := tx.QueryRowContext(ctx, "SELECT count(*) FROM maintenance_jobs WHERE kind='update' AND status IN ('queued','waiting')").Scan(&n); e != nil {
+		n, e := dbgen.New(tx).CountPendingOperations(ctx, "update")
+		if e != nil {
 			return e
 		}
 		if n != 0 {
@@ -155,7 +158,7 @@ func (s *OperationsService) Update(ctx context.Context, version string) ([]Opera
 	return out, e
 }
 func (s *OperationsService) Cancel(ctx context.Context, batch string) error {
-	if e := interactiveAdmin(ctx); e != nil {
+	if _, e := freshInteractive(ctx, true); e != nil {
 		return e
 	}
 	return s.Core.mutate(ctx, func(tx *sql.Tx) error {
@@ -185,10 +188,17 @@ func (s *OperationsService) Run(ctx context.Context) error {
 	}
 	tick := time.NewTicker(time.Second)
 	defer tick.Stop()
+	releases := time.NewTicker(updateCheckInterval)
+	defer releases.Stop()
+	first := time.After(firstUpdateCheck)
 	for {
 		select {
 		case <-ctx.Done():
 			return nil
+		case <-first:
+			s.checkUpdates(ctx)
+		case <-releases.C:
+			s.checkUpdates(ctx)
 		case <-tick.C:
 			if e := s.step(ctx); e != nil && ctx.Err() != nil {
 				return nil
@@ -197,14 +207,14 @@ func (s *OperationsService) Run(ctx context.Context) error {
 	}
 }
 func (s *OperationsService) step(ctx context.Context) error {
-	var o Operation
-	e := s.Core.DB.Read.QueryRowContext(ctx, `SELECT id,batch,kind,target,version,status,created_at,started_at FROM maintenance_jobs WHERE status IN ('queued','waiting') ORDER BY CASE WHEN status='waiting' THEN 0 ELSE 1 END,ordinal LIMIT 1`).Scan(&o.ID, &o.Batch, &o.Kind, &o.Target, &o.Version, &o.Status, &o.CreatedAt, &o.StartedAt)
+	next, e := s.Core.DB.Queries.NextOperation(ctx)
 	if errors.Is(e, sql.ErrNoRows) {
 		return nil
 	}
 	if e != nil {
 		return e
 	}
+	o := Operation{ID: next.ID, Batch: next.Batch, Kind: next.Kind, Target: next.Target, Version: next.Version, Status: next.Status, CreatedAt: next.CreatedAt, StartedAt: next.StartedAt}
 	if o.Status == "waiting" {
 		if o.Target == "panel" {
 			if s.Version == o.Version && (s.PanelResult == nil || (s.PanelResult().ID == o.ID && s.PanelResult().Status == "applied")) {
@@ -238,21 +248,20 @@ func (s *OperationsService) step(ctx context.Context) error {
 	claimed := false
 	e = s.Core.mutate(ctx, func(tx *sql.Tx) error {
 		if o.Kind == "update" {
-			var active int
-			query := "SELECT count(*) FROM deployments WHERE status IN ('building','starting')"
-			args := []any{}
+			q := dbgen.New(tx)
+			countActive := q.CountActiveDeployments
 			if o.Target != "panel" {
-				query = "SELECT count(*) FROM deployments d JOIN apps a ON a.id=d.app_id WHERE a.server_id=? AND d.status IN ('building','starting')"
-				args = []any{o.Target}
-				var online int
-				if e := tx.QueryRowContext(ctx, "SELECT count(*) FROM servers WHERE id=? AND status='online' AND heartbeat_at>?", o.Target, time.Now().Add(-20*time.Second).Unix()).Scan(&online); e != nil {
+				countActive = func(ctx context.Context) (int64, error) { return q.CountServerActiveDeployments(ctx, o.Target) }
+				online, e := q.CountOnlineServer(ctx, dbgen.CountOnlineServerParams{ID: o.Target, HeartbeatAt: heartbeatCutoff()})
+				if e != nil {
 					return e
 				}
 				if online == 0 {
 					return nil
 				}
 			}
-			if e := tx.QueryRowContext(ctx, query, args...).Scan(&active); e != nil {
+			active, e := countActive(ctx)
+			if e != nil {
 				return e
 			}
 			if active > 0 {
@@ -307,7 +316,7 @@ func (s *OperationsService) step(ctx context.Context) error {
 	return nil
 }
 func (s *OperationsService) finish(ctx context.Context, o Operation, status, code string) error {
-	return s.Core.mutate(ctx, func(tx *sql.Tx) error {
+	e := s.Core.mutate(ctx, func(tx *sql.Tx) error {
 		if _, e := tx.ExecContext(ctx, "UPDATE maintenance_jobs SET status=?,finished_at=?,error_code=? WHERE id=? AND status='waiting'", status, time.Now().Unix(), code, o.ID); e != nil {
 			return e
 		}
@@ -318,19 +327,38 @@ func (s *OperationsService) finish(ctx context.Context, o Operation, status, cod
 		}
 		return s.Core.audit(systemContext(ctx), tx, "operation."+status, o.ID)
 	})
+	if e == nil && status == "failed" {
+		switch o.Kind {
+		case "backup":
+			s.Core.BackupFailed()
+		case "update":
+			s.Core.publish("operations", "update.failed", map[string]string{"version": o.Version, "code": code, "target": o.Target})
+		}
+	}
+	return e
+}
+
+// BackupFailed announces a failed backup, manual or daily.
+func (c *Core) BackupFailed() {
+	c.publish("operations", "backup.failed", map[string]string{})
+}
+
+// BackupUnverified announces that the weekly test restore of the newest backup failed.
+func (c *Core) BackupUnverified() {
+	c.publish("operations", "backup.unverified", map[string]string{})
 }
 func (c *Core) operationResult(ctx context.Context, server string, result *agentv1.OperationResult) error {
 	if result == nil || result.Id == "" {
 		return nil
 	}
-	var o Operation
-	e := c.DB.Read.QueryRowContext(ctx, "SELECT id,batch,target,version,started_at FROM maintenance_jobs WHERE id=? AND target=? AND status='waiting' AND kind='update'", result.Id, server).Scan(&o.ID, &o.Batch, &o.Target, &o.Version, &o.StartedAt)
+	w, e := c.DB.Queries.WaitingAgentUpdate(ctx, dbgen.WaitingAgentUpdateParams{ID: result.Id, Target: server})
 	if errors.Is(e, sql.ErrNoRows) {
 		return nil
 	}
 	if e != nil {
 		return e
 	}
+	o := Operation{ID: w.ID, Batch: w.Batch, Kind: "update", Target: w.Target, Version: w.Version, StartedAt: w.StartedAt}
 	if result.Status == "applied" {
 		var ready int
 		e := c.DB.Read.QueryRowContext(ctx, "SELECT count(*) FROM servers WHERE id=? AND agent_ready=1 AND agent_version=? AND heartbeat_at>=?", server, o.Version, o.StartedAt).Scan(&ready)

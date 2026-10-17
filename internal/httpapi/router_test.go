@@ -159,3 +159,21 @@ func TestEventStreamClosesWhenCredentialsAreRevoked(t *testing.T) {
 		})
 	}
 }
+
+func TestGitHubCallbackSendsBrowsersBackToSettings(t *testing.T) {
+	h := New(Config{Origin: "https://panel.example.com", CSRFKey: bytes.Repeat([]byte{1}, 32), Services: service.Services{Auth: authStub{}}, GitHub: &service.GitHubService{}})
+	// An invalid code fails before any GitHub or database access.
+	r := httptest.NewRequest("GET", "/api/github/callback?state=s&code=", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+	if w.Code != http.StatusSeeOther || w.Header().Get("Location") != "/settings/github?github=failed" {
+		t.Fatal(w.Code, w.Header())
+	}
+	r = httptest.NewRequest("GET", "/api/github/callback?state=s&code=", nil)
+	r.Header.Set("Accept", "application/json")
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+	if w.Code != http.StatusBadRequest || w.Header().Get("Content-Type") != "application/json" {
+		t.Fatal(w.Code, w.Header())
+	}
+}

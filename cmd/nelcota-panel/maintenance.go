@@ -3,17 +3,17 @@ package main
 import (
 	"crypto/rand"
 	"encoding/json"
+
 	"github.com/Nelcota/NelcotaDeploy/internal/host"
 	"github.com/Nelcota/NelcotaDeploy/internal/maintenance"
 	"github.com/spf13/cobra"
-	"path/filepath"
 )
 
 func maintenanceCommands(cfg *config) []*cobra.Command {
 	var output, keyFile, s3File string
 	backup := &cobra.Command{Use: "backup", Short: "Consistent encrypted snapshot of the database and keys", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
 		if keyFile == "" {
-			keyFile = filepath.Join(cfg.keys, "backup.key")
+			keyFile = backupKeyFile(cfg.keys)
 		}
 		b := maintenance.Backup{Data: cfg.data, Config: cfg.keys, KeyFile: keyFile}
 		if e := b.Create(cmd.Context(), output); e != nil {
@@ -38,7 +38,7 @@ func maintenanceCommands(cfg *config) []*cobra.Command {
 	var replace bool
 	restore := &cobra.Command{Use: "restore FILE", Short: "Restore database and keys while the panel is stopped", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
 		if restoreKey == "" {
-			restoreKey = filepath.Join(cfg.keys, "backup.key")
+			restoreKey = backupKeyFile(cfg.keys)
 		}
 		return (maintenance.Backup{Data: cfg.data, Config: cfg.keys, KeyFile: restoreKey}).Restore(cmd.Context(), args[0], replace)
 	}}
@@ -46,12 +46,12 @@ func maintenanceCommands(cfg *config) []*cobra.Command {
 	restore.Flags().BoolVar(&replace, "replace", false, "Replace files and keep .before-restore copies")
 	var email string
 	reset := &cobra.Command{Use: "reset-totp", Short: "Local TOTP recovery while the panel is stopped", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
-		c, a, e := open(cmd.Context(), *cfg)
+		p, e := open(cmd.Context(), *cfg)
 		if e != nil {
 			return e
 		}
-		defer c.DB.Close()
-		return a.ResetTOTPByEmail(cmd.Context(), email)
+		defer p.core.DB.Close()
+		return p.auth.ResetTOTPByEmail(cmd.Context(), email)
 	}}
 	reset.Flags().StringVar(&email, "email", "", "Exact user email address")
 	_ = reset.MarkFlagRequired("email")

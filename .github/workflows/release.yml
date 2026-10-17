@@ -1,0 +1,227 @@
+name: Release
+
+# Builds, signs, and publishes a release for a vMAJOR.MINOR.PATCH tag.
+# Secrets and variables live in the "release" environment; see docs/development.md.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      draft:
+        description: Create the GitHub release as a draft
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  GO_VERSION: '1.26.9'
+
+jobs:
+  prepare:
+    name: Validate the tag
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      tag: ${{ steps.tag.outputs.tag }}
+    steps:
+      - name: Check the tag format
+        id: tag
+        env:
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          if [[ $REF_TYPE != tag ]]; then
+            echo "::error::Run this workflow on a tag: choose the tag under 'Use workflow from'."
+            exit 1
+          fi
+          if [[ ! $REF_NAME =~ ^v(0|[1-9][0-9]{0,8})\.(0|[1-9][0-9]{0,8})\.(0|[1-9][0-9]{0,8})$ ]]; then
+            echo "::error::$REF_NAME is not a stable vMAJOR.MINOR.PATCH tag; scripts/release.sh and the updater accept only stable versions."
+            exit 1
+          fi
+          echo "tag=$REF_NAME" >> "$GITHUB_OUTPUT"
+
+  checks:
+    name: Existing checks
+    needs: prepare
+    permissions:
+      contents: read
+    uses: ./.github/workflows/ci.yml
+
+  package:
+    name: Build and sign
+    needs: [prepare, checks]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    environment: release
+    permissions:
+      contents: read
+      id-token: write # Keyless Sigstore signature of checksums.txt.
+    env:
+      TAG: ${{ needs.prepare.outputs.tag }}
+      MINISIGN_PUBLIC_KEY: ${{ vars.MINISIGN_PUBLIC_KEY }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0 # Release notes need the previous tag.
+          persist-credentials: false
+      - name: Set up Go
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+      - name: Install signing and analysis tools
+        run: |
+          if [[ -z $MINISIGN_PUBLIC_KEY ]]; then
+            echo "::error::Set the MINISIGN_PUBLIC_KEY variable in the release environment."
+            exit 1
+          fi
+          sudo apt-get update
+          sudo apt-get install -y minisign
+          GOBIN="$RUNNER_TEMP/bin" go install golang.org/x/vuln/cmd/govulncheck@v1.9.0
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+      - name: Install cosign
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+      - name: Rebuild BuildKit from the pinned source
+        run: bash scripts/buildkit-staging.sh "$RUNNER_TEMP/buildkit"
+      - name: Write the signing key
+        env:
+          MINISIGN_SECRET_KEY: ${{ secrets.MINISIGN_SECRET_KEY }}
+          MINISIGN_PASSWORD: ${{ secrets.MINISIGN_PASSWORD }}
+        run: |
+          if [[ -z $MINISIGN_SECRET_KEY ]]; then
+            echo "::error::Set the MINISIGN_SECRET_KEY secret in the release environment."
+            exit 1
+          fi
+          umask 077
+          install -d -m 0700 "$RUNNER_TEMP/signing"
+          printf '%s\n' "$MINISIGN_SECRET_KEY" > "$RUNNER_TEMP/signing/minisign.key"
+          if [[ -n $MINISIGN_PASSWORD ]]; then
+            printf '%s\n' "$MINISIGN_PASSWORD" > "$RUNNER_TEMP/signing/password"
+          fi
+      - name: Package and sign
+        run: |
+          if [[ -f $RUNNER_TEMP/signing/password ]]; then
+            export MINISIGN_PASSWORD_FILE="$RUNNER_TEMP/signing/password"
+          fi
+          bash scripts/release.sh "$TAG" "$RUNNER_TEMP/signing/minisign.key" \
+            "$RUNNER_TEMP/buildkit/amd64/buildkitd" "$RUNNER_TEMP/buildkit/arm64/buildkitd" "$RUNNER_TEMP/buildkit"
+      - name: Remove the signing key
+        if: always()
+        run: rm -rf -- "$RUNNER_TEMP/signing"
+      - name: Verify the signed manifest
+        run: |
+          minisign -Vm "dist/$TAG/checksums.txt" -P "$MINISIGN_PUBLIC_KEY"
+          (cd "dist/$TAG" && sha256sum --check --strict checksums.txt)
+      - name: Add a keyless Sigstore signature
+        run: |
+          cosign sign-blob --yes --bundle "dist/$TAG/checksums.txt.sigstore.json" "dist/$TAG/checksums.txt"
+      - name: Write release notes and the latest hint
+        run: |
+          out="$RUNNER_TEMP/out"
+          mkdir -p "$out/dist" "$out/meta"
+          cp -a "dist/$TAG" "$out/dist/"
+          scripts/release-notes.sh "$TAG" "$MINISIGN_PUBLIC_KEY" > "$out/meta/notes.md"
+          # Unsigned hint: the panel verifies the version's signed manifest before using it.
+          # Pre-release tags never update it (release.sh already rejects them).
+          if [[ $TAG != *-* ]]; then printf '%s\n' "$TAG" > "$out/meta/latest"; fi
+      - name: Upload the release
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: release-${{ env.TAG }}
+          path: ${{ runner.temp }}/out/
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    name: Publish the GitHub release
+    needs: [prepare, package]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment: release
+    permissions:
+      contents: write
+    env:
+      TAG: ${{ needs.prepare.outputs.tag }}
+      MINISIGN_PUBLIC_KEY: ${{ vars.MINISIGN_PUBLIC_KEY }}
+      DRAFT: ${{ github.event_name == 'workflow_dispatch' && inputs.draft }}
+    steps:
+      - name: Download the release
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: release-${{ env.TAG }}
+          path: ${{ runner.temp }}/release
+      - name: Verify again before publishing
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y minisign
+          cd "$RUNNER_TEMP/release"
+          ls -R
+          minisign -Vm "dist/$TAG/checksums.txt" -P "$MINISIGN_PUBLIC_KEY"
+          (cd "dist/$TAG" && sha256sum --check --strict checksums.txt)
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          cd "$RUNNER_TEMP/release"
+          flags=(--verify-tag --title "NelcotaDeploy $TAG" --notes-file meta/notes.md)
+          [[ $DRAFT == true ]] && flags+=(--draft)
+          assets=("dist/$TAG"/*)
+          [[ -f meta/latest ]] && assets+=(meta/latest)
+          # gh refuses to replace an existing release, keeping published versions immutable.
+          gh release create "$TAG" "${flags[@]}" "${assets[@]}"
+
+  mirror:
+    name: Publish to the direct HTTPS mirror
+    needs: [prepare, package, publish]
+    if: vars.RELEASE_MIRROR_DESTINATION != ''
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment: release
+    permissions:
+      contents: read
+    env:
+      TAG: ${{ needs.prepare.outputs.tag }}
+      MINISIGN_PUBLIC_KEY: ${{ vars.MINISIGN_PUBLIC_KEY }}
+      DESTINATION: ${{ vars.RELEASE_MIRROR_DESTINATION }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Download the release
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: release-${{ env.TAG }}
+          path: ${{ runner.temp }}/release
+      - name: Configure SSH
+        env:
+          SSH_KEY: ${{ secrets.RELEASE_MIRROR_SSH_KEY }}
+          KNOWN_HOSTS: ${{ vars.RELEASE_MIRROR_KNOWN_HOSTS }}
+        run: |
+          if [[ -z $SSH_KEY || -z $KNOWN_HOSTS ]]; then
+            echo "::error::Set the RELEASE_MIRROR_SSH_KEY secret and RELEASE_MIRROR_KNOWN_HOSTS variable."
+            exit 1
+          fi
+          sudo apt-get update
+          sudo apt-get install -y minisign
+          umask 077
+          install -d -m 0700 "$RUNNER_TEMP/ssh"
+          printf '%s\n' "$SSH_KEY" > "$RUNNER_TEMP/ssh/key"
+          printf '%s\n' "$KNOWN_HOSTS" > "$RUNNER_TEMP/ssh/known_hosts"
+      - name: Upload the version and update latest
+        run: |
+          export RELEASE_MIRROR_SSH_OPTS="-i $RUNNER_TEMP/ssh/key -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=$RUNNER_TEMP/ssh/known_hosts"
+          scripts/release-mirror.sh "$RUNNER_TEMP/release/dist/$TAG" "$DESTINATION"
+      - name: Remove the SSH key
+        if: always()
+        run: rm -rf -- "$RUNNER_TEMP/ssh"

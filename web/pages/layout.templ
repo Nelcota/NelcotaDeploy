@@ -1,0 +1,441 @@
+package pages
+
+import (
+	"context"
+	"net/url"
+	"strconv"
+	"strings"
+
+	"github.com/Nelcota/NelcotaDeploy/internal/service"
+	"github.com/Nelcota/NelcotaDeploy/web/i18n"
+	"github.com/Nelcota/NelcotaDeploy/web/static"
+	"github.com/Nelcota/NelcotaDeploy/web/ui"
+)
+
+// Shell carries per-request page chrome.
+type Shell struct {
+	Title   string
+	Nonce   string
+	CSRF    string
+	User    service.Principal
+	Section string
+	Scripts []string
+	Styles  []string
+	Dev     bool
+	Version string
+	// Path is the request URI, used by the language menu to stay on the same page.
+	Path string
+	// Alerts marks rail destinations that need attention.
+	Alerts Alerts
+}
+
+// Alerts flags what needs a person: Home for anything on its attention list,
+// Servers for servers that are offline or recovering.
+type Alerts struct {
+	Home    bool
+	Servers bool
+}
+
+// Admin reports whether the viewer may use administrator controls. Services still
+// enforce permissions; this only hides controls that would be rejected.
+func (s Shell) Admin() bool { return s.User.Role == "admin" }
+
+func (s Shell) signals() string {
+	return ui.Signals(map[string]any{"_csrf": s.CSRF, "_conn": "connecting", "_reauth": false})
+}
+
+func current(active bool) string {
+	if active {
+		return "page"
+	}
+	return ""
+}
+
+templ Document(s Shell) {
+	<!DOCTYPE html>
+	<html lang={ string(i18n.From(ctx)) } data-nonce={ s.Nonce }>
+		<head>
+			<meta charset="utf-8"/>
+			<meta name="viewport" content="width=device-width, initial-scale=1"/>
+			<meta name="color-scheme" content="light dark"/>
+			<meta name="referrer" content="no-referrer"/>
+			if s.CSRF != "" {
+				<meta name="csrf-token" content={ s.CSRF }/>
+			}
+			<title>{ i18n.T(ctx, s.Title) } · NelcotaDeploy</title>
+			<link rel="icon" type="image/png" sizes="64x64" href={ static.Path("favicon.png") }/>
+			<link rel="preload" href={ static.Path("outfit.woff2") } as="font" type="font/woff2" crossorigin/>
+			<script src={ static.Path("theme-boot.js") }></script>
+			<link rel="stylesheet" href={ static.Path("app.css") }/>
+			for _, name := range s.Styles {
+				<link rel="stylesheet" href={ static.Path(name) }/>
+			}
+			<script type="module" src={ static.Path("datastar.js") }></script>
+			if s.User.ID != "" {
+				@prefetchRules(s.Nonce)
+			}
+			<script defer src={ static.Path("app.js") }></script>
+			for _, name := range s.Scripts {
+				<script defer src={ static.Path(name) }></script>
+			}
+		</head>
+		<body data-signals={ s.signals() }>
+			if i18n.From(ctx) != i18n.English {
+				@templ.JSONScript("i18n", i18n.Strings(ctx, i18n.ScriptKeys))
+			}
+			{ children... }
+			<div id="toaster" class="toaster" aria-live="polite"></div>
+			@ui.ToastTemplates()
+		</body>
+	</html>
+}
+
+// railLink is a primary destination. shortcut is the second key of its "g"
+// sequence (see app.js); alert adds a dot when something there needs attention.
+templ railLink(href templ.SafeURL, icon, label, shortcut string, active, alert bool) {
+	<a
+		href={ href }
+		class="rail-link"
+		aria-keyshortcuts={ "g " + shortcut }
+		data-shortcut={ "G " + strings.ToUpper(shortcut) }
+		if active {
+			aria-current="page"
+		}
+	>
+		<span class="rail-icon">
+			@ui.Icon(icon, "size-5")
+			if alert {
+				<span class="rail-alert" data-alert></span>
+			}
+		</span>
+		{ i18n.T(ctx, label) }
+		if alert {
+			<span class="sr-only">{ i18n.T(ctx, "(needs attention)") }</span>
+		}
+	</a>
+}
+
+// AvatarURL is a profile photo's address; the version makes it cacheable.
+func AvatarURL(p service.Principal) string {
+	return "/avatars/" + url.PathEscape(p.ID) + "?v=" + strconv.FormatInt(p.AvatarAt, 10)
+}
+
+// Avatar is a person's profile photo, or their initial without one. It is
+// decorative: the name is always next to it or in the surrounding label.
+templ Avatar(p service.Principal, class string) {
+	if p.AvatarAt > 0 {
+		<img src={ AvatarURL(p) } alt="" class={ "avatar-img", class } width="40" height="40" loading="lazy" decoding="async" data-avatar={ p.ID }/>
+	} else {
+		<span class={ "avatar-initial", class } aria-hidden="true" data-avatar={ p.ID }>{ initial(p.Name) }</span>
+	}
+}
+
+// LogoURL is an app logo's address; the version makes it cacheable.
+func LogoURL(a service.App) string {
+	return "/app-logos/" + url.PathEscape(a.ID) + "?v=" + strconv.FormatInt(a.LogoAt, 10)
+}
+
+// AppLogo is an app's logo, or its initial on a colored tile without one. It
+// is decorative: the app's name is always next to it.
+templ AppLogo(a service.App, class string) {
+	if a.LogoAt > 0 {
+		<img src={ LogoURL(a) } alt="" class={ "row-thumb object-contain", class } data-tone="logo" width="64" height="64" loading="lazy" decoding="async" data-logo={ a.ID }/>
+	} else if a.Config.Runtime != "" {
+		// Without an uploaded logo, the app's language or server stands in.
+		<span class={ "row-thumb", class } data-tone="brand" title={ RuntimeLabel(a.Config.Runtime) } data-logo={ a.ID }>
+			@ui.Brand(RuntimeBrand(a.Config.Runtime), "size-7 sm:size-9", false)
+		</span>
+	} else {
+		<span class={ "row-thumb", class } data-tone={ tone(a.Name) } aria-hidden="true" data-logo={ a.ID }>{ initial(a.Name) }</span>
+	}
+}
+
+// AccountMenu shows who is signed in and holds the account link and sign-out.
+// opens is "right" in the rail and "down" in the phone top bar.
+templ AccountMenu(s Shell, opens string) {
+	<details id={ "account-menu-" + opens } class="menu" data-opens={ opens }>
+		<summary class="avatar" aria-label={ i18n.T(ctx, "Account menu") } title={ s.User.Name }>
+			@Avatar(s.User, "size-10")
+		</summary>
+		<div class="menu-list">
+			<div class="flex items-center gap-3 px-2.5 py-2">
+				@Avatar(s.User, "size-9")
+				<span class="grid min-w-0 gap-0.5">
+					<span class="truncate text-sm font-medium">{ s.User.Name }</span>
+					<span class="truncate text-xs text-muted-foreground">{ s.User.Email }</span>
+				</span>
+			</div>
+			<hr class="my-1 border-border"/>
+			<a href="/settings">
+				@ui.Icon("user", "")
+				{ i18n.T(ctx, "My account") }
+			</a>
+			<button type="button" data-logout>
+				@ui.Icon("log-out", "")
+				{ i18n.T(ctx, "Sign out") }
+			</button>
+		</div>
+	</details>
+}
+
+// Brand is the Nelco mascot. It is decorative: the surrounding link or text names the product.
+templ Brand() {
+	<img src={ static.Path("mascot.png") } alt="" width="44" height="44" class="size-11 shrink-0 select-none" draggable="false"/>
+}
+
+// ThemeToggle switches between light and dark; Account › Appearance also offers "System".
+templ ThemeToggle() {
+	<button type="button" class="rail-button theme-toggle" data-theme-toggle aria-label={ i18n.T(ctx, "Toggle dark theme") } aria-pressed="false">
+		@ui.Icon("moon", "icon-moon")
+		@ui.Icon("sun", "icon-sun")
+	</button>
+}
+
+// ThemeSelect offers System, Light, and Dark.
+templ ThemeSelect() {
+	<label class="sr-only" for="theme-select">{ i18n.T(ctx, "Theme") }</label>
+	<select id="theme-select" class="select" data-theme-select>
+		<option value="system">{ i18n.T(ctx, "System") }</option>
+		<option value="light">{ i18n.T(ctx, "Light") }</option>
+		<option value="dark">{ i18n.T(ctx, "Dark") }</option>
+	</select>
+}
+
+func initial(name string) string {
+	for _, r := range name {
+		return string(r)
+	}
+	return "?"
+}
+
+templ primaryLinks(s Shell) {
+	@railLink("/", "layout-dashboard", "Home", "h", s.Section == "dashboard", s.Alerts.Home)
+	@railLink("/apps", "box", "Apps", "a", s.Section == "apps", false)
+	@railLink("/servers", "server", "Servers", "s", s.Section == "servers", s.Alerts.Servers)
+	@railLink("/settings", "settings", "Settings", "c", s.Section == "settings", false)
+}
+
+// App renders the authenticated shell: an icon rail (a tab bar on phones), a
+// slim top bar, and one rounded content panel.
+templ App(s Shell) {
+	@Document(s) {
+		<a href="#main" class="skip-link">{ i18n.T(ctx, "Skip to content") }</a>
+		<div class="min-h-dvh p-3 pb-24 lg:grid lg:grid-cols-[5.5rem_minmax(0,1fr)] lg:gap-2 lg:p-4">
+			<aside class="rail" aria-label={ i18n.T(ctx, "Sidebar") }>
+				<a href="/" aria-label={ i18n.T(ctx, "NelcotaDeploy home") }>
+					@Brand()
+				</a>
+				<nav class="mt-8 flex flex-1 flex-col gap-3" aria-label={ i18n.T(ctx, "Primary") }>
+					@primaryLinks(s)
+				</nav>
+				@AccountMenu(s, "right")
+			</aside>
+			<div class="flex min-w-0 flex-col">
+				<header class="flex h-14 items-center gap-3 px-1 lg:h-16 lg:px-4">
+					<a href="/" class="lg:hidden" aria-label={ i18n.T(ctx, "NelcotaDeploy home") }>
+						@Brand()
+					</a>
+					<button type="button" class="topbar-search" data-cmdk-open aria-haspopup="dialog" aria-controls="cmdk" aria-keyshortcuts="Control+K Meta+K">
+						@ui.Icon("search", "")
+						<span class="hidden truncate sm:inline">{ i18n.T(ctx, "Search or run a command") }</span>
+						<span class="sr-only sm:hidden">{ i18n.T(ctx, "Search") }</span>
+						<span class="ms-auto hidden normal-case tracking-normal md:inline" data-cmdk-hint>
+							@ui.Kbd("Ctrl K")
+						</span>
+					</button>
+					<div class="flex-1"></div>
+					if s.Dev {
+						<span class="hidden rounded-full border border-warning/40 px-3 py-1 text-xs text-warning sm:inline" title={ i18n.T(ctx, "Simulated agents, metrics, and logs") }>{ i18n.T(ctx, "Development mode") }</span>
+					}
+					<span class="lg:hidden">
+						@AccountMenu(s, "down")
+					</span>
+					<a class="hidden items-center gap-2 text-sm font-medium hover:text-link sm:flex" href="https://github.com/Nelcota/NelcotaDeploy/tree/main/docs" target="_blank" rel="noopener noreferrer">
+						@ui.Icon("info", "size-5")
+						{ i18n.T(ctx, "Help & docs") }
+						<span class="sr-only">{ i18n.T(ctx, "(opens GitHub)") }</span>
+					</a>
+				</header>
+				<main id="main" tabindex="-1" class="panel outline-none">
+					<div class="mx-auto w-full max-w-6xl">
+						{ children... }
+					</div>
+				</main>
+			</div>
+		</div>
+		<nav class="tabbar" aria-label={ i18n.T(ctx, "Primary") }>
+			@primaryLinks(s)
+		</nav>
+		@CommandPalette()
+		@ReauthDialog(s.User.Email)
+	}
+}
+
+// Public renders unauthenticated pages such as sign-in.
+templ Public(s Shell) {
+	@Document(s) {
+		<a href="#main" class="skip-link">{ i18n.T(ctx, "Skip to content") }</a>
+		<div class="flex min-h-dvh flex-col p-3 lg:p-4">
+			<header class="flex h-14 items-center justify-between px-1">
+				// The sign-in pages show the mascot by the form, so the bar has the name only.
+				<span class="font-medium">NelcotaDeploy</span>
+				<span class="flex items-center gap-2">
+					@LanguageMenu(s.Path, "down")
+					@ThemeToggle()
+				</span>
+			</header>
+			<main id="main" tabindex="-1" class="panel flex items-start justify-center pt-[10vh] outline-none">
+				<div class="w-full max-w-sm">
+					{ children... }
+				</div>
+			</main>
+		</div>
+	}
+}
+
+// PageHeader renders a page title with actions as children.
+templ PageHeader(title, description string) {
+	<div class="mb-8 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+		<div class="min-w-0">
+			<h1 class="page-title">{ i18n.T(ctx, title) }</h1>
+			if description != "" {
+				<p class="mt-1 muted">{ i18n.T(ctx, description) }</p>
+			}
+		</div>
+		<div class="flex flex-wrap items-center gap-2">
+			{ children... }
+		</div>
+	</div>
+}
+
+// Connection shows live-update state driven by the $_conn signal.
+templ Connection() {
+	<span class="conn" data-state="connecting" data-attr:data-state="$_conn" role="status">
+		<span data-text={ connText(ctx) }>{ i18n.T(ctx, "Connecting…") }</span>
+	</span>
+}
+
+// connText is the Datastar expression naming the connection state. Every
+// literal is a JSON string from ui.JS, so translations can't break out of it.
+func connText(ctx context.Context) string {
+	states := [][2]string{{"live", "Connected"}, {"reconnecting", "Reconnecting…"}, {"offline", "Disconnected"}}
+	expr := ui.JS(i18n.T(ctx, "Connecting…"))
+	for i := len(states) - 1; i >= 0; i-- {
+		expr = "$_conn === " + ui.JS(states[i][0]) + " ? " + ui.JS(i18n.T(ctx, states[i][1])) + " : " + expr
+	}
+	return expr
+}
+
+// LiveStream opens a Datastar stream and tracks its connection state.
+templ LiveStream(url string) {
+	<div
+		hidden
+		data-init={ ui.Stream(url) }
+		data-on:datastar-fetch="evt.detail.el === el && ($_conn = {retrying: 'reconnecting', 'retries-failed': 'offline', error: 'offline'}[evt.detail.type] ?? $_conn)"
+	></div>
+}
+
+templ CommandPalette() {
+	<dialog id="cmdk" class="dialog" aria-label={ i18n.T(ctx, "Command palette") }>
+		<div class="top-[12vh] w-[calc(100%-2rem)] max-w-xl -translate-y-0 gap-0 overflow-hidden rounded-2xl border bg-popover p-0 text-popover-foreground shadow-lg">
+			<div class="flex items-center gap-2 border-b px-3">
+				@ui.Icon("search", "size-4 text-muted-foreground")
+				<input id="cmdk-input" class="h-12 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground" type="text" placeholder={ i18n.T(ctx, "Search apps, pages, and actions") } autocomplete="off" spellcheck="false" role="combobox" aria-expanded="true" aria-controls="cmdk-list" aria-autocomplete="list"/>
+				@ui.Kbd("Esc")
+			</div>
+			<ul id="cmdk-list" role="listbox" aria-label={ i18n.T(ctx, "Commands") } class="max-h-[50vh] overflow-y-auto p-2">
+				<li class="p-3">
+					@ui.Loading("Loading commands…")
+				</li>
+			</ul>
+			<p id="cmdk-empty" class="hidden p-6 text-center text-sm text-muted-foreground">{ i18n.T(ctx, "No matching commands.") }</p>
+		</div>
+	</dialog>
+}
+
+// LanguageChoice is the language setting on the account page: one link per
+// language, like LanguageMenu, shown as a segmented control.
+templ LanguageChoice(path string) {
+	<div class="segmented" role="group" aria-label={ i18n.T(ctx, "Language") }>
+		for _, l := range i18n.Locales {
+			<a
+				href={ templ.SafeURL(i18n.SwitchURL(path, l)) }
+				hreflang={ string(l) }
+				lang={ string(l) }
+				rel="nofollow"
+				data-no-prefetch
+				if l == i18n.From(ctx) {
+					aria-current="true"
+				}
+			>
+				@flag(l)
+				<span>{ i18n.Name(l) }</span>
+			</a>
+		}
+	</div>
+}
+
+// LanguageMenu switches the interface language. Each option is a link that
+// stores the choice and returns to the same page, so it works without scripts.
+// opens is "right" in the rail and "down" in top bars.
+templ LanguageMenu(path, opens string) {
+	<details class="menu lang-menu" data-opens={ opens }>
+		<summary class="lang-button" title={ i18n.T(ctx, "Language") }>
+			@flag(i18n.From(ctx))
+			<span lang={ string(i18n.From(ctx)) }>{ i18n.Name(i18n.From(ctx)) }</span>
+		</summary>
+		<ul class="menu-list" aria-label={ i18n.T(ctx, "Language") }>
+			for _, l := range i18n.Locales {
+				<li>
+					<a
+						href={ templ.SafeURL(i18n.SwitchURL(path, l)) }
+						hreflang={ string(l) }
+						lang={ string(l) }
+						rel="nofollow"
+						data-no-prefetch
+						if l == i18n.From(ctx) {
+							aria-current="true"
+						}
+					>
+						@flag(l)
+						<span>{ i18n.Name(l) }</span>
+						if l == i18n.From(ctx) {
+							@ui.Icon("check", "ms-auto size-4")
+						}
+					</a>
+				</li>
+			}
+		</ul>
+	</details>
+}
+
+// flag draws a small country flag for a language; it is decorative because the
+// language name is always shown or announced next to it.
+templ flag(l i18n.Locale) {
+	if l == i18n.Portuguese {
+		<svg class="flag" viewBox="0 0 20 14" aria-hidden="true" focusable="false">
+			<rect width="20" height="14" fill="#009c3b"></rect>
+			<path d="M10 1.6 18.2 7 10 12.4 1.8 7z" fill="#ffdf00"></path>
+			<circle cx="10" cy="7" r="3.1" fill="#002776"></circle>
+			<path d="M7.05 6.2c1.9-.35 4.1.05 5.85 1.2" stroke="#fff" stroke-width=".55" fill="none"></path>
+		</svg>
+	} else {
+		<svg class="flag" viewBox="0 0 20 14" aria-hidden="true" focusable="false">
+			<rect width="20" height="14" fill="#b22234"></rect>
+			<path d="M0 1.6h20M0 3.75h20M0 5.9h20M0 8.05h20M0 10.2h20M0 12.35h20" stroke="#fff" stroke-width="1.08"></path>
+			<rect width="8.6" height="7.55" fill="#3c3b6e"></rect>
+			<g fill="#fff">
+				<circle cx="1.4" cy="1.3" r=".42"></circle><circle cx="3.6" cy="1.3" r=".42"></circle><circle cx="5.8" cy="1.3" r=".42"></circle><circle cx="7.6" cy="1.3" r=".42"></circle>
+				<circle cx="2.5" cy="2.8" r=".42"></circle><circle cx="4.7" cy="2.8" r=".42"></circle><circle cx="6.9" cy="2.8" r=".42"></circle>
+				<circle cx="1.4" cy="4.3" r=".42"></circle><circle cx="3.6" cy="4.3" r=".42"></circle><circle cx="5.8" cy="4.3" r=".42"></circle><circle cx="7.6" cy="4.3" r=".42"></circle>
+				<circle cx="2.5" cy="5.8" r=".42"></circle><circle cx="4.7" cy="5.8" r=".42"></circle><circle cx="6.9" cy="5.8" r=".42"></circle>
+			</g>
+		</svg>
+	}
+}
+
+// prefetchRules asks the browser to prefetch panel pages when a link is hovered
+// or focused, so navigation feels instant. Actions, streams, and sign-out are excluded.
+func prefetchRules(nonce string) templ.Component {
+	return templ.Raw(`<script type="speculationrules" nonce="` + templ.EscapeString(nonce) + `">{"prefetch":[{"where":{"and":[{"href_matches":"/*"},{"not":{"href_matches":["/ui/*","/api/*","/assets/*","/login*","/enroll*","/dev/*"]}},{"not":{"selector_matches":"[data-no-prefetch]"}}]},"eagerness":"moderate"}]}</script>`)
+}

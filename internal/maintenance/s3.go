@@ -1,6 +1,7 @@
 package maintenance
 
 import (
+	"bytes"
 	"context"
 	"crypto/hmac"
 	"crypto/sha256"
@@ -13,6 +14,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -41,20 +43,24 @@ func LoadS3(p string) (*S3, error) {
 	if e = json.Unmarshal(b, &s); e != nil {
 		return nil, errors.New("invalid S3 configuration")
 	}
-	if e = s.validate(); e != nil {
+	if e = s.Validate(); e != nil {
 		return nil, e
 	}
 	return &s, nil
 }
-func (s *S3) validate() error {
+func (s *S3) Validate() error {
 	u, e := url.Parse(s.Endpoint)
-	if e != nil || u.Scheme != "https" || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || (u.Path != "" && u.Path != "/") || s.Region == "" || strings.ContainsAny(s.Region, "/\r\n") || s.AccessKey == "" || s.SecretKey == "" || strings.ContainsAny(s.Bucket, "/\r\n") || s.Bucket == "" || strings.ContainsAny(s.Prefix, "\r\n") || strings.ContainsAny(s.AccessKey+s.SessionToken, "\r\n") {
+	endpoint := e == nil && u.Scheme == "https" && u.Host != "" && u.User == nil && u.RawQuery == "" && u.Fragment == "" && (u.Path == "" || u.Path == "/")
+	fields := s.Region != "" && s.AccessKey != "" && s.SecretKey != "" && s.Bucket != "" &&
+		!strings.ContainsAny(s.Region, "/\r\n") && !strings.ContainsAny(s.Bucket, "/\r\n") &&
+		!strings.ContainsAny(s.Prefix, "\r\n") && !strings.ContainsAny(s.AccessKey+s.SessionToken, "\r\n")
+	if !endpoint || !fields {
 		return errors.New("invalid S3 configuration")
 	}
 	return nil
 }
 func (s *S3) Upload(ctx context.Context, file string) error {
-	if e := s.validate(); e != nil {
+	if e := s.Validate(); e != nil {
 		return e
 	}
 	f, e := os.OpenFile(file, os.O_RDONLY|sysNoFollow, 0)
@@ -77,18 +83,36 @@ func (s *S3) Upload(ctx context.Context, file string) error {
 	if _, e = f.Seek(0, io.SeekStart); e != nil {
 		return e
 	}
-	u, _ := url.Parse(s.Endpoint)
-	u.Path = "/" + s.Bucket + "/" + strings.Trim(s.Prefix, "/") + "/" + filepath.Base(file)
-	if s.Prefix == "" {
-		u.Path = "/" + s.Bucket + "/" + filepath.Base(file)
-	}
-	u.RawPath = s3Encode(u.Path)
-	req, e := http.NewRequestWithContext(ctx, http.MethodPut, u.String(), f)
+	req, e := http.NewRequestWithContext(ctx, http.MethodPut, s.objectURL(filepath.Base(file)), f)
 	if e != nil {
 		return errors.New("invalid S3 request")
 	}
 	req.ContentLength = st.Size()
 	req.Header.Set("Content-Type", "application/octet-stream")
+	status, e := s.do(req, payload)
+	if e != nil {
+		return errors.New("S3 backup upload failed")
+	}
+	if status < 200 || status >= 300 {
+		return fmt.Errorf("S3 backup upload rejected (HTTP %d)", status)
+	}
+	return nil
+}
+
+// objectURL is the path-style address of name under the configured prefix.
+func (s *S3) objectURL(name string) string {
+	u, _ := url.Parse(s.Endpoint)
+	u.Path = "/" + s.Bucket + "/" + strings.Trim(s.Prefix, "/") + "/" + name
+	if s.Prefix == "" {
+		u.Path = "/" + s.Bucket + "/" + name
+	}
+	u.RawPath = s3Encode(u.Path)
+	return u.String()
+}
+
+// do signs and sends req without following redirects, which could carry the
+// signed request elsewhere, and returns the status code.
+func (s *S3) do(req *http.Request, payload string) (int, error) {
 	s.sign(req, payload, time.Now().UTC())
 	client := s.Client
 	if client == nil {
@@ -98,12 +122,43 @@ func (s *S3) Upload(ctx context.Context, file string) error {
 	clone.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
 	res, e := clone.Do(req)
 	if e != nil {
-		return errors.New("S3 backup upload failed")
+		return 0, e
 	}
 	defer res.Body.Close()
 	_, _ = io.Copy(io.Discard, io.LimitReader(res.Body, 4096))
-	if res.StatusCode < 200 || res.StatusCode >= 300 {
-		return fmt.Errorf("S3 backup upload rejected (HTTP %d)", res.StatusCode)
+	return res.StatusCode, nil
+}
+
+// Test proves the configuration can store backups: it uploads a small object
+// next to where backups go, then deletes it.
+func (s *S3) Test(ctx context.Context) error {
+	if e := s.Validate(); e != nil {
+		return e
+	}
+	name := "nelcota-connection-test-" + strconv.FormatInt(time.Now().UnixNano(), 36) + ".txt"
+	body := []byte("NelcotaDeploy connection test\n")
+	sum := sha256.Sum256(body)
+	put, e := http.NewRequestWithContext(ctx, http.MethodPut, s.objectURL(name), bytes.NewReader(body))
+	if e != nil {
+		return errors.New("invalid S3 request")
+	}
+	put.ContentLength = int64(len(body))
+	put.Header.Set("Content-Type", "text/plain")
+	status, e := s.do(put, hex.EncodeToString(sum[:]))
+	if e != nil {
+		return errors.New("the S3 endpoint couldn't be reached")
+	}
+	if status < 200 || status >= 300 {
+		return fmt.Errorf("S3 refused the test upload (HTTP %d); check the bucket, region, and keys", status)
+	}
+	empty := sha256.Sum256(nil)
+	del, e := http.NewRequestWithContext(ctx, http.MethodDelete, s.objectURL(name), nil)
+	if e != nil {
+		return errors.New("invalid S3 request")
+	}
+	status, e = s.do(del, hex.EncodeToString(empty[:]))
+	if e != nil || status < 200 || status >= 300 {
+		return fmt.Errorf("the test upload worked, but deleting it was refused (HTTP %d); backups still work", status)
 	}
 	return nil
 }
@@ -149,5 +204,3 @@ func s3Encode(s string) string {
 	}
 	return b.String()
 }
-
-func (s *S3) Validate() error { return s.validate() }

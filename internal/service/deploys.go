@@ -5,13 +5,21 @@ import (
 	"database/sql"
 
 	"errors"
+	"regexp"
 	"strings"
 	"time"
 
 	agentv1 "github.com/Nelcota/NelcotaDeploy/internal/gen/agent/v1"
 	"github.com/Nelcota/NelcotaDeploy/internal/security"
+	"github.com/Nelcota/NelcotaDeploy/internal/store/dbgen"
 	"github.com/Nelcota/NelcotaDeploy/internal/transport"
 )
+
+// heartbeatTimeout is how long a server counts as connected after its last
+// heartbeat, for scheduling deployments and updates.
+const heartbeatTimeout = 20 * time.Second
+
+func heartbeatCutoff() int64 { return time.Now().Add(-heartbeatTimeout).Unix() }
 
 type deploysService struct{ c *Core }
 
@@ -66,10 +74,19 @@ func (s *deploysService) Enqueue(ctx context.Context, in DeployInput) (Deploymen
 }
 func (s *deploysService) enqueue(ctx context.Context, tx *sql.Tx, id string, in DeployInput) error {
 	now := time.Now().Unix()
-	if _, e := tx.ExecContext(ctx, "UPDATE deployments SET status='cancelled',finished_at=? WHERE app_id=? AND status='queued'", now, in.AppID); e != nil {
+	q := dbgen.New(tx)
+	if e := q.CancelQueuedDeployments(ctx, dbgen.CancelQueuedDeploymentsParams{FinishedAt: now, AppID: in.AppID}); e != nil {
 		return e
 	}
-	if _, e := tx.ExecContext(ctx, "INSERT INTO deployments(id,app_id,sha,message,author,origin,status,queued_at,clean) VALUES(?,?,?,?,?,?,'queued',?,?)", id, in.AppID, strings.ToLower(in.SHA), in.Message, in.Author, in.Origin, now, in.Clean); e != nil {
+	clean := int64(0)
+	if in.Clean {
+		clean = 1
+	}
+	e := q.InsertQueuedDeployment(ctx, dbgen.InsertQueuedDeploymentParams{
+		ID: id, AppID: in.AppID, Sha: strings.ToLower(in.SHA), Message: in.Message, Author: in.Author,
+		Origin: in.Origin, QueuedAt: now, Clean: clean, RetryOf: in.retryOf,
+	})
+	if e != nil {
 		return e
 	}
 	return s.c.audit(ctx, tx, "deploy.enqueue", id)
@@ -86,7 +103,7 @@ func (s *deploysService) Cancel(ctx context.Context, id string) error {
 		return fail(Conflict, "Deployment already finished")
 	}
 	e = s.c.mutate(ctx, func(tx *sql.Tx) error {
-		if _, e := tx.ExecContext(ctx, "UPDATE deployments SET status=CASE WHEN status='queued' THEN 'cancelled' ELSE status END,finished_at=CASE WHEN status='queued' THEN ? ELSE finished_at END,cancel_requested=1 WHERE id=?", time.Now().Unix(), id); e != nil {
+		if e := dbgen.New(tx).RequestCancel(ctx, dbgen.RequestCancelParams{FinishedAt: time.Now().Unix(), ID: id}); e != nil {
 			return e
 		}
 		if d.Status == "queued" && s.c.GitHub != nil {
@@ -122,15 +139,16 @@ func (s *deploysService) Rollback(ctx context.Context, app, sha string) (Deploym
 func (c *Core) Claim(ctx context.Context) (Deployment, error) {
 	var id string
 	e := c.mutate(ctx, func(tx *sql.Tx) error {
-		e := tx.QueryRowContext(ctx, `SELECT d.id FROM deployments d JOIN apps a ON a.id=d.app_id JOIN servers s ON s.id=a.server_id WHERE d.status='queued' AND NOT EXISTS(SELECT 1 FROM maintenance_jobs m WHERE m.kind='update' AND (m.status='waiting' OR (m.status='queued' AND m.ordinal=(SELECT min(ordinal) FROM maintenance_jobs WHERE kind='update' AND status IN ('queued','waiting')))) AND (m.target=s.id OR m.target='panel')) AND s.status='online' AND s.agent_ready=1 AND s.heartbeat_at>? AND NOT EXISTS(SELECT 1 FROM deployments x WHERE x.app_id=d.app_id AND x.status IN ('building','starting')) AND (SELECT count(*) FROM deployments x JOIN apps ax ON ax.id=x.app_id WHERE ax.server_id=s.id AND x.status IN ('building','starting'))<s.build_limit ORDER BY CASE WHEN d.origin='push' THEN 1 ELSE 0 END,d.queued_at,d.rowid LIMIT 1`, time.Now().Add(-20*time.Second).Unix()).Scan(&id)
+		q := dbgen.New(tx)
+		var e error
+		id, e = q.NextQueuedDeployment(ctx, heartbeatCutoff())
 		if errors.Is(e, sql.ErrNoRows) {
 			return fail(NotFound, "Queue empty")
 		}
 		if e != nil {
 			return e
 		}
-		_, e = tx.ExecContext(ctx, "UPDATE deployments SET status='building',started_at=? WHERE id=? AND status='queued'", time.Now().Unix(), id)
-		return e
+		return q.StartDeployment(ctx, dbgen.StartDeploymentParams{StartedAt: time.Now().Unix(), ID: id})
 	})
 	if e != nil {
 		return Deployment{}, e
@@ -191,7 +209,7 @@ func (c *Core) RunScheduler(ctx context.Context) error {
 }
 func (c *Core) failDispatch(ctx context.Context, id, code string) {
 	_ = c.mutate(ctx, func(tx *sql.Tx) error {
-		_, e := tx.ExecContext(ctx, "UPDATE deployments SET status='failed',error_code=?,finished_at=? WHERE id=? AND status='building'", code, time.Now().Unix(), id)
+		e := dbgen.New(tx).FailDispatch(ctx, dbgen.FailDispatchParams{ErrorCode: code, FinishedAt: time.Now().Unix(), ID: id})
 		if e != nil {
 			return e
 		}
@@ -206,7 +224,14 @@ func (c *Core) failDispatch(ctx context.Context, id, code string) {
 	}
 }
 func (c *Core) agentConfig(ctx context.Context, a App) (*agentv1.AppConfig, error) {
-	p := &agentv1.AppConfig{AppId: a.ID, Repository: a.Repository, Branch: a.Branch, Domains: a.Config.Domains, MemoryBytes: a.Config.MemoryBytes, NanoCpus: a.Config.NanoCPUs, Port: a.Config.Port, HealthPath: a.Config.HealthPath, HealthTimeoutSeconds: a.Config.HealthTimeout, Replicas: a.Config.Replicas, CacheEnabled: a.Config.CacheEnabled, Dockerfile: a.Config.Dockerfile, InstallationId: a.Config.InstallationID, DesiredSha: a.DesiredSHA, Stopped: a.Config.Stopped, Revision: uint64(a.Revision), Env: map[string]string{}, BuildSecrets: map[string]string{}}
+	p := &agentv1.AppConfig{
+		AppId: a.ID, Repository: a.Repository, Branch: a.Branch, Domains: a.Config.Domains,
+		MemoryBytes: a.Config.MemoryBytes, NanoCpus: a.Config.NanoCPUs, Port: a.Config.Port,
+		HealthPath: a.Config.HealthPath, HealthTimeoutSeconds: a.Config.HealthTimeout, Replicas: a.Config.Replicas,
+		CacheEnabled: a.Config.CacheEnabled, Dockerfile: a.Config.Dockerfile, InstallationId: a.Config.InstallationID,
+		DesiredSha: a.DesiredSHA, Stopped: a.Config.Stopped, Revision: uint64(a.Revision),
+		Env: map[string]string{}, BuildSecrets: map[string]string{},
+	}
 	vars, e := c.DB.Queries.GetEnvironment(ctx, a.ID)
 	if e != nil {
 		return nil, e
@@ -225,11 +250,10 @@ func (c *Core) agentConfig(ctx context.Context, a App) (*agentv1.AppConfig, erro
 	return p, nil
 }
 func (c *Core) AgentConnected(ctx context.Context, p transport.Peer) error {
-	r, e := c.DB.Write.ExecContext(ctx, "UPDATE servers SET status='online',agent_ready=0,heartbeat_at=? WHERE id=? AND (fingerprint=? OR (previous_fingerprint=? AND previous_cert_until>?))", time.Now().Unix(), p.ID, p.Fingerprint, p.Fingerprint, time.Now().Unix())
+	n, e := dbgen.New(c.DB.Write).ConnectAgent(ctx, dbgen.ConnectAgentParams{Now: time.Now().Unix(), ID: p.ID, Fingerprint: p.Fingerprint})
 	if e != nil {
 		return e
 	}
-	n, _ := r.RowsAffected()
 	if n != 1 {
 		return fail(Forbidden, "Agent not registered")
 	}
@@ -244,7 +268,12 @@ func (c *Core) AgentEvent(ctx context.Context, p transport.Peer, e *agentv1.Even
 	case *agentv1.Event_OperationResult:
 		return c.operationResult(ctx, p.ID, v.OperationResult)
 	case *agentv1.Event_Heartbeat:
-		if _, err := c.DB.Write.ExecContext(ctx, "UPDATE servers SET heartbeat_at=?,status='online',agent_version=?,agent_ready=? WHERE id=?", time.Now().Unix(), v.Heartbeat.Version, v.Heartbeat.Ready, p.ID); err != nil {
+		ready := int64(0)
+		if v.Heartbeat.Ready {
+			ready = 1
+		}
+		heartbeat := dbgen.RecordHeartbeatParams{HeartbeatAt: time.Now().Unix(), AgentVersion: v.Heartbeat.Version, AgentReady: ready, ID: p.ID}
+		if err := dbgen.New(c.DB.Write).RecordHeartbeat(ctx, heartbeat); err != nil {
 			return err
 		}
 		if err := c.operationResult(ctx, p.ID, v.Heartbeat.UpdateResult); err != nil {
@@ -327,7 +356,7 @@ func (c *Core) AgentEvent(ctx context.Context, p transport.Peer, e *agentv1.Even
 			}
 			code := ""
 			if s.Status == "failed" {
-				code = "deployment_failed"
+				code = failureCode(s.ErrorCode)
 			}
 			if _, err := tx.ExecContext(ctx, "UPDATE deployments SET status=?,finished_at=?,error_code=? WHERE id=?", s.Status, finished, code, d.ID); err != nil {
 				return err
@@ -340,6 +369,9 @@ func (c *Core) AgentEvent(ctx context.Context, p transport.Peer, e *agentv1.Even
 			if s.Status == "success" {
 				_, err := tx.ExecContext(ctx, "UPDATE apps SET desired_sha=? WHERE id=?", d.Sha, d.AppID)
 				return err
+			}
+			if s.Status == "failed" {
+				return retryTransient(ctx, c, tx, d, code)
 			}
 			return nil
 		})
@@ -388,6 +420,7 @@ func (c *Core) AgentEvent(ctx context.Context, p transport.Peer, e *agentv1.Even
 		}
 		v.Metrics.Containers = ownedMetrics
 		c.publish("servers", "server.metrics", map[string]any{"server_id": p.ID, "metrics": v.Metrics})
+		c.relieveDisk(ctx, p.ID, v.Metrics)
 	default:
 		return fail(Validation, "Unknown event")
 	}
@@ -456,21 +489,16 @@ func (c *Core) maskApp(ctx context.Context, id, line string) (string, error) {
 	return security.NewRedactor(secrets).Mask(line), nil
 }
 func (c *Core) retainLogs(ctx context.Context, app string) error {
-	r, e := c.DB.Read.QueryContext(ctx, "SELECT id FROM deployments WHERE app_id=? AND status IN ('success','failed','cancelled') ORDER BY queued_at DESC,rowid DESC LIMIT -1 OFFSET 50", app)
+	ids, e := c.DB.Queries.ListExpiredLogDeployments(ctx, app)
 	if e != nil {
 		return e
 	}
-	defer r.Close()
-	for r.Next() {
-		var id string
-		if e = r.Scan(&id); e != nil {
-			return e
-		}
+	for _, id := range ids {
 		if e = c.LogStore.Remove(ctx, id); e != nil {
 			return e
 		}
 	}
-	return r.Err()
+	return nil
 }
 
 // observedState repairs terminal transitions lost during an interrupted RPC session.
@@ -483,49 +511,35 @@ func (c *Core) observedState(ctx context.Context, server string, h *agentv1.Hear
 	for _, app := range h.Apps {
 		observed[app.DeployId] = app
 	}
-	rows, e := c.DB.Read.QueryContext(ctx, "SELECT d.id,d.app_id,d.sha,d.status,d.started_at,d.cancel_requested FROM deployments d JOIN apps a ON a.id=d.app_id WHERE a.server_id=? AND d.status IN ('building','starting')", server)
+	jobs, e := c.DB.Queries.ListServerActiveDeployments(ctx, server)
 	if e != nil {
 		return e
 	}
-	type job struct {
-		id, app, sha, status string
-		started, cancel      int64
-	}
-	jobs := []job{}
-	for rows.Next() {
-		var j job
-		if e = rows.Scan(&j.id, &j.app, &j.sha, &j.status, &j.started, &j.cancel); e != nil {
-			rows.Close()
-			return e
-		}
-		jobs = append(jobs, j)
-	}
-	if e = rows.Err(); e != nil {
-		rows.Close()
-		return e
-	}
-	rows.Close()
 	for _, j := range jobs {
-		if active[j.id] {
+		if active[j.ID] {
 			continue
 		}
-		if o := observed[j.id]; o != nil && o.AppId == j.app && o.Sha == j.sha {
-			if j.status == "building" {
-				if e = c.AgentEvent(ctx, transport.Peer{ID: server}, &agentv1.Event{Payload: &agentv1.Event_DeployStatus{DeployStatus: &agentv1.DeployStatus{DeployId: j.id, AppId: j.app, Status: "starting"}}}); e != nil {
+		report := func(status string) error {
+			update := &agentv1.DeployStatus{DeployId: j.ID, AppId: j.AppID, Status: status}
+			return c.AgentEvent(ctx, transport.Peer{ID: server}, &agentv1.Event{Payload: &agentv1.Event_DeployStatus{DeployStatus: update}})
+		}
+		if o := observed[j.ID]; o != nil && o.AppId == j.AppID && o.Sha == j.Sha {
+			if j.Status == "building" {
+				if e = report("starting"); e != nil {
 					return e
 				}
 			}
-			if e = c.AgentEvent(ctx, transport.Peer{ID: server}, &agentv1.Event{Payload: &agentv1.Event_DeployStatus{DeployStatus: &agentv1.DeployStatus{DeployId: j.id, AppId: j.app, Status: "success"}}}); e != nil {
+			if e = report("success"); e != nil {
 				return e
 			}
 			continue
 		}
-		if time.Now().Unix()-j.started > 30 {
+		if time.Now().Unix()-j.StartedAt > 30 {
 			state := "failed"
-			if j.cancel != 0 {
+			if j.CancelRequested != 0 {
 				state = "cancelled"
 			}
-			if e = c.AgentEvent(ctx, transport.Peer{ID: server}, &agentv1.Event{Payload: &agentv1.Event_DeployStatus{DeployStatus: &agentv1.DeployStatus{DeployId: j.id, AppId: j.app, Status: state}}}); e != nil {
+			if e = report(state); e != nil {
 				return e
 			}
 		}
@@ -539,4 +553,42 @@ func mustMaskRuntime(c *Core, ctx context.Context, id, line string) string {
 		return "[log unavailable]"
 	}
 	return safe
+}
+
+var failureCodePattern = regexp.MustCompile(`^[a-z][a-z0-9_]{0,39}$`)
+
+// transientFailures are failures that usually pass on a second attempt
+// without any change. Build, start, and health check failures are never
+// retried: they need a fix, and retrying would hide them.
+var transientFailures = map[string]bool{"route_failed": true}
+
+// retryTransient queues one automatic retry of a deployment that failed for a
+// transient reason, unless it was itself a retry, it was cancelled, the app is
+// stopped, or a newer deployment already exists.
+func retryTransient(ctx context.Context, c *Core, tx *sql.Tx, d dbgen.Deployment, code string) error {
+	if !transientFailures[code] || d.RetryOf != "" || d.CancelRequested != 0 {
+		return nil
+	}
+	var newer int
+	if e := tx.QueryRowContext(ctx, "SELECT count(*) FROM deployments WHERE app_id=? AND id<>? AND queued_at>=?", d.AppID, d.ID, d.QueuedAt).Scan(&newer); e != nil {
+		return e
+	}
+	var stopped bool
+	if e := tx.QueryRowContext(ctx, "SELECT COALESCE(json_extract(config,'$.stopped'),0) FROM apps WHERE id=?", d.AppID).Scan(&stopped); e != nil {
+		return e
+	}
+	if newer > 0 || stopped {
+		return nil
+	}
+	in := DeployInput{AppID: d.AppID, SHA: d.Sha, Message: d.Message, Author: d.Author, Origin: d.Origin, Clean: d.Clean != 0, retryOf: d.ID}
+	return (&deploysService{c}).enqueue(systemContext(ctx), tx, security.Token(), in)
+}
+
+// failureCode keeps an agent-reported failure reason when it is a plain code,
+// so the interface can explain it; anything else becomes the generic code.
+func failureCode(reported string) string {
+	if failureCodePattern.MatchString(reported) {
+		return reported
+	}
+	return "deployment_failed"
 }

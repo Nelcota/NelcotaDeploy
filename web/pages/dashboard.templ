@@ -1,0 +1,538 @@
+package pages
+
+import (
+	"context"
+	"strings"
+
+	"github.com/Nelcota/NelcotaDeploy/web/i18n"
+	"strconv"
+
+	"github.com/Nelcota/NelcotaDeploy/internal/service"
+	"github.com/Nelcota/NelcotaDeploy/web/ui"
+)
+
+// Metrics is the latest host sample for a server, received over the event hub.
+type Metrics struct {
+	CPUPercent  float64     `json:"cpu_percent"`
+	MemoryUsed  int64       `json:"memory_used"`
+	MemoryTotal int64       `json:"memory_total"`
+	DiskUsed    int64       `json:"disk_used"`
+	DiskTotal   int64       `json:"disk_total"`
+	CacheUsed   int64       `json:"cache_used"`
+	Containers  []Container `json:"containers"`
+	At          int64       `json:"-"`
+}
+
+// Container is one container sample within Metrics.
+type Container struct {
+	AppID       string  `json:"app_id"`
+	ContainerID string  `json:"container_id"`
+	CPUPercent  float64 `json:"cpu_percent"`
+	MemoryUsed  int64   `json:"memory_used"`
+	MemoryLimit int64   `json:"memory_limit"`
+	PIDs        int64   `json:"pids"`
+}
+
+// AppRow is an app with its state and server name. Publish and Manage say
+// which row actions the viewer may use; services still enforce permissions.
+type AppRow struct {
+	App        service.App
+	Latest     service.Deployment
+	State      AppState
+	ServerName string
+	// Publish offers "Publish now": there is a version to publish and nothing
+	// is publishing or stopped.
+	Publish bool
+	// Manage offers restart, stop, and start (administrators only).
+	Manage bool
+}
+
+// Group is the status filter an app belongs to on the Apps page.
+func (a AppRow) Group() string {
+	switch a.State.Key {
+	case "update_failed", "not_live":
+		return "failing"
+	case "publishing", "live":
+		return a.State.Key
+	}
+	return "other"
+}
+
+// Search is the lowercase text the Apps page search matches: name and domains.
+func (a AppRow) Search() string {
+	return strings.ToLower(strings.Join(append([]string{a.App.Name}, a.App.Config.Domains...), " "))
+}
+
+// RedeploySHA is the commit a quick deploy rebuilds when the branch head is unknown.
+func (a AppRow) RedeploySHA() string {
+	if a.Latest.SHA != "" {
+		return a.Latest.SHA
+	}
+	return a.App.DesiredSHA
+}
+
+// Step is one item of the first-run checklist. Icon is optional and shown
+// before the label.
+type Step struct {
+	Label, Hint, Href, Action, Icon string
+	Done                            bool
+}
+
+// FirstSteps is the setup checklist. Compact lists only optional steps left
+// after an app went live; they show as one dismissible suggestion.
+type FirstSteps struct {
+	Steps   []Step
+	Compact bool
+}
+
+func (f FirstSteps) done() int {
+	n := 0
+	for _, s := range f.Steps {
+		if s.Done {
+			n++
+		}
+	}
+	return n
+}
+
+// doneLabels names the finished steps in one line.
+func (f FirstSteps) doneLabels() string {
+	var done []string
+	for _, st := range f.Steps {
+		if st.Done {
+			done = append(done, st.Label)
+		}
+	}
+	return strings.Join(done, " · ")
+}
+
+func (f FirstSteps) show() bool {
+	return len(f.Steps) > 0 && f.done() < len(f.Steps)
+}
+
+// Attention is something that needs a person to act.
+type Attention struct {
+	ID, Tone, Title, Detail, Href, Action string
+}
+
+type DashboardView struct {
+	Apps      []AppRow
+	Servers   []service.Server
+	Metrics   map[string]Metrics
+	Steps     FirstSteps
+	Attention []Attention
+	Err       string
+}
+
+// tone picks a stable thumbnail color (1–3) for a name.
+func tone(name string) string {
+	n := 0
+	for _, r := range name {
+		n += int(r)
+	}
+	return strconv.Itoa(n%3 + 1)
+}
+
+templ Dashboard(s Shell, v DashboardView) {
+	@App(s) {
+		@PageHeader("Home", "") {
+			@Connection()
+			if s.Admin() {
+				@ui.LinkButton("/apps/new", "", "sm", nil) {
+					@ui.Icon("plus", "")
+					{ i18n.T(ctx, "New app") }
+				}
+			}
+		}
+		@LiveStream("/ui/stream/dashboard")
+		if v.Err != "" {
+			@ui.ErrorState("Home unavailable", v.Err)
+		} else {
+			@DashboardBody(s, v)
+		}
+	}
+}
+
+templ DashboardBody(s Shell, v DashboardView) {
+	<div id="dashboard" class="grid gap-10">
+		@AttentionList(v.Attention)
+		if v.Steps.show() {
+			if v.Steps.Compact {
+				@NextStep(v.Steps.Steps[0])
+			} else {
+				@FirstStepsList(v.Steps)
+			}
+		}
+		<section aria-labelledby="apps-heading" class="grid gap-3">
+			@sectionHeader("apps-heading", "Apps", "/apps", "All apps")
+			if len(v.Apps) == 0 {
+				@ui.Empty("box", "No apps yet", "Create an app from a GitHub repository with a Dockerfile.") {
+					if s.Admin() {
+						@ui.LinkButton("/apps/new", "", "sm", nil) {
+							{ i18n.T(ctx, "New app") }
+						}
+					}
+				}
+			} else {
+				@AppsTable(v.Apps, false)
+			}
+		</section>
+		<section aria-labelledby="servers-heading" class="grid gap-3">
+			@sectionHeader("servers-heading", "Servers", "/servers", "All servers")
+			if len(v.Servers) == 0 {
+				@ui.Empty("server", "No servers yet", "Add a server to start publishing.") {
+					if s.Admin() {
+						@ui.LinkButton("/servers", "outline", "sm", nil) {
+							{ i18n.T(ctx, "Add server") }
+						}
+					}
+				}
+			} else {
+				<ul class="rows">
+					for _, srv := range v.Servers {
+						<li>
+							@ServerCard(srv, v.Metrics[srv.ID])
+						</li>
+					}
+				</ul>
+			}
+		</section>
+	</div>
+}
+
+// sectionHeader titles a home section with a link to its full page.
+templ sectionHeader(id, title string, href templ.SafeURL, link string) {
+	<div class="flex items-baseline justify-between gap-4">
+		<h2 id={ id } class="section-title">{ i18n.T(ctx, title) }</h2>
+		<a href={ href } class="see-all">{ i18n.T(ctx, link) }</a>
+	</div>
+}
+
+// hideStepsButton dismisses the checklist for the signed-in person.
+templ hideStepsButton() {
+	@ui.Button("ghost", "sm", templ.Attributes{"data-on:click": ui.Post("/ui/first-steps/hide"), "aria-label": i18n.T(ctx, "Hide setup suggestions")}) {
+		{ i18n.T(ctx, "Hide") }
+	}
+}
+
+templ FirstStepsList(f FirstSteps) {
+	<section id="first-steps" class="surface grid gap-4 p-5 sm:p-6" aria-labelledby="first-steps-title">
+		<div class="flex flex-wrap items-center justify-between gap-3">
+			<h2 id="first-steps-title" class="section-title">{ i18n.T(ctx, "Get your first app online") }</h2>
+			<div class="flex items-center gap-2">
+				<span class="text-sm text-muted-foreground">{ i18n.Tf(ctx, "%d of %d done", f.done(), len(f.Steps)) }</span>
+				@hideStepsButton()
+			</div>
+		</div>
+		<progress class="meter" max={ strconv.Itoa(len(f.Steps)) } value={ strconv.Itoa(f.done()) } aria-label={ i18n.T(ctx, "Setup progress") }></progress>
+		// Only what is left is a step; finished steps collapse into one line.
+		// The step number is a label, not a checkbox.
+		<ol class="grid gap-2">
+			for i, st := range f.Steps {
+				if !st.Done {
+					<li class="checkitem">
+						<span class="step-number" aria-hidden="true">{ strconv.Itoa(i + 1) }</span>
+						<span class="checkitem-text">
+							<span class="flex items-center gap-2 font-medium">
+								if st.Icon != "" {
+									@ui.Icon(st.Icon, "size-4 shrink-0")
+								}
+								{ st.Label }
+							</span>
+							if st.Hint != "" {
+								<span class="block text-sm text-muted-foreground">{ st.Hint }</span>
+							}
+						</span>
+						if st.Href != "" {
+							@ui.LinkButton(templ.SafeURL(st.Href), "outline", "sm", nil) {
+								{ st.Action }
+							}
+						}
+					</li>
+				}
+			}
+		</ol>
+		if f.done() > 0 {
+			<p class="flex items-start gap-2 text-sm text-muted-foreground">
+				@ui.Icon("circle-check", "mt-0.5 size-4 shrink-0 text-success")
+				<span>{ i18n.T(ctx, "Done:") } { f.doneLabels() }</span>
+			</p>
+		}
+	</section>
+}
+
+// NextStep suggests one optional setup step once an app is live.
+templ NextStep(st Step) {
+	<section id="first-steps" class="checkitem" aria-label={ i18n.T(ctx, "Suggested next step") }>
+		@ui.Icon(stepIcon(st.Icon), "size-4 shrink-0 text-muted-foreground")
+		<span class="checkitem-text">
+			<span class="block font-medium">{ st.Label }</span>
+			<span class="block text-sm text-muted-foreground">{ st.Hint }</span>
+		</span>
+		<span class="flex items-center gap-1">
+			@ui.LinkButton(templ.SafeURL(st.Href), "outline", "sm", nil) {
+				{ st.Action }
+			}
+			@hideStepsButton()
+		</span>
+	</section>
+}
+
+func stepIcon(icon string) string {
+	if icon == "" {
+		return "key-round"
+	}
+	return icon
+}
+
+templ AttentionList(items []Attention) {
+	<section id="attention" class="grid gap-3" aria-labelledby="attention-title">
+		if len(items) == 0 {
+			// Nothing to do: a quiet line instead of a whole section.
+			<p id="attention-title" class="flex items-center gap-2 text-sm">
+				@ui.Icon("circle-check", "size-4 text-success")
+				{ i18n.T(ctx, "Everything is running normally.") }
+			</p>
+		} else {
+			<h2 id="attention-title" class="section-title">{ i18n.T(ctx, "Needs your attention") }</h2>
+			<ul class="grid gap-2">
+				for _, a := range items {
+					<li id={ "attention-" + a.ID } class="notice-row" data-tone={ a.Tone }>
+						<div class="checkitem-text">
+							<p class="font-medium">{ a.Title }</p>
+							if a.Detail != "" {
+								<p class="text-sm text-muted-foreground">{ a.Detail }</p>
+							}
+						</div>
+						if a.Href != "" {
+							@ui.LinkButton(templ.SafeURL(a.Href), "", "sm", nil) {
+								{ a.Action }
+							}
+						}
+					</li>
+				}
+			</ul>
+		}
+	</section>
+}
+
+func serverStatus(s service.Server) string {
+	if s.Status == "online" && !s.Ready {
+		return "not_ready"
+	}
+	return s.Status
+}
+
+templ miniMeter(label string, used, total int64) {
+	<span class="mini-meter">
+		{ i18n.T(ctx, label) }
+		<progress max="1000" value={ ui.Permille(used, total) } aria-label={ i18n.T(ctx, label) + " " + ui.Usage(used, total) }></progress>
+		<span class="tabular-nums">{ ui.Percent(float64(used*100) / float64(max(total, 1))) }</span>
+	</span>
+}
+
+templ ServerCard(srv service.Server, m Metrics) {
+	<article id={ "server-" + srv.ID } class="row" aria-label={ srv.Name }>
+		<div class="row-main px-5 py-4">
+			<div class="min-w-0 flex-1">
+				<div class="flex flex-wrap items-center gap-2">
+					<h3 class="truncate font-medium">{ srv.Name }</h3>
+					@ui.Status(serverStatus(srv))
+				</div>
+				<p class="row-meta">
+					if m.At == 0 {
+						<span>{ i18n.T(ctx, "Waiting for metrics…") }</span>
+					} else {
+						<span>{ i18n.T(ctx, "CPU") } <span class="tabular-nums">{ ui.Percent(m.CPUPercent) }</span></span>
+						@miniMeter("Memory", m.MemoryUsed, m.MemoryTotal)
+						@miniMeter("Disk", m.DiskUsed, m.DiskTotal)
+					}
+					<span>{ i18n.Tf(ctx, "Heartbeat %s", i18n.T(ctx, ui.Ago(srv.HeartbeatAt))) }</span>
+				</p>
+			</div>
+		</div>
+		<div class="row-actions">
+			<a class="row-action" href="/servers" aria-label={ i18n.Tf(ctx, "Details for %s", srv.Name) }>
+				{ i18n.T(ctx, "Details") }
+				@ui.Icon("chevron-right", "")
+			</a>
+		</div>
+	</article>
+}
+
+// AppsTable lists apps. With filter set, each row hides itself when it
+// doesn't match the Apps page search ($_q) and status filter ($_status).
+templ AppsTable(rows []AppRow, filter bool) {
+	<ul id="apps-body" class="rows" aria-label={ i18n.T(ctx, "Apps") }>
+		for _, row := range rows {
+			@AppRowView(row, filter)
+		}
+	</ul>
+	if len(rows) > 0 && rows[0].Manage {
+		@appConfirm("app-confirm-restart", "Restart %s?", "Requests may fail for a few seconds while containers restart.", "Restart", "restart", false)
+		@appConfirm("app-confirm-stop", "Stop %s?", "The app stops serving traffic until you start it again.", "Stop app", "stop", true)
+	}
+}
+
+// rowMatch is true when row el passes the search and the status filter.
+const rowMatch = "($_status === 'all' || $_status === el.dataset.group) && el.dataset.search.includes($_q.trim().toLowerCase())"
+
+// appConfirm confirms a row action for the app the menu chose ($_appId and
+// $_appName), so one dialog serves every row. title holds %s for the name.
+templ appConfirm(id, title, body, confirm, action string, destructive bool) {
+	{{ before, after, _ := strings.Cut(i18n.T(ctx, title), "%s") }}
+	<dialog id={ id } class="dialog" aria-labelledby={ id + "-title" } aria-describedby={ id + "-body" } data-signals="{_appId: '', _appName: ''}" data-on:click="evt.target === el && el.close()" data-ignore-morph>
+		<div class="w-[calc(100%-2rem)] max-w-md gap-4 rounded-2xl border bg-background p-6 shadow-lg">
+			<header class="gap-1.5">
+				<h2 id={ id + "-title" } class="text-lg font-semibold">{ before }<span data-text="$_appName"></span>{ after }</h2>
+				<p id={ id + "-body" } class="text-sm text-muted-foreground">{ i18n.T(ctx, body) }</p>
+			</header>
+			<footer class="gap-2">
+				<button type="button" class="btn" data-variant="outline" data-on:click="el.closest('dialog').close()">{ i18n.T(ctx, "Go back") }</button>
+				<button
+					type="button"
+					class="btn"
+					if destructive {
+						data-variant="destructive"
+					}
+					data-confirm
+					data-on:click={ "@post('/ui/apps/' + encodeURIComponent($_appId) + " + ui.JS("/action/"+action+"?from=list") + ",{headers:{'X-CSRF-Token':$_csrf}}); el.closest('dialog').close()" }
+				>{ i18n.T(ctx, confirm) }</button>
+			</footer>
+		</div>
+	</dialog>
+}
+
+// openConfirm points the shared dialog at row's app and opens it.
+func openConfirm(row AppRow, id string) string {
+	return "$_appId = " + ui.JS(row.App.ID) + "; $_appName = " + ui.JS(row.App.Name) + "; " + ui.Open(id)
+}
+
+// appSummary is the last-deploy column: what is online (or happening) and when.
+templ appSummary(row AppRow) {
+	switch row.State.Key {
+		case "publishing":
+			<p class="truncate text-sm">{ PublishingLine(ctx, row.Latest) }</p>
+		case "update_failed":
+			<p class="truncate text-sm text-destructive">{ i18n.Tf(ctx, "Stopped %s. The previous version is still online.", i18n.T(ctx, ui.StagePhrase(FailedStage(row.Latest)))) }</p>
+		case "not_live":
+			<p class="truncate text-sm text-destructive">{ i18n.Tf(ctx, "Stopped %s.", i18n.T(ctx, ui.StagePhrase(FailedStage(row.Latest)))) }</p>
+		case "new":
+			<p class="text-sm text-muted-foreground">{ i18n.T(ctx, "Not published yet") }</p>
+		default:
+			if row.State.Live.ID != "" {
+				<p class="truncate text-sm" title={ row.State.Live.SHA }>{ message(ctx, row.State.Live) }</p>
+				<p class="row-meta mt-0.5">
+					<span>{ i18n.T(ctx, ui.Ago(row.State.Live.QueuedAt)) }</span>
+					if row.State.Live.Author != "" {
+						<span class="truncate">{ row.State.Live.Author }</span>
+					}
+				</p>
+			}
+	}
+}
+
+// PublishingLine describes a deployment in progress.
+func PublishingLine(ctx context.Context, d service.Deployment) string {
+	if d.Status == "queued" {
+		return i18n.T(ctx, "Waiting for a build slot")
+	}
+	return i18n.Tf(ctx, "%s, %s so far", i18n.T(ctx, ui.StageLabel(CurrentStage(d))), ui.Span(d.StartedAt, d.FinishedAt))
+}
+
+// AppRowView is one app in a list. The name link covers the whole row; the
+// domain and Logs links sit above it. Columns line up across rows from md up.
+templ AppRowView(row AppRow, filter bool) {
+	<li
+		id={ "app-row-" + row.App.ID }
+		class="row app-row"
+		if filter {
+			data-group={ row.Group() }
+			data-search={ row.Search() }
+			data-attr:hidden={ "!(" + rowMatch + ")" }
+		}
+	>
+		<div class="app-row-name">
+			@AppLogo(row.App, "")
+			<div class="min-w-0">
+				<div class="flex items-center gap-2">
+					<a href={ templ.SafeURL("/apps/" + row.App.ID) } class="row-link truncate font-medium">{ row.App.Name }</a>
+					@ui.Pill(ui.Tone(row.State.Key), row.State.Label, templ.Attributes{"data-status": row.Latest.Status, "data-state": row.State.Key})
+				</div>
+				if len(row.App.Config.Domains) > 0 {
+					<a href={ templ.SafeURL("https://" + row.App.Config.Domains[0]) } class="row-over block truncate text-xs text-muted-foreground hover:text-foreground hover:underline" target="_blank" rel="noopener">{ row.App.Config.Domains[0] }</a>
+				}
+			</div>
+		</div>
+		<div class="app-row-deploy">
+			@appSummary(row)
+		</div>
+		<div class="app-row-server">
+			if row.ServerName != "" {
+				@ui.Icon("server", "size-3.5 shrink-0")
+				<span class="truncate">{ row.ServerName }</span>
+			}
+		</div>
+		<a class="row-action row-over max-md:hidden" href={ templ.SafeURL("/apps/" + row.App.ID + "/logs") } aria-label={ i18n.Tf(ctx, "Logs for %s", row.App.Name) }>
+			@ui.Icon("scroll-text", "")
+			{ i18n.T(ctx, "Logs") }
+		</a>
+		@appRowMenu(row)
+	</li>
+}
+
+// appRowMenu holds the everyday actions for one app, so they don't need a
+// visit to the app's pages.
+templ appRowMenu(row AppRow) {
+	{{ base := "/apps/" + row.App.ID }}
+	<details class="menu row-menu row-over" data-opens="down">
+		<summary class="row-menu-trigger" aria-label={ i18n.Tf(ctx, "Actions for %s", row.App.Name) } title={ i18n.T(ctx, "Actions") }>
+			@ui.Icon("ellipsis", "")
+		</summary>
+		<div class="menu-list">
+			if row.Publish {
+				<button type="button" data-on:click={ ui.Post("/ui" + base + "/deploy?latest=1") }>
+					@ui.Icon("arrow-up-from-line", "")
+					{ i18n.T(ctx, "Publish now") }
+				</button>
+			}
+			if len(row.App.Config.Domains) > 0 {
+				<a href={ templ.SafeURL("https://" + row.App.Config.Domains[0]) } target="_blank" rel="noopener">
+					@ui.Icon("external-link", "")
+					{ i18n.T(ctx, "Open site") }
+				</a>
+				<button type="button" data-copy={ "app-url-" + row.App.ID }>
+					@ui.Icon("copy", "")
+					{ i18n.T(ctx, "Copy address") }
+				</button>
+				<span id={ "app-url-" + row.App.ID } hidden>{ "https://" + row.App.Config.Domains[0] }</span>
+			}
+			<a href={ templ.SafeURL(base + "/logs") } class="md:hidden">
+				@ui.Icon("scroll-text", "")
+				{ i18n.T(ctx, "Logs") }
+			</a>
+			<a href={ templ.SafeURL(base + "/settings") }>
+				@ui.Icon("sliders-horizontal", "")
+				{ i18n.T(ctx, "Settings") }
+			</a>
+			if row.Manage {
+				<hr class="menu-separator"/>
+				if row.App.Config.Stopped {
+					<button type="button" data-on:click={ ui.Post("/ui" + base + "/action/start?from=list") }>
+						@ui.Icon("play", "")
+						{ i18n.T(ctx, "Start") }
+					</button>
+				} else {
+					<button type="button" data-on:click={ openConfirm(row, "app-confirm-restart") }>
+						@ui.Icon("rotate-ccw", "")
+						{ i18n.T(ctx, "Restart") }
+					</button>
+					<button type="button" class="menu-danger" data-on:click={ openConfirm(row, "app-confirm-stop") }>
+						@ui.Icon("square", "")
+						{ i18n.T(ctx, "Stop") }
+					</button>
+				}
+			}
+		</div>
+	</details>
+}

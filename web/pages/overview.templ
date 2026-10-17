@@ -1,0 +1,477 @@
+package pages
+
+import (
+	"github.com/Nelcota/NelcotaDeploy/web/i18n"
+	"strings"
+
+	"github.com/Nelcota/NelcotaDeploy/internal/service"
+	"github.com/Nelcota/NelcotaDeploy/web/ui"
+)
+
+// OverviewView is the app's landing tab.
+type OverviewView struct {
+	State       AppState
+	Deployments []service.Deployment
+	LogTail     []string
+	Usage       []Container
+	CanLatest   bool
+	// SuggestedPort is the port a failed app's log says it listens on, when it
+	// differs from the configured one; Admin may change the port.
+	SuggestedPort uint32
+	Admin         bool
+	Err           string
+}
+
+// previousDuration is how long the last successful deployment took, in seconds.
+func (v OverviewView) previousDuration() string {
+	for _, d := range v.Deployments {
+		if d.Status == "success" && d.ID != v.State.Latest.ID && d.StartedAt > 0 {
+			return ui.Span(d.StartedAt, d.FinishedAt)
+		}
+	}
+	return ""
+}
+
+// recent is the four newest deployments, newest first.
+func (v OverviewView) recent() []service.Deployment {
+	return v.Deployments[:min(len(v.Deployments), 4)]
+}
+
+func errorLine(line string) bool {
+	l := strings.ToLower(line)
+	return strings.Contains(l, "error") || strings.Contains(l, "fail") || strings.Contains(l, "no response") || strings.Contains(l, "exception") || strings.Contains(l, "panic")
+}
+
+templ overviewActions(c AppContext, v OverviewView) {
+	if v.State.Key == "publishing" && !v.State.Latest.CancelRequested {
+		@ui.Button("outline", "sm", templ.Attributes{"data-on:click": ui.Open("cancel-" + v.State.Latest.ID)}) {
+			@ui.Icon("ban", "")
+			{ i18n.T(ctx, "Cancel") }
+		}
+		@ui.ConfirmDialog("cancel-"+v.State.Latest.ID, "Cancel this deployment?", "The current version keeps running.", "Cancel deployment", ui.Post("/ui/deployments/"+v.State.Latest.ID+"/cancel"), true)
+	} else if !c.App.Config.Stopped {
+		if v.CanLatest || v.State.Latest.SHA != "" || c.App.DesiredSHA != "" {
+			@ui.Button("", "sm", templ.Attributes{"data-on:click": ui.Post("/ui/apps/" + c.App.ID + "/deploy?latest=1")}) {
+				@ui.Icon("arrow-up-from-line", "")
+				{ i18n.T(ctx, "Publish latest") }
+			}
+		}
+		@ui.Button("outline", "sm", templ.Attributes{"data-on:click": openDeployCommit(c)}) {
+			{ i18n.T(ctx, "Publish a commit") }
+		}
+	}
+}
+
+templ Overview(s Shell, c AppContext, v OverviewView) {
+	@AppLayout(s, c, overviewActions(c, v)) {
+		@LiveStream("/ui/stream/apps/" + c.App.ID + "/overview")
+		if v.Err != "" {
+			@ui.ErrorState("Overview unavailable", v.Err)
+		} else {
+			@OverviewBody(c, v)
+		}
+		@DeployCommitDialog(c)
+	}
+}
+
+// openDeployCommit opens the "Publish a commit" dialog and, when the panel can
+// read GitHub, loads the branch's recent commits into it.
+func openDeployCommit(c AppContext) string {
+	if !c.Repos {
+		return ui.Open("deploy-commit")
+	}
+	return ui.Open("deploy-commit") + "; " + ui.Get("/ui/apps/"+c.App.ID+"/commits")
+}
+
+templ DeployCommitDialog(c AppContext) {
+	@ui.Dialog("deploy-commit", "Publish a commit", "") {
+		<form class="grid gap-4" data-on:submit={ ui.PostForm("/ui/apps/" + c.App.ID + "/deploy") }>
+			if c.Repos {
+				<fieldset class="grid gap-2">
+					<legend class="mb-2 text-sm font-medium">{ i18n.Tf(ctx, "Recent commits on %s", c.App.Branch) }</legend>
+					<div id="deploy-commit-list" class="grid gap-1.5">
+						@ui.Loading("Loading commits…")
+					</div>
+				</fieldset>
+			}
+			@ui.Field(commitFieldLabel(c), "deploy-sha", commitFieldHint(c), "") {
+				<input
+					id="deploy-sha"
+					name="sha_input"
+					class="input font-mono"
+					if c.Repos {
+						pattern="[0-9a-fA-F]{7,64}"
+					} else {
+						required
+						pattern="[0-9a-fA-F]{40}|[0-9a-fA-F]{64}"
+					}
+					autocomplete="off"
+					spellcheck="false"
+					aria-describedby="deploy-sha-hint"
+					data-on:input="el.value && el.form.querySelectorAll('input[name=sha]').forEach(r => r.checked = false)"
+				/>
+			}
+			@ui.Field("Description", "deploy-message", "", "") {
+				<input id="deploy-message" name="message" class="input" maxlength="1000" placeholder={ i18n.T(ctx, "Manual deployment") }/>
+			}
+			<label class="flex items-center gap-2 text-sm"><input class="input" type="checkbox" name="clean" value="true"/> { i18n.T(ctx, "Build without cache") }</label>
+			<footer class="flex justify-end gap-2">
+				<button type="button" class="btn" data-variant="outline" data-on:click="el.closest('dialog').close()">{ i18n.T(ctx, "Cancel") }</button>
+				<button type="submit" class="btn">{ i18n.T(ctx, "Publish") }</button>
+			</footer>
+		</form>
+	}
+}
+
+func commitFieldLabel(c AppContext) string {
+	if c.Repos {
+		return "Or enter a commit SHA"
+	}
+	return "Commit SHA"
+}
+
+func commitFieldHint(c AppContext) string {
+	if c.Repos {
+		return "At least the first 7 characters."
+	}
+	return "The full 40-character SHA. Connect GitHub to pick from recent commits."
+}
+
+// CommitList is the branch's recent commits as choices in the "Publish a
+// commit" dialog. Err explains why the list is unavailable; the SHA field
+// still works then.
+templ CommitList(commits []service.Commit, err string) {
+	// The list loads after the dialog opens; a SHA typed meanwhile still wins.
+	<div id="deploy-commit-list" class="grid gap-1.5" data-init="el.closest('form').querySelector('#deploy-sha').value && el.querySelectorAll('input[name=sha]').forEach(r => r.checked = false)">
+		if err != "" {
+			<p class="text-sm text-muted-foreground">{ i18n.T(ctx, "Recent commits couldn't be loaded. Enter the SHA below instead.") } { i18n.T(ctx, err) }</p>
+		} else if len(commits) == 0 {
+			<p class="text-sm text-muted-foreground">{ i18n.T(ctx, "No commits found on this branch.") }</p>
+		} else {
+			for i, cm := range commits {
+				<label class="commit-choice">
+					<input
+						type="radio"
+						name="sha"
+						value={ cm.SHA }
+						if i == 0 {
+							checked
+						}
+						data-on:change="el.form.querySelector('#deploy-sha').value = ''"
+					/>
+					<span class="min-w-0 flex-1">
+						<span class="block truncate">
+							<span class="mono">{ ui.ShortSHA(cm.SHA) }</span>
+							{ cm.Message }
+						</span>
+						<span class="block text-xs text-muted-foreground">
+							{ cm.Author }
+							if cm.Date > 0 {
+								· <time datetime={ ui.ISO(cm.Date) } title={ ui.Timestamp(cm.Date) }>{ i18n.T(ctx, ui.Ago(cm.Date)) }</time>
+							}
+						</span>
+					</span>
+				</label>
+			}
+		}
+	</div>
+}
+
+templ OverviewBody(c AppContext, v OverviewView) {
+	<div id="overview" class="grid gap-6">
+		switch v.State.Key {
+			case "publishing":
+				@publishingCard(c, v)
+			case "update_failed", "not_live":
+				@failureCard(c, v)
+		}
+		@liveCard(c, v)
+		<div class="grid gap-4 md:grid-cols-3">
+			<section class="surface grid content-start gap-3 p-5" aria-labelledby="recent-title">
+				<h2 id="recent-title" class="text-sm font-medium">{ i18n.T(ctx, "Recent deployments") }</h2>
+				if len(v.Deployments) == 0 {
+					<p class="text-sm">{ i18n.T(ctx, "None yet") }</p>
+				} else {
+					<ol class="-mx-2 grid text-sm">
+						for _, d := range v.recent() {
+							<li>
+								<a class="recent-row" href={ templ.SafeURL("/apps/" + c.App.ID + "/logs?deployment=" + d.ID) } title={ i18n.T(ctx, ui.StatusLabel(d.Status)) }>
+									<span class="release-dot" data-tone={ ui.Tone(d.Status) } aria-hidden="true"></span>
+									<span class="sr-only">{ i18n.T(ctx, ui.StatusLabel(d.Status)) }:</span>
+									<span class="mono shrink-0">{ ui.ShortSHA(d.SHA) }</span>
+									<span class="min-w-0 flex-1 truncate">
+										if d.Message != "" {
+											{ d.Message }
+										} else {
+											{ i18n.T(ctx, ui.StatusLabel(d.Status)) }
+										}
+									</span>
+									<time class="shrink-0 text-xs text-muted-foreground" datetime={ ui.ISO(d.QueuedAt) } title={ ui.Timestamp(d.QueuedAt) }>{ i18n.T(ctx, ui.Ago(d.QueuedAt)) }</time>
+								</a>
+							</li>
+						}
+					</ol>
+					<a class="see-all" href={ templ.SafeURL("/apps/" + c.App.ID + "/deployments") }>{ i18n.T(ctx, "Full history") }</a>
+				}
+			</section>
+			@UsageCard(c.App, v.Usage)
+			<section class="surface grid content-start gap-3 p-5" aria-labelledby="runs-title">
+				<h2 id="runs-title" class="text-sm font-medium">{ i18n.T(ctx, "Runs on") }</h2>
+				<div class="flex flex-wrap items-center gap-2">
+					<a class="font-medium hover:underline" href={ templ.SafeURL("/servers#server-" + c.App.ServerID) }>{ c.ServerName }</a>
+					if c.Server.ID != "" {
+						@ui.Status(serverStatus(c.Server))
+					}
+				</div>
+				<dl class="grid grid-cols-3 gap-2 text-sm">
+					<div class="grid gap-0.5">
+						<dt class="text-xs text-muted-foreground">{ i18n.T(ctx, "Copies") }</dt>
+						<dd class="font-medium tabular-nums">{ u32(c.App.Config.Replicas) }</dd>
+					</div>
+					<div class="grid gap-0.5">
+						<dt class="text-xs text-muted-foreground">{ i18n.T(ctx, "Memory") }</dt>
+						<dd class="font-medium tabular-nums">{ ui.Bytes(c.App.Config.MemoryBytes) }</dd>
+					</div>
+					<div class="grid gap-0.5">
+						<dt class="text-xs text-muted-foreground">CPU</dt>
+						<dd class="font-medium tabular-nums">{ ui.CPUs(c.App.Config.NanoCPUs) }</dd>
+					</div>
+				</dl>
+				<p class="text-xs text-muted-foreground">{ i18n.T(ctx, "Limits per copy.") }</p>
+			</section>
+		</div>
+	</div>
+}
+
+// StageProgress shows each pipeline stage of d with its state and duration.
+// The overview and the history both use it, so they always agree.
+templ StageProgress(d service.Deployment) {
+	<ol class="stages" aria-label={ i18n.T(ctx, "Deployment steps") }>
+		for _, st := range Stages {
+			<li class="stage" data-state={ StageState(d, st) }>
+				switch StageState(d, st) {
+					case "current":
+						@ui.Icon("loader-circle", "size-3.5 animate-spin")
+					case "done":
+						@ui.Icon("check", "size-3.5")
+					case "failed":
+						@ui.Icon("x", "size-3.5")
+				}
+				{ i18n.T(ctx, ui.StageLabel(st)) }
+				if ms, ok := d.Timings[st]; ok {
+					<span class="tabular-nums opacity-70">{ ui.Millis(ms) }</span>
+				}
+				switch StageState(d, st) {
+					case "current":
+						<span class="sr-only">{ i18n.T(ctx, "(in progress)") }</span>
+					case "failed":
+						<span class="sr-only">{ i18n.T(ctx, "(failed)") }</span>
+				}
+			</li>
+		}
+	</ol>
+}
+
+templ publishingCard(c AppContext, v OverviewView) {
+	<section class="surface grid gap-4 p-5 sm:p-6" aria-labelledby="publishing-title" aria-live="polite">
+		<div class="flex flex-wrap items-baseline justify-between gap-2">
+			<h2 id="publishing-title" class="section-title">{ i18n.T(ctx, "Publishing") } <span class="mono">{ ui.ShortSHA(v.State.Latest.SHA) }</span></h2>
+			<span class="text-sm text-muted-foreground tabular-nums">
+				if v.State.Latest.Status == "queued" {
+					{ i18n.T(ctx, "Waiting for a build slot") }
+				} else {
+					{ i18n.Tf(ctx, "%s so far", ui.Span(v.State.Latest.StartedAt, 0)) }
+					if v.previousDuration() != "" {
+						· { i18n.Tf(ctx, "last time %s", v.previousDuration()) }
+					}
+				}
+			</span>
+		</div>
+		if v.State.Latest.Message != "" {
+			<p class="text-sm">{ v.State.Latest.Message }</p>
+		}
+		@StageProgress(v.State.Latest)
+		<p class="text-sm text-muted-foreground">
+			if v.State.Live.ID != "" {
+				@ui.Phrase("Version %s stays online until the new one is ready.", ui.Mono(ui.ShortSHA(v.State.Live.SHA)))
+			} else {
+				{ i18n.T(ctx, "The app goes online once the health check passes.") }
+			}
+			<a class="ms-1 text-link hover:underline" href={ templ.SafeURL("/apps/" + c.App.ID + "/logs?deployment=" + v.State.Latest.ID) }>{ i18n.T(ctx, "Watch the log") }</a>
+		</p>
+	</section>
+}
+
+templ failureCard(c AppContext, v OverviewView) {
+	<section class="failure grid gap-4 p-5 sm:p-6" aria-labelledby="failure-title">
+		<h2 id="failure-title" class="section-title">
+			if v.State.Key == "update_failed" {
+				@ui.Phrase("Version %s didn't go live. Your site is still running the previous version.", ui.Mono(ui.ShortSHA(v.State.Latest.SHA)))
+			} else {
+				@ui.Phrase("Version %s didn't go live.", ui.Mono(ui.ShortSHA(v.State.Latest.SHA)))
+			}
+		</h2>
+		@StageProgress(v.State.Latest)
+		{{ why := Explain(ctx, v.State.Latest.ErrorCode, c.App) }}
+		<div class="grid gap-1">
+			<p>{ why.What }</p>
+			if v.SuggestedPort > 0 {
+				<p>{ i18n.Tf(ctx, "Its log says it listens on port %d, but the health check uses port %d.", v.SuggestedPort, c.App.Config.Port) }</p>
+			} else {
+				<p class="text-sm text-muted-foreground">{ why.Fix }</p>
+			}
+		</div>
+		if len(v.LogTail) > 0 {
+			<pre class="log-tail" aria-label={ i18n.T(ctx, "Last log lines") }>
+				for _, line := range v.LogTail {
+					if errorLine(line) {
+						<mark>{ line }</mark>{ "\n" }
+					} else {
+						{ line }{ "\n" }
+					}
+				}
+			</pre>
+		}
+		<div class="flex flex-wrap gap-2">
+			// When the log names the real port, switching to it is the likely fix.
+			if v.Admin && v.SuggestedPort > 0 {
+				<button type="button" class="btn" data-size="sm" data-on:click={ ui.Post("/ui/deployments/" + v.State.Latest.ID + "/port?port=" + u32(v.SuggestedPort)) }>
+					@ui.Icon("arrow-up-from-line", "")
+					{ i18n.Tf(ctx, "Use port %d and publish", v.SuggestedPort) }
+				</button>
+			}
+			<button
+				type="button"
+				class="btn"
+				data-size="sm"
+				if v.Admin && v.SuggestedPort > 0 {
+					data-variant="outline"
+				}
+				data-on:click={ ui.Post("/ui/apps/" + c.App.ID + "/deploy?sha=" + v.State.Latest.SHA) }
+			>
+				@ui.Icon("rotate-ccw", "")
+				{ i18n.T(ctx, "Try again") }
+			</button>
+			if strings.HasPrefix(v.State.Latest.ErrorCode, "health") {
+				@ui.LinkButton(templ.SafeURL("/apps/"+c.App.ID+"/settings#section-health"), "outline", "sm", nil) {
+					{ i18n.T(ctx, "Change health check") }
+				}
+			}
+			@ui.LinkButton(templ.SafeURL("/apps/"+c.App.ID+"/logs?deployment="+v.State.Latest.ID), "ghost", "sm", nil) {
+				{ i18n.T(ctx, "Full log") }
+			}
+		</div>
+	</section>
+}
+
+templ liveCard(c AppContext, v OverviewView) {
+	<section class="surface grid gap-4 p-5 sm:p-6" aria-labelledby="live-title">
+		<div class="flex flex-wrap items-start justify-between gap-3">
+			<div class="grid gap-1">
+				<h2 id="live-title" class="text-sm font-medium">{ i18n.T(ctx, "Online now") }</h2>
+				if c.App.Config.Stopped {
+					<p class="text-lg font-medium">{ i18n.T(ctx, "Stopped") }</p>
+					<p class="text-sm text-muted-foreground">{ i18n.T(ctx, "Start it from Settings when you want it back online.") }</p>
+				} else if v.State.Live.ID == "" {
+					<p class="text-lg font-medium">{ i18n.T(ctx, "Nothing yet") }</p>
+					<p class="text-sm text-muted-foreground">{ i18n.T(ctx, "The first version goes online after its health check passes.") }</p>
+				} else {
+					<p class="text-lg font-medium">{ i18n.T(ctx, "Version") } <span class="mono">{ ui.ShortSHA(v.State.Live.SHA) }</span></p>
+					<p class="text-sm text-muted-foreground">
+						if v.State.Live.Message != "" {
+							{ v.State.Live.Message } ·
+						}
+						{ i18n.T(ctx, ui.Ago(v.State.Live.QueuedAt)) }
+						if v.State.Live.Author != "" {
+							{ i18n.Tf(ctx, "by %s", v.State.Live.Author) }
+						}
+						if v.State.Live.StartedAt > 0 && v.State.Live.FinishedAt > 0 {
+							· { i18n.Tf(ctx, "took %s", ui.Span(v.State.Live.StartedAt, v.State.Live.FinishedAt)) }
+						}
+					</p>
+				}
+			</div>
+			if v.State.Live.ID != "" && !c.App.Config.Stopped {
+				<div class="flex flex-wrap gap-2">
+					@ui.LinkButton(templ.SafeURL("/apps/"+c.App.ID+"/logs?deployment=runtime"), "outline", "sm", nil) {
+						@ui.Icon("terminal", "")
+						{ i18n.T(ctx, "Live logs") }
+					}
+					@ui.LinkButton(templ.SafeURL("/apps/"+c.App.ID+"/logs?deployment="+v.State.Live.ID), "ghost", "sm", nil) {
+						@ui.Icon("scroll-text", "")
+						{ i18n.T(ctx, "Build log") }
+					}
+				</div>
+			}
+		</div>
+		if len(c.App.Config.Domains) > 0 {
+			<div class="grid gap-2">
+				<ul class="flex flex-wrap gap-2">
+					for _, d := range c.App.Config.Domains {
+						<li>
+							<a class="domain-link" href={ templ.SafeURL("https://" + d) } target="_blank" rel="noopener noreferrer">
+								{ d }
+								@ui.Icon("external-link", "size-3.5")
+								<span class="sr-only">{ i18n.T(ctx, "(opens in a new tab)") }</span>
+							</a>
+						</li>
+					}
+				</ul>
+				// DNS is checked as soon as the page opens. Live updates redraw this card,
+				// so the results are kept out of the morph.
+				<div data-ignore-morph>
+					<div id="dns-results" class="text-sm text-muted-foreground" aria-live="polite" data-init={ ui.Post("/ui/apps/" + c.App.ID + "/dns") }>{ i18n.T(ctx, "Checking DNS…") }</div>
+					<button type="button" class="mt-1.5 text-sm text-link hover:underline" data-on:click={ ui.Post("/ui/apps/" + c.App.ID + "/dns") }>{ i18n.T(ctx, "Check again") }</button>
+				</div>
+			</div>
+		} else {
+			<p class="text-sm text-muted-foreground">{ i18n.T(ctx, "No web address yet.") } <a class="text-link hover:underline" href={ templ.SafeURL("/apps/" + c.App.ID + "/settings#section-domains") }>{ i18n.T(ctx, "Add a domain") }</a></p>
+		}
+	</section>
+}
+
+templ DNSResults(checks []service.DomainCheck) {
+	<ul id="dns-results" class="grid gap-1 text-sm" aria-live="polite">
+		for _, d := range checks {
+			<li class="flex flex-wrap items-center gap-2">
+				if d.Resolves {
+					@ui.Icon("circle-check", "size-4 text-success")
+					<span>
+						@ui.Phrase("%s points to %s.", ui.Mono(d.Host), ui.Mono(strings.Join(d.Addresses, ", ")))
+					</span>
+				} else {
+					@ui.Icon("circle-alert", "size-4 text-warning")
+					<span>
+						@ui.Phrase("%s doesn't resolve yet. Add an A record for your server's public IP.", ui.Mono(d.Host))
+					</span>
+				}
+			</li>
+		}
+	</ul>
+}
+
+templ UsageCard(app service.App, usage []Container) {
+	<section id="usage" class="surface grid content-start gap-3 p-5" aria-labelledby="usage-title">
+		<h2 id="usage-title" class="text-sm font-medium">{ i18n.T(ctx, "Usage now") }</h2>
+		if len(usage) == 0 {
+			<p class="text-sm">{ i18n.T(ctx, "Waiting for metrics…") }</p>
+		} else {
+			{{ cpu, used, limit, cpus := usageTotals(app, usage) }}
+			<div class="grid gap-1.5">
+				<p class="flex items-baseline justify-between text-sm">
+					<span>CPU</span>
+					<span class="text-muted-foreground"><span class="font-medium text-foreground tabular-nums">{ ui.Percent(cpu) }</span> { i18n.Tf(ctx, "of %s", ui.CPUs(cpus) + " CPU") }</span>
+				</p>
+				<progress class="meter" max="1000" value={ permille(cpu, float64(cpus)/1e7) } aria-label={ "CPU " + ui.Percent(cpu) }></progress>
+			</div>
+			<div class="grid gap-1.5">
+				<p class="flex items-baseline justify-between text-sm">
+					<span>{ i18n.T(ctx, "Memory") }</span>
+					<span class="text-muted-foreground"><span class="font-medium text-foreground tabular-nums">{ ui.Bytes(used) }</span> { i18n.Tf(ctx, "of %s", ui.Bytes(limit)) }</span>
+				</p>
+				<progress class="meter" max="1000" value={ ui.Permille(used, limit) } aria-label={ i18n.T(ctx, "Memory") + " " + ui.Usage(used, limit) }></progress>
+			</div>
+			<p class="text-xs text-muted-foreground">{ i18n.N(ctx, len(usage), "%d container", "%d containers") }</p>
+		}
+	</section>
+}

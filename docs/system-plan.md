@@ -1,6 +1,6 @@
 # NelcotaDeploy system plan
 
-Original design: October 14, 2026 · Haniel Braga Fialho Cota. This English edition preserves the design goals and proposed options. The [backend report](backend-report.md), [decisions](decisions.md), and [outstanding work](outstanding-work.md) distinguish delivered behavior from future ideas.
+Original design: October 14, 2026 · Haniel Braga Fialho Cota. This document records design goals and options, not delivered behavior. See [status](status.md) for what is implemented and verified, and [decisions](decisions.md) for where the implementation differs.
 
 ## Vision
 
@@ -63,7 +63,7 @@ Prefer the standard library. Add external libraries where they replace substanti
 
 Use the native git executable rather than go-git for shallow clones. Embedding Caddy in the agent was considered, but would couple proxy updates to agent releases. The current implementation keeps them separate.
 
-Frontend candidates: templ, Datastar, Tailwind v4, Basecoat, Lucide SVG icons, uPlot metrics, and xterm.js logs. The target is embedded, precompressed assets, immutable hashed caching, and less than 100 KB of JavaScript. These are frontend goals, not delivered UI claims. GoReleaser covers multi-architecture build configuration; signed updater distribution uses Minisign in the implementation.
+Frontend candidates: templ, Datastar, Tailwind v4, Basecoat, Lucide SVG icons, uPlot metrics, and xterm.js logs. The target is embedded, precompressed assets, immutable hashed caching, and less than 100 KB of JavaScript. The interface uses this stack. GoReleaser covers multi-architecture build configuration; signed updater distribution uses Minisign in the implementation.
 
 ## Go performance approach
 
@@ -97,7 +97,7 @@ Deployment sequence:
 5. Build through BuildKit with cache, secret providers, bounded resources, and streamed logs.
 6. Start a hardened candidate on the application network and wait for its healthcheck (default 60 seconds).
 7. On success, switch Caddy upstreams, drain/stop the old container, and remove its image. On failure, remove the candidate and retain the old route.
-8. Persist/report terminal status and publish the exact-SHA GitHub check through the outbox. External notifications are a later phase.
+8. Persist/report terminal status and publish the exact-SHA GitHub check through the outbox. Send a notification if the deployment failed.
 
 One active deployment per app; configurable bounded build concurrency per server. Defaults remain conservative, and larger-host settings are explicit. Only the latest queued SHA survives coalescing. Cancellation stops build/clone/streams and cleans temporary state. Manual deployment/rollback has priority over automatic work.
 
@@ -151,7 +151,7 @@ GitHub App Manifest establishes panel integration. Signed updates are coordinate
 
 ## Phase 2
 
-After core production acceptance: PR preview domains/cleanup, post-deploy health rollback based on errors/latency, scale-to-zero with request wakeup, Discord/Slack/Telegram/WhatsApp/email notifications, optional repository configuration, background Trivy scanning, committed-secret detection, and continuous SQLite replication through Litestream. These are proposals, not current supported features.
+After core production acceptance: PR preview domains/cleanup, post-deploy health rollback based on errors/latency, scale-to-zero with request wakeup, Telegram/WhatsApp notifications (webhook and email notifications already ship), optional repository configuration, background Trivy scanning, committed-secret detection, and continuous SQLite replication through Litestream. These are proposals, not current supported features.
 
 ## Performance targets
 

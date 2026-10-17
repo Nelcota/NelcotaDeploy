@@ -3,19 +3,22 @@ package agent
 import (
 	"context"
 	"encoding/json"
-	agentv1 "github.com/Nelcota/NelcotaDeploy/internal/gen/agent/v1"
-	"github.com/Nelcota/NelcotaDeploy/internal/host"
-	"github.com/moby/moby/api/types/container"
-	"github.com/moby/moby/client"
 	"io"
 	"sync"
 	"time"
+
+	agentv1 "github.com/Nelcota/NelcotaDeploy/internal/gen/agent/v1"
+	"github.com/Nelcota/NelcotaDeploy/internal/host"
+	bk "github.com/moby/buildkit/client"
+	"github.com/moby/moby/api/types/container"
+	"github.com/moby/moby/client"
 )
 
 func (d *DockerEngine) Metrics(ctx context.Context, data string) *agentv1.Metrics {
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	out := host.MetricsAt(ctx, data)
+	out.CacheUsed = d.buildCacheUsed(ctx)
 	list, e := d.Docker.ContainerList(ctx, client.ContainerListOptions{Limit: 256, Filters: client.Filters{}.Add("label", "nelcota.managed=true")})
 	if e != nil {
 		return out
@@ -67,6 +70,41 @@ func (d *DockerEngine) Metrics(ctx context.Context, data string) *agentv1.Metric
 	}
 	d.statsMu.Unlock()
 	return out
+}
+
+// buildCacheUsed reports BuildKit's cache size, refreshed at most once a minute
+// because disk usage walks every record.
+func (d *DockerEngine) buildCacheUsed(ctx context.Context) uint64 {
+	if d.BuildKit == nil {
+		return 0
+	}
+	d.statsMu.Lock()
+	fresh := time.Since(d.cacheCheckedAt) < time.Minute
+	used := d.cacheUsed
+	d.statsMu.Unlock()
+	if fresh {
+		return used
+	}
+	records, e := d.BuildKit.DiskUsage(ctx)
+	if e != nil {
+		return used
+	}
+	used = cacheTotal(records)
+	d.statsMu.Lock()
+	d.cacheUsed, d.cacheCheckedAt = used, time.Now()
+	d.statsMu.Unlock()
+	return used
+}
+
+// cacheTotal sums record sizes, matching the total `buildx du` reports.
+func cacheTotal(records []*bk.UsageInfo) uint64 {
+	var total uint64
+	for _, r := range records {
+		if r != nil && r.Size > 0 {
+			total += uint64(r.Size)
+		}
+	}
+	return total
 }
 func containerMetrics(app, id string, s container.StatsResponse, previous container.CPUStats) *agentv1.ContainerMetrics {
 	m := &agentv1.ContainerMetrics{AppId: app, ContainerId: id, MemoryUsed: s.MemoryStats.Usage, MemoryLimit: s.MemoryStats.Limit, Pids: s.PidsStats.Current}

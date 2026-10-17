@@ -1,0 +1,747 @@
+package pages
+
+import (
+	"context"
+	"github.com/Nelcota/NelcotaDeploy/web/i18n"
+	"net/url"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/Nelcota/NelcotaDeploy/internal/service"
+	"github.com/Nelcota/NelcotaDeploy/web/ui"
+)
+
+templ Users(s Shell, users []service.Principal, err string) {
+	@SettingsLayout(s, "users", "Team", "Choose who can sign in and what they can change.") {
+		if err != "" {
+			@ui.ErrorState("Team unavailable", err)
+		} else {
+			<div id="user-invite-result" hidden></div>
+			@TeamList(s, users)
+			@InviteUserDialog()
+		}
+	}
+}
+
+// InviteUserDialog collects a new person's name, email, and role.
+templ InviteUserDialog() {
+	@ui.Dialog("invite-user", "Invite someone", "They get a link to set up a passkey. It works once, for 24 hours.") {
+		<form class="grid gap-4" data-on:submit={ ui.PostForm("/ui/users") }>
+			@ui.Field("Name", "user-name", "", "") {
+				<input id="user-name" name="name" class="input" required maxlength="120" autocomplete="off"/>
+			}
+			@ui.Field("Email", "user-email", "", "") {
+				<input id="user-email" name="email" type="email" class="input" required autocomplete="off"/>
+			}
+			<fieldset class="grid gap-2">
+				<legend class="label mb-1.5">{ i18n.T(ctx, "Role") }</legend>
+				@roleOption("member", "Member", "Can view apps and publish them.", true)
+				@roleOption("admin", "Administrator", "Also manages apps, servers, the team, and settings.", false)
+			</fieldset>
+			<footer class="flex justify-end gap-2">
+				<button type="submit" class="btn">{ i18n.T(ctx, "Create invitation") }</button>
+			</footer>
+		</form>
+	}
+}
+
+templ roleOption(value, label, description string, checked bool) {
+	<label class="flex cursor-pointer items-start gap-3 rounded-xl border p-3 has-checked:border-primary has-checked:bg-accent/50">
+		<input type="radio" class="input mt-0.5" name="role" value={ value } checked?={ checked } aria-describedby={ "role-option-" + value }/>
+		<span class="grid gap-0.5">
+			<span class="text-sm font-medium">{ i18n.T(ctx, label) }</span>
+			<span id={ "role-option-" + value } class="text-xs text-muted-foreground">{ i18n.T(ctx, description) }</span>
+		</span>
+	</label>
+}
+
+templ TeamList(s Shell, users []service.Principal) {
+	@ui.Panel(ui.CardProps{ID: "team", Title: "People", TitleExtra: count(len(users)), Action: inviteButton()}) {
+		<div class="grid gap-4">
+			<ul class="divide-y" aria-label={ i18n.T(ctx, "People") }>
+				for _, u := range users {
+					<li class="flex flex-wrap items-center gap-3 py-3 first:pt-0 last:pb-0">
+						@Avatar(u, "size-9 shrink-0")
+						<div class="min-w-0 flex-1">
+							<p class="truncate font-medium">
+								{ u.Name }
+								if u.ID == s.User.ID {
+									<span class="text-sm font-normal text-muted-foreground">{ i18n.T(ctx, "(you)") }</span>
+								}
+							</p>
+							<p class="truncate text-sm text-muted-foreground">{ u.Email }</p>
+						</div>
+						if u.ID == s.User.ID {
+							@ui.Badge("secondary", i18n.T(ctx, RoleLabel(u.Role)))
+						} else {
+							<form class="flex items-center gap-2" data-on:change={ ui.PostForm("/ui/users/" + u.ID + "/role") }>
+								<label class="sr-only" for={ "role-" + u.ID }>{ i18n.Tf(ctx, "Role for %s", u.Name) }</label>
+								<select id={ "role-" + u.ID } name="role" class="select" data-size="sm">
+									<option
+										value="member"
+										if u.Role == "member" {
+											selected
+										}
+									>{ i18n.T(ctx, "Member") }</option>
+									<option
+										value="admin"
+										if u.Role == "admin" {
+											selected
+										}
+									>{ i18n.T(ctx, "Administrator") }</option>
+								</select>
+							</form>
+							@ui.Button("ghost", "icon-sm", templ.Attributes{"data-on:click": ui.Open("remove-user-" + u.ID), "aria-label": i18n.Tf(ctx, "Remove %s", u.Name)}) {
+								@ui.Icon("trash-2", "")
+							}
+							@ui.ConfirmDialog("remove-user-"+u.ID, i18n.Tf(ctx, "Remove %s?", u.Name), "They are signed out everywhere and their passkeys and API tokens stop working.", "Remove", ui.Post("/ui/users/"+u.ID+"/remove"), true)
+						}
+					</li>
+				}
+			</ul>
+			if len(users) <= 1 {
+				<p class="rounded-xl border border-dashed p-4 text-center text-sm text-muted-foreground">{ i18n.T(ctx, "Only you so far. Invite people to publish apps with you.") }</p>
+			}
+		</div>
+	}
+}
+
+templ count(n int) {
+	<span class="font-normal text-muted-foreground tabular-nums">{ strconv.Itoa(n) }</span>
+}
+
+templ inviteButton() {
+	@ui.Button("", "sm", templ.Attributes{"data-on:click": ui.Open("invite-user")}) {
+		@ui.Icon("plus", "")
+		{ i18n.T(ctx, "Invite") }
+	}
+}
+
+// expiryPill counts down to t (app.js updates it every second).
+templ expiryPill(t time.Time) {
+	@ui.Pill("warning", "15:00 remaining", templ.Attributes{"data-expires": t.UTC().Format(time.RFC3339)})
+}
+
+// RoleLabel names a role for people.
+func RoleLabel(role string) string {
+	if role == "admin" {
+		return "Administrator"
+	}
+	return "Member"
+}
+
+// InviteDelivery reports whether an invitation was also emailed.
+type InviteDelivery struct {
+	To  string
+	Err string
+}
+
+// InviteLink is the one-click address of an invitation. The token travels in
+// the fragment, which browsers never send to a server, so it can't end up in
+// access logs or referrers; the enroll page reads it from there.
+func InviteLink(origin, token string) string {
+	return origin + "/enroll#token=" + url.QueryEscape(token)
+}
+
+templ UserInvite(name string, en service.Enrollment, origin string, sent InviteDelivery) {
+	@ui.Panel(ui.CardProps{ID: "user-invite-result", Title: i18n.Tf(ctx, "Invitation for %s", name), Header: inviteDelivery(sent), Action: validFor(en.ExpiresAt)}) {
+		<div class="grid gap-3">
+			<div class="flex flex-wrap items-center gap-2">
+				<code id="enrollment-link" class="mono min-w-0 flex-1 break-all select-all rounded-xl bg-muted p-2">{ InviteLink(origin, en.Token) }</code>
+				@ui.Copy("enrollment-link", "Copy link")
+			</div>
+			@ui.Disclosure("", "If the link doesn't open", false, "text-sm", nil) {
+				<p class="text-muted-foreground">
+					@ui.Phrase("They can open %s and paste this token:", ui.Mono(origin+"/enroll"))
+				</p>
+				<div class="mt-2 flex flex-wrap items-center gap-2">
+					<code id="enrollment-token" class="mono break-all select-all rounded-xl bg-muted p-2">{ en.Token }</code>
+					@ui.Copy("enrollment-token", "Copy token")
+				</div>
+			}
+		</div>
+	}
+}
+
+// validFor says how long an invitation link works, with the exact time on hover.
+templ validFor(t time.Time) {
+	@ui.Pill("muted", "Works for 24 hours", templ.Attributes{"title": t.UTC().Format("2006-01-02 15:04 UTC")})
+}
+
+templ inviteDelivery(sent InviteDelivery) {
+	if sent.To != "" {
+		<p class="flex items-center gap-2">
+			@ui.Icon("circle-check", "size-4 text-success")
+			{ i18n.Tf(ctx, "Emailed to %s. The link below also works if the email doesn't arrive.", sent.To) }
+		</p>
+	} else {
+		if sent.Err != "" {
+			<p class="text-warning">{ i18n.T(ctx, sent.Err) }</p>
+		}
+		<p>{ i18n.T(ctx, "Send this link privately. It works once and won't be shown again.") }</p>
+	}
+}
+
+// GitHubView reports which GitHub App credentials are stored.
+type GitHubView struct {
+	// Result is "installed" or "failed" after returning from GitHub.
+	Result string
+	// Notify is nil when the panel sends no notifications.
+	Notify     *service.NotificationSettings
+	Configured map[string]bool
+	Err        string
+	Origin     string
+}
+
+var gitHubKeys = [][2]string{{"github.app_id", "App ID"}, {"github.client_id", "Client ID"}, {"github.private_key", "Private key"}, {"github.webhook_secret", "Webhook secret"}, {"github.client_secret", "Client secret"}}
+
+templ GitHub(s Shell, v GitHubView, s3 bool) {
+	@SettingsLayout(s, "github", "Connections", "GitHub publishes on every push and shows deployment status on commits. S3 keeps off-site backups.") {
+		if v.Err != "" {
+			@ui.ErrorState("Settings unavailable", v.Err)
+		}
+		switch v.Result {
+			case "installed":
+				@ui.Notice("circle-check", "GitHub is connected") {
+					<p>{ i18n.T(ctx, "Pushes to each app's branch now publish automatically. The panel finds the installation for each repository by itself.") }</p>
+				}
+			case "failed":
+				@ui.Notice("circle-alert", "GitHub didn't finish creating the App") {
+					<p>{ i18n.T(ctx, "The link may have expired. Start again with Create GitHub App.") }</p>
+				}
+		}
+		@ui.Card("Create the GitHub App", "GitHub creates the App and sends its credentials back to the panel, then asks which repositories it may read. The panel finds each app's installation by itself.") {
+			<div>
+				<button type="button" class="btn" data-github-manifest>
+					@ui.Icon("github", "")
+					{ i18n.T(ctx, "Create GitHub App") }
+				</button>
+			</div>
+		}
+		@GitHubCredentials(v)
+		if v.Notify != nil {
+			@NotificationsCard(*v.Notify)
+		}
+		@S3Card(s3)
+	}
+}
+
+templ GitHubCredentials(v GitHubView) {
+	@ui.Panel(ui.CardProps{ID: "github-status", Title: "Credentials", Description: "Saved values are encrypted and can't be viewed. Fill in only what you want to change."}) {
+		<div class="grid gap-4">
+			<ul class="status-list" aria-label={ i18n.T(ctx, "Credentials") }>
+				for _, k := range gitHubKeys {
+					<li>
+						<span>{ i18n.T(ctx, k[1]) }</span>
+						if v.Configured[k[0]] {
+							@ui.Pill("success", "Configured", nil)
+						} else {
+							@ui.Pill("muted", "Not configured", nil)
+						}
+					</li>
+				}
+			</ul>
+			<div class="grid gap-1.5">
+				<span class="label">{ i18n.T(ctx, "Webhook URL") }</span>
+				<div class="flex flex-wrap items-center gap-2">
+					<code id="webhook-url" class="mono rounded-xl bg-muted p-2 break-all">{ v.Origin }/api/webhooks/github</code>
+					@ui.Copy("webhook-url", "Copy")
+				</div>
+			</div>
+			@ui.Disclosure("", "Enter credentials manually", false, "rounded-xl border p-4", nil) {
+				<form class="grid gap-4" data-on:submit={ ui.PostForm("/ui/settings/github") }>
+					<div class="grid gap-4 sm:grid-cols-2">
+						@ui.Field("App ID", "gh-app-id", "", "") {
+							<input id="gh-app-id" name="github.app_id" class="input" inputmode="numeric" autocomplete="off"/>
+						}
+						@ui.Field("Client ID", "gh-client-id", "", "") {
+							<input id="gh-client-id" name="github.client_id" class="input" autocomplete="off"/>
+						}
+						@ui.Field("Webhook secret", "gh-webhook", "", "") {
+							<input id="gh-webhook" name="github.webhook_secret" class="input" type="password" autocomplete="new-password"/>
+						}
+						@ui.Field("Client secret", "gh-client-secret", "", "") {
+							<input id="gh-client-secret" name="github.client_secret" class="input" type="password" autocomplete="new-password"/>
+						}
+					</div>
+					@ui.Field("Private key (PEM)", "gh-key", "", "") {
+						<textarea id="gh-key" name="github.private_key" class="textarea font-mono" rows="4" spellcheck="false" autocomplete="off" placeholder="-----BEGIN RSA PRIVATE KEY-----"></textarea>
+					}
+					<div><button type="submit" class="btn" data-variant="outline">{ i18n.T(ctx, "Save credentials") }</button></div>
+				</form>
+			}
+		</div>
+	}
+}
+
+// OperationsView lists maintenance jobs, optionally filtered by kind.
+type OperationsView struct {
+	Operations []service.Operation
+	Kind       string
+	Err        string
+}
+
+func (v OperationsView) rows() []service.Operation {
+	if v.Kind == "" {
+		return v.Operations
+	}
+	var out []service.Operation
+	for _, o := range v.Operations {
+		if o.Kind == v.Kind {
+			out = append(out, o)
+		}
+	}
+	return out
+}
+
+func (v OperationsView) active() bool {
+	for _, o := range v.rows() {
+		if o.Status == "queued" || o.Status == "waiting" {
+			return true
+		}
+	}
+	return false
+}
+
+// cancellable lists batches that still have queued steps.
+func (v OperationsView) cancellable() map[string]bool {
+	m := map[string]bool{}
+	for _, o := range v.rows() {
+		if o.Status == "queued" {
+			m[o.Batch] = true
+		}
+	}
+	return m
+}
+
+templ OperationsTable(v OperationsView) {
+	<div
+		id="operations"
+		if v.active() {
+			data-on-interval__duration.4s={ ui.Get("/ui/operations?kind=" + v.Kind) }
+		}
+	>
+		if v.Err != "" {
+			@ui.ErrorState("Operations unavailable", v.Err)
+		} else if len(v.rows()) == 0 {
+			<p class="muted">{ i18n.T(ctx, "No operations yet.") }</p>
+		} else {
+			@ui.Table("Operations") {
+				<thead>
+					<tr>
+						<th scope="col">{ i18n.T(ctx, "Status") }</th>
+						<th scope="col">{ i18n.T(ctx, "Operation") }</th>
+						<th scope="col">{ i18n.T(ctx, "Target") }</th>
+						<th scope="col">{ i18n.T(ctx, "Created") }</th>
+						<th scope="col">{ i18n.T(ctx, "Duration") }</th>
+						if v.Kind != "backup" {
+							<th scope="col"><span class="sr-only">{ i18n.T(ctx, "Actions") }</span></th>
+						}
+					</tr>
+				</thead>
+				<tbody>
+					for _, o := range v.rows() {
+						<tr>
+							<td>
+								@ui.Status(o.Status)
+								if o.ErrorCode != "" {
+									<p class="mono mt-1 text-destructive">{ o.ErrorCode }</p>
+								}
+							</td>
+							<td class="text-sm">
+								if o.Kind == "update" {
+									@ui.Phrase("Update to %s", ui.Mono(o.Version))
+								} else {
+									{ i18n.T(ctx, "Backup") }
+								}
+							</td>
+							<td class="mono">{ o.Target }</td>
+							<td class="text-sm"><time datetime={ ui.ISO(o.CreatedAt) } title={ ui.Timestamp(o.CreatedAt) }>{ i18n.T(ctx, ui.Ago(o.CreatedAt)) }</time></td>
+							<td class="text-sm tabular-nums">{ ui.Span(o.StartedAt, o.FinishedAt) }</td>
+							if v.Kind != "backup" {
+								<td class="text-right">
+									if v.cancellable()[o.Batch] && o.Status == "queued" {
+										@ui.Button("ghost", "sm", templ.Attributes{"data-on:click": ui.Open("cancel-batch-" + o.ID)}) {
+											{ i18n.T(ctx, "Cancel batch") }
+										}
+										@ui.ConfirmDialog("cancel-batch-"+o.ID, "Cancel this update batch?", "Steps that haven't started are cancelled. A running step finishes.", "Cancel batch", ui.Post("/ui/operations/"+o.Batch+"/cancel"), true)
+									}
+								</td>
+							}
+						</tr>
+					}
+				</tbody>
+			}
+			if v.active() {
+				<p class="mt-2 text-xs text-muted-foreground" role="status">{ i18n.T(ctx, "Updating…") }</p>
+			}
+		}
+	</div>
+}
+
+templ BackupCard() {
+	@ui.Panel(ui.CardProps{ID: "backups", Class: "scroll-mt-6", Title: "Backups", Description: "An encrypted backup of the database, keys, and logs runs every day. It's uploaded to S3 when configured in Connections. Restoring is done offline with the command-line tool.", Action: backupButton(), HeaderOnly: true})
+}
+
+templ backupButton() {
+	@ui.Button("", "sm", templ.Attributes{"data-on:click": ui.Post("/ui/operations/backup")}) {
+		@ui.Icon("database-backup", "")
+		{ i18n.T(ctx, "Back up now") }
+	}
+}
+
+// notificationEvents names each notification event for people.
+var notificationEvents = map[string]string{
+	service.EventDeployFailed:    "A deployment fails",
+	service.EventServerOffline:   "A server goes offline",
+	service.EventDiskFull:        "A disk is almost full",
+	service.EventBackupFailed:    "A backup fails",
+	service.EventUpdateFailed:    "An update stops",
+	service.EventUpdateAvailable: "A new version is available",
+}
+
+func emailValue(n service.NotificationSettings, field string) string {
+	if n.Email == nil {
+		if field == "port" {
+			return "587"
+		}
+		return ""
+	}
+	switch field {
+	case "host":
+		return n.Email.Host
+	case "port":
+		return strconv.Itoa(n.Email.Port)
+	case "username":
+		return n.Email.Username
+	case "from":
+		return n.Email.From
+	case "to":
+		return strings.Join(n.Email.To, ", ")
+	}
+	return ""
+}
+
+// NotificationsCard configures webhooks and email for outside notifications.
+// Saved secrets (the webhook address and the SMTP password) are never shown.
+templ NotificationsCard(n service.NotificationSettings) {
+	@ui.Panel(ui.CardProps{ID: "notifications", Title: "Notifications", Description: "Hear about problems without opening the panel. Slack and Discord webhooks are recognized automatically."}) {
+		<form id="notify-form" class="grid gap-5" data-on:submit={ ui.PostForm("/ui/settings/notifications") }>
+			// The address field names the group, so its legend is for screen readers only.
+			<fieldset class="grid gap-3">
+				<legend class="sr-only">{ i18n.T(ctx, "Webhook") }</legend>
+				if n.WebhookKind != "" {
+					<div class="flex flex-wrap items-center gap-2 text-sm">
+						@ui.Pill("success", webhookLabel(n.WebhookKind), nil)
+						<span class="mono">{ n.WebhookHost }</span>
+						<button type="button" class="btn" data-variant="ghost" data-size="sm" data-on:click={ ui.Post("/ui/settings/notifications/webhook/remove") }>{ i18n.T(ctx, "Remove") }</button>
+					</div>
+				}
+				@ui.Field("Webhook address", "notify-webhook", "Leave empty to keep the saved address.", "") {
+					<input id="notify-webhook" name="webhook_url" class="input font-mono" type="url" pattern="https://.+" placeholder="https://hooks.slack.com/services/…" autocomplete="off" spellcheck="false" aria-describedby="notify-webhook-hint"/>
+				}
+				@ui.Field("Signing secret", "notify-secret", "Optional, for your own webhook: requests carry X-Nelcota-Signature (HMAC-SHA256 of the body).", "") {
+					<input id="notify-secret" name="webhook_secret" class="input font-mono" type="password" autocomplete="new-password" aria-describedby="notify-secret-hint"/>
+				}
+			</fieldset>
+			// Email stays folded until it is configured.
+			@ui.Disclosure("", "Email", n.Email != nil, "rounded-xl border p-4", emailState(n)) {
+				<div class="grid gap-4 sm:grid-cols-2">
+					@ui.Field("SMTP server", "notify-host", "", "") {
+						<input id="notify-host" name="smtp_host" class="input" value={ emailValue(n, "host") } placeholder="smtp.example.com" autocomplete="off" spellcheck="false"/>
+					}
+					@ui.Field("Port", "notify-port", "TLS is required.", "") {
+						<select id="notify-port" name="smtp_port" class="select w-full" aria-describedby="notify-port-hint">
+							for _, p := range []string{"587", "465", "2525"} {
+								<option
+									value={ p }
+									if emailValue(n, "port") == p {
+										selected
+									}
+								>{ p }</option>
+							}
+						</select>
+					}
+					@ui.Field("Username", "notify-user", "", "") {
+						<input id="notify-user" name="smtp_username" class="input" value={ emailValue(n, "username") } autocomplete="off"/>
+					}
+					@ui.Field("Password", "notify-password", "Leave empty to keep the saved password.", "") {
+						<input id="notify-password" name="smtp_password" class="input" type="password" autocomplete="new-password" aria-describedby="notify-password-hint"/>
+					}
+					@ui.Field("From", "notify-from", "", "") {
+						<input id="notify-from" name="smtp_from" class="input" type="email" value={ emailValue(n, "from") } placeholder="panel@example.com" autocomplete="off"/>
+					}
+					@ui.Field("Send to", "notify-to", "Separate addresses with commas.", "") {
+						<input id="notify-to" name="smtp_to" class="input" value={ emailValue(n, "to") } placeholder="ops@example.com" autocomplete="off" aria-describedby="notify-to-hint"/>
+					}
+				</div>
+				if n.Email != nil {
+					<button type="button" class="btn mt-3" data-variant="ghost" data-size="sm" data-on:click={ ui.Post("/ui/settings/notifications/email/remove") }>{ i18n.T(ctx, "Remove email") }</button>
+				}
+			}
+			<fieldset class="grid gap-2">
+				<legend class="mb-1 text-sm font-medium">{ i18n.T(ctx, "Notify me when") }</legend>
+				<div class="grid gap-2 sm:grid-cols-2">
+					for _, ev := range service.NotificationEvents {
+						<label class="flex items-center gap-2 text-sm">
+							<input class="input" type="checkbox" name="event" value={ ev } checked?={ !n.Muted[ev] }/>
+							{ i18n.T(ctx, notificationEvents[ev]) }
+						</label>
+					}
+				</div>
+			</fieldset>
+			<div class="flex flex-wrap gap-2">
+				<button type="submit" class="btn">{ i18n.T(ctx, "Save notifications") }</button>
+				<button type="button" class="btn" data-variant="outline" data-on:click={ ui.Post("/ui/settings/notifications/test") }>{ i18n.T(ctx, "Send a test") }</button>
+			</div>
+		</form>
+	}
+}
+
+templ emailState(n service.NotificationSettings) {
+	if n.Email != nil {
+		@ui.Pill("success", n.Email.Host, nil)
+	} else {
+		<span class="font-normal text-muted-foreground">{ i18n.T(ctx, "Optional") }</span>
+	}
+}
+
+func webhookLabel(kind string) string {
+	switch kind {
+	case "slack":
+		return "Slack"
+	case "discord":
+		return "Discord"
+	}
+	return "Webhook"
+}
+
+templ S3Card(s3 bool) {
+	@ui.Panel(ui.CardProps{ID: "s3", Title: "S3 storage", Description: "Optional off-site copies. Saving replaces the whole configuration.", Action: s3State(s3)}) {
+		@ui.Disclosure("", s3Summary(s3), s3, "", nil) {
+			<form id="s3-form" class="grid gap-4" data-on:submit={ ui.PostForm("/ui/settings/backup-s3") }>
+				<div class="grid gap-4 sm:grid-cols-2">
+					@ui.Field("Endpoint", "s3-endpoint", "HTTPS URL, for example https://s3.eu-central-1.amazonaws.com.", "") {
+						<input id="s3-endpoint" name="endpoint" class="input" type="url" required pattern="https://.+" autocomplete="off" aria-describedby="s3-endpoint-hint"/>
+					}
+					@ui.Field("Region", "s3-region", "", "") {
+						<input id="s3-region" name="region" class="input" required autocomplete="off"/>
+					}
+					@ui.Field("Bucket", "s3-bucket", "", "") {
+						<input id="s3-bucket" name="bucket" class="input" required autocomplete="off"/>
+					}
+					@ui.Field("Prefix", "s3-prefix", "Optional folder inside the bucket.", "") {
+						<input id="s3-prefix" name="prefix" class="input" autocomplete="off"/>
+					}
+					@ui.Field("Access key", "s3-access", "", "") {
+						<input id="s3-access" name="access_key" class="input" required autocomplete="off"/>
+					}
+					@ui.Field("Secret key", "s3-secret", "", "") {
+						<input id="s3-secret" name="secret_key" class="input" type="password" required autocomplete="new-password"/>
+					}
+					@ui.Field("Session token", "s3-session", "Only for temporary credentials.", "") {
+						<input id="s3-session" name="session_token" class="input" type="password" autocomplete="new-password"/>
+					}
+				</div>
+				<div class="flex flex-wrap gap-2">
+					<button type="submit" class="btn" data-variant="outline">{ i18n.T(ctx, "Save S3 configuration") }</button>
+					<button type="button" class="btn" data-variant="ghost" data-on:click={ ui.PostFormOf("/ui/settings/backup-s3/test", "#s3-form") }>{ i18n.T(ctx, "Test connection") }</button>
+				</div>
+			</form>
+		}
+	}
+}
+
+templ s3State(s3 bool) {
+	if s3 {
+		@ui.Pill("success", "Configured", nil)
+	} else {
+		@ui.Pill("muted", "Not configured", nil)
+	}
+}
+
+func s3Summary(s3 bool) string {
+	if s3 {
+		return "Change the S3 configuration"
+	}
+	return "Set up S3"
+}
+
+templ Platform(s Shell, u service.UpdateStatus, v OperationsView) {
+	@SettingsLayout(s, "platform", "System", "") {
+		@BackupCard()
+		@UpdatesCard(u)
+		@ui.Card("Recent operations", "Backups and update steps.") {
+			@OperationsTable(v)
+		}
+	}
+}
+
+// UpdatesCard offers a newer signed release, the automatic-update switch, and
+// a field to install a specific version.
+templ UpdatesCard(u service.UpdateStatus) {
+	@ui.Panel(ui.CardProps{ID: "updates", Title: "Updates", Header: currentVersion(u.Current)}) {
+		<div class="grid gap-4">
+			if u.Available != "" {
+				<div class="notice-row" data-tone="info">
+					@ui.Icon("circle-arrow-up", "")
+					<p class="flex-1 font-medium">{ i18n.Tf(ctx, "Version %s is available.", u.Available) }</p>
+					<button type="button" class="btn" data-size="sm" data-on:click={ "document.getElementById('update-version').value=" + ui.JS(u.Available) + ";" + ui.Open("confirm-update") }>{ i18n.Tf(ctx, "Update to %s", u.Available) }</button>
+				</div>
+			} else if u.Configured && u.CheckedAt > 0 {
+				<p class="flex items-center gap-2 text-sm">
+					@ui.Icon("circle-check", "size-4 text-success")
+					{ i18n.Tf(ctx, "This is the latest version. Checked %s.", i18n.T(ctx, ui.Ago(u.CheckedAt))) }
+				</p>
+			} else if !u.Configured {
+				<p class="text-sm text-muted-foreground">{ i18n.T(ctx, "Automatic checks need a release identity on this panel. You can still install a version by name.") }</p>
+			}
+			if u.Configured {
+				<form data-on:change={ ui.PostForm("/ui/operations/automatic") }>
+					<label class="flex items-start gap-3 text-sm">
+						<input class="input mt-0.5" type="checkbox" name="automatic" value="true" checked?={ u.Automatic }/>
+						<span class="grid gap-0.5">
+							<span class="font-medium">{ i18n.T(ctx, "Install updates automatically") }</span>
+							<span class="text-muted-foreground">{ i18n.T(ctx, "The panel checks every six hours and installs signed releases the same way as a manual update.") }</span>
+						</span>
+					</label>
+				</form>
+			}
+			@ui.Disclosure("", "Install a specific version", false, "", nil) {
+				<form id="update-form" class="flex flex-wrap items-end gap-3" data-on:submit={ ui.Open("confirm-update") }>
+					@ui.Field("Version", "update-version", "", "") {
+						<input id="update-version" name="version" class="input font-mono" required pattern="v[0-9]+\.[0-9]+\.[0-9]+" placeholder="v1.2.3" autocomplete="off"/>
+					}
+					<button type="submit" class="btn" data-variant="outline">{ i18n.T(ctx, "Update") }</button>
+				</form>
+			}
+			@ui.ConfirmDialog("confirm-update", "Update the system?", "Servers update one at a time, then the panel restarts. Deployments wait until it finishes.", "Start update", ui.PostFormOf("/ui/operations/update", "#update-form"), false)
+		</div>
+	}
+}
+
+templ currentVersion(v string) {
+	<p>
+		@ui.Phrase("Current version: %s. Servers update one at a time, then the panel. Releases must be signed with your key.", ui.Mono(v))
+	</p>
+}
+
+// AuditFilter holds the audit page's query filters.
+type AuditFilter struct {
+	Action, User, Target string
+	HTTP                 bool
+}
+
+type AuditView struct {
+	Entries  []service.AuditEntry
+	Matching int
+	Total    int
+	Actions  []string
+	Users    map[string]string
+	People   []service.Principal
+	Filter   AuditFilter
+	Err      string
+}
+
+// summary counts what the filters found, in one short sentence.
+func (v AuditView) summary(ctx context.Context) string {
+	filtered := v.Filter.Action != "" || v.Filter.User != "" || v.Filter.Target != ""
+	out := i18n.N(ctx, v.Matching, "%d entry", "%d entries")
+	if filtered {
+		out = i18n.N(ctx, v.Matching, "%d matching entry", "%d matching entries")
+	}
+	if len(v.Entries) < v.Matching {
+		out += " " + i18n.Tf(ctx, "Showing the newest %d.", len(v.Entries))
+	}
+	return out
+}
+
+func (v AuditView) user(id string) string {
+	if name, ok := v.Users[id]; ok {
+		return name
+	}
+	return id
+}
+
+templ Audit(s Shell, v AuditView) {
+	@SettingsLayout(s, "audit", "Activity", "Sign-ins and changes, newest first.") {
+		<form method="get" action="/settings/audit" class="grid gap-3 rounded-xl border p-4 sm:grid-cols-[repeat(3,minmax(0,1fr))_auto] sm:items-end">
+			@ui.Field("Action", "audit-action", "", "") {
+				<select id="audit-action" name="action" class="select w-full">
+					<option value="">{ i18n.T(ctx, "All actions") }</option>
+					for _, a := range v.Actions {
+						<option
+							value={ a }
+							if a == v.Filter.Action {
+								selected
+							}
+						>{ i18n.T(ctx, AuditLabel(a)) }</option>
+					}
+				</select>
+			}
+			@ui.Field("User", "audit-user", "", "") {
+				<select id="audit-user" name="user" class="select w-full">
+					<option value="">{ i18n.T(ctx, "Everyone") }</option>
+					for _, p := range v.People {
+						<option
+							value={ p.ID }
+							if p.ID == v.Filter.User {
+								selected
+							}
+						>{ p.Name } ({ p.Email })</option>
+					}
+				</select>
+			}
+			@ui.Field("Target contains", "audit-target", "", "") {
+				<input id="audit-target" name="target" class="input" value={ v.Filter.Target } autocomplete="off"/>
+			}
+			<div class="flex flex-wrap items-center gap-3">
+				<label class="flex items-center gap-2 text-sm">
+					<input
+						class="input"
+						type="checkbox"
+						name="http"
+						value="1"
+						if v.Filter.HTTP {
+							checked
+						}
+					/>
+					{ i18n.T(ctx, "HTTP requests") }
+				</label>
+				<button type="submit" class="btn" data-variant="outline" data-size="sm">
+					@ui.Icon("filter", "")
+					{ i18n.T(ctx, "Filter") }
+				</button>
+			</div>
+		</form>
+		if v.Err != "" {
+			@ui.ErrorState("Activity unavailable", v.Err)
+		} else {
+			<p class="muted" role="status">{ v.summary(ctx) }</p>
+			if len(v.Entries) == 0 {
+				@ui.Empty("history", "No matching entries", "Change the filters or include HTTP requests.")
+			} else {
+				@ui.Table("Activity") {
+					<thead><tr><th scope="col">{ i18n.T(ctx, "Time") }</th><th scope="col">{ i18n.T(ctx, "User") }</th><th scope="col">{ i18n.T(ctx, "Action") }</th><th scope="col">{ i18n.T(ctx, "Target") }</th><th scope="col">{ i18n.T(ctx, "IP") }</th><th scope="col">{ i18n.T(ctx, "Details") }</th></tr></thead>
+					<tbody>
+						for _, a := range v.Entries {
+							<tr>
+								<td class="text-sm whitespace-nowrap"><time datetime={ ui.ISO(a.CreatedAt) } title={ ui.Timestamp(a.CreatedAt) }>{ ui.Timestamp(a.CreatedAt) }</time></td>
+								<td class="text-sm">{ v.user(a.UserID) }</td>
+								<td class="text-sm" title={ a.Action }>{ i18n.T(ctx, AuditLabel(a.Action)) }</td>
+								<td class="mono max-w-56 truncate" title={ a.Target }>{ a.Target }</td>
+								<td class="mono">{ a.IP }</td>
+								<td class="mono max-w-64 truncate text-muted-foreground" title={ string(a.Details) }>
+									if string(a.Details) != "{}" {
+										{ string(a.Details) }
+									}
+								</td>
+							</tr>
+						}
+					</tbody>
+				}
+			}
+		}
+	}
+}

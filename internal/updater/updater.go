@@ -158,6 +158,34 @@ func (t Trust) manifest(ctx context.Context, version string) (map[string]string,
 	}
 	return hashes, meta, nil
 }
+
+// Latest returns the newest stable version the release location announces in
+// its "latest" file. The pointer is not signed: callers must verify the
+// version with Check before offering or applying it.
+func (t Trust) Latest(ctx context.Context) (string, error) {
+	if e := t.validate(); e != nil {
+		return "", e
+	}
+	req, e := http.NewRequestWithContext(ctx, "GET", strings.TrimRight(t.BaseURL, "/")+"/latest", nil)
+	if e != nil {
+		return "", errors.New("invalid release request")
+	}
+	res, e := t.client().Do(req)
+	if e != nil {
+		return "", errors.New("release check failed")
+	}
+	defer res.Body.Close()
+	if res.StatusCode != 200 {
+		return "", errors.New("release check rejected")
+	}
+	b, e := io.ReadAll(io.LimitReader(res.Body, 65))
+	version := strings.TrimSpace(string(b))
+	if e != nil || len(b) > 64 || !ValidVersion(version) {
+		return "", errors.New("invalid latest version")
+	}
+	return version, nil
+}
+
 func (t Trust) client() *http.Client {
 	c := t.Client
 	if c == nil {
@@ -306,7 +334,7 @@ func (t Trust) Apply(ctx context.Context, data, state, destination, component st
 		if re := os.Rename(previous, destination); re != nil {
 			return errors.New("update failed; binary rollback requires repair")
 		}
-		_ = syncDirectory(filepath.Dir(destination))
+		_ = host.SyncDir(filepath.Dir(destination))
 		if re := restart(rollback, current); re != nil {
 			return errors.New("update failed; previous binary restored but service requires repair")
 		}
@@ -314,12 +342,12 @@ func (t Trust) Apply(ctx context.Context, data, state, destination, component st
 		if restoreState {
 			var re error
 			if savedVersion != nil {
-				re = atomicFile(filepath.Join(state, "version"), savedVersion, 0600)
+				re = host.WriteFileAtomic(filepath.Join(state, "version"), savedVersion, 0600)
 			} else if st, e := os.Lstat(filepath.Join(state, "version")); e == nil {
 				if st.Mode().IsRegular() {
 					re = os.Remove(filepath.Join(state, "version"))
 					if re == nil {
-						re = syncDirectory(state)
+						re = host.SyncDir(state)
 					}
 				} else {
 					re = errors.New("invalid release state")
@@ -333,52 +361,18 @@ func (t Trust) Apply(ctx context.Context, data, state, destination, component st
 		}
 		return errors.New("update failed; previous binary restored")
 	}
-	if e = syncDirectory(filepath.Dir(destination)); e != nil {
+	if e = host.SyncDir(filepath.Dir(destination)); e != nil {
 		return rollback(false)
 	}
 	// Bind readiness to the validated release, never to the mutable request file.
 	if e = restart(ctx, r.Version); e != nil {
 		return rollback(false)
 	}
-	if e = atomicFile(filepath.Join(state, "version"), []byte(r.Version+"\n"), 0600); e != nil {
+	if e = host.WriteFileAtomic(filepath.Join(state, "version"), []byte(r.Version+"\n"), 0600); e != nil {
 		return rollback(true)
 	}
 	result.Status = "applied"
 	return nil
-}
-func atomicFile(path string, b []byte, mode os.FileMode) error {
-	if e := os.MkdirAll(filepath.Dir(path), 0700); e != nil {
-		return e
-	}
-	f, e := os.CreateTemp(filepath.Dir(path), ".write-")
-	if e != nil {
-		return e
-	}
-	defer func() { _ = f.Close(); _ = os.Remove(f.Name()) }()
-	if _, e = f.Write(b); e != nil {
-		return e
-	}
-	if e = f.Chmod(mode); e != nil {
-		return e
-	}
-	if e = f.Sync(); e != nil {
-		return e
-	}
-	if e = f.Close(); e != nil {
-		return e
-	}
-	if e = os.Rename(f.Name(), path); e != nil {
-		return e
-	}
-	return syncDirectory(filepath.Dir(path))
-}
-func syncDirectory(path string) error {
-	f, e := os.Open(path)
-	if e != nil {
-		return e
-	}
-	defer f.Close()
-	return f.Sync()
 }
 
 func ReadResult(data string) Result {

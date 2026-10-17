@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/Nelcota/NelcotaDeploy/internal/security"
+	"github.com/Nelcota/NelcotaDeploy/internal/store/dbgen"
 	"github.com/bradleyfalzon/ghinstallation/v2"
 	"github.com/google/go-github/v75/github"
 )
@@ -22,26 +23,82 @@ import (
 type GitHubService struct {
 	Core      *Core
 	Transport http.RoundTripper
+	// APIBase overrides https://api.github.com/ in tests.
+	APIBase *url.URL
 }
 
-func (g *GitHubService) installation(ctx context.Context, id int64) (*ghinstallation.Transport, error) {
+// appCredentials returns the configured GitHub App ID and private key.
+func (g *GitHubService) appCredentials(ctx context.Context) (int64, []byte, error) {
 	app, e := g.Core.Setting(ctx, "github.app_id")
 	if e != nil {
-		return nil, e
+		return 0, nil, e
 	}
 	key, e := g.Core.Setting(ctx, "github.private_key")
 	if e != nil {
-		return nil, e
+		return 0, nil, e
 	}
 	appID, e := strconv.ParseInt(app, 10, 64)
 	if e != nil {
+		return 0, nil, e
+	}
+	return appID, []byte(key), nil
+}
+
+func (g *GitHubService) baseTransport() http.RoundTripper {
+	if g.Transport != nil {
+		return g.Transport
+	}
+	return http.DefaultTransport
+}
+
+// apiBase is the GitHub API root without its trailing slash, as ghinstallation expects.
+func (g *GitHubService) apiBase() string {
+	if g.APIBase == nil {
+		return ""
+	}
+	return strings.TrimSuffix(g.APIBase.String(), "/")
+}
+
+func (g *GitHubService) installation(ctx context.Context, id int64) (*ghinstallation.Transport, error) {
+	appID, key, e := g.appCredentials(ctx)
+	if e != nil {
 		return nil, e
 	}
-	tr := g.Transport
-	if tr == nil {
-		tr = http.DefaultTransport
+	tr, e := ghinstallation.New(g.baseTransport(), appID, id, key)
+	if e == nil && g.APIBase != nil {
+		tr.BaseURL = g.apiBase()
 	}
-	return ghinstallation.New(tr, appID, id, []byte(key))
+	return tr, e
+}
+
+// findInstallation returns the ID of the GitHub App installation that can read
+// owner/name, or zero when the App is not configured or not installed there.
+func (g *GitHubService) findInstallation(ctx context.Context, owner, name string) int64 {
+	appID, key, e := g.appCredentials(ctx)
+	if e != nil {
+		return 0
+	}
+	tr, e := ghinstallation.NewAppsTransport(g.baseTransport(), appID, key)
+	if e != nil {
+		return 0
+	}
+	if g.APIBase != nil {
+		tr.BaseURL = g.apiBase()
+	}
+	client := g.client(tr)
+	inst, _, e := client.Apps.FindRepositoryInstallation(ctx, owner, name)
+	if e != nil {
+		return 0
+	}
+	return inst.GetID()
+}
+
+func (g *GitHubService) client(tr http.RoundTripper) *github.Client {
+	client := github.NewClient(&http.Client{Transport: tr, Timeout: 10 * time.Second})
+	if g.APIBase != nil {
+		client.BaseURL = g.APIBase
+	}
+	return client
 }
 func (g *GitHubService) Token(ctx context.Context, id int64) (string, error) {
 	tr, e := g.installation(ctx, id)
@@ -140,6 +197,9 @@ func (g *GitHubService) Webhook(ctx context.Context, in WebhookInput) error {
 		Repository struct {
 			HTMLURL string `json:"html_url"`
 		} `json:"repository"`
+		Installation struct {
+			ID int64 `json:"id"`
+		} `json:"installation"`
 		Head struct {
 			Message string `json:"message"`
 			Author  struct {
@@ -173,6 +233,13 @@ func (g *GitHubService) Webhook(ctx context.Context, in WebhookInput) error {
 			if strings.TrimSuffix(a.Repository, ".git") != push.Repository.HTMLURL || push.Ref != "refs/heads/"+a.Branch {
 				continue
 			}
+			// The delivery is signed by GitHub, so its installation can read this
+			// repository: remember it for apps that don't have one yet.
+			if push.Installation.ID > 0 {
+				if _, e := tx.ExecContext(ctx, "UPDATE apps SET config=json_set(config,'$.installation_id',?) WHERE id=? AND COALESCE(json_extract(config,'$.installation_id'),0)=0", push.Installation.ID, a.ID); e != nil {
+					return e
+				}
+			}
 			input := DeployInput{AppID: a.ID, SHA: push.After, Message: truncate(push.Head.Message, 1000), Author: truncate(push.Head.Author.Name, 200), Origin: "push"}
 			if e := (&deploysService{g.Core}).enqueue(systemContext(ctx), tx, security.Token(), input); e != nil {
 				return e
@@ -205,7 +272,17 @@ func (g *GitHubService) BeginManifest(ctx context.Context, origin string) (GitHu
 	if e != nil {
 		return GitHubManifest{}, e
 	}
-	manifest := map[string]any{"name": "NelcotaDeploy", "url": origin, "hook_attributes": map[string]any{"url": origin + "/api/webhooks/github", "active": true}, "redirect_url": origin + "/api/github/callback", "public": false, "default_permissions": map[string]string{"contents": "read", "metadata": "read", "checks": "write"}, "default_events": []string{"push"}}
+	manifest := map[string]any{
+		"name":                "NelcotaDeploy",
+		"url":                 origin,
+		"hook_attributes":     map[string]any{"url": origin + "/api/webhooks/github", "active": true},
+		"redirect_url":        origin + "/api/github/callback",
+		"setup_url":           origin + "/settings/github?github=installed",
+		"setup_on_update":     true,
+		"public":              false,
+		"default_permissions": map[string]string{"contents": "read", "metadata": "read", "checks": "write"},
+		"default_events":      []string{"push"},
+	}
 	b, e := json.Marshal(manifest)
 	return GitHubManifest{Action: "https://github.com/settings/apps/new?state=" + url.QueryEscape(state), Manifest: b, ExpiresAt: expires}, e
 }
@@ -235,7 +312,7 @@ func (g *GitHubService) FinishManifest(ctx context.Context, state, code string) 
 			if e != nil {
 				return e
 			}
-			if _, e = tx.ExecContext(ctx, "INSERT INTO settings(key,encrypted) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET encrypted=excluded.encrypted", k, b); e != nil {
+			if e = dbgen.New(tx).SaveSetting(ctx, dbgen.SaveSettingParams{Key: k, Encrypted: b}); e != nil {
 				return e
 			}
 		}

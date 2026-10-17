@@ -11,7 +11,6 @@ import (
 	"errors"
 	"net/url"
 	"os"
-	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -136,30 +135,7 @@ func (v *Verifier) Verify(c *agentv1.Command, now time.Time) error {
 		if e != nil {
 			return e
 		}
-		if e = os.MkdirAll(filepath.Dir(v.Path), 0700); e != nil {
-			return e
-		}
-		f, e := os.CreateTemp(filepath.Dir(v.Path), ".replay-")
-		if e != nil {
-			return e
-		}
-		defer os.Remove(f.Name())
-		if e = f.Chmod(0600); e == nil {
-			_, e = f.Write(b)
-		}
-		if e == nil {
-			e = f.Sync()
-		}
-		closeErr := f.Close()
-		if e != nil {
-			return e
-		}
-		if closeErr != nil {
-			return closeErr
-		}
-		if e = os.Rename(f.Name(), v.Path); e != nil {
-			return e
-		}
+		return host.WriteFileAtomic(v.Path, b, 0600)
 	}
 	return nil
 }

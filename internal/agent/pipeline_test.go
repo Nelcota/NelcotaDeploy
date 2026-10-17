@@ -3,25 +3,32 @@ package agent
 import (
 	"context"
 	"errors"
-	agentv1 "github.com/Nelcota/NelcotaDeploy/internal/gen/agent/v1"
-	"github.com/Nelcota/NelcotaDeploy/internal/security"
-	"go.uber.org/goleak"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
 	"time"
+
+	agentv1 "github.com/Nelcota/NelcotaDeploy/internal/gen/agent/v1"
+	"github.com/Nelcota/NelcotaDeploy/internal/security"
+	bk "github.com/moby/buildkit/client"
+	"go.uber.org/goleak"
 )
 
 func TestMain(m *testing.M) { goleak.VerifyTestMain(m) }
 
 type fakeEngine struct {
 	mu          sync.Mutex
+	healthErr   error
+	buildError  bool
+	exited      bool
 	healthError bool
 	block       bool
 	routed      bool
 	removed     []string
+	output      string
 }
 
 func (f *fakeEngine) Clone(ctx context.Context, _ *agentv1.Deploy, _ string, _ func([]byte)) error {
@@ -32,12 +39,18 @@ func (f *fakeEngine) Clone(ctx context.Context, _ *agentv1.Deploy, _ string, _ f
 	return nil
 }
 func (f *fakeEngine) Build(context.Context, *agentv1.Deploy, string, func([]byte)) (string, error) {
+	if f.buildError {
+		return "", errors.New("build failed")
+	}
 	return "new-image", nil
 }
 func (f *fakeEngine) Start(context.Context, *agentv1.AppConfig, string) (Running, error) {
 	return Running{AppID: "app", Image: "new-image", Containers: []string{"new"}, Addresses: []string{"127.0.0.1:1"}}, nil
 }
 func (f *fakeEngine) Health(context.Context, *agentv1.AppConfig, Running) error {
+	if f.healthErr != nil {
+		return f.healthErr
+	}
 	if f.healthError {
 		return errors.New("unhealthy")
 	}
@@ -55,11 +68,16 @@ func (f *fakeEngine) Remove(_ context.Context, r Running) error {
 	f.removed = append(f.removed, r.Containers...)
 	return nil
 }
-func (f *fakeEngine) Inspect(context.Context, Running) (bool, error)                 { return true, nil }
-func (f *fakeEngine) Stop(context.Context, Running) error                            { return nil }
-func (f *fakeEngine) Restart(context.Context, Running) error                         { return nil }
-func (f *fakeEngine) Logs(context.Context, Running, int64, bool, func([]byte)) error { return nil }
-func (f *fakeEngine) Prune(context.Context, agentv1.Prune_Scope) error               { return nil }
+func (f *fakeEngine) Inspect(context.Context, Running) (bool, error) { return !f.exited, nil }
+func (f *fakeEngine) Stop(context.Context, Running) error            { return nil }
+func (f *fakeEngine) Restart(context.Context, Running) error         { return nil }
+func (f *fakeEngine) Logs(_ context.Context, _ Running, _ int64, _ bool, log func([]byte)) error {
+	if f.output != "" {
+		log([]byte(f.output))
+	}
+	return nil
+}
+func (f *fakeEngine) Prune(context.Context, agentv1.Prune_Scope) error { return nil }
 func TestHealthFailureKeepsOld(t *testing.T) {
 	f := &fakeEngine{healthError: true}
 	p, _ := NewPipeline(f, nil, t.TempDir(), 1)
@@ -80,6 +98,26 @@ func TestHealthFailureKeepsOld(t *testing.T) {
 	entries, _ := os.ReadDir(p.Root)
 	if len(entries) != 0 {
 		t.Fatal("source not removed")
+	}
+}
+func TestHealthFailureCopiesAppOutput(t *testing.T) {
+	var out strings.Builder
+	for i := range 30 {
+		out.WriteString("line " + strconv.Itoa(i) + "\n")
+	}
+	out.WriteString("listening on 0.0.0.0:3000\n")
+	f := &fakeEngine{healthErr: &HealthError{}, output: out.String()}
+	p, _ := NewPipeline(f, nil, t.TempDir(), 1)
+	var log strings.Builder
+	p.deploy(context.Background(), &agentv1.Deploy{DeployId: "deploy", Sha: strings.Repeat("a", 40), App: &agentv1.AppConfig{AppId: "app"}}, func(e *agentv1.Event) error {
+		if l := e.GetDeployLog(); l != nil {
+			log.Write(l.Line)
+		}
+		return nil
+	})
+	got := log.String()
+	if !strings.Contains(got, "[app] listening on 0.0.0.0:3000\n") || strings.Contains(got, "[app] line 10\n") || !strings.Contains(got, "[app] line 11\n") {
+		t.Fatal(got)
 	}
 }
 func TestSuccessSwitchesBeforeRetirement(t *testing.T) {
@@ -128,7 +166,11 @@ func TestEncryptedStateAndPendingRecovery(t *testing.T) {
 		t.Fatal(e)
 	}
 	state := &StateStore{Path: filepath.Join(t.TempDir(), "state.bin"), Vault: vault}
-	v := persisted{Desired: map[string]*agentv1.AppConfig{"app": {AppId: "app", Replicas: 1, Env: map[string]string{"TOKEN": "private-test-value"}}}, Running: map[string]Running{"app": {AppID: "app", Image: "new-image", Containers: []string{"new"}}}, Pending: map[string]Running{"app": {AppID: "app", Image: "old-image", Containers: []string{"old"}}}}
+	v := persisted{
+		Desired: map[string]*agentv1.AppConfig{"app": {AppId: "app", Replicas: 1, Env: map[string]string{"TOKEN": "private-test-value"}}},
+		Running: map[string]Running{"app": {AppID: "app", Image: "new-image", Containers: []string{"new"}}},
+		Pending: map[string]Running{"app": {AppID: "app", Image: "old-image", Containers: []string{"old"}}},
+	}
 	if e = state.Save(v); e != nil {
 		t.Fatal(e)
 	}
@@ -148,5 +190,44 @@ func TestEncryptedStateAndPendingRecovery(t *testing.T) {
 	after, e := state.Load()
 	if e != nil || len(after.Pending) != 0 {
 		t.Fatal("pending record not cleared", e)
+	}
+}
+
+func TestFailureCodesNameTheStep(t *testing.T) {
+	for _, row := range []struct {
+		engine *fakeEngine
+		want   string
+	}{
+		{&fakeEngine{buildError: true}, "build_failed"},
+		{&fakeEngine{healthErr: &HealthError{}}, "health_no_response"},
+		{&fakeEngine{healthErr: &HealthError{Status: 502}}, "health_status_502"},
+		{&fakeEngine{healthErr: &HealthError{}, exited: true}, "app_exited"},
+	} {
+		p, _ := NewPipeline(row.engine, nil, t.TempDir(), 1)
+		var code, status string
+		p.deploy(context.Background(), &agentv1.Deploy{DeployId: "d", Sha: strings.Repeat("a", 40), App: &agentv1.AppConfig{AppId: "app"}}, func(e *agentv1.Event) error {
+			if s := e.GetDeployStatus(); s != nil && s.Status != "" {
+				status, code = s.Status, s.ErrorCode
+			}
+			return nil
+		})
+		if status != "failed" || code != row.want {
+			t.Fatal(row.want, status, code)
+		}
+	}
+}
+
+func TestHealthErrorMessages(t *testing.T) {
+	if (&HealthError{}).Error() == (&HealthError{Status: 500}).Error() {
+		t.Fatal("messages should differ")
+	}
+}
+
+func TestCacheTotal(t *testing.T) {
+	if got := cacheTotal([]*bk.UsageInfo{{Size: 10}, nil, {Size: -1}, {Size: 5, Shared: true}}); got != 15 {
+		t.Fatal(got)
+	}
+	if (&DockerEngine{}).buildCacheUsed(context.Background()) != 0 {
+		t.Fatal("no BuildKit client should report zero")
 	}
 }

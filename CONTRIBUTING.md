@@ -1,6 +1,6 @@
 # Contributing to NelcotaDeploy
 
-The project is under development. The web interface and VPS acceptance testing are the next milestones. See the [backend report](docs/backend-report.md) and [outstanding work](docs/outstanding-work.md) for the current status.
+The project is under development. The backend and web interface are implemented; VPS acceptance testing is the next milestone. See [status](docs/status.md).
 
 ## Language
 
@@ -20,6 +20,8 @@ make dev
 
 Development mode uses local data in `.local/dev`, simulated agents, and its own development session. See the [README](README.md#local-development) for API examples.
 
+Interface changes: follow the [writing guide](docs/ui-writing.md); edit `.templ` files, `web/static/src`, or vendored libraries (`make web-vendor`), then run `make web` and commit the generated `*_templ.go` files and `web/static/dist`. Run `make e2e` for browser tests; it needs Node and Playwright's Chromium (`cd web && npm ci && npx playwright install chromium`).
+
 ## Propose a change
 
 1. Open an issue before changing architecture or public behavior. Describe the problem and proposed result.
@@ -37,6 +39,8 @@ CGO_ENABLED=1 go test -race -count=1 ./...
 ```
 
 For changes to deployment, containers, routing, or installers, also run `make test-integration` with Docker and Caddy available. Record infrastructure limitations in the pull request. Missing infrastructure is not a passing test.
+
+See [development and release automation](docs/development.md) for every Makefile target and workflow, including `make visual`, `make english`, releases, and automated VPS acceptance.
 
 Add regression tests for behavior fixes. Do not edit `internal/gen/` or `internal/store/dbgen/` manually: change the Protobuf/SQL source and run `make generate`.
 

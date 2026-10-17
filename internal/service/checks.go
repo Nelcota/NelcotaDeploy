@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"errors"
 	"time"
+
+	"github.com/Nelcota/NelcotaDeploy/internal/store/dbgen"
 )
 
 // Check publication is an outbox: GitHub latency never blocks the agent event stream.
@@ -19,15 +21,14 @@ func (c *Core) RunChecks(ctx context.Context) error {
 			if c.GitHub == nil {
 				continue
 			}
-			var id, status, repo, sha string
-			var check, attempts int64
-			e := c.DB.Read.QueryRowContext(ctx, "SELECT j.deployment_id,j.desired_status,j.attempts,a.repository,d.sha,d.check_id FROM check_jobs j JOIN deployments d ON d.id=j.deployment_id JOIN apps a ON a.id=d.app_id WHERE j.next_at<=? ORDER BY j.next_at,j.rowid LIMIT 1", time.Now().Unix()).Scan(&id, &status, &attempts, &repo, &sha, &check)
+			job, e := c.DB.Queries.NextCheckJob(ctx, time.Now().Unix())
 			if errors.Is(e, sql.ErrNoRows) {
 				continue
 			}
 			if e != nil {
 				return e
 			}
+			id, status, repo, sha, check, attempts := job.DeploymentID, job.DesiredStatus, job.Repository, job.Sha, job.CheckID, job.Attempts
 			request, cancel := context.WithTimeout(ctx, 20*time.Second)
 			checkID, e := c.GitHub.Check(request, repo, sha, status, check)
 			cancel()
@@ -52,6 +53,5 @@ func (c *Core) RunChecks(ctx context.Context) error {
 	}
 }
 func queueCheck(ctx context.Context, tx *sql.Tx, id, status string) error {
-	_, e := tx.ExecContext(ctx, "INSERT INTO check_jobs(deployment_id,desired_status) VALUES(?,?) ON CONFLICT(deployment_id) DO UPDATE SET desired_status=excluded.desired_status,attempts=0,next_at=0", id, status)
-	return e
+	return dbgen.New(tx).QueueCheck(ctx, dbgen.QueueCheckParams{DeploymentID: id, DesiredStatus: status})
 }

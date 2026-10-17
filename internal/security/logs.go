@@ -25,7 +25,6 @@ func (m *LineMasker) Write(b []byte) (int, error) {
 		i := bytes.IndexByte(b, '\n')
 		if i < 0 {
 			i = len(b) - 1
-		} else {
 		}
 		part := b[:i+1]
 		newline := part[len(part)-1] == '\n'

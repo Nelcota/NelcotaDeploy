@@ -5,9 +5,12 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"log/slog"
 	"net"
 	"net/url"
 	"regexp"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -18,6 +21,7 @@ import (
 	"github.com/Nelcota/NelcotaDeploy/internal/security"
 	"github.com/Nelcota/NelcotaDeploy/internal/store"
 	"github.com/Nelcota/NelcotaDeploy/internal/store/dbgen"
+	"github.com/ncruces/go-sqlite3"
 )
 
 type Dispatcher interface {
@@ -37,6 +41,7 @@ type Core struct {
 	Control         Dispatcher
 	GitHub          GitHub
 	Operations      *OperationsService
+	disk            diskRelief
 }
 
 func (c *Core) Services(auth *AuthService) Services {
@@ -46,25 +51,49 @@ func (c *Core) Services(auth *AuthService) Services {
 	}
 	return Services{Apps: &appsService{c}, Deploys: &deploysService{c}, Servers: &serversService{c}, Logs: &logsService{c}, Auth: auth, Users: auth, Settings: &settingsService{c}, Audit: &auditService{c}, Operations: ops}
 }
+
+// decodeApp and decodeDeploy log a corrupt JSON column instead of failing: the
+// row stays visible and manageable with default settings.
 func decodeApp(v dbgen.App) App {
 	a := App{ID: v.ID, Name: v.Name, ServerID: v.ServerID, Repository: v.Repository, Branch: v.Branch, DesiredSHA: v.DesiredSha, Revision: v.Revision}
-	_ = json.Unmarshal([]byte(v.Config), &a.Config)
+	if e := json.Unmarshal([]byte(v.Config), &a.Config); e != nil {
+		slog.Error("app configuration unreadable", "app", v.ID, "err", e)
+	}
 	return a
 }
 func decodeDeploy(v dbgen.Deployment) Deployment {
-	d := Deployment{ID: v.ID, AppID: v.AppID, SHA: v.Sha, Message: v.Message, Author: v.Author, Origin: v.Origin, Status: v.Status, QueuedAt: v.QueuedAt, StartedAt: v.StartedAt, FinishedAt: v.FinishedAt, ErrorCode: v.ErrorCode, Clean: v.Clean != 0, Timings: map[string]int64{}, CancelRequested: v.CancelRequested != 0}
-	_ = json.Unmarshal([]byte(v.Timings), &d.Timings)
+	d := Deployment{
+		ID: v.ID, AppID: v.AppID, SHA: v.Sha, Message: v.Message, Author: v.Author, Origin: v.Origin, Status: v.Status,
+		QueuedAt: v.QueuedAt, StartedAt: v.StartedAt, FinishedAt: v.FinishedAt, ErrorCode: v.ErrorCode, Clean: v.Clean != 0,
+		Timings: map[string]int64{}, CancelRequested: v.CancelRequested != 0, RetryOf: v.RetryOf,
+	}
+	// The column defaults to '{}'; an empty value only means no timings yet.
+	if v.Timings == "" {
+		return d
+	}
+	if e := json.Unmarshal([]byte(v.Timings), &d.Timings); e != nil {
+		slog.Error("deployment timings unreadable", "deployment", v.ID, "err", e)
+	}
 	return d
 }
 
+// dbError maps database failures to service errors. Unexpected failures are
+// logged and returned untyped, so callers report a generic internal error.
 func dbError(e error) error {
-	if errors.Is(e, sql.ErrNoRows) {
-		return fail(NotFound, "Resource not found")
+	var typed *Error
+	switch {
+	case e == nil:
+		return nil
+	case errors.As(e, &typed), errors.Is(e, context.Canceled), errors.Is(e, context.DeadlineExceeded):
+		return e
+	case errors.Is(e, sql.ErrNoRows):
+		return &Error{Kind: NotFound, Message: "Resource not found", cause: e}
+	case errors.Is(e, sqlite3.CONSTRAINT_UNIQUE), errors.Is(e, sqlite3.CONSTRAINT_PRIMARYKEY),
+		errors.Is(e, sqlite3.CONSTRAINT_FOREIGNKEY), errors.Is(e, sqlite3.CONSTRAINT_CHECK):
+		return &Error{Kind: Conflict, Message: "Operation could not be completed", cause: e}
 	}
-	if e != nil {
-		return fail(Conflict, "Operation could not be completed")
-	}
-	return nil
+	slog.Error("database operation failed", "err", e)
+	return fmt.Errorf("database: %w", e)
 }
 func (c *Core) audit(ctx context.Context, tx *sql.Tx, action, target string) error {
 	p, e := CurrentUser(ctx)
@@ -124,7 +153,7 @@ func validateApp(in *AppInput) error {
 		cfg.Replicas = 1
 	}
 	if cfg.Replicas > 16 {
-		return fail(Validation, "Maximum of 16 replicas")
+		return fail(Validation, "Copies must be between 1 and 16")
 	}
 	if cfg.HealthPath == "" {
 		cfg.HealthPath = "/"
@@ -143,6 +172,9 @@ func validateApp(in *AppInput) error {
 	}
 	if strings.Contains(cfg.Dockerfile, "..") || strings.HasPrefix(cfg.Dockerfile, "/") || strings.ContainsAny(cfg.Dockerfile, "\x00\r\n") {
 		return fail(Validation, "Invalid Dockerfile")
+	}
+	if cfg.Runtime != "" && !slices.Contains(Runtimes, cfg.Runtime) {
+		return fail(Validation, "Unknown runtime")
 	}
 	if len(cfg.Domains) > 20 {
 		return fail(Validation, "Too many domains")
@@ -165,9 +197,15 @@ func (s *appsService) List(ctx context.Context) ([]App, error) {
 	if e != nil {
 		return nil, dbError(e)
 	}
+	logos, e := s.logoVersions(ctx)
+	if e != nil {
+		return nil, dbError(e)
+	}
 	out := make([]App, 0, len(rows))
 	for _, r := range rows {
-		out = append(out, decodeApp(r))
+		a := decodeApp(r)
+		a.LogoAt = logos[a.ID]
+		out = append(out, a)
 	}
 	return out, nil
 }
@@ -176,7 +214,14 @@ func (s *appsService) Get(ctx context.Context, id string) (App, error) {
 		return App{}, e
 	}
 	r, e := s.c.DB.Queries.GetApp(ctx, id)
-	return decodeApp(r), dbError(e)
+	if e != nil {
+		return App{}, dbError(e)
+	}
+	a := decodeApp(r)
+	if e := s.c.DB.Read.QueryRowContext(ctx, "SELECT updated_at FROM app_logos WHERE app_id=?", id).Scan(&a.LogoAt); e != nil && !errors.Is(e, sql.ErrNoRows) {
+		return App{}, dbError(e)
+	}
+	return a, nil
 }
 func (s *appsService) Create(ctx context.Context, in AppInput) (App, error) {
 	return s.save(ctx, "", in)
@@ -244,8 +289,8 @@ func (s *appsService) Delete(ctx context.Context, id string, confirmed bool) err
 		return fail(Conflict, "Stop the app before deleting it")
 	}
 	return s.c.mutate(ctx, func(tx *sql.Tx) error {
-		var n int
-		if e := tx.QueryRowContext(ctx, "SELECT count(*) FROM deployments WHERE app_id=? AND status IN ('queued','building','starting')", id).Scan(&n); e != nil {
+		n, e := dbgen.New(tx).CountUnfinishedAppDeployments(ctx, id)
+		if e != nil {
 			return e
 		}
 		if n > 0 {
@@ -340,7 +385,7 @@ func (s *appsService) Action(ctx context.Context, id, action string, replicas ui
 		a.Config.Stopped = true
 	case "scale":
 		if replicas < 1 || replicas > 16 {
-			return fail(Validation, "Invalid replicas")
+			return fail(Validation, "Copies must be between 1 and 16")
 		}
 		a.Config.Replicas = replicas
 	case "restart":
@@ -352,9 +397,6 @@ func (s *appsService) Action(ctx context.Context, id, action string, replicas ui
 		return e
 	}
 	if action == "restart" {
-		if s.c.Control == nil {
-			return fail(Unavailable, "Agent unavailable")
-		}
 		return s.c.send(ctx, a.ServerID, &agentv1.Command{Action: &agentv1.Command_Restart{Restart: &agentv1.AppAction{AppId: id}}})
 	}
 	return nil
@@ -385,13 +427,13 @@ func (s *serversService) Invite(ctx context.Context, in ServerInput) (Invitation
 		in.BuildLimit = 1
 	}
 	if in.BuildLimit < 1 || in.BuildLimit > 8 {
-		return Invitation{}, fail(Validation, "Invalid build limit")
+		return Invitation{}, fail(Validation, "Builds at the same time must be between 1 and 8")
 	}
 	if in.CacheBytes == 0 {
 		in.CacheBytes = 5 << 30
 	}
 	if in.CacheBytes < 64<<20 || in.CacheBytes > 100<<30 {
-		return Invitation{}, fail(Validation, "Invalid cache limit")
+		return Invitation{}, fail(Validation, "Build cache size must be between 64 MiB and 100 GiB")
 	}
 	token := security.Token()
 	id := security.Token()
@@ -405,7 +447,11 @@ func (s *serversService) Invite(ctx context.Context, in ServerInput) (Invitation
 		}
 		return s.c.audit(ctx, tx, "server.invite", id)
 	})
-	return Invitation{id, token, expires}, e
+	if e != nil {
+		return Invitation{}, e
+	}
+	server := Server{ID: id, Name: in.Name, WireGuardIP: in.WireGuardIP, Status: "offline", BuildLimit: int64(in.BuildLimit), CacheBytes: in.CacheBytes}
+	return Invitation{ServerID: id, Token: token, ExpiresAt: expires, Server: server}, nil
 }
 func (s *serversService) Prune(ctx context.Context, id, scope string, confirmed bool) error {
 	if _, e := authorize(ctx, "servers:write", true); e != nil {
@@ -466,30 +512,84 @@ func (s *settingsService) Set(ctx context.Context, key, value string) error {
 			}
 		}
 	case "github.app_id", "github.private_key", "github.webhook_secret", "github.client_id", "github.client_secret":
+	case "updates.automatic":
+		if value != "true" && value != "false" {
+			return fail(Validation, "Invalid setting")
+		}
 	default:
 		return fail(Validation, "Unknown setting")
 	}
+	return s.c.saveSetting(ctx, key, value, "settings.update")
+}
+
+func (s *settingsService) TestS3(ctx context.Context, value string) error {
+	if _, e := authorize(ctx, "settings:write", true); e != nil {
+		return e
+	}
+	var cfg maintenance.S3
+	if json.Unmarshal([]byte(value), &cfg) != nil || cfg.Validate() != nil {
+		return fail(Validation, "Invalid S3 configuration")
+	}
+	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
+	defer cancel()
+	if e := cfg.Test(ctx); e != nil {
+		msg := strings.TrimSpace(e.Error())
+		if msg == "" {
+			return fail(Unavailable, "S3 test failed.")
+		}
+		return fail(Unavailable, strings.ToUpper(msg[:1])+msg[1:]+".")
+	}
+	return nil
+}
+
+// saveSetting seals and stores a setting, recording action in the audit log.
+// Callers authorize and validate the value.
+func (c *Core) saveSetting(ctx context.Context, key, value, action string) error {
 	if len(value) > 32768 {
 		return fail(Validation, "Value too large")
 	}
-	b, e := s.c.Vault.Seal([]byte(value), "setting:"+key)
+	b, e := c.Vault.Seal([]byte(value), "setting:"+key)
 	if e != nil {
 		return e
 	}
-	return s.c.mutate(ctx, func(tx *sql.Tx) error {
-		if _, e := tx.ExecContext(ctx, "INSERT INTO settings(key,encrypted) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET encrypted=excluded.encrypted", key, b); e != nil {
+	return c.mutate(ctx, func(tx *sql.Tx) error {
+		if e := dbgen.New(tx).SaveSetting(ctx, dbgen.SaveSettingParams{Key: key, Encrypted: b}); e != nil {
 			return e
 		}
-		return s.c.audit(ctx, tx, "settings.update", key)
+		return c.audit(ctx, tx, action, key)
 	})
 }
 func (c *Core) Setting(ctx context.Context, key string) (string, error) {
-	var b []byte
-	if e := c.DB.Read.QueryRowContext(ctx, "SELECT encrypted FROM settings WHERE key=?", key).Scan(&b); e != nil {
+	b, e := c.DB.Queries.GetSetting(ctx, key)
+	if e != nil {
 		return "", e
 	}
 	p, e := c.Vault.Open(b, "setting:"+key)
 	return string(p), e
+}
+
+// UploadBackup sends a backup to S3 when configured. An operator's protected
+// configuration file wins over the backup.s3 setting; with neither, it does nothing.
+func (c *Core) UploadBackup(ctx context.Context, path, configFile string) error {
+	if configFile != "" {
+		cfg, e := maintenance.LoadS3(configFile)
+		if e != nil {
+			return e
+		}
+		return cfg.Upload(ctx, path)
+	}
+	value, e := c.Setting(ctx, "backup.s3")
+	if errors.Is(e, sql.ErrNoRows) || e == nil && value == "" {
+		return nil
+	}
+	if e != nil {
+		return e
+	}
+	var cfg maintenance.S3
+	if e = json.Unmarshal([]byte(value), &cfg); e != nil {
+		return fmt.Errorf("invalid S3 configuration: %w", e)
+	}
+	return cfg.Upload(ctx, path)
 }
 
 type auditService struct{ c *Core }

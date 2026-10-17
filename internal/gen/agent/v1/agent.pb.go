@@ -1478,6 +1478,7 @@ type Metrics struct {
 	NetworkRx     uint64                 `protobuf:"varint,6,opt,name=network_rx,json=networkRx,proto3" json:"network_rx,omitempty"`
 	NetworkTx     uint64                 `protobuf:"varint,7,opt,name=network_tx,json=networkTx,proto3" json:"network_tx,omitempty"`
 	Containers    []*ContainerMetrics    `protobuf:"bytes,8,rep,name=containers,proto3" json:"containers,omitempty"`
+	CacheUsed     uint64                 `protobuf:"varint,9,opt,name=cache_used,json=cacheUsed,proto3" json:"cache_used,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1566,6 +1567,13 @@ func (x *Metrics) GetContainers() []*ContainerMetrics {
 		return x.Containers
 	}
 	return nil
+}
+
+func (x *Metrics) GetCacheUsed() uint64 {
+	if x != nil {
+		return x.CacheUsed
+	}
+	return 0
 }
 
 type ObservedApp struct {
@@ -2014,7 +2022,7 @@ const file_agent_v1_agent_proto_rawDesc = "" +
 	"network_rx\x18\x06 \x01(\x04R\tnetworkRx\x12\x1d\n" +
 	"\n" +
 	"network_tx\x18\a \x01(\x04R\tnetworkTx\x12\x12\n" +
-	"\x04pids\x18\b \x01(\x04R\x04pids\"\xa4\x02\n" +
+	"\x04pids\x18\b \x01(\x04R\x04pids\"\xc3\x02\n" +
 	"\aMetrics\x12\x1f\n" +
 	"\vcpu_percent\x18\x01 \x01(\x01R\n" +
 	"cpuPercent\x12\x1f\n" +
@@ -2030,7 +2038,9 @@ const file_agent_v1_agent_proto_rawDesc = "" +
 	"network_tx\x18\a \x01(\x04R\tnetworkTx\x12:\n" +
 	"\n" +
 	"containers\x18\b \x03(\v2\x1a.agent.v1.ContainerMetricsR\n" +
-	"containers\"o\n" +
+	"containers\x12\x1d\n" +
+	"\n" +
+	"cache_used\x18\t \x01(\x04R\tcacheUsed\"o\n" +
 	"\vObservedApp\x12\x15\n" +
 	"\x06app_id\x18\x01 \x01(\tR\x05appId\x12\x1b\n" +
 	"\tdeploy_id\x18\x02 \x01(\tR\bdeployId\x12\x10\n" +

@@ -1,0 +1,26 @@
+# English text allowed on Portuguese pages (see TestPortuguesePagesHaveNoEnglish).
+# Only names, seed data, and technical terms belong here; translate everything else.
+# Digits are written as #.
+
+# Loanwords Brazilian developers use as they are (see web/i18n/pt_br.go glossary).
+Apps
+Apps · NelcotaDeploy
+Backups
+Logs
+Online
+
+# Development seed data.
+Demo deployment
+Server api
+Server blog
+Server store
+development-user
+
+# Input placeholders that show example values.
+apps-#
+app.example.com
+ci-deploy
+https://github.com/you/your-app
+
+# Portuguese made only of words English also uses ("do" is the contraction of "de o").
+ID do App

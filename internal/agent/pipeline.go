@@ -1,18 +1,22 @@
 package agent
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"log/slog"
 	"os"
-	"path/filepath"
 	"regexp"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/Nelcota/NelcotaDeploy/internal/events"
 	agentv1 "github.com/Nelcota/NelcotaDeploy/internal/gen/agent/v1"
+	"github.com/Nelcota/NelcotaDeploy/internal/host"
 	"github.com/Nelcota/NelcotaDeploy/internal/security"
 	"google.golang.org/protobuf/proto"
 )
@@ -68,7 +72,19 @@ func NewPipeline(engine Engine, state *StateStore, root string, limit int) (*Pip
 	if limit < 1 {
 		limit = 1
 	}
-	p := &Pipeline{Engine: engine, State: state, Root: root, Limit: limit, active: map[string]active{}, apps: map[string]bool{}, desired: map[string]*agentv1.AppConfig{}, running: map[string]Running{}, pending: map[string]Running{}, rings: map[string]*events.Ring{}, logCancels: map[string]context.CancelFunc{}}
+	p := &Pipeline{
+		Engine:     engine,
+		State:      state,
+		Root:       root,
+		Limit:      limit,
+		active:     map[string]active{},
+		apps:       map[string]bool{},
+		desired:    map[string]*agentv1.AppConfig{},
+		running:    map[string]Running{},
+		pending:    map[string]Running{},
+		rings:      map[string]*events.Ring{},
+		logCancels: map[string]context.CancelFunc{},
+	}
 	if e := p.load(); e != nil {
 		return nil, e
 	}
@@ -276,12 +292,14 @@ func (p *Pipeline) deploy(ctx context.Context, d *agentv1.Deploy, emit func(*age
 		_ = emit(&agentv1.Event{Payload: &agentv1.Event_DeployStatus{DeployStatus: &agentv1.DeployStatus{DeployId: d.DeployId, AppId: d.App.AppId, Stage: name, DurationMs: time.Since(started).Milliseconds()}}})
 	}
 	success := false
+	// code names the step that failed so the panel can explain it to people.
+	code := "workspace_error"
 	defer func() {
 		if !success {
 			if ctx.Err() != nil {
 				status("cancelled")
 			} else {
-				status("failed")
+				_ = emit(&agentv1.Event{Payload: &agentv1.Event_DeployStatus{DeployStatus: &agentv1.DeployStatus{DeployId: d.DeployId, AppId: d.App.AppId, Status: "failed", ErrorCode: code}}})
 			}
 		}
 	}()
@@ -308,11 +326,13 @@ func (p *Pipeline) deploy(ctx context.Context, d *agentv1.Deploy, emit func(*age
 	defer masker.Flush()
 	safeLog := func(b []byte) { _, _ = masker.Write(b) }
 	started := time.Now()
+	code = "clone_failed"
 	if e = p.Engine.Clone(ctx, d, dir, safeLog); e != nil {
 		return
 	}
 	stage("clone", started)
 	started = time.Now()
+	code = "build_failed"
 	image, e := p.Engine.Build(ctx, d, dir, safeLog)
 	if e != nil {
 		return
@@ -329,6 +349,7 @@ func (p *Pipeline) deploy(ctx context.Context, d *agentv1.Deploy, emit func(*age
 	}()
 	status("starting")
 	started = time.Now()
+	code = "start_failed"
 	fresh, e = p.Engine.Start(ctx, d.App, image)
 	if e != nil {
 		return
@@ -339,8 +360,11 @@ func (p *Pipeline) deploy(ctx context.Context, d *agentv1.Deploy, emit func(*age
 	fresh.Revision = d.App.Revision
 	started = time.Now()
 	if e = p.Engine.Health(ctx, d.App, fresh); e != nil {
+		code = healthCode(ctx, p.Engine, fresh, e)
+		appOutput(ctx, p.Engine, fresh, safeLog)
 		return
 	}
+	code = "state_error"
 	stage("healthcheck", started)
 	if e = ctx.Err(); e != nil {
 		return
@@ -372,6 +396,7 @@ func (p *Pipeline) deploy(ctx context.Context, d *agentv1.Deploy, emit func(*age
 		return
 	}
 	started = time.Now()
+	code = "route_failed"
 	if e = p.Engine.Route(ctx, d.App, fresh); e != nil {
 		p.mu.Lock()
 		if old.AppID != "" {
@@ -385,7 +410,7 @@ func (p *Pipeline) deploy(ctx context.Context, d *agentv1.Deploy, emit func(*age
 			delete(p.desired, d.App.AppId)
 		}
 		delete(p.pending, d.App.AppId)
-		_ = p.saveLocked()
+		p.persistLocked(d.App.AppId)
 		p.mu.Unlock()
 		return
 	}
@@ -397,7 +422,7 @@ func (p *Pipeline) deploy(ctx context.Context, d *agentv1.Deploy, emit func(*age
 	if len(old.Containers) == 0 || p.Engine.Remove(cleanup, old) == nil {
 		p.mu.Lock()
 		delete(p.pending, d.App.AppId)
-		_ = p.saveLocked()
+		p.persistLocked(d.App.AppId)
 		p.mu.Unlock()
 	}
 
@@ -427,7 +452,7 @@ func (p *Pipeline) reconcile(ctx context.Context) {
 			p.mu.Lock()
 			delete(p.running, r.AppID)
 			delete(p.pending, r.AppID)
-			_ = p.saveLocked()
+			p.persistLocked(r.AppID)
 			p.mu.Unlock()
 		}
 		cancel()
@@ -478,7 +503,7 @@ func (p *Pipeline) reconcile(ctx context.Context) {
 				}
 				p.mu.Lock()
 				p.running[cfg.AppId] = fresh
-				_ = p.saveLocked()
+				p.persistLocked(cfg.AppId)
 				p.mu.Unlock()
 				_ = p.Engine.Remove(c, r)
 			} else {
@@ -489,7 +514,7 @@ func (p *Pipeline) reconcile(ctx context.Context) {
 					if pending && (len(old.Containers) == 0 || p.Engine.Remove(c, old) == nil) {
 						p.mu.Lock()
 						delete(p.pending, cfg.AppId)
-						_ = p.saveLocked()
+						p.persistLocked(cfg.AppId)
 						p.mu.Unlock()
 					}
 				}
@@ -508,6 +533,13 @@ type persisted struct {
 	Pending map[string]Running            `json:"pending"`
 }
 
+// persistLocked saves state where the in-memory change already happened and the
+// next save retries it, so a failure is logged instead of returned.
+func (p *Pipeline) persistLocked(app string) {
+	if e := p.saveLocked(); e != nil {
+		slog.Warn("agent state not saved", "app", app, "err", e)
+	}
+}
 func (p *Pipeline) saveLocked() error {
 	if p.State == nil {
 		return nil
@@ -542,30 +574,7 @@ func (s *StateStore) Save(v persisted) error {
 	if e != nil {
 		return e
 	}
-	if e = os.MkdirAll(filepath.Dir(s.Path), 0700); e != nil {
-		return e
-	}
-	tmp, e := os.CreateTemp(filepath.Dir(s.Path), ".state-")
-	if e != nil {
-		return e
-	}
-	defer os.Remove(tmp.Name())
-	if e = tmp.Chmod(0600); e != nil {
-		_ = tmp.Close()
-		return e
-	}
-	if _, e = tmp.Write(b); e != nil {
-		_ = tmp.Close()
-		return e
-	}
-	if e = tmp.Sync(); e != nil {
-		_ = tmp.Close()
-		return e
-	}
-	if e = tmp.Close(); e != nil {
-		return e
-	}
-	return os.Rename(tmp.Name(), s.Path)
+	return host.WriteFileAtomic(s.Path, b, 0600)
 }
 
 func (p *Pipeline) Observed() []*agentv1.ObservedApp {
@@ -602,4 +611,46 @@ func (p *Pipeline) Idle() bool {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	return len(p.active) == 0 && len(p.apps) == 0
+}
+
+// appOutputLines is how much of the app's own output a failed health check
+// copies into the deployment log.
+const appOutputLines = 20
+
+// appOutput copies the last lines the new container printed into the
+// deployment log, prefixed with "[app]". They usually say why it didn't answer,
+// for example the port it actually listens on. The log is masked like the rest.
+func appOutput(ctx context.Context, engine Engine, r Running, log func([]byte)) {
+	read, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	defer cancel()
+	var b bytes.Buffer
+	_ = engine.Logs(read, r, 0, false, func(chunk []byte) {
+		if b.Len() < 1<<20 {
+			b.Write(chunk)
+		}
+	})
+	lines := strings.Split(strings.TrimRight(b.String(), "\n"), "\n")
+	if len(lines) > appOutputLines {
+		lines = lines[len(lines)-appOutputLines:]
+	}
+	for _, line := range lines {
+		if line = strings.TrimRight(line, "\r"); line != "" {
+			log([]byte("[app] " + line + "\n"))
+		}
+	}
+}
+
+// healthCode classifies a failed health check: the app exited, never answered
+// (usually the wrong port), or answered with an error status.
+func healthCode(ctx context.Context, engine Engine, r Running, err error) string {
+	inspect, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	defer cancel()
+	if alive, e := engine.Inspect(inspect, r); e == nil && !alive {
+		return "app_exited"
+	}
+	var h *HealthError
+	if errors.As(err, &h) && h.Status != 0 {
+		return "health_status_" + strconv.Itoa(h.Status)
+	}
+	return "health_no_response"
 }

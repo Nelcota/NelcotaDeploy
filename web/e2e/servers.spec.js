@@ -1,0 +1,43 @@
+const { test, expect } = require("./fixtures");
+const { devLogin, toast, newClient, connected } = require("./helpers");
+
+test("servers show live metrics, invitations, and cache cleanup", async ({ page, context }) => {
+	await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+	await newClient(page);
+	await devLogin(page);
+	await page.goto("/servers");
+	await connected(page, page.locator("#metrics-conn"));
+	const api = page.locator('[data-server="dev-server-api"]');
+	await expect(api.locator('[data-metric="cpu"]')).toHaveText(/\d+\.\d%/, { timeout: 10_000 });
+	await expect(api.locator('[data-metric="memory-of"]')).toHaveText(/^of \d/);
+	// Each app on the server shows its live usage and links to the app.
+	const row = api.locator('[data-app="dev-app-api"]');
+	await expect(row.locator("[data-app-cpu]")).toHaveText(/\d+\.\d%/);
+	await expect(row.locator("[data-app-memory]")).toHaveText(/MiB \/ /);
+	await expect(row.getByRole("link", { name: "api" })).toHaveAttribute("href", "/apps/dev-app-api");
+	// The chart loads uPlot only once opened, then draws from the samples so far.
+	expect(await page.evaluate(() => typeof window.uPlot)).toBe("undefined");
+	await api.locator("summary", { hasText: "Usage chart" }).click();
+	await expect(api.locator("[data-chart] canvas")).toBeVisible({ timeout: 15_000 });
+
+	await page.getByRole("button", { name: "Add server" }).click();
+	const dialog = page.getByRole("dialog", { name: "Add a server" });
+	await expect(dialog.getByLabel("WireGuard address")).toHaveValue("10.77.0.5");
+	await dialog.getByLabel("Name").fill("apps-2");
+	await dialog.getByRole("button", { name: "Create invitation" }).click();
+	await expect(dialog.getByRole("heading")).toBeHidden();
+	const result = page.locator("#invite-result");
+	await expect(result).toContainText("Install the agent on apps-2");
+	await expect(result.locator("[data-expires]")).toHaveText(/1[45]:\d\d remaining/);
+	await expect(result.locator("#install-command")).toContainText("--join-file /root/nelcota-join");
+	await result.getByRole("button", { name: "Copy commands" }).click();
+	await toast(page, "Copied to clipboard");
+	expect(await page.evaluate(() => navigator.clipboard.readText())).toContain("/agent.sh");
+	await expect(page.locator("#servers-list")).toContainText("apps-2");
+
+	await expect(api.locator('[data-metric="cache"]')).toHaveText(/GiB$/);
+	await expect(api.locator("#server-limits-dev-server-api")).toContainText("Limit 5.0 GiB");
+	await api.getByRole("button", { name: "Free up space" }).click();
+	await page.getByRole("dialog", { name: "Free up space on Server api" }).getByRole("button", { name: "Clear cache" }).click();
+	await toast(page, "Clearing the build cache.");
+});

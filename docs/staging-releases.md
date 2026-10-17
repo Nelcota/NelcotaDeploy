@@ -1,8 +1,8 @@
-# Local staging releases — October 15, 2026
+# Local staging releases
 
-**v1.0.0, v1.0.1, and v1.0.2** were prepared locally in `dist/`, with Minisign signatures and local validation. They were not published and no VPS was accessed during preparation. Repository publication does not turn these laboratory artifacts into official production releases.
+**v1.0.0, v1.0.1, and v1.0.2** were prepared locally in `dist/` (ignored by Git) on October 15, 2026, signed with a laboratory Minisign key, and used to test updates and rollback. They are not published and are not official releases.
 
-All three use original source commit `dba1c3ba0a7cdebd50ba76d9cd4eab5ddcd5ee15`, Go 1.26.9, disabled CGO, and a clean checkout. Their only intended difference is the executable version number, enabling update/rollback sequence testing. The signing identity is specific to local staging. See [history migration](history-migration.md) for the equivalent commit after English message/identity normalization. Original signed commit IDs, filenames, hashes, and signatures remain unchanged.
+All three use original source commit `dba1c3ba0a7cdebd50ba76d9cd4eab5ddcd5ee15`, Go 1.26.9, disabled CGO, and a clean checkout. Their only intended difference is the executable version number, enabling update/rollback sequence testing. The signing identity is specific to local staging. When the Git history was normalized to English, that commit became `af240f88907523120f0fb7d6f7884b34bc232f67` (same file tree). Signed commit IDs, filenames, hashes, and signatures remain unchanged.
 
 ## Artifacts
 
@@ -31,7 +31,7 @@ RWTogK7s/y7BIqc7dw0qfzxK9pNTCSGUyYHc0/K3heUXXWK90ulX52K6
 
 - Minisign ID: `22C12EFFECAE80E8`.
 - Public-key file SHA-256: `8463daf3dc1a4b959ea81ad69ebe98cdde64bc93aa07be8ee818caad65bb39a6`.
-- Private key: `/home/haniel/.config/nelcota-release-homologacao/minisign.key`, outside the repository/packages; directory mode 0700, key mode 0600.
+- Private key: `~/.config/nelcota-release-homologacao/minisign.key` on the maintainer's workstation, outside the repository and packages; directory mode 0700, key mode 0600.
 - The laboratory key was generated without a password for autonomous local signing. Protection relies on these local permissions. Preserve it for subsequent laboratory releases; production identity is a separate decision.
 
 Verify the public key through a trusted channel before moving packages. Do not trust only a key downloaded beside the package.
@@ -120,6 +120,6 @@ done
 
 Existing release destinations are rejected. Exact original reproduction requires the mapped historical source tree, not current source, whose module name and English messages have changed. Local validators in .local/release-validation and the evidence archive validate manifests and update/rollback using only loopback TLS. The signed original source identifier remains immutable.
 
-## Remaining acceptance
+## VPS acceptance
 
-Root installation with systemd, WireGuard, public TLS/DNS, external access, machine reboot, power interruption, and full arm64 deployment still require VPS/VM testing. Local signatures/tests do not establish those results. No remote tag, binary publication, or SSH connection was made while preparing these packages.
+These packages were validated locally only, as listed above. See [status](status.md) for what still needs VPS testing.

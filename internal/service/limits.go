@@ -9,8 +9,11 @@ func (s *serversService) UpdateLimits(ctx context.Context, id string, in ServerL
 	if _, e := authorize(ctx, "servers:write", true); e != nil {
 		return Server{}, e
 	}
-	if in.BuildLimit < 1 || in.BuildLimit > 8 || in.CacheBytes < 64<<20 || in.CacheBytes > 100<<30 {
-		return Server{}, fail(Validation, "Invalid build or cache limits")
+	if in.BuildLimit < 1 || in.BuildLimit > 8 {
+		return Server{}, fail(Validation, "Builds at the same time must be between 1 and 8")
+	}
+	if in.CacheBytes < 64<<20 || in.CacheBytes > 100<<30 {
+		return Server{}, fail(Validation, "Build cache size must be between 64 MiB and 100 GiB")
 	}
 	e := s.c.mutate(ctx, func(tx *sql.Tx) error {
 		r, e := tx.ExecContext(ctx, "UPDATE servers SET build_limit=?,cache_bytes=? WHERE id=?", in.BuildLimit, in.CacheBytes, id)

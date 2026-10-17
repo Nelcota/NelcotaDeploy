@@ -10,12 +10,18 @@ import (
 	"time"
 )
 
-func freshInteractive(ctx context.Context) (Principal, error) {
-	p, e := require(ctx, false)
+// reauthWindow is how recently a person must have completed a second factor
+// before sensitive changes.
+const reauthWindow = 5 * time.Minute
+
+// freshInteractive requires a person, never an API token, who completed a
+// second factor within reauthWindow.
+func freshInteractive(ctx context.Context, admin bool) (Principal, error) {
+	p, e := require(ctx, admin)
 	if e != nil {
 		return p, e
 	}
-	if p.Scopes != nil || time.Now().Unix()-p.TwoFactorAt > 300 {
+	if p.Scopes != nil || time.Now().Unix()-p.TwoFactorAt > int64(reauthWindow/time.Second) {
 		return p, fail(Forbidden, "Interactive reauthentication required")
 	}
 	return p, nil
@@ -23,7 +29,7 @@ func freshInteractive(ctx context.Context) (Principal, error) {
 
 // Recovery codes replace only TOTP: a valid passkey ceremony is still required.
 func (a *AuthService) RecoveryCodes(ctx context.Context) ([]string, error) {
-	p, e := freshInteractive(ctx)
+	p, e := freshInteractive(ctx, false)
 	if e != nil {
 		return nil, e
 	}
@@ -90,7 +96,7 @@ func (a *AuthService) VerifyRecovery(ctx context.Context, challenge, code string
 	return result, nil
 }
 func (a *AuthService) ResetTOTP(ctx context.Context) error {
-	p, e := freshInteractive(ctx)
+	p, e := freshInteractive(ctx, false)
 	if e != nil {
 		return e
 	}

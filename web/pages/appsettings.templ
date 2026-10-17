@@ -1,0 +1,645 @@
+package pages
+
+import (
+	"github.com/Nelcota/NelcotaDeploy/web/i18n"
+	"strconv"
+	"strings"
+
+	"github.com/Nelcota/NelcotaDeploy/internal/service"
+	"github.com/Nelcota/NelcotaDeploy/web/ui"
+)
+
+// AppFormView fills the create and edit forms.
+type AppFormView struct {
+	ID      string
+	Input   service.AppInput
+	Servers []service.Server
+	Create  bool
+}
+
+func u32(v uint32) string { return strconv.FormatUint(uint64(v), 10) }
+func i64(v int64) string  { return strconv.FormatInt(v, 10) }
+
+// NewAppInput returns the documented defaults for a new app.
+func NewAppInput() service.AppInput {
+	return service.AppInput{Branch: "main", Config: service.AppConfig{MemoryBytes: 256 << 20, NanoCPUs: 1e9, Port: 8080, HealthPath: "/", HealthTimeout: 60, Replicas: 1, CacheEnabled: true, Dockerfile: "Dockerfile"}}
+}
+
+// AppForm edits the app's settings. The save bar appears once something
+// changes ($_dirty), and saving clears it.
+templ AppForm(v AppFormView, logo templ.Component) {
+	<form id="app-form" class="grid gap-6" data-signals:_dirty="false" data-on:input="evt.target.form === el && ($_dirty = true)" data-on:change="evt.target.form === el && ($_dirty = true)" data-on:submit={ ui.PostForm("/ui/apps/" + v.ID + "/settings") }>
+		<input type="hidden" name="server_id" value={ v.Input.ServerID }/>
+		<div id="section-general" class="scroll-mt-6">
+			@ui.Card("General", "") {
+				if logo != nil {
+					<div class="mb-5 border-b pb-5">
+						@logo
+					</div>
+				}
+				<div class="grid gap-4 sm:grid-cols-2">
+					@ui.Field("Name", "app-name", "", "") {
+						<input id="app-name" name="name" class="input" required maxlength="80" value={ v.Input.Name } autocomplete="off"/>
+					}
+					@ui.Field("Branch", "app-branch", "Pushes to this branch publish automatically.", "") {
+						<input id="app-branch" name="branch" class="input" required maxlength="200" value={ v.Input.Branch } aria-describedby="app-branch-hint"/>
+					}
+					<div id="section-domains" class="scroll-mt-6 sm:col-span-2">
+						@domainsField(v.Input.Config.Domains)
+					</div>
+					<div id="section-health" class="contents">
+						@portField(v.Input.Config.Port)
+						@healthPathField(v.Input.Config.HealthPath)
+					</div>
+				</div>
+			}
+		</div>
+		@ui.Disclosure("section-advanced", "Advanced", false, "surface scroll-mt-6 p-5 sm:p-6", nil) {
+			<div class="grid gap-4 sm:grid-cols-2">
+				@ui.Field("Repository", "app-repo", "", "") {
+					<input id="app-repo" name="repository" class="input" type="url" required pattern="https://github\.com/[^/]+/[^/]+/?" value={ v.Input.Repository }/>
+				}
+				@ui.Field("GitHub App installation ID", "app-installation", "Optional. Found automatically when the GitHub App can read the repository.", "") {
+					<input id="app-installation" name="installation_id" class="input" type="number" min="0" value={ i64(v.Input.Config.InstallationID) } aria-describedby="app-installation-hint"/>
+				}
+				@runtimeFields(v.Input.Config)
+			</div>
+		}
+		<div class="sticky bottom-24 z-10 hidden flex-wrap items-center justify-end gap-3 rounded-2xl border bg-background/90 p-3 shadow-lg shadow-black/10 backdrop-blur lg:bottom-6" data-class:hidden="!$_dirty" data-class:flex="$_dirty">
+			<p class="me-auto text-sm text-muted-foreground">{ i18n.T(ctx, "Saving restarts the app with the new settings.") }</p>
+			<button type="submit" class="btn">{ i18n.T(ctx, "Save changes") }</button>
+		</div>
+	</form>
+}
+
+// The new-app wizard and the settings tab share these fields, so labels,
+// limits, and hints stay the same in both.
+templ domainsField(domains []string) {
+	@ui.Field("Web addresses", "app-domains", "One per line, like app.example.com. HTTPS certificates are issued automatically.", "") {
+		<textarea id="app-domains" name="domains" class="textarea font-mono" rows="2" spellcheck="false" autocomplete="off" placeholder="app.example.com" aria-describedby="app-domains-hint">{ strings.Join(domains, "\n") }</textarea>
+	}
+}
+
+templ portField(port uint32) {
+	@ui.Field("Your app listens on port", "app-port", "", "") {
+		<input id="app-port" name="port" class="input" type="number" min="1" max="65535" required value={ u32(port) }/>
+	}
+}
+
+templ healthPathField(path string) {
+	@ui.Field("Health check path", "app-health", "A new version gets traffic only after this answers with 2xx or 3xx.", "") {
+		<input id="app-health" name="health_path" class="input font-mono" required pattern="/.*" value={ path } aria-describedby="app-health-hint"/>
+	}
+}
+
+// runtimeFields are the build and resource settings under Advanced.
+templ runtimeFields(c service.AppConfig) {
+	@ui.Field("Language or server", "app-runtime", "Detected from the Dockerfile. Shown as the app's mark when it has no logo.", "") {
+		<select id="app-runtime" name="runtime" class="select w-full" aria-describedby="app-runtime-hint">
+			<option value="">{ i18n.T(ctx, "Not set") }</option>
+			for _, r := range runtimeOptions() {
+				<option
+					value={ r }
+					if r == c.Runtime {
+						selected
+					}
+				>{ RuntimeLabel(r) }</option>
+			}
+		</select>
+	}
+	@ui.Field("Dockerfile path", "app-dockerfile", "", "") {
+		<input id="app-dockerfile" name="dockerfile" class="input font-mono" value={ c.Dockerfile }/>
+	}
+	@ui.Field("Seconds to wait for the health check", "app-timeout", "Up to 600.", "") {
+		<input id="app-timeout" name="health_timeout" class="input" type="number" min="1" max="600" required value={ u32(c.HealthTimeout) } aria-describedby="app-timeout-hint"/>
+	}
+	@ui.Field("Memory per copy (MiB)", "app-memory", "", "") {
+		<input id="app-memory" name="memory_mib" class="input" type="number" min="32" max="65536" required value={ ui.MiB(c.MemoryBytes) }/>
+	}
+	@ui.Field("CPU per copy (cores)", "app-cpu", "", "") {
+		<input id="app-cpu" name="cpus" class="input" type="number" min="0.01" max="64" step="0.01" required value={ ui.CPUs(c.NanoCPUs) }/>
+	}
+	@ui.Field("Copies", "app-replicas", "1 to 16. More copies handle more traffic.", "") {
+		<input id="app-replicas" name="replicas" class="input" type="number" min="1" max="16" required value={ u32(c.Replicas) } aria-describedby="app-replicas-hint"/>
+	}
+	<label class="flex items-start gap-3 text-sm sm:col-span-2">
+		<input class="input mt-0.5" type="checkbox" role="switch" name="cache_enabled" value="true" checked?={ c.CacheEnabled }/>
+		<span><span class="font-medium">{ i18n.T(ctx, "Reuse the build cache") }</span><span class="block text-muted-foreground">{ i18n.T(ctx, "Faster builds. Turn off only to rule out a cache problem.") }</span></span>
+	</label>
+}
+
+// WizardView carries the new-app flow between steps.
+type WizardView struct {
+	Repository     string
+	InstallationID int64
+	Info           service.RepoInfo
+	Inspected      bool // the panel read the repository through GitHub
+	Servers        []service.Server
+	Name           string
+}
+
+templ NewApp(s Shell, v WizardView) {
+	@App(s) {
+		@PageHeader("New app", "") {
+		}
+		if len(v.Servers) == 0 {
+			@ui.Empty("server", "Add a server first", "Apps run on a server connected to this panel.") {
+				@ui.LinkButton("/servers", "", "sm", nil) {
+					{ i18n.T(ctx, "Add server") }
+				}
+			}
+		} else {
+			@WizardRepository(v, "")
+		}
+	}
+}
+
+templ wizardSteps(current int) {
+	<ol class="stages" aria-label={ i18n.T(ctx, "Steps") }>
+		for i, label := range []string{"Repository", "Settings"} {
+			<li
+				class="stage"
+				data-state={ wizardStepState(i, current) }
+				if i == current {
+					aria-current="step"
+				}
+			>
+				if i < current {
+					@ui.Icon("check", "size-3.5")
+				}
+				// The number is its own element so the flex gap spaces it at every font weight.
+				<span class="tabular-nums">{ strconv.Itoa(i + 1) }</span>
+				<span>{ i18n.T(ctx, label) }</span>
+			</li>
+		}
+	</ol>
+}
+
+func wizardStepState(i, current int) string {
+	switch {
+	case i < current:
+		return "done"
+	case i == current:
+		return "current"
+	}
+	return ""
+}
+
+templ WizardRepository(v WizardView, err string) {
+	<div id="wizard" class="grid max-w-2xl gap-6">
+		@wizardSteps(0)
+		<form class="surface grid gap-5 p-5 sm:p-6" data-on:submit={ ui.PostForm("/ui/apps/new/inspect") }>
+			<div class="grid gap-1">
+				<h2 class="section-title">{ i18n.T(ctx, "Which repository?") }</h2>
+				<p class="muted">{ i18n.T(ctx, "It needs a Dockerfile. The panel reads it to fill in the next step.") }</p>
+			</div>
+			@ui.Field("GitHub repository", "wizard-repo", "", err) {
+				<input id="wizard-repo" name="repository" class="input" type="url" required autofocus placeholder="https://github.com/you/your-app" value={ v.Repository } autocomplete="off" spellcheck="false" aria-describedby="wizard-repo-error"/>
+			}
+			@ui.Disclosure("", "Private repository?", v.InstallationID > 0, "", nil) {
+				@ui.Field("GitHub App installation ID", "wizard-installation", "Optional. Found automatically when the GitHub App can read the repository.", "") {
+					<input id="wizard-installation" name="installation_id" class="input" type="number" min="0" value={ i64(v.InstallationID) } aria-describedby="wizard-installation-hint"/>
+				}
+			}
+			<div class="flex justify-end gap-2">
+				@ui.LinkButton("/apps", "ghost", "", nil) {
+					{ i18n.T(ctx, "Cancel") }
+				}
+				<button type="submit" class="btn">{ i18n.T(ctx, "Continue") }</button>
+			</div>
+		</form>
+	</div>
+}
+
+templ WizardSettings(v WizardView) {
+	<div id="wizard" class="grid max-w-2xl gap-6">
+		@wizardSteps(1)
+		<form class="surface grid gap-5 p-5 sm:p-6" data-on:submit={ ui.PostForm("/ui/apps") }>
+			<input type="hidden" name="repository" value={ v.Repository }/>
+			<input type="hidden" name="installation_id" value={ i64(v.installation()) }/>
+			<input type="hidden" name="publish_sha" value={ v.Info.Head.SHA }/>
+			<input type="hidden" name="publish_message" value={ v.Info.Head.Message }/>
+			<div class="grid gap-1">
+				<h2 class="section-title">{ i18n.T(ctx, "Check the settings") }</h2>
+				<p class="muted mono flex items-center gap-1.5 break-all">
+					@ui.Icon("github", "size-3.5 shrink-0")
+					{ v.Repository }
+				</p>
+			</div>
+			if v.Inspected {
+				<ul class="grid gap-1.5 text-sm">
+					if v.Info.Dockerfile {
+						@found() {
+							{ i18n.T(ctx, "Dockerfile found") }
+						}
+					} else {
+						<li class="flex items-center gap-2 text-warning">
+							@ui.Icon("circle-alert", "size-4 shrink-0")
+							{ i18n.T(ctx, "No Dockerfile at the root. Set its path under Advanced, or add one to the repository.") }
+						</li>
+					}
+					if v.Info.Runtime != "" {
+						<li class="flex items-center gap-2">
+							@ui.Brand(RuntimeBrand(v.Info.Runtime), "size-4 shrink-0", true)
+							{ i18n.Tf(ctx, "%s app", RuntimeLabel(v.Info.Runtime)) }
+						</li>
+					}
+					if v.Info.Port > 0 {
+						@found() {
+							{ i18n.Tf(ctx, "Port %s read from EXPOSE", u32(v.Info.Port)) }
+						}
+					}
+					if v.Info.HealthPath != "" {
+						@found() {
+							{ i18n.Tf(ctx, "Health check %s read from HEALTHCHECK", v.Info.HealthPath) }
+						}
+					}
+					if v.InstallationID == 0 && v.Info.InstallationID > 0 {
+						@found() {
+							{ i18n.T(ctx, "GitHub App access found") }
+						}
+					}
+					if v.Info.Head.SHA != "" {
+						@found() {
+							<span>
+								if v.Info.Head.Message != "" {
+									@ui.Phrase("Latest commit %s: %s", ui.Mono(ui.ShortSHA(v.Info.Head.SHA)), ui.Text(v.Info.Head.Message))
+								} else {
+									@ui.Phrase("Latest commit %s", ui.Mono(ui.ShortSHA(v.Info.Head.SHA)))
+								}
+							</span>
+						}
+					}
+				</ul>
+			} else {
+				@ui.Notice("info", "Fill these in yourself") {
+					<p>{ i18n.T(ctx, "The panel can't read GitHub from here, so it can't detect the branch or port.") }</p>
+				}
+			}
+			<div class="grid gap-4 sm:grid-cols-2">
+				@ui.Field("Name", "app-name", "", "") {
+					<input id="app-name" name="name" class="input" required maxlength="80" value={ v.Name } autocomplete="off"/>
+				}
+				@ui.Field("Branch", "app-branch", "Pushes to this branch publish automatically.", "") {
+					if len(v.Info.Branches) > 0 {
+						<select id="app-branch" name="branch" class="select w-full" aria-describedby="app-branch-hint">
+							for _, b := range v.Info.Branches {
+								<option
+									value={ b }
+									if b == v.Info.Branch {
+										selected
+									}
+								>{ b }</option>
+							}
+						</select>
+					} else {
+						<input id="app-branch" name="branch" class="input" required value="main" aria-describedby="app-branch-hint"/>
+					}
+				}
+				@portField(wizardPort(v))
+				if len(v.Servers) > 1 {
+					@ui.Field("Server", "app-server", "", "") {
+						<select id="app-server" name="server_id" class="select w-full">
+							for _, srv := range v.Servers {
+								<option value={ srv.ID }>{ srv.Name }</option>
+							}
+						</select>
+					}
+				} else {
+					<input type="hidden" name="server_id" value={ v.Servers[0].ID }/>
+				}
+				<div class="sm:col-span-2">
+					@domainsField(nil)
+				</div>
+			</div>
+			@wizardEnv(v.Info.EnvKeys)
+			@ui.Disclosure("", "Advanced", false, "rounded-xl border p-4", nil) {
+				<div class="grid gap-4 sm:grid-cols-2">
+					@healthPathField(v.healthPath())
+					@runtimeFields(v.config())
+				</div>
+			}
+			<div class="flex flex-wrap items-center justify-end gap-2">
+				<button type="button" class="btn" data-variant="ghost" data-on:click={ ui.PostFormOf("/ui/apps/new/back", "#wizard form") }>{ i18n.T(ctx, "Back") }</button>
+				if v.Info.Head.SHA != "" {
+					<button type="submit" class="btn">{ i18n.T(ctx, "Create and publish") }</button>
+				} else {
+					<button type="submit" class="btn">{ i18n.T(ctx, "Create app") }</button>
+				}
+			</div>
+		</form>
+	</div>
+}
+
+// installation is the GitHub App installation to save: the one entered, or the one found.
+func (v WizardView) installation() int64 {
+	if v.InstallationID > 0 {
+		return v.InstallationID
+	}
+	return v.Info.InstallationID
+}
+
+// config is the wizard's starting point for the Advanced fields.
+func (v WizardView) config() service.AppConfig {
+	c := NewAppInput().Config
+	c.Runtime = v.Info.Runtime
+	return c
+}
+
+// found is one thing the panel read from the repository.
+templ found() {
+	<li class="flex items-center gap-2">
+		@ui.Icon("circle-check", "size-4 shrink-0 text-success")
+		{ children... }
+	</li>
+}
+
+func (v WizardView) healthPath() string {
+	if v.Info.HealthPath != "" {
+		return v.Info.HealthPath
+	}
+	return "/"
+}
+
+// wizardEnv asks for the variables .env.example declares. Values are secret
+// inputs; empty ones are skipped and can be added later in Settings.
+templ wizardEnv(keys []string) {
+	if len(keys) > 0 {
+		<fieldset class="grid gap-3 rounded-xl border p-4">
+			<legend class="px-1 text-sm font-medium">{ i18n.T(ctx, "Environment variables") }</legend>
+			<p class="text-sm text-muted-foreground">{ i18n.T(ctx, "Found in .env.example. Leave a value empty to add it later.") }</p>
+			for i, k := range keys {
+				<div class="grid gap-1 sm:grid-cols-[minmax(0,14rem)_minmax(0,1fr)] sm:items-center">
+					<label class="mono text-sm break-all" for={ "wizard-env-" + strconv.Itoa(i) }>{ k }</label>
+					<input type="hidden" name="env_key" value={ k }/>
+					<input id={ "wizard-env-" + strconv.Itoa(i) } name="env_value" class="input font-mono" type="password" autocomplete="off" spellcheck="false"/>
+				</div>
+			}
+		</fieldset>
+	}
+}
+
+func wizardPort(v WizardView) uint32 {
+	if v.Info.Port > 0 {
+		return v.Info.Port
+	}
+	return NewAppInput().Config.Port
+}
+
+// AppSettingsView holds the settings tab.
+type AppSettingsView struct {
+	Form   AppFormView
+	Env    []service.EnvInfo
+	EnvErr string
+}
+
+templ AppSettings(s Shell, c AppContext, v AppSettingsView) {
+	@AppLayout(s, c, nil) {
+		if !s.Admin() {
+			@ui.Notice("lock", "Read-only") {
+				<p>{ i18n.T(ctx, "Only administrators can change these settings.") }</p>
+			}
+		}
+		<div class="grid gap-6">
+			if s.Admin() {
+				@AppForm(v.Form, LogoSettings(c.App))
+				@LogoForm(c.App)
+				@ImageEditor()
+				@EnvCard(c.App, v.Env, v.EnvErr)
+				@RuntimeCard(c.App)
+				@DangerCard(c.App)
+			} else {
+				@ui.Card("Configuration", "") {
+					@configSummary(c.App)
+				}
+			}
+		</div>
+	}
+}
+
+// LogoForm submits a new logo. It sits outside the settings form (forms can't
+// nest); the file input in LogoSettings belongs to it through its form attribute.
+templ LogoForm(a service.App) {
+	<form id="logo-form" hidden enctype="multipart/form-data" data-on:submit={ ui.PostForm("/ui/apps/" + a.ID + "/logo") }></form>
+}
+
+// LogoSettings shows the app's logo with upload and remove controls. The
+// chosen image opens in the image editor before it is sent (editor.js).
+templ LogoSettings(a service.App) {
+	<div id="app-logo" class="flex flex-wrap items-center gap-4">
+		@AppLogo(a, "")
+		<div class="grid gap-1">
+			<input id="logo-file" form="logo-form" class="sr-only" type="file" name="logo" tabindex="-1" aria-hidden="true" accept="image/jpeg,image/png,image/webp,image/gif" data-logo-input/>
+			<span class="flex flex-wrap gap-2">
+				<button type="button" class="btn" data-variant="outline" data-size="sm" data-on:click="document.getElementById('logo-file').click()">
+					@ui.Icon("image-up", "")
+					if a.LogoAt > 0 {
+						{ i18n.T(ctx, "Change logo") }
+					} else {
+						{ i18n.T(ctx, "Upload logo") }
+					}
+				</button>
+				if a.LogoAt > 0 {
+					<button type="button" class="btn" data-variant="ghost" data-size="sm" data-on:click={ ui.Post("/ui/apps/" + a.ID + "/logo/remove") }>{ i18n.T(ctx, "Remove logo") }</button>
+				}
+			</span>
+			<span class="text-xs text-muted-foreground">{ i18n.T(ctx, "JPEG, PNG, or WebP. Transparent backgrounds are kept.") }</span>
+		</div>
+	</div>
+}
+
+templ configSummary(a service.App) {
+	<dl class="grid gap-3 text-sm sm:grid-cols-3">
+		<div><dt class="text-muted-foreground">{ i18n.T(ctx, "Dockerfile") }</dt><dd class="mono">{ a.Config.Dockerfile }</dd></div>
+		<div><dt class="text-muted-foreground">{ i18n.T(ctx, "Port") }</dt><dd>{ u32(a.Config.Port) }</dd></div>
+		<div><dt class="text-muted-foreground">{ i18n.T(ctx, "Health check") }</dt><dd class="mono">{ a.Config.HealthPath } · { u32(a.Config.HealthTimeout) } s</dd></div>
+		<div><dt class="text-muted-foreground">{ i18n.T(ctx, "Memory") }</dt><dd>{ ui.Bytes(a.Config.MemoryBytes) }</dd></div>
+		<div><dt class="text-muted-foreground">{ i18n.T(ctx, "CPU") }</dt><dd>{ ui.CPUs(a.Config.NanoCPUs) } cores</dd></div>
+		<div><dt class="text-muted-foreground">{ i18n.T(ctx, "Copies") }</dt><dd>{ u32(a.Config.Replicas) }</dd></div>
+		<div>
+			<dt class="text-muted-foreground">{ i18n.T(ctx, "Build cache") }</dt>
+			<dd>
+				if a.Config.CacheEnabled {
+					{ i18n.T(ctx, "On") }
+				} else {
+					{ i18n.T(ctx, "Off") }
+				}
+			</dd>
+		</div>
+	</dl>
+}
+
+templ EnvCard(a service.App, vars []service.EnvInfo, err string) {
+	@ui.Panel(ui.CardProps{ID: "env", Class: "scroll-mt-6", Title: "Environment variables", Description: "Values are encrypted and can't be viewed after saving."}) {
+		<div class="grid gap-4">
+			if err != "" {
+				@ui.ErrorState("Variables unavailable", err)
+			} else if len(vars) == 0 {
+				<p class="muted">{ i18n.T(ctx, "No variables yet.") }</p>
+			} else {
+				<ul class="grid gap-2" aria-label={ i18n.T(ctx, "Environment variables") }>
+					for _, v := range vars {
+						<li id={ "env-" + v.Key } class="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-xl bg-muted/60 px-4 py-2.5">
+							<span class="mono min-w-0 flex-1 truncate text-sm font-medium">{ v.Key }</span>
+							if v.Build {
+								@ui.Badge("secondary", "Build only")
+							}
+							<span class="mono text-muted-foreground" aria-label={ i18n.T(ctx, "Value hidden") }>••••••••</span>
+							<span class="flex gap-1">
+								@ui.Button("ghost", "sm", templ.Attributes{"data-on:click": ui.Open("env-edit-" + v.Key), "aria-label": i18n.Tf(ctx, "Replace value of %s", v.Key)}) {
+									{ i18n.T(ctx, "Replace") }
+								}
+								@ui.Button("ghost", "icon-sm", templ.Attributes{"data-on:click": ui.Open("env-delete-" + v.Key), "aria-label": i18n.Tf(ctx, "Delete %s", v.Key)}) {
+									@ui.Icon("trash-2", "")
+								}
+							</span>
+							@ui.ConfirmDialog("env-delete-"+v.Key, i18n.Tf(ctx, "Delete %s?", v.Key), "The app restarts without it.", "Delete variable", ui.Post("/ui/apps/"+a.ID+"/env/"+v.Key+"/delete"), true)
+							@ui.Dialog("env-edit-"+v.Key, i18n.Tf(ctx, "Replace %s", v.Key), "The current value can't be shown.") {
+								<form class="grid gap-4 text-left" data-on:submit={ ui.PostForm("/ui/apps/" + a.ID + "/env") }>
+									<input type="hidden" name="key" value={ v.Key }/>
+									@secretInput("env-edit-value-"+v.Key, "New value")
+									<label class="flex items-center gap-2 text-sm">
+										<input
+											class="input"
+											type="checkbox"
+											name="build"
+											value="true"
+											if v.Build {
+												checked
+											}
+										/>
+										{ i18n.T(ctx, "Only during builds") }
+									</label>
+									<footer class="flex justify-end gap-2">
+										<button type="submit" class="btn">{ i18n.T(ctx, "Save value") }</button>
+									</footer>
+								</form>
+							}
+						</li>
+					}
+				</ul>
+			}
+			<form id="env-paste" class="grid gap-3 rounded-xl border p-4" data-on:submit={ ui.PostForm("/ui/apps/" + a.ID + "/env/preview") }>
+				@ui.Field("Add or change variables", "env-import", "Paste your .env or type KEY=value, one per line.", "") {
+					<textarea id="env-import" name="dotenv" class="textarea font-mono" rows="4" spellcheck="false" autocomplete="off" placeholder="DATABASE_URL=postgres://…" required aria-describedby="env-import-hint"></textarea>
+				}
+				<div class="flex flex-wrap gap-x-6 gap-y-2 text-sm">
+					<label class="flex items-center gap-2"><input class="input" type="checkbox" name="build" value="true"/> { i18n.T(ctx, "Only during builds") }</label>
+					<label class="flex items-center gap-2"><input class="input" type="checkbox" name="prune" value="true"/> { i18n.T(ctx, "Remove variables that aren't in this list") }</label>
+				</div>
+				<div><button type="submit" class="btn" data-variant="outline" data-size="sm">{ i18n.T(ctx, "Review changes") }</button></div>
+				<div id="env-review"></div>
+			</form>
+			<p class="text-xs text-muted-foreground">
+				@ui.Phrase("Build variables reach the build as secrets: %s.", ui.Mono("RUN --mount=type=secret,id=KEY"))
+			</p>
+		</div>
+	}
+}
+
+// EnvChange is one line of the review before saving variables.
+type EnvChange struct {
+	Key, Kind string // add, replace, remove
+}
+
+templ EnvReview(appID string, changes []EnvChange) {
+	<div id="env-review" class="grid gap-3 rounded-xl bg-muted/50 p-4" aria-live="polite">
+		<p class="text-sm font-medium">{ i18n.N(ctx, len(changes), "Review %d change", "Review %d changes") }</p>
+		<ul class="grid gap-1 font-mono text-sm">
+			for _, c := range changes {
+				<li class="env-change" data-kind={ c.Kind }>
+					switch c.Kind {
+						case "add":
+							<span aria-hidden="true">+</span> { c.Key } <span class="text-muted-foreground">{ i18n.T(ctx, "new") }</span>
+						case "replace":
+							<span aria-hidden="true">~</span> { c.Key } <span class="text-muted-foreground">{ i18n.T(ctx, "replaces the current value") }</span>
+						case "remove":
+							<span aria-hidden="true">−</span> { c.Key } <span class="text-muted-foreground">{ i18n.T(ctx, "will be removed") }</span>
+					}
+				</li>
+			}
+		</ul>
+		<div class="flex flex-wrap items-center gap-3">
+			<button type="button" class="btn" data-size="sm" data-on:click={ ui.PostFormOf("/ui/apps/"+appID+"/env/import", "#env-paste") }>{ i18n.N(ctx, len(changes), "Save %d change", "Save %d changes") }</button>
+			<span class="text-xs text-muted-foreground">{ i18n.T(ctx, "The app restarts with the new values.") }</span>
+		</div>
+	</div>
+}
+
+templ secretInput(id, label string) {
+	@ui.Field(label, id, "", "") {
+		<div class="flex gap-2">
+			<input id={ id } name="value" class="input font-mono" type="password" autocomplete="new-password" spellcheck="false" maxlength="65536"/>
+			@ui.Button("outline", "icon", templ.Attributes{"data-reveal": id, "aria-label": i18n.T(ctx, "Show value"), "aria-pressed": "false", "aria-controls": id}) {
+				@ui.Icon("eye", "")
+			}
+		</div>
+	}
+}
+
+templ RuntimeCard(a service.App) {
+	@ui.Panel(ui.CardProps{ID: "runtime", Class: "scroll-mt-6", Title: "Runtime", Header: runtimeSummary(a)}) {
+		<div class="flex flex-wrap gap-2">
+			if a.Config.Stopped {
+				@ui.Button("", "sm", templ.Attributes{"data-on:click": ui.Post("/ui/apps/" + a.ID + "/action/start")}) {
+					@ui.Icon("play", "")
+					{ i18n.T(ctx, "Start") }
+				}
+			} else {
+				@ui.Button("outline", "sm", templ.Attributes{"data-on:click": ui.Open("confirm-restart")}) {
+					@ui.Icon("rotate-ccw", "")
+					{ i18n.T(ctx, "Restart") }
+				}
+				@ui.Button("destructive", "sm", templ.Attributes{"data-on:click": ui.Open("confirm-stop")}) {
+					@ui.Icon("square", "")
+					{ i18n.T(ctx, "Stop") }
+				}
+				@ui.ConfirmDialog("confirm-restart", i18n.Tf(ctx, "Restart %s?", a.Name), "Requests may fail for a few seconds while containers restart.", "Restart", ui.Post("/ui/apps/"+a.ID+"/action/restart"), false)
+				@ui.ConfirmDialog("confirm-stop", i18n.Tf(ctx, "Stop %s?", a.Name), "The app stops serving traffic until you start it again.", "Stop app", ui.Post("/ui/apps/"+a.ID+"/action/stop"), true)
+			}
+		</div>
+	}
+}
+
+// DangerCard holds the irreversible action, apart from everyday controls.
+// Deleting needs a stopped app, so stopping or starting redraws this card.
+templ DangerCard(a service.App) {
+	@ui.Panel(ui.CardProps{ID: "danger", Class: "danger-zone scroll-mt-6", Title: "Danger zone"}) {
+		<div class="grid gap-3">
+			<p class="muted">{ i18n.T(ctx, "Deleting removes the app, its deployments, and its environment variables. Stop the app and wait for pending deployments first.") }</p>
+			<div>
+				@ui.Button("destructive", "sm", templ.Attributes{"data-on:click": ui.Open("confirm-delete"), "disabled": !a.Config.Stopped}) {
+					@ui.Icon("trash-2", "")
+					{ i18n.T(ctx, "Delete app") }
+				}
+			</div>
+			<dialog id="confirm-delete" class="dialog" aria-labelledby="confirm-delete-title" data-on:click="evt.target === el && el.close()" data-ignore-morph>
+				<form class="w-[calc(100%-2rem)] max-w-md gap-4 rounded-2xl border bg-background p-6 shadow-lg" data-on:submit={ ui.PostForm("/ui/apps/" + a.ID + "/delete") }>
+					<header class="gap-1.5">
+						<h2 id="confirm-delete-title" class="text-lg font-semibold">{ i18n.Tf(ctx, "Delete %s?", a.Name) }</h2>
+						<p class="text-sm text-muted-foreground">{ i18n.T(ctx, "This cannot be undone. Type the app name to confirm.") }</p>
+					</header>
+					@ui.Field("App name", "confirm-delete-name", "", "") {
+						<input id="confirm-delete-name" name="confirm_name" class="input" required autocomplete="off"/>
+					}
+					<footer class="gap-2">
+						<button type="button" class="btn" data-variant="outline" data-on:click="el.closest('dialog').close()">{ i18n.T(ctx, "Go back") }</button>
+						<button type="submit" class="btn" data-variant="destructive">{ i18n.T(ctx, "Delete app") }</button>
+					</footer>
+				</form>
+			</dialog>
+		</div>
+	}
+}
+
+templ runtimeSummary(a service.App) {
+	<p>
+		if a.Config.Stopped {
+			{ i18n.T(ctx, "The app is stopped and serves no traffic.") }
+		} else if a.Config.Replicas == 1 {
+			{ i18n.T(ctx, "Running as one copy.") }
+		} else {
+			{ i18n.Tf(ctx, "Running as %s copies.", u32(a.Config.Replicas)) }
+		}
+	</p>
+}

@@ -3,12 +3,6 @@ package host
 import (
 	"context"
 	"errors"
-	agentv1 "github.com/Nelcota/NelcotaDeploy/internal/gen/agent/v1"
-	"github.com/VictoriaMetrics/metrics"
-	"github.com/shirou/gopsutil/v4/cpu"
-	"github.com/shirou/gopsutil/v4/disk"
-	"github.com/shirou/gopsutil/v4/mem"
-	gnet "github.com/shirou/gopsutil/v4/net"
 	"net"
 	"net/http"
 	"net/http/pprof"
@@ -16,6 +10,13 @@ import (
 	"path/filepath"
 	"runtime/trace"
 	"time"
+
+	agentv1 "github.com/Nelcota/NelcotaDeploy/internal/gen/agent/v1"
+	"github.com/VictoriaMetrics/metrics"
+	"github.com/shirou/gopsutil/v4/cpu"
+	"github.com/shirou/gopsutil/v4/disk"
+	"github.com/shirou/gopsutil/v4/mem"
+	gnet "github.com/shirou/gopsutil/v4/net"
 )
 
 func Serve(ctx context.Context, server *http.Server, tls bool) error {
@@ -106,7 +107,6 @@ func Diagnostics(ctx context.Context, address, device string) error {
 	r.HandleFunc("/metrics", func(w http.ResponseWriter, r *http.Request) { metrics.WritePrometheus(w, true) })
 	return Serve(ctx, Server(address, r), false)
 }
-func Metrics(ctx context.Context) *agentv1.Metrics { return MetricsAt(ctx, "/var/lib/nelcota") }
 func MetricsAt(ctx context.Context, data string) *agentv1.Metrics {
 	m := &agentv1.Metrics{}
 	if v, e := cpu.PercentWithContext(ctx, 0, false); e == nil && len(v) > 0 {
@@ -126,7 +126,6 @@ func MetricsAt(ctx context.Context, data string) *agentv1.Metrics {
 	}
 	return m
 }
-func Read(path string) ([]byte, error) { return os.ReadFile(path) }
 func WriteExclusive(path string, b []byte) error {
 	if e := os.MkdirAll(filepath.Dir(path), 0700); e != nil {
 		return e

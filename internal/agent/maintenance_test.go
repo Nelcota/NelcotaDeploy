@@ -3,14 +3,15 @@ package agent
 import (
 	"context"
 	"errors"
-	agentv1 "github.com/Nelcota/NelcotaDeploy/internal/gen/agent/v1"
-	"github.com/Nelcota/NelcotaDeploy/internal/security"
-	"github.com/moby/moby/api/types/container"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
+
+	agentv1 "github.com/Nelcota/NelcotaDeploy/internal/gen/agent/v1"
+	"github.com/Nelcota/NelcotaDeploy/internal/security"
+	"github.com/moby/moby/api/types/container"
 )
 
 func TestBaseImageParsingWeeklyRefreshAndRetry(t *testing.T) {

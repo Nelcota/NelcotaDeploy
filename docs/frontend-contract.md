@@ -1,12 +1,14 @@
-# Frontend integration contract
+# Service and API contract
 
-The extension point is `web.Register(r chi.Router, services service.Services)`, called by `internal/httpapi.New`. Replace the placeholder with templ/Datastar routes there. Process composition belongs in `cmd/`; pages must not contain business rules.
+How pages and API clients use the panel's services: methods, permissions, DTOs, authentication, events, and HTTP routes.
+
+The web extension point is `web.Register(r chi.Router, cfg web.Config)`, called by `internal/httpapi.New`. `web.Config` carries `Services`, the panel `Origin`, `Dev`/`DevLogin`, `Version`, `CSRFToken(*http.Request)` (the token bound to the session cookie), and `Authorized(*http.Request)` (stream revalidation). The templ/Datastar interface lives in `web/` ([web/README.md](../web/README.md)). Process composition belongs in `cmd/`; pages must not contain business rules.
 
 ## Conventions
 
-All methods take `context.Context` first. Pass `r.Context()` through to services; do not use `context.Background()` in handlers. Public DTOs and interfaces live in `internal/service/types.go` and `auth.go`; `internal/store/dbgen` types are backend-only. JSON fields use snake_case. Entity timestamps are Unix seconds; stage durations are milliseconds. IDs are opaque strings. Deployment SHAs must contain all 40 or 64 hexadecimal characters.
+All methods take `context.Context` first. Pass `r.Context()` through to services; do not use `context.Background()` in handlers. Public DTOs and interfaces live in `internal/service/types.go` and `auth.go`; `internal/store/dbgen` types are backend-only. JSON fields use snake_case. Entity timestamps are Unix seconds; stage durations are milliseconds. IDs are opaque strings. Deployment SHAs must contain all 40 or 64 hexadecimal characters; pages resolve shorter ones through `Repos.Commit` first.
 
-`service.Services` exposes `Apps`, `Deploys`, `Servers`, `Logs`, `Auth`, `Users`, `Settings`, `Audit`, and `Operations`. Interfaces support frontend test doubles. Development mode uses real SQLite services and simulated agent transport.
+`service.Services` exposes `Apps`, `Deploys`, `Servers`, `Logs`, `Auth`, `Users`, `Settings`, `Audit`, and `Operations`, plus the optional `Repos`, `Notifications`, and `Provisioning` (nil when unavailable; they have no REST routes). Interfaces support frontend test doubles. Development mode uses real SQLite services and simulated agent transport.
 
 `service.CurrentUser(ctx)` returns `Principal{ID, Email, Name, Role, Scopes, TwoFactorAt, IP}` or Unauthenticated. Middleware loads identity from the session cookie; never accept identity/role from a header or form field. `WithPrincipal` is a trusted composition helper, not a login mechanism.
 
@@ -35,14 +37,26 @@ Malformed JSON returns 400; invalid Content-Type returns 415; rate limiting retu
 | Apps | `Action(id, action, replicas, confirmed)` | Admin; start/stop/restart/scale; stop requires confirmation |
 | Deploys | `List(appID) []Deployment`, `Get(id) Deployment` | Authenticated user |
 | Deploys | `Enqueue(DeployInput) Deployment`, `Cancel(id)`, `Rollback(appID, sha) Deployment` | Authenticated user |
+| Deploys | `SuggestedPort(id) uint32` | Authenticated user; for a `health_no_response` failure, the port the app's log says it listens on when it differs from the configured one, else 0 |
+| Deploys | `PublishOnPort(id, port) Deployment` | Admin (`apps:write` and `deploys:write`); a failed deployment only. Changes the app's port and queues the same commit in one transaction; audited as `app.port` and `deploy.enqueue` |
 | Servers | `List() []Server` | Authenticated user |
 | Servers | `Invite(ServerInput) Invitation`, `Prune(id, scope, confirmed)` | Admin; prune requires confirmation; scope is cache/orphan_images |
 | Logs | `Read(deployID) []byte`, `Subscribe(topic) events.Subscription` | Authenticated user |
-| Users | `List() []Principal`, `Create(UserInput) Enrollment` | Admin |
+| Users | `List() []Principal`, `Create(UserInput) Enrollment`, `SetRole(id, role)`, `Remove(id)` | Admin; not yourself; keeps one administrator |
+| Apps | `CheckDomains(id) []DomainCheck` | Authenticated user; resolves each domain |
+| Auth (photos) | `SetAvatar(upload)`, `RemoveAvatar()`, `Avatar(userID) Avatar` | Own photo only, interactive session; any signed-in person may view |
+| Notifications | `Get()`, `Save(NotificationInput)`, `Test()`, `EmailConfigured()`, `SendInvitation(to, name, token)` | Optional; admin; secrets never returned |
+| Provisioning | `Script(token)`, `HostKey(SSHTarget)`, `Install(SSHInstall) jobID`, `Job(id)`, `Subscribe(id)` | Optional; admin; install needs a recent passkey sign-in |
+| Operations (updates) | `Updates() UpdateStatus`, `SetAutomaticUpdates(bool)` | Admin; turning on needs a recent passkey sign-in |
+| Settings (S3) | `TestS3(json)` | Admin |
+| Repos | `Inspect(RepoQuery) RepoInfo` | Optional (nil without GitHub access); branches, head commit, Dockerfile, EXPOSE port |
+| Repos | `Commits(RepoQuery) []Commit`, `Commit(RepoQuery, ref) Commit` | Optional; the branch's newest commits (up to `RecentCommits`), and the commit a SHA or 7+ character prefix names. Development mode returns a fixed sample history |
+| Auth (preferences) | `Preferences() Preferences`, `HideFirstSteps()` | Own account; hiding the Home setup checklist needs an interactive session |
 | Settings | `Get() SettingsView`, `Set(key, value)` | Admin; encrypted values; Get only lists configured keys |
 | Audit | `List(limit) []AuditEntry` | Admin; limit 1–1000 |
 | Audit | `RecordRequest(method, route, status)` | HTTP infrastructure; do not call from pages |
 | Auth | Passkey, TOTP, session, and logout ceremonies | Rules below |
+| Auth | `Factors() Factors`, `RemovePasskey(id)` | Own account, interactive session; removal needs a session reauthenticated within five minutes and keeps at least one passkey |
 
 `SetEnvironment` applies a transactional patch: each item creates/replaces a key; `{key,delete:true}` removes it. Missing keys remain unchanged. This supports editing secrets without reading them. Never submit `********` as a previous secret. Limits: 200 keys and 512 KiB of encrypted values per app.
 
@@ -50,15 +64,15 @@ Malformed JSON returns 400; invalid Content-Type returns 415; rate limiting retu
 
 - `App`: id, name, server_id, repository, branch, config, desired_sha, revision.
 - `AppInput`: name, server_id, repository (HTTPS github.com), branch, and `AppConfig`. Changing an existing app's server requires a future migration operation and is currently rejected.
-- `AppConfig`: domains[], memory_bytes, nano_cpus, port, health_path, health_timeout (seconds), replicas (1–16), cache_enabled, dockerfile, installation_id, stopped. Defaults: 256 MiB, 1 CPU, port 8080, `/`, 60 seconds, one replica, and `Dockerfile`. Set cache_enabled explicitly. Domains are DNS hosts without scheme/path/port.
+- `AppConfig`: domains[], memory_bytes, nano_cpus, port, health_path, health_timeout (seconds), replicas (1–16), cache_enabled, dockerfile, installation_id, stopped, runtime (optional: one of node, bun, deno, go, python, rust, ruby, php, java, dotnet, elixir, erlang, nginx, caddy, apache; the interface shows its official mark, and repository inspection detects it from the Dockerfile's FROM images). Defaults: 256 MiB, 1 CPU, port 8080, `/`, 60 seconds, one replica, and `Dockerfile`. Set cache_enabled explicitly. Domains are DNS hosts without scheme/path/port.
 - `EnvInput`: key, value, build, delete. `build=false` is runtime-only; `build=true` uses only the BuildKit secret provider through `RUN --mount=type=secret,id=KEY`. Never convert secrets to build ARGs.
 - `EnvInfo`: key, build, configured. Values never return to the UI.
-- `Deployment`: id, app_id, sha, message, author, origin, status, queued_at, started_at, finished_at, error_code, clean, cancel_requested, timings (stage-to-ms map). Stages: clone/build/start/healthcheck/route. Timings remain incomplete while running. States: queued/building/starting/success/failed/cancelled. Do not invent percentage progress.
+- `Deployment`: id, app_id, sha, message, author, origin, status, queued_at, started_at, finished_at, error_code (`clone_failed`, `build_failed`, `start_failed`, `app_exited`, `health_no_response`, `health_status_<code>`, `route_failed`, `state_error`, `workspace_error`, or panel codes `agent_unavailable`, `github_unavailable`, `config_unavailable`, `deployment_failed`), clean, cancel_requested, timings (stage-to-ms map). Stages: clone/build/start/healthcheck/route. Timings remain incomplete while running. States: queued/building/starting/success/failed/cancelled. Do not invent percentage progress.
 - `DeployInput`: app_id, sha, message, author, origin (push/manual/rollback), clean. Normal UI actions use origin=manual. Rollback rebuilds a previous SHA; it does not switch to a retained image.
 - `Server`: id, name, wireguard_ip, status, heartbeat_at, build_limit, cache_bytes, version, ready. Metrics arrive through the hub.
 - `ServerInput`: name, wireguard_ip, build_limit (1–8, default 1), cache_bytes (default 5 GiB). The standard installer requires a unique address in 10.77.0.0/24.
-- `Invitation`: server_id, token, expires_at (RFC3339). One-use token, valid for 15 minutes. Display once; exclude from analytics, logs, and URLs.
-- `UserInput`: email, name, role (admin/member). `Enrollment`: user_id, token, expires_at. User invitations also last 15 minutes.
+- `Invitation`: server_id, token, expires_at (RFC3339). One-use server token, valid for 15 minutes. Display once; exclude from analytics, logs, and URLs.
+- `UserInput`: email, name, role (admin/member). `Enrollment`: user_id, token, expires_at. A person's invitation is single use and lasts 24 hours (`service.InvitationLifetime`); only its hash is stored. The panel shows it once as a link, `{origin}/enroll#token=...`: the token travels in the URL fragment, which browsers never send to the server, and the enroll page moves it into the form and clears the address bar. The token can also be pasted at `/enroll`. The first administrator's installer invitation (`Bootstrap`) still lasts 15 minutes.
 - `AuditEntry`: id, user_id, action, target, details (JSON), ip, created_at. `SettingsView`: configured[]; secrets are never returned.
 
 GitHub settings: github.app_id, github.private_key, github.webhook_secret, github.client_id, github.client_secret. The Manifest handshake below is preferred.
@@ -91,7 +105,7 @@ Keep challenges in memory during ceremonies, never URLs/localStorage. Exclude We
 
 `POST /api/github/manifest` requires admin + CSRF and returns `{action,manifest,expires_at}`. Create a POST form using the returned action and hidden field `manifest=JSON.stringify(manifest)`, then submit through the browser. The action includes random state bound to the administrator for ten minutes.
 
-GitHub returns to GET `/api/github/callback?state=...&code=...`. The backend consumes state, exchanges code, encrypts five credentials, and returns only `installation_url`. State is required because SameSite Strict may omit the cookie on return. Open installation_url, select repositories, and set the app's installation_id. `/api/webhooks/github` validates HMAC SHA-256 in constant time and deduplicates X-GitHub-Delivery within the queue transaction. A durable outbox retries check runs without blocking agent events.
+GitHub returns to GET `/api/github/callback?state=...&code=...`. The backend consumes state, exchanges code, and encrypts five credentials. Browsers are redirected to the App's installation page (`installation_url`); requests with `Accept: application/json` receive it as JSON. After installation, the manifest's `setup_url` returns people to Settings › Connections. State is required because SameSite Strict may omit the cookie on return. Each app's installation ID is found automatically through the App, or from signed push webhooks. `/api/webhooks/github` validates HMAC SHA-256 in constant time and deduplicates X-GitHub-Delivery within the queue transaction. A durable outbox retries check runs without blocking agent events.
 
 ## Events and SSE
 
@@ -105,7 +119,7 @@ GitHub returns to GET `/api/github/callback?state=...&code=...`. The backend con
 | deploy/ID | deploy.status | Deployment |
 | deploy/ID | deploy.stage | `{stage,duration_ms}` |
 | app/ID | runtime.log | `{line,sequence}`; real runtime sequence may be zero |
-| servers | server.metrics | `{server_id,metrics}` with cpu_percent, memory_used/total, disk_used/total, network_rx/tx |
+| servers | server.metrics | `{server_id,metrics}` with cpu_percent, memory_used/total, disk_used/total, network_rx/tx, cache_used |
 | servers | server.offline | `{id}` |
 | servers | container.event | Container event when provided by transport |
 
@@ -118,57 +132,14 @@ The first app/ID subscriber requests runtime follow from the agent; subscribers 
 - Apps: GET/POST `/api/apps`; GET/PUT/DELETE `/api/apps/{id}`; GET/PUT `/api/apps/{id}/env`; POST `/api/apps/{id}/actions` with `{action,replicas,confirmed}`.
 - Deploys: GET `/api/apps/{id}/deployments`; POST `/api/deployments`; GET `/api/deployments/{id}`; POST `/api/deployments/{id}/cancel`; GET `/api/deployments/{id}/logs` returns `{text}`. REST rollback posts a deployment with origin=rollback and the previous SHA.
 - Servers: GET `/api/servers`; POST `/api/servers/invite`; POST `/api/servers/{id}/prune` with `{scope,confirmed}`. Installer-only POST `/api/servers/join` accepts `{token,wireguard_public_key}`.
-- Users: GET/POST `/api/users`. Settings: GET `/api/settings`, PUT `/api/settings/{key}` with `{value}`. Audit: GET `/api/audit`.
+- Users: GET/POST `/api/users`; PUT `/api/users/{id}/role` with `{role}`; DELETE `/api/users/{id}`. Settings: GET `/api/settings`, PUT `/api/settings/{key}` with `{value}`. Audit: GET `/api/audit`.
 - GET `/healthz` is public without infrastructure details. `/agent.sh` serves the embedded installer.
 
 Success responses use HTTP 200. Pages can call services directly without a round trip through their own API.
 
-## Page-handler example
-
-This uses automatic HTML escaping. Replace `html/template` with templ without changing service calls:
-
-```go
-package web
-
-import (
-    "errors"
-    "html/template"
-    "net/http"
-    "github.com/go-chi/chi/v5"
-    "github.com/Nelcota/NelcotaDeploy/internal/service"
-)
-
-var appsPage = template.Must(template.New("apps").Parse(`<!doctype html>
-<html lang="en"><meta charset="utf-8"><title>Apps</title>
-<h1>Apps for {{.User.Name}}</h1><ul>{{range .Apps}}<li>{{.Name}} — {{.Branch}}</li>{{end}}</ul></html>`))
-
-func Register(r chi.Router, services service.Services) {
-    r.Get("/apps", func(w http.ResponseWriter, req *http.Request) {
-        user, err := service.CurrentUser(req.Context())
-        if err != nil {
-            http.Redirect(w, req, "/login", http.StatusSeeOther)
-            return
-        }
-        apps, err := services.Apps.List(req.Context())
-        if err != nil {
-            var domainError *service.Error
-            if errors.As(err, &domainError) && domainError.Kind == service.Forbidden {
-                http.Error(w, domainError.Message, http.StatusForbidden)
-                return
-            }
-            http.Error(w, "Could not load apps", http.StatusInternalServerError)
-            return
-        }
-        w.Header().Set("Content-Type", "text/html; charset=utf-8")
-        data := struct { User service.Principal; Apps []service.App }{user, apps}
-        if err := appsPage.Execute(w, data); err != nil { return }
-    })
-}
-```
-
 ## Development without VPS infrastructure
 
-`make dev-seed` creates/updates `.local/dev`. `make dev` serves only `http://127.0.0.1:8080`, with three sample apps/servers/deployments and simulated logs, without Docker/GitHub. POST `{}` to `/api/dev/session` with the correct Origin, then fetch `/api/session`. The dev endpoint is absent from serve mode. Simulated deployment, log, and metric behavior does not represent real performance.
+`make dev-seed` creates/updates `.local/dev`. `make dev` serves only `http://127.0.0.1:8080` (override with `NELCOTA_DEV_ORIGIN` and a loopback `NELCOTA_DEV_LISTEN`, for example `http://localhost:18080` for passkeys), with sample apps, servers, and deployments, simulated logs, and varying simulated metrics, without Docker/GitHub. POST `{}` to `/api/dev/session` with the correct Origin, then fetch `/api/session`. The dev endpoint is absent from serve mode. Simulated deployment, log, and metric behavior does not represent real performance.
 
 ## Scoped API tokens
 
@@ -201,4 +172,4 @@ Servers adds UpdateLimits(ctx,id,ServerLimitsInput), version, and ready. BuildLi
 
 `server.metrics` retains server_id and metrics. metrics.containers contains up to 256 entries: app_id, container_id, cpu_percent (100% per core), memory_used (excluding inactive cache), memory_limit, network_rx, network_tx, pids. The first CPU sample may be zero; snapshots are not persisted as a time series.
 
-S3 configuration: PUT `/api/settings/backup.s3` takes value as a JSON string with HTTPS endpoint, region, bucket, prefix, access_key, secret_key, and optional session_token. Get reports presence only. Never populate inputs with an existing secret. A mode 0600 environment-configured file takes precedence. Backups have no public download endpoint and never expose keys through the API. See [operations](backend-operations.md).
+S3 configuration: PUT `/api/settings/backup.s3` takes value as a JSON string with HTTPS endpoint, region, bucket, prefix, access_key, secret_key, and optional session_token. Get reports presence only. Never populate inputs with an existing secret. A mode 0600 environment-configured file takes precedence. Backups have no public download endpoint and never expose keys through the API. See [operations](operations.md).

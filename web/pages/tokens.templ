@@ -1,0 +1,109 @@
+package pages
+
+import (
+	"github.com/Nelcota/NelcotaDeploy/web/i18n"
+	"strings"
+
+	"github.com/Nelcota/NelcotaDeploy/internal/service"
+	"github.com/Nelcota/NelcotaDeploy/web/ui"
+)
+
+// Scopes lists API token scopes with descriptions, in contract order.
+var Scopes = [][2]string{
+	{"apps:read", "Read apps"},
+	{"apps:write", "Change apps and environment"},
+	{"deploys:read", "Read deployments"},
+	{"deploys:write", "Publish, cancel, and restore versions"},
+	{"servers:read", "Read servers"},
+	{"servers:write", "Add servers and free up space"},
+	{"logs:read", "Read logs and events"},
+	{"settings:write", "Change settings and run operations"},
+	{"audit:read", "Read activity"},
+	{"users:write", "Invite people to the team (highly privileged)"},
+}
+
+templ TokensCard(s Shell, tokens []service.APIToken, err string) {
+	<section id="tokens" class="settings-group" aria-labelledby="tokens-title">
+		<h3 id="tokens-title">{ i18n.T(ctx, "API tokens") }</h3>
+		<div class="settings-list">
+			<div class="setting-row">
+				<div class="setting-label">
+					<h4>{ i18n.T(ctx, "Your tokens") }</h4>
+					<p>{ i18n.T(ctx, "For scripts and CI. A token is shown once and lasts up to 30 days.") }</p>
+				</div>
+				if err != "" {
+					<p class="muted">{ i18n.T(ctx, err) }</p>
+				} else if len(tokens) == 0 {
+					<p class="muted">{ i18n.T(ctx, "No active tokens.") }</p>
+				} else {
+					@ui.Table("API tokens") {
+						<thead><tr><th>{ i18n.T(ctx, "Name") }</th><th>{ i18n.T(ctx, "Scopes") }</th><th>{ i18n.T(ctx, "Expires") }</th><th><span class="sr-only">{ i18n.T(ctx, "Actions") }</span></th></tr></thead>
+						<tbody>
+							for _, t := range tokens {
+								<tr>
+									<td class="font-medium">{ t.Name }</td>
+									<td>
+										<span class="flex flex-wrap gap-1">
+											for _, sc := range t.Scopes {
+												@ui.Badge("outline", sc)
+											}
+										</span>
+									</td>
+									<td><time datetime={ ui.ISO(t.ExpiresAt) } title={ ui.Timestamp(t.ExpiresAt) }>{ ui.Timestamp(t.ExpiresAt) }</time></td>
+									<td class="text-right">
+										@ui.Button("ghost", "sm", templ.Attributes{"data-on:click": ui.Open("revoke-" + t.ID)}) {
+											{ i18n.T(ctx, "Revoke") }
+										}
+										@ui.ConfirmDialog("revoke-"+t.ID, i18n.Tf(ctx, "Revoke %s?", t.Name), "Requests using this token are rejected immediately.", "Revoke token", ui.Post("/ui/account/tokens/"+t.ID+"/revoke"), true)
+									</td>
+								</tr>
+							}
+						</tbody>
+					}
+				}
+				if s.Admin() {
+					@ui.Disclosure("", "Create token", false, "rounded-xl border p-4", nil) {
+						<form class="grid gap-4" data-on:submit={ ui.PostForm("/ui/account/tokens") }>
+							<div class="grid gap-4 sm:grid-cols-2">
+								@ui.Field("Name", "token-name", "", "") {
+									<input id="token-name" name="name" class="input" required maxlength="80" placeholder="ci-deploy"/>
+								}
+								@ui.Field("Lifetime (hours)", "token-ttl", "1 to 720 hours.", "") {
+									<input id="token-ttl" name="ttl_hours" class="input" type="number" min="1" max="720" value="24" required aria-describedby="token-ttl-hint"/>
+								}
+							</div>
+							<fieldset class="grid gap-2">
+								<legend class="mb-2 text-sm font-medium">{ i18n.T(ctx, "Scopes") }</legend>
+								<div class="grid gap-2 sm:grid-cols-2">
+									for _, sc := range Scopes {
+										<label class="flex items-start gap-2 text-sm">
+											<input class="input mt-0.5" type="checkbox" name="scope" value={ sc[0] }/>
+											<span class="grid"><span class="mono">{ sc[0] }</span><span class="text-xs text-muted-foreground">{ i18n.T(ctx, sc[1]) }</span></span>
+										</label>
+									}
+								</div>
+							</fieldset>
+							<div><button type="submit" class="btn">{ i18n.T(ctx, "Create token") }</button></div>
+						</form>
+					}
+				}
+				<div id="token-created"></div>
+			</div>
+		</div>
+	</section>
+}
+
+templ TokenCreated(t service.APIToken) {
+	<div id="token-created" class="grid gap-3">
+		@ui.Notice("key-round", i18n.Tf(ctx, "Copy the token %s now", t.Name)) {
+			<p>
+				@ui.Phrase("It won't be shown again. Send it as %s.", ui.Mono("Authorization: Bearer …"))
+			</p>
+			<p id="token-value" class="mono mt-2 break-all select-all rounded-xl bg-muted p-2">{ t.Token }</p>
+			<p class="mt-2">
+				@ui.Copy("token-value", "Copy token")
+			</p>
+			<p class="mt-2 text-xs">{ i18n.Tf(ctx, "Scopes: %s", strings.Join(t.Scopes, ", ")) }</p>
+		}
+	</div>
+}

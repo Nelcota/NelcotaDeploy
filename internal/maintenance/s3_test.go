@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -57,5 +58,41 @@ func TestS3SignatureMatchesPublishedAWSExample(t *testing.T) {
 	want := "fea454ca298b7da1c68078a5d1bdbfbbe0d65c699e0f91ac7a200a0136783543"
 	if !strings.HasSuffix(r.Header.Get("Authorization"), want) {
 		t.Fatal(r.Header.Get("Authorization"))
+	}
+}
+
+func TestS3ConnectionTestUploadsThenDeletes(t *testing.T) {
+	var mu sync.Mutex
+	var calls []string
+	deleteStatus := http.StatusNoContent
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		calls = append(calls, r.Method+" "+r.URL.Path)
+		mu.Unlock()
+		if !strings.HasPrefix(r.URL.Path, "/bucket/backups/nelcota-connection-test-") || !strings.Contains(r.Header.Get("Authorization"), "Credential=key/") {
+			w.WriteHeader(http.StatusForbidden)
+			return
+		}
+		if r.Method == http.MethodDelete {
+			w.WriteHeader(deleteStatus)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+	s := &S3{Endpoint: server.URL, Region: "auto", Bucket: "bucket", Prefix: "backups", AccessKey: "key", SecretKey: "secret", Client: server.Client()}
+	if e := s.Test(t.Context()); e != nil {
+		t.Fatal(e)
+	}
+	if len(calls) != 2 || !strings.HasPrefix(calls[0], "PUT ") || !strings.HasPrefix(calls[1], "DELETE ") || calls[0][4:] != calls[1][7:] {
+		t.Fatal(calls)
+	}
+	deleteStatus = http.StatusForbidden
+	if e := s.Test(t.Context()); e == nil || !strings.Contains(e.Error(), "deleting it was refused") {
+		t.Fatal(e)
+	}
+	s.AccessKey = "wrong"
+	if e := s.Test(t.Context()); e == nil || !strings.Contains(e.Error(), "HTTP 403") {
+		t.Fatal(e)
 	}
 }

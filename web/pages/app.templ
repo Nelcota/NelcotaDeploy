@@ -1,0 +1,119 @@
+package pages
+
+import (
+	"github.com/Nelcota/NelcotaDeploy/web/i18n"
+	"strings"
+
+	"github.com/Nelcota/NelcotaDeploy/internal/service"
+	"github.com/Nelcota/NelcotaDeploy/web/ui"
+)
+
+// AppContext is shared by the app's tabs.
+type AppContext struct {
+	App        service.App
+	ServerName string
+	// Server is the app's server, for its status on the overview.
+	Server service.Server
+	Tab        string
+	// Repos is true when the panel can read the app's repository on GitHub.
+	Repos bool
+}
+
+func repoName(url string) string {
+	return strings.TrimPrefix(url, "https://github.com/")
+}
+
+type appTab struct{ key, label, icon string }
+
+var appTabs = []appTab{{"overview", "Overview", "activity"}, {"deployments", "History", "history"}, {"logs", "Logs", "terminal"}, {"settings", "Settings", "sliders-horizontal"}}
+
+func appTabLinks(c AppContext) []ui.Tab {
+	tabs := make([]ui.Tab, len(appTabs))
+	for i, t := range appTabs {
+		tabs[i] = ui.Tab{Href: tabHref(c.App.ID, t.key), Icon: t.icon, Label: t.label, Current: t.key == c.Tab}
+	}
+	return tabs
+}
+
+func tabHref(app, key string) string {
+	if key == "overview" {
+		return "/apps/" + app
+	}
+	return "/apps/" + app + "/" + key
+}
+
+// AppHeaderLogo is the logo beside the app's name; uploads redraw it.
+templ AppHeaderLogo(a service.App) {
+	<span id="app-header-logo" class="contents">
+		@AppLogo(a, "size-14 rounded-xl text-xl")
+	</span>
+}
+
+// AppLayout renders the app header (with optional actions) and tab navigation around tab content.
+templ AppLayout(s Shell, c AppContext, actions templ.Component) {
+	@App(s) {
+		<nav aria-label={ i18n.T(ctx, "Breadcrumb") } class="mb-2 text-sm text-muted-foreground">
+			<ol class="flex items-center gap-1">
+				<li><a href="/apps" class="hover:text-foreground">{ i18n.T(ctx, "Apps") }</a></li>
+				<li aria-hidden="true">
+					@ui.Icon("chevron-right", "size-3.5")
+				</li>
+				<li aria-current="page" class="truncate text-foreground">{ c.App.Name }</li>
+			</ol>
+		</nav>
+		<div class="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+			<div class="flex min-w-0 items-start gap-4">
+				@AppHeaderLogo(c.App)
+				<div class="min-w-0">
+					<h1 class="page-title flex flex-wrap items-center gap-2">
+						{ c.App.Name }
+						if c.App.Config.Stopped {
+							@ui.Pill("muted", "Stopped", nil)
+						}
+					</h1>
+					<p class="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground">
+						if c.App.Config.Runtime != "" {
+							<span class="inline-flex items-center gap-1">
+								@ui.Brand(RuntimeBrand(c.App.Config.Runtime), "size-3.5", true)
+								{ RuntimeLabel(c.App.Config.Runtime) }
+							</span>
+						}
+						<a class="inline-flex items-center gap-1 hover:text-foreground" href={ templ.SafeURL(c.App.Repository) } rel="noopener noreferrer" target="_blank">
+							@ui.Icon("github", "size-3.5")
+							{ repoName(c.App.Repository) }
+							<span class="sr-only">{ i18n.T(ctx, "(opens GitHub)") }</span>
+						</a>
+						<span class="inline-flex items-center gap-1">
+							@ui.Icon("git-branch", "size-3.5")
+							{ c.App.Branch }
+						</span>
+						<a class="inline-flex items-center gap-1 hover:text-foreground" href={ templ.SafeURL("/servers#server-" + c.App.ServerID) }>
+							@ui.Icon("server", "size-3.5")
+							{ c.ServerName }
+						</a>
+						for _, d := range c.App.Config.Domains {
+							<a class="inline-flex items-center gap-1 hover:text-foreground" href={ templ.SafeURL("https://" + d) } rel="noopener noreferrer" target="_blank">
+								@ui.Icon("globe", "size-3.5")
+								{ d }
+							</a>
+						}
+					</p>
+				</div>
+			</div>
+			if actions != nil {
+				<div class="flex flex-wrap gap-2">
+					@actions
+				</div>
+			}
+		</div>
+		@ui.TabNav("App sections", appTabLinks(c), "mb-6") {
+			// Tabs that update live show the connection state at the end of the row.
+			if c.Tab == "overview" || c.Tab == "deployments" {
+				<span class="hidden pb-2.5 sm:block">
+					@Connection()
+				</span>
+			}
+		}
+		{ children... }
+	}
+}

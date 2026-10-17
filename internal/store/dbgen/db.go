@@ -24,6 +24,33 @@ func New(db DBTX) *Queries {
 func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	q := Queries{db: db}
 	var err error
+	if q.cancelQueuedDeploymentsStmt, err = db.PrepareContext(ctx, cancelQueuedDeployments); err != nil {
+		return nil, fmt.Errorf("error preparing query CancelQueuedDeployments: %w", err)
+	}
+	if q.connectAgentStmt, err = db.PrepareContext(ctx, connectAgent); err != nil {
+		return nil, fmt.Errorf("error preparing query ConnectAgent: %w", err)
+	}
+	if q.countActiveDeploymentsStmt, err = db.PrepareContext(ctx, countActiveDeployments); err != nil {
+		return nil, fmt.Errorf("error preparing query CountActiveDeployments: %w", err)
+	}
+	if q.countOnlineServerStmt, err = db.PrepareContext(ctx, countOnlineServer); err != nil {
+		return nil, fmt.Errorf("error preparing query CountOnlineServer: %w", err)
+	}
+	if q.countPendingOperationsStmt, err = db.PrepareContext(ctx, countPendingOperations); err != nil {
+		return nil, fmt.Errorf("error preparing query CountPendingOperations: %w", err)
+	}
+	if q.countServerActiveDeploymentsStmt, err = db.PrepareContext(ctx, countServerActiveDeployments); err != nil {
+		return nil, fmt.Errorf("error preparing query CountServerActiveDeployments: %w", err)
+	}
+	if q.countUnfinishedAppDeploymentsStmt, err = db.PrepareContext(ctx, countUnfinishedAppDeployments); err != nil {
+		return nil, fmt.Errorf("error preparing query CountUnfinishedAppDeployments: %w", err)
+	}
+	if q.failDispatchStmt, err = db.PrepareContext(ctx, failDispatch); err != nil {
+		return nil, fmt.Errorf("error preparing query FailDispatch: %w", err)
+	}
+	if q.firstStepsHiddenStmt, err = db.PrepareContext(ctx, firstStepsHidden); err != nil {
+		return nil, fmt.Errorf("error preparing query FirstStepsHidden: %w", err)
+	}
 	if q.getAppStmt, err = db.PrepareContext(ctx, getApp); err != nil {
 		return nil, fmt.Errorf("error preparing query GetApp: %w", err)
 	}
@@ -42,11 +69,23 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getServerStmt, err = db.PrepareContext(ctx, getServer); err != nil {
 		return nil, fmt.Errorf("error preparing query GetServer: %w", err)
 	}
+	if q.getSettingStmt, err = db.PrepareContext(ctx, getSetting); err != nil {
+		return nil, fmt.Errorf("error preparing query GetSetting: %w", err)
+	}
 	if q.getUserStmt, err = db.PrepareContext(ctx, getUser); err != nil {
 		return nil, fmt.Errorf("error preparing query GetUser: %w", err)
 	}
 	if q.getUserByEmailStmt, err = db.PrepareContext(ctx, getUserByEmail); err != nil {
 		return nil, fmt.Errorf("error preparing query GetUserByEmail: %w", err)
+	}
+	if q.hideFirstStepsStmt, err = db.PrepareContext(ctx, hideFirstSteps); err != nil {
+		return nil, fmt.Errorf("error preparing query HideFirstSteps: %w", err)
+	}
+	if q.insertOperationStmt, err = db.PrepareContext(ctx, insertOperation); err != nil {
+		return nil, fmt.Errorf("error preparing query InsertOperation: %w", err)
+	}
+	if q.insertQueuedDeploymentStmt, err = db.PrepareContext(ctx, insertQueuedDeployment); err != nil {
+		return nil, fmt.Errorf("error preparing query InsertQueuedDeployment: %w", err)
 	}
 	if q.listAppsStmt, err = db.PrepareContext(ctx, listApps); err != nil {
 		return nil, fmt.Errorf("error preparing query ListApps: %w", err)
@@ -57,17 +96,107 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.listDeploymentsStmt, err = db.PrepareContext(ctx, listDeployments); err != nil {
 		return nil, fmt.Errorf("error preparing query ListDeployments: %w", err)
 	}
+	if q.listExpiredLogDeploymentsStmt, err = db.PrepareContext(ctx, listExpiredLogDeployments); err != nil {
+		return nil, fmt.Errorf("error preparing query ListExpiredLogDeployments: %w", err)
+	}
+	if q.listOperationsStmt, err = db.PrepareContext(ctx, listOperations); err != nil {
+		return nil, fmt.Errorf("error preparing query ListOperations: %w", err)
+	}
+	if q.listServerActiveDeploymentsStmt, err = db.PrepareContext(ctx, listServerActiveDeployments); err != nil {
+		return nil, fmt.Errorf("error preparing query ListServerActiveDeployments: %w", err)
+	}
 	if q.listServersStmt, err = db.PrepareContext(ctx, listServers); err != nil {
 		return nil, fmt.Errorf("error preparing query ListServers: %w", err)
 	}
 	if q.listUsersStmt, err = db.PrepareContext(ctx, listUsers); err != nil {
 		return nil, fmt.Errorf("error preparing query ListUsers: %w", err)
 	}
+	if q.nextCheckJobStmt, err = db.PrepareContext(ctx, nextCheckJob); err != nil {
+		return nil, fmt.Errorf("error preparing query NextCheckJob: %w", err)
+	}
+	if q.nextOperationStmt, err = db.PrepareContext(ctx, nextOperation); err != nil {
+		return nil, fmt.Errorf("error preparing query NextOperation: %w", err)
+	}
+	if q.nextQueuedDeploymentStmt, err = db.PrepareContext(ctx, nextQueuedDeployment); err != nil {
+		return nil, fmt.Errorf("error preparing query NextQueuedDeployment: %w", err)
+	}
+	if q.pendingInvitationStmt, err = db.PrepareContext(ctx, pendingInvitation); err != nil {
+		return nil, fmt.Errorf("error preparing query PendingInvitation: %w", err)
+	}
+	if q.queueCheckStmt, err = db.PrepareContext(ctx, queueCheck); err != nil {
+		return nil, fmt.Errorf("error preparing query QueueCheck: %w", err)
+	}
+	if q.recordHeartbeatStmt, err = db.PrepareContext(ctx, recordHeartbeat); err != nil {
+		return nil, fmt.Errorf("error preparing query RecordHeartbeat: %w", err)
+	}
+	if q.requestCancelStmt, err = db.PrepareContext(ctx, requestCancel); err != nil {
+		return nil, fmt.Errorf("error preparing query RequestCancel: %w", err)
+	}
+	if q.saveSettingStmt, err = db.PrepareContext(ctx, saveSetting); err != nil {
+		return nil, fmt.Errorf("error preparing query SaveSetting: %w", err)
+	}
+	if q.sessionPrincipalStmt, err = db.PrepareContext(ctx, sessionPrincipal); err != nil {
+		return nil, fmt.Errorf("error preparing query SessionPrincipal: %w", err)
+	}
+	if q.startDeploymentStmt, err = db.PrepareContext(ctx, startDeployment); err != nil {
+		return nil, fmt.Errorf("error preparing query StartDeployment: %w", err)
+	}
+	if q.tokenPrincipalStmt, err = db.PrepareContext(ctx, tokenPrincipal); err != nil {
+		return nil, fmt.Errorf("error preparing query TokenPrincipal: %w", err)
+	}
+	if q.waitingAgentUpdateStmt, err = db.PrepareContext(ctx, waitingAgentUpdate); err != nil {
+		return nil, fmt.Errorf("error preparing query WaitingAgentUpdate: %w", err)
+	}
 	return &q, nil
 }
 
 func (q *Queries) Close() error {
 	var err error
+	if q.cancelQueuedDeploymentsStmt != nil {
+		if cerr := q.cancelQueuedDeploymentsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing cancelQueuedDeploymentsStmt: %w", cerr)
+		}
+	}
+	if q.connectAgentStmt != nil {
+		if cerr := q.connectAgentStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing connectAgentStmt: %w", cerr)
+		}
+	}
+	if q.countActiveDeploymentsStmt != nil {
+		if cerr := q.countActiveDeploymentsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing countActiveDeploymentsStmt: %w", cerr)
+		}
+	}
+	if q.countOnlineServerStmt != nil {
+		if cerr := q.countOnlineServerStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing countOnlineServerStmt: %w", cerr)
+		}
+	}
+	if q.countPendingOperationsStmt != nil {
+		if cerr := q.countPendingOperationsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing countPendingOperationsStmt: %w", cerr)
+		}
+	}
+	if q.countServerActiveDeploymentsStmt != nil {
+		if cerr := q.countServerActiveDeploymentsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing countServerActiveDeploymentsStmt: %w", cerr)
+		}
+	}
+	if q.countUnfinishedAppDeploymentsStmt != nil {
+		if cerr := q.countUnfinishedAppDeploymentsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing countUnfinishedAppDeploymentsStmt: %w", cerr)
+		}
+	}
+	if q.failDispatchStmt != nil {
+		if cerr := q.failDispatchStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing failDispatchStmt: %w", cerr)
+		}
+	}
+	if q.firstStepsHiddenStmt != nil {
+		if cerr := q.firstStepsHiddenStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing firstStepsHiddenStmt: %w", cerr)
+		}
+	}
 	if q.getAppStmt != nil {
 		if cerr := q.getAppStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getAppStmt: %w", cerr)
@@ -98,6 +227,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing getServerStmt: %w", cerr)
 		}
 	}
+	if q.getSettingStmt != nil {
+		if cerr := q.getSettingStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getSettingStmt: %w", cerr)
+		}
+	}
 	if q.getUserStmt != nil {
 		if cerr := q.getUserStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getUserStmt: %w", cerr)
@@ -106,6 +240,21 @@ func (q *Queries) Close() error {
 	if q.getUserByEmailStmt != nil {
 		if cerr := q.getUserByEmailStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getUserByEmailStmt: %w", cerr)
+		}
+	}
+	if q.hideFirstStepsStmt != nil {
+		if cerr := q.hideFirstStepsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing hideFirstStepsStmt: %w", cerr)
+		}
+	}
+	if q.insertOperationStmt != nil {
+		if cerr := q.insertOperationStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing insertOperationStmt: %w", cerr)
+		}
+	}
+	if q.insertQueuedDeploymentStmt != nil {
+		if cerr := q.insertQueuedDeploymentStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing insertQueuedDeploymentStmt: %w", cerr)
 		}
 	}
 	if q.listAppsStmt != nil {
@@ -123,6 +272,21 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing listDeploymentsStmt: %w", cerr)
 		}
 	}
+	if q.listExpiredLogDeploymentsStmt != nil {
+		if cerr := q.listExpiredLogDeploymentsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listExpiredLogDeploymentsStmt: %w", cerr)
+		}
+	}
+	if q.listOperationsStmt != nil {
+		if cerr := q.listOperationsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listOperationsStmt: %w", cerr)
+		}
+	}
+	if q.listServerActiveDeploymentsStmt != nil {
+		if cerr := q.listServerActiveDeploymentsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listServerActiveDeploymentsStmt: %w", cerr)
+		}
+	}
 	if q.listServersStmt != nil {
 		if cerr := q.listServersStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing listServersStmt: %w", cerr)
@@ -131,6 +295,66 @@ func (q *Queries) Close() error {
 	if q.listUsersStmt != nil {
 		if cerr := q.listUsersStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing listUsersStmt: %w", cerr)
+		}
+	}
+	if q.nextCheckJobStmt != nil {
+		if cerr := q.nextCheckJobStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing nextCheckJobStmt: %w", cerr)
+		}
+	}
+	if q.nextOperationStmt != nil {
+		if cerr := q.nextOperationStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing nextOperationStmt: %w", cerr)
+		}
+	}
+	if q.nextQueuedDeploymentStmt != nil {
+		if cerr := q.nextQueuedDeploymentStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing nextQueuedDeploymentStmt: %w", cerr)
+		}
+	}
+	if q.pendingInvitationStmt != nil {
+		if cerr := q.pendingInvitationStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing pendingInvitationStmt: %w", cerr)
+		}
+	}
+	if q.queueCheckStmt != nil {
+		if cerr := q.queueCheckStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing queueCheckStmt: %w", cerr)
+		}
+	}
+	if q.recordHeartbeatStmt != nil {
+		if cerr := q.recordHeartbeatStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing recordHeartbeatStmt: %w", cerr)
+		}
+	}
+	if q.requestCancelStmt != nil {
+		if cerr := q.requestCancelStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing requestCancelStmt: %w", cerr)
+		}
+	}
+	if q.saveSettingStmt != nil {
+		if cerr := q.saveSettingStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing saveSettingStmt: %w", cerr)
+		}
+	}
+	if q.sessionPrincipalStmt != nil {
+		if cerr := q.sessionPrincipalStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing sessionPrincipalStmt: %w", cerr)
+		}
+	}
+	if q.startDeploymentStmt != nil {
+		if cerr := q.startDeploymentStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing startDeploymentStmt: %w", cerr)
+		}
+	}
+	if q.tokenPrincipalStmt != nil {
+		if cerr := q.tokenPrincipalStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing tokenPrincipalStmt: %w", cerr)
+		}
+	}
+	if q.waitingAgentUpdateStmt != nil {
+		if cerr := q.waitingAgentUpdateStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing waitingAgentUpdateStmt: %w", cerr)
 		}
 	}
 	return err
@@ -170,39 +394,95 @@ func (q *Queries) queryRow(ctx context.Context, stmt *sql.Stmt, query string, ar
 }
 
 type Queries struct {
-	db                  DBTX
-	tx                  *sql.Tx
-	getAppStmt          *sql.Stmt
-	getCredentialsStmt  *sql.Stmt
-	getDeploymentStmt   *sql.Stmt
-	getDomainsStmt      *sql.Stmt
-	getEnvironmentStmt  *sql.Stmt
-	getServerStmt       *sql.Stmt
-	getUserStmt         *sql.Stmt
-	getUserByEmailStmt  *sql.Stmt
-	listAppsStmt        *sql.Stmt
-	listAuditStmt       *sql.Stmt
-	listDeploymentsStmt *sql.Stmt
-	listServersStmt     *sql.Stmt
-	listUsersStmt       *sql.Stmt
+	db                                DBTX
+	tx                                *sql.Tx
+	cancelQueuedDeploymentsStmt       *sql.Stmt
+	connectAgentStmt                  *sql.Stmt
+	countActiveDeploymentsStmt        *sql.Stmt
+	countOnlineServerStmt             *sql.Stmt
+	countPendingOperationsStmt        *sql.Stmt
+	countServerActiveDeploymentsStmt  *sql.Stmt
+	countUnfinishedAppDeploymentsStmt *sql.Stmt
+	failDispatchStmt                  *sql.Stmt
+	firstStepsHiddenStmt              *sql.Stmt
+	getAppStmt                        *sql.Stmt
+	getCredentialsStmt                *sql.Stmt
+	getDeploymentStmt                 *sql.Stmt
+	getDomainsStmt                    *sql.Stmt
+	getEnvironmentStmt                *sql.Stmt
+	getServerStmt                     *sql.Stmt
+	getSettingStmt                    *sql.Stmt
+	getUserStmt                       *sql.Stmt
+	getUserByEmailStmt                *sql.Stmt
+	hideFirstStepsStmt                *sql.Stmt
+	insertOperationStmt               *sql.Stmt
+	insertQueuedDeploymentStmt        *sql.Stmt
+	listAppsStmt                      *sql.Stmt
+	listAuditStmt                     *sql.Stmt
+	listDeploymentsStmt               *sql.Stmt
+	listExpiredLogDeploymentsStmt     *sql.Stmt
+	listOperationsStmt                *sql.Stmt
+	listServerActiveDeploymentsStmt   *sql.Stmt
+	listServersStmt                   *sql.Stmt
+	listUsersStmt                     *sql.Stmt
+	nextCheckJobStmt                  *sql.Stmt
+	nextOperationStmt                 *sql.Stmt
+	nextQueuedDeploymentStmt          *sql.Stmt
+	pendingInvitationStmt             *sql.Stmt
+	queueCheckStmt                    *sql.Stmt
+	recordHeartbeatStmt               *sql.Stmt
+	requestCancelStmt                 *sql.Stmt
+	saveSettingStmt                   *sql.Stmt
+	sessionPrincipalStmt              *sql.Stmt
+	startDeploymentStmt               *sql.Stmt
+	tokenPrincipalStmt                *sql.Stmt
+	waitingAgentUpdateStmt            *sql.Stmt
 }
 
 func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 	return &Queries{
-		db:                  tx,
-		tx:                  tx,
-		getAppStmt:          q.getAppStmt,
-		getCredentialsStmt:  q.getCredentialsStmt,
-		getDeploymentStmt:   q.getDeploymentStmt,
-		getDomainsStmt:      q.getDomainsStmt,
-		getEnvironmentStmt:  q.getEnvironmentStmt,
-		getServerStmt:       q.getServerStmt,
-		getUserStmt:         q.getUserStmt,
-		getUserByEmailStmt:  q.getUserByEmailStmt,
-		listAppsStmt:        q.listAppsStmt,
-		listAuditStmt:       q.listAuditStmt,
-		listDeploymentsStmt: q.listDeploymentsStmt,
-		listServersStmt:     q.listServersStmt,
-		listUsersStmt:       q.listUsersStmt,
+		db:                                tx,
+		tx:                                tx,
+		cancelQueuedDeploymentsStmt:       q.cancelQueuedDeploymentsStmt,
+		connectAgentStmt:                  q.connectAgentStmt,
+		countActiveDeploymentsStmt:        q.countActiveDeploymentsStmt,
+		countOnlineServerStmt:             q.countOnlineServerStmt,
+		countPendingOperationsStmt:        q.countPendingOperationsStmt,
+		countServerActiveDeploymentsStmt:  q.countServerActiveDeploymentsStmt,
+		countUnfinishedAppDeploymentsStmt: q.countUnfinishedAppDeploymentsStmt,
+		failDispatchStmt:                  q.failDispatchStmt,
+		firstStepsHiddenStmt:              q.firstStepsHiddenStmt,
+		getAppStmt:                        q.getAppStmt,
+		getCredentialsStmt:                q.getCredentialsStmt,
+		getDeploymentStmt:                 q.getDeploymentStmt,
+		getDomainsStmt:                    q.getDomainsStmt,
+		getEnvironmentStmt:                q.getEnvironmentStmt,
+		getServerStmt:                     q.getServerStmt,
+		getSettingStmt:                    q.getSettingStmt,
+		getUserStmt:                       q.getUserStmt,
+		getUserByEmailStmt:                q.getUserByEmailStmt,
+		hideFirstStepsStmt:                q.hideFirstStepsStmt,
+		insertOperationStmt:               q.insertOperationStmt,
+		insertQueuedDeploymentStmt:        q.insertQueuedDeploymentStmt,
+		listAppsStmt:                      q.listAppsStmt,
+		listAuditStmt:                     q.listAuditStmt,
+		listDeploymentsStmt:               q.listDeploymentsStmt,
+		listExpiredLogDeploymentsStmt:     q.listExpiredLogDeploymentsStmt,
+		listOperationsStmt:                q.listOperationsStmt,
+		listServerActiveDeploymentsStmt:   q.listServerActiveDeploymentsStmt,
+		listServersStmt:                   q.listServersStmt,
+		listUsersStmt:                     q.listUsersStmt,
+		nextCheckJobStmt:                  q.nextCheckJobStmt,
+		nextOperationStmt:                 q.nextOperationStmt,
+		nextQueuedDeploymentStmt:          q.nextQueuedDeploymentStmt,
+		pendingInvitationStmt:             q.pendingInvitationStmt,
+		queueCheckStmt:                    q.queueCheckStmt,
+		recordHeartbeatStmt:               q.recordHeartbeatStmt,
+		requestCancelStmt:                 q.requestCancelStmt,
+		saveSettingStmt:                   q.saveSettingStmt,
+		sessionPrincipalStmt:              q.sessionPrincipalStmt,
+		startDeploymentStmt:               q.startDeploymentStmt,
+		tokenPrincipalStmt:                q.tokenPrincipalStmt,
+		waitingAgentUpdateStmt:            q.waitingAgentUpdateStmt,
 	}
 }

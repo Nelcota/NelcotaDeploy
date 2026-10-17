@@ -23,10 +23,13 @@ const (
 type Error struct {
 	Kind    Kind   `json:"code"`
 	Message string `json:"message"`
+	// cause keeps the underlying failure for logs; it is never shown to users.
+	cause error
 }
 
 func (e *Error) Error() string             { return e.Message }
-func fail(kind Kind, message string) error { return &Error{kind, message} }
+func (e *Error) Unwrap() error             { return e.cause }
+func fail(kind Kind, message string) error { return &Error{Kind: kind, Message: message} }
 func Is(err error, kind Kind) bool         { var e *Error; return errors.As(err, &e) && e.Kind == kind }
 
 type Principal struct {
@@ -35,6 +38,7 @@ type Principal struct {
 	Email       string   `json:"email"`
 	Name        string   `json:"name"`
 	Role        string   `json:"role"`
+	AvatarAt    int64    `json:"avatar_at,omitempty"`
 	TwoFactorAt int64    `json:"-"`
 	IP          string   `json:"-"`
 }
@@ -74,6 +78,7 @@ type App struct {
 	Config     AppConfig `json:"config"`
 	DesiredSHA string    `json:"desired_sha"`
 	Revision   int64     `json:"revision"`
+	LogoAt     int64     `json:"logo_at,omitempty"`
 }
 type AppConfig struct {
 	Domains        []string `json:"domains"`
@@ -87,6 +92,9 @@ type AppConfig struct {
 	Dockerfile     string   `json:"dockerfile"`
 	InstallationID int64    `json:"installation_id"`
 	Stopped        bool     `json:"stopped"`
+	// Runtime names the app's language or server (see Runtimes), detected from
+	// the Dockerfile or chosen in settings. Empty when unknown.
+	Runtime string `json:"runtime,omitempty"`
 }
 type AppInput struct {
 	Name       string    `json:"name"`
@@ -121,6 +129,8 @@ type Deployment struct {
 	FinishedAt      int64            `json:"finished_at"`
 	ErrorCode       string           `json:"error_code"`
 	Clean           bool             `json:"clean"`
+	// RetryOf is the failed deployment this one retries automatically.
+	RetryOf string `json:"retry_of,omitempty"`
 }
 type DeployInput struct {
 	AppID   string `json:"app_id"`
@@ -129,6 +139,8 @@ type DeployInput struct {
 	Author  string `json:"author"`
 	Origin  string `json:"origin"`
 	Clean   bool   `json:"clean"`
+	// retryOf is set only by the automatic retry, never by callers.
+	retryOf string
 }
 type Server struct {
 	Ready       bool   `json:"ready"`
@@ -155,6 +167,8 @@ type Invitation struct {
 	ServerID  string    `json:"server_id"`
 	Token     string    `json:"token"`
 	ExpiresAt time.Time `json:"expires_at"`
+	// Server is the newly created, not yet enrolled server.
+	Server Server `json:"-"`
 }
 type AuditEntry struct {
 	ID        int64           `json:"id"`
@@ -178,6 +192,10 @@ type Apps interface {
 	Environment(context.Context, string) ([]EnvInfo, error)
 	SetEnvironment(context.Context, string, []EnvInput) error
 	Action(context.Context, string, string, uint32, bool) error
+	CheckDomains(context.Context, string) ([]DomainCheck, error)
+	SetLogo(context.Context, string, []byte) error
+	RemoveLogo(context.Context, string) error
+	Logo(context.Context, string) (Logo, error)
 }
 type Deploys interface {
 	List(context.Context, string) ([]Deployment, error)
@@ -185,6 +203,8 @@ type Deploys interface {
 	Enqueue(context.Context, DeployInput) (Deployment, error)
 	Cancel(context.Context, string) error
 	Rollback(context.Context, string, string) (Deployment, error)
+	SuggestedPort(context.Context, string) (uint32, error)
+	PublishOnPort(context.Context, string, uint32) (Deployment, error)
 }
 type Servers interface {
 	UpdateLimits(context.Context, string, ServerLimitsInput) (Server, error)
@@ -199,6 +219,9 @@ type Logs interface {
 type Settings interface {
 	Get(context.Context) (SettingsView, error)
 	Set(context.Context, string, string) error
+	// TestS3 checks an S3 configuration (JSON, as saved) by storing and
+	// deleting a small object.
+	TestS3(context.Context, string) error
 }
 type Audit interface {
 	RecordRequest(context.Context, string, string, int) error
@@ -214,4 +237,10 @@ type Services struct {
 	Settings   Settings
 	Audit      Audit
 	Operations Operations
+	// Repos is optional (nil without GitHub access).
+	Repos Repos
+	// Notifications is optional (nil when the panel sends none).
+	Notifications Notifications
+	// Provisioning is optional (nil when servers are added by hand only).
+	Provisioning Provisioning
 }

@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # Package without publishing. The maintainer must review BuildKit provenance and hashes.
+# Set MINISIGN_PASSWORD_FILE to sign without a prompt (used by .github/workflows/release.yml).
 set -euo pipefail
 umask 077
 [[ $# == 4 || $# == 5 ]] || { printf '%s\n' 'release.sh VERSION MINISIGN_SECRET_KEY_FILE BUILDKITD_AMD64 BUILDKITD_ARM64 [BUILDKIT_PROVENANCE_DIR]' >&2; exit 1; }
@@ -51,7 +52,14 @@ fi
  go version -m buildkitd_linux_amd64 buildkitd_linux_arm64 > buildkit-build-info.txt
  sha256sum nelcota-panel_linux_{amd64_v1,amd64_v3,arm64} nelcota-agent_linux_{amd64_v1,amd64_v3,arm64} buildkitd_linux_{amd64,arm64} release.json build-info.json buildkit-build-info.txt "${extras[@]}" > checksums.txt
 )
-minisign -Sm "$stage/checksums.txt" -s "$key_file" -t "NelcotaDeploy $version; source $source_commit"
+sign=(minisign -Sm "$stage/checksums.txt" -s "$key_file" -t "NelcotaDeploy $version; source $source_commit")
+# Non-interactive signing (CI): MINISIGN_PASSWORD_FILE holds the key password; otherwise minisign prompts.
+if [[ -n ${MINISIGN_PASSWORD_FILE:-} ]]; then
+ [[ -f $MINISIGN_PASSWORD_FILE && ! -L $MINISIGN_PASSWORD_FILE ]] || { printf '%s\n' 'MINISIGN_PASSWORD_FILE must be a regular file.' >&2; exit 1; }
+ "${sign[@]}" < "$MINISIGN_PASSWORD_FILE"
+else
+ "${sign[@]}"
+fi
 chmod 0755 "$stage" "$stage"/nelcota-* "$stage"/buildkitd_*
 chmod 0644 "$stage"/*.json "$stage"/*.txt "$stage"/checksums.txt.minisig
 mv -T --no-clobber "$stage" "dist/$version"

@@ -1,0 +1,96 @@
+name: VPS acceptance
+
+# Disposable Hetzner Cloud servers: install the panel with scripts/install.sh,
+# smoke-test, reboot, re-test, and always delete everything. UNVERIFIED until it
+# runs with a real HCLOUD_TOKEN; see docs/development.md#disposable-vps-acceptance.
+on:
+  workflow_dispatch:
+    inputs:
+      release_url:
+        description: Immutable release URL ending in /vMAJOR.MINOR.PATCH (defaults to the VPS_ACCEPTANCE_RELEASE_URL variable)
+        required: false
+        type: string
+      location:
+        description: Hetzner location
+        default: fsn1
+        type: string
+      server_type:
+        description: Hetzner server type
+        default: cx23
+        type: string
+      with_agent:
+        description: Also run the agent installer up to enrollment on a second server
+        default: true
+        type: boolean
+  schedule:
+    # Runs only when the repository variable VPS_ACCEPTANCE_SCHEDULE is "true".
+    - cron: '17 6 * * 1'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: vps-acceptance
+  cancel-in-progress: false # Cancelling mid-run would still clean up, but serial runs keep costs predictable.
+
+env:
+  HCLOUD_VERSION: '1.70.1'
+  HCLOUD_SHA256: '85182e0d51f9a26abeefd79b37de8a7fb51215d54c59ee290c3c9141e8aa887e'
+
+jobs:
+  acceptance:
+    name: Disposable VPS
+    if: github.event_name == 'workflow_dispatch' || vars.VPS_ACCEPTANCE_SCHEDULE == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 75
+    environment: vps-acceptance
+    permissions:
+      contents: read
+    env:
+      RUN_ID: gh-${{ github.run_id }}-${{ github.run_attempt }}
+      RELEASE_URL: ${{ inputs.release_url || vars.VPS_ACCEPTANCE_RELEASE_URL }}
+      SIGNING_KEY: ${{ vars.MINISIGN_PUBLIC_KEY }}
+      LOCATION: ${{ inputs.location || 'fsn1' }}
+      SERVER_TYPE: ${{ inputs.server_type || 'cx23' }}
+      WITH_AGENT: ${{ github.event_name == 'schedule' || inputs.with_agent }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Install hcloud and minisign
+        run: |
+          curl --proto '=https' --tlsv1.2 -fsSL "https://github.com/hetznercloud/cli/releases/download/v$HCLOUD_VERSION/hcloud-linux-amd64.tar.gz" -o "$RUNNER_TEMP/hcloud.tar.gz"
+          echo "$HCLOUD_SHA256  $RUNNER_TEMP/hcloud.tar.gz" | sha256sum --check -
+          install -d "$RUNNER_TEMP/bin"
+          tar -xzf "$RUNNER_TEMP/hcloud.tar.gz" -C "$RUNNER_TEMP/bin" hcloud
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+          sudo apt-get update
+          sudo apt-get install -y minisign
+      - name: Run acceptance
+        env:
+          HCLOUD_TOKEN: ${{ secrets.HCLOUD_TOKEN }}
+        run: |
+          if [[ -z $HCLOUD_TOKEN || -z $RELEASE_URL || -z $SIGNING_KEY ]]; then
+            echo "::error::Set the HCLOUD_TOKEN secret, the MINISIGN_PUBLIC_KEY variable, and a release URL (input or VPS_ACCEPTANCE_RELEASE_URL)."
+            exit 1
+          fi
+          args=(run --run-id "$RUN_ID" --release-url "$RELEASE_URL" --signing-key "$SIGNING_KEY"
+            --location "$LOCATION" --server-type "$SERVER_TYPE" --output-dir "$RUNNER_TEMP/acceptance")
+          [[ $WITH_AGENT == true ]] || args+=(--skip-agent)
+          scripts/vps-acceptance.sh "${args[@]}"
+      - name: Delete servers and SSH keys
+        if: always()
+        env:
+          HCLOUD_TOKEN: ${{ secrets.HCLOUD_TOKEN }}
+        run: |
+          if [[ -z $HCLOUD_TOKEN ]]; then echo 'No token: nothing could have been created.'; exit 0; fi
+          scripts/vps-acceptance.sh cleanup --run-id "$RUN_ID"
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: vps-acceptance-${{ env.RUN_ID }}
+          path: ${{ runner.temp }}/acceptance
+          if-no-files-found: ignore
+          retention-days: 14
