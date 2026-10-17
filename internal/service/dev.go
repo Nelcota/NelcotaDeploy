@@ -31,10 +31,11 @@ func (c *Core) seed(ctx context.Context) error {
 	if e != nil {
 		return e
 	}
+	runtimes := map[string]string{"store": "python", "api": "go", "blog": "node"}
 	for i, name := range []string{"store", "api", "blog"} {
 		server := "dev-server-" + name
 		app := "dev-app-" + name
-		cfg := AppConfig{Domains: []string{name + ".example.test"}, MemoryBytes: 256 << 20, NanoCPUs: 1e9, Port: 8080, HealthPath: "/", HealthTimeout: 60, Replicas: 1, CacheEnabled: true, Dockerfile: "Dockerfile"}
+		cfg := AppConfig{Domains: []string{name + ".example.test"}, MemoryBytes: 256 << 20, NanoCPUs: 1e9, Port: 8080, HealthPath: "/", HealthTimeout: 60, Replicas: 1, CacheEnabled: true, Dockerfile: "Dockerfile", Runtime: runtimes[name]}
 		b, _ := json.Marshal(cfg)
 		e = c.mutate(ctx, func(tx *sql.Tx) error {
 			_, e := tx.ExecContext(ctx, `INSERT INTO servers(id,name,wireguard_ip,status,heartbeat_at,fingerprint,agent_ready)

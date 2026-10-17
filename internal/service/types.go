@@ -92,6 +92,9 @@ type AppConfig struct {
 	Dockerfile     string   `json:"dockerfile"`
 	InstallationID int64    `json:"installation_id"`
 	Stopped        bool     `json:"stopped"`
+	// Runtime names the app's language or server (see Runtimes), detected from
+	// the Dockerfile or chosen in settings. Empty when unknown.
+	Runtime string `json:"runtime,omitempty"`
 }
 type AppInput struct {
 	Name       string    `json:"name"`

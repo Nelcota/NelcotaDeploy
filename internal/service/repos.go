@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -42,6 +43,8 @@ type RepoInfo struct {
 	Port          uint32   `json:"port"`
 	// HealthPath comes from the Dockerfile's HEALTHCHECK, when it checks a local URL.
 	HealthPath string `json:"health_path,omitempty"`
+	// Runtime is the language or server the Dockerfile builds on (see Runtimes).
+	Runtime string `json:"runtime,omitempty"`
 	// EnvKeys are the variables .env.example declares (values are never read).
 	EnvKeys []string `json:"env_keys"`
 	// InstallationID is the GitHub App installation that can read the
@@ -107,6 +110,71 @@ func EnvExampleKeys(text string) []string {
 	return keys
 }
 
+// Runtimes are the languages and servers an app can be marked with. The
+// interface shows each one's official mark.
+var Runtimes = []string{"node", "bun", "deno", "go", "python", "rust", "ruby", "php", "java", "dotnet", "elixir", "erlang", "nginx", "caddy", "apache"}
+
+var fromPattern = regexp.MustCompile(`(?im)^\s*FROM\s+(?:--\S+\s+)*(\S+)`)
+
+// runtimeImages maps an image's last path element (without tag or digest) to a
+// runtime. Languages come first: a Go app usually builds on golang and ships
+// on distroless or scratch, so the language stage names it.
+var runtimeImages = []struct {
+	runtime string
+	names   []string
+}{
+	{"node", []string{"node", "nodejs"}},
+	{"bun", []string{"bun"}},
+	{"deno", []string{"deno"}},
+	{"go", []string{"golang", "go"}},
+	{"python", []string{"python", "pypy"}},
+	{"rust", []string{"rust"}},
+	{"ruby", []string{"ruby", "jruby"}},
+	{"php", []string{"php", "php-fpm", "composer", "frankenphp"}},
+	{"java", []string{"openjdk", "eclipse-temurin", "amazoncorretto", "maven", "gradle", "jdk", "jre", "java"}},
+	{"dotnet", []string{"sdk", "aspnet", "runtime", "runtime-deps", "dotnet"}},
+	{"elixir", []string{"elixir"}},
+	{"erlang", []string{"erlang"}},
+	{"nginx", []string{"nginx", "nginx-unprivileged"}},
+	{"caddy", []string{"caddy"}},
+	{"apache", []string{"httpd"}},
+}
+
+// DockerfileRuntime names the runtime a Dockerfile builds on, from its FROM
+// images, or "" when none is recognized. .NET images are only recognized under
+// mcr.microsoft.com/dotnet, since names like "sdk" are too generic elsewhere.
+func DockerfileRuntime(dockerfile string) string {
+	var images []string
+	for _, m := range fromPattern.FindAllStringSubmatch(dockerfile, -1) {
+		ref := strings.ToLower(m[1])
+		if i := strings.IndexAny(ref, "@"); i >= 0 {
+			ref = ref[:i]
+		}
+		parts := strings.Split(ref, "/")
+		name := parts[len(parts)-1]
+		if i := strings.Index(name, ":"); i >= 0 {
+			name = name[:i]
+		}
+		if strings.Contains(ref, "mcr.microsoft.com/dotnet/") {
+			name = "dotnet"
+		}
+		// Distroless images add a version and a base: nodejs22-debian12, python3.
+		first, _, _ := strings.Cut(name, "-")
+		images = append(images, strings.TrimRight(name, "0123456789."), strings.TrimRight(first, "0123456789."))
+	}
+	for _, r := range runtimeImages {
+		for _, name := range r.names {
+			if r.runtime == "dotnet" && name != "dotnet" {
+				continue
+			}
+			if slices.Contains(images, name) {
+				return r.runtime
+			}
+		}
+	}
+	return ""
+}
+
 // DockerfilePort returns the first port in an EXPOSE instruction, or zero.
 func DockerfilePort(dockerfile string) uint32 {
 	m := exposePattern.FindStringSubmatch(dockerfile)
@@ -170,6 +238,7 @@ func (g *GitHubService) Inspect(ctx context.Context, q RepoQuery) (RepoInfo, err
 		info.Dockerfile = true
 		info.Port = DockerfilePort(text)
 		info.HealthPath = DockerfileHealthPath(text)
+		info.Runtime = DockerfileRuntime(text)
 	}
 	if text, ok := readFile(ctx, client, owner, name, ".env.example", info.Head.SHA); ok {
 		info.EnvKeys = EnvExampleKeys(text)
@@ -314,7 +383,7 @@ func (DevRepos) Inspect(ctx context.Context, q RepoQuery) (RepoInfo, error) {
 		branch = "main"
 	}
 	commits := devCommits(name, branch)
-	return RepoInfo{DefaultBranch: "main", Branches: []string{"main", "develop"}, Branch: branch, Head: commits[0], Dockerfile: true, Port: 8080, EnvKeys: []string{"DATABASE_URL", "SECRET_KEY"}}, nil
+	return RepoInfo{DefaultBranch: "main", Branches: []string{"main", "develop"}, Branch: branch, Head: commits[0], Dockerfile: true, Port: 8080, Runtime: "node", EnvKeys: []string{"DATABASE_URL", "SECRET_KEY"}}, nil
 }
 
 // devCommits is a repository's simulated history: stable SHAs per repository

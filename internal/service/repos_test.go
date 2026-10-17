@@ -200,3 +200,34 @@ func TestRecentCommitsAndShortSHA(t *testing.T) {
 		t.Fatal(e)
 	}
 }
+
+func TestDockerfileRuntime(t *testing.T) {
+	for dockerfile, want := range map[string]string{
+		"FROM node:22-alpine\nCMD node server.js":                                                          "node",
+		"FROM golang:1.26 AS build\nRUN go build\nFROM gcr.io/distroless/static\nCOPY --from=build /app /": "go",
+		"FROM --platform=$BUILDPLATFORM python:3.13-slim":                                                  "python",
+		"FROM gcr.io/distroless/nodejs22-debian12":                                                         "node",
+		"from docker.io/library/rust:1 as b\nfrom scratch":                                                 "rust",
+		"FROM mcr.microsoft.com/dotnet/sdk:9.0 AS build\nFROM mcr.microsoft.com/dotnet/aspnet:9.0":         "dotnet",
+		"FROM ghcr.io/acme/sdk:1":                                                                          "",
+		"FROM eclipse-temurin:21-jre":                                                                      "java",
+		"FROM nginx:1.27@sha256:abc":                                                                       "nginx",
+		"FROM oven/bun:1":                                                                                  "bun",
+		"FROM node:22 AS assets\nFROM caddy:2\nCOPY --from=assets /dist /srv":                              "node",
+		"FROM alpine:3.20":                                                                                 "",
+	} {
+		if got := DockerfileRuntime(dockerfile); got != want {
+			t.Errorf("%q: got %q, want %q", dockerfile, got, want)
+		}
+	}
+	for _, r := range Runtimes {
+		in := AppInput{Name: "a", Branch: "main", Repository: "https://github.com/a/b", Config: AppConfig{Runtime: r}}
+		if err := validateApp(&in); err != nil {
+			t.Errorf("%s: %v", r, err)
+		}
+	}
+	in := AppInput{Name: "a", Branch: "main", Repository: "https://github.com/a/b", Config: AppConfig{Runtime: "cobol"}}
+	if err := validateApp(&in); err == nil {
+		t.Error("an unknown runtime was accepted")
+	}
+}

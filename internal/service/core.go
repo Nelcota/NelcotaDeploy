@@ -10,6 +10,7 @@ import (
 	"net"
 	"net/url"
 	"regexp"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -171,6 +172,9 @@ func validateApp(in *AppInput) error {
 	}
 	if strings.Contains(cfg.Dockerfile, "..") || strings.HasPrefix(cfg.Dockerfile, "/") || strings.ContainsAny(cfg.Dockerfile, "\x00\r\n") {
 		return fail(Validation, "Invalid Dockerfile")
+	}
+	if cfg.Runtime != "" && !slices.Contains(Runtimes, cfg.Runtime) {
+		return fail(Validation, "Unknown runtime")
 	}
 	if len(cfg.Domains) > 20 {
 		return fail(Validation, "Too many domains")
