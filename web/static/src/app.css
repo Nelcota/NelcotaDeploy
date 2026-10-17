@@ -286,6 +286,25 @@
   .see-all {
     @apply text-sm text-link hover:underline;
   }
+  /* Servers page: one tile per live number, and the apps on each server. */
+  .stat-tile {
+    @apply grid content-start gap-1 rounded-xl bg-muted/50 p-3;
+  }
+  .stat-label {
+    @apply text-xs text-muted-foreground;
+  }
+  .stat-value {
+    @apply text-lg leading-tight font-medium tabular-nums;
+  }
+  .stat-sub {
+    @apply min-h-4 text-xs text-muted-foreground;
+  }
+  .stat-tile .meter {
+    @apply mt-1;
+  }
+  .server-app {
+    @apply flex items-center gap-3 rounded-lg px-2 py-1.5 text-sm hover:bg-muted;
+  }
   /* Overview: each recent deployment opens its log. */
   .recent-row {
     @apply flex items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-muted focus-visible:bg-muted;

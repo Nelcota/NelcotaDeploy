@@ -1,6 +1,7 @@
 package web_test
 
 import (
+	"github.com/Nelcota/NelcotaDeploy/internal/service"
 	"net/http"
 	"net/url"
 	"strings"
@@ -14,6 +15,11 @@ func TestServersPage(t *testing.T) {
 		t.Fatal(res.code)
 	}
 	mustContain(t, res.body, `id="servers-list"`, `data-server="dev-server-api"`, "Server api", "10.77.0.3", `data-chart`, `data-metric="cpu"`, `data-metric="disk-meter"`, "Build cache size", "5.0 GiB", "Builds at the same time", `data-metric="cache-meter"`, `id="free-dev-server-api"`, "Free up space", "Remove unused images", "Clear the build cache", `id="limits-dev-server-api"`, "Add server", `value="10.77.0.5"`, `&#34;dev-app-api&#34;:&#34;api&#34;`, "/assets/uplot.", "/assets/metrics.")
+	// Number tiles, each server's apps with links, and a chart that starts closed.
+	mustContain(t, res.body, `class="stat-tile"`, `data-metric="memory-meter"`, `data-metric="disk-of"`, "Apps on this server", `data-app="dev-app-api"`, `href="/apps/dev-app-api"`, `data-chart-details`, "Usage chart", "One build at a time; others wait in line.")
+	if strings.Contains(res.body, `data-chart-details open`) {
+		t.Error("the usage chart starts open, which loads uPlot on every visit")
+	}
 	member := e.member().get("/servers")
 	mustNotContain(t, member.body, "Add server", `id="free-`, `id="limits-`)
 }
@@ -35,6 +41,14 @@ func TestInviteServer(t *testing.T) {
 	}
 	if !found {
 		t.Fatal(servers)
+	}
+	// The new server is offline until its agent joins, so it is listed first.
+	page := s.get("/servers").body
+	if a, b := strings.Index(page, `data-server="`+serverID(t, servers, "apps-2")+`"`), strings.Index(page, `data-server="dev-server-api"`); a < 0 || b < 0 || a > b {
+		t.Errorf("offline server is not listed first: %d, %d", a, b)
+	}
+	if !strings.Contains(page, "No apps on this server yet.") {
+		t.Error("an empty server doesn't say it has no apps")
 	}
 	// The token appears only in this response, never on the page afterwards.
 	var token string
@@ -88,4 +102,15 @@ func TestServerLimitsAndPrune(t *testing.T) {
 	mustContain(t, res.body, "Agent unavailable")
 	res = s.post("/ui/servers/dev-server-api/prune/everything", nil)
 	mustContain(t, res.body, "Invalid scope")
+}
+
+func serverID(t *testing.T, servers []service.Server, name string) string {
+	t.Helper()
+	for _, srv := range servers {
+		if srv.Name == name {
+			return srv.ID
+		}
+	}
+	t.Fatalf("no server named %s", name)
+	return ""
 }

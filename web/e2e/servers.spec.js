@@ -9,10 +9,16 @@ test("servers show live metrics, invitations, and cache cleanup", async ({ page,
 	await connected(page, page.locator("#metrics-conn"));
 	const api = page.locator('[data-server="dev-server-api"]');
 	await expect(api.locator('[data-metric="cpu"]')).toHaveText(/\d+\.\d%/, { timeout: 10_000 });
-	// Two samples draw the chart.
-	await expect(api.locator("[data-chart] canvas")).toBeVisible({ timeout: 10_000 });
-	await api.locator("summary", { hasText: "Containers" }).click();
-	await expect(api.locator("[data-containers]")).toContainText("api");
+	await expect(api.locator('[data-metric="memory-of"]')).toHaveText(/^of \d/);
+	// Each app on the server shows its live usage and links to the app.
+	const row = api.locator('[data-app="dev-app-api"]');
+	await expect(row.locator("[data-app-cpu]")).toHaveText(/\d+\.\d%/);
+	await expect(row.locator("[data-app-memory]")).toHaveText(/MiB \/ /);
+	await expect(row.getByRole("link", { name: "api" })).toHaveAttribute("href", "/apps/dev-app-api");
+	// The chart loads uPlot only once opened, then draws from the samples so far.
+	expect(await page.evaluate(() => typeof window.uPlot)).toBe("undefined");
+	await api.locator("summary", { hasText: "Usage chart" }).click();
+	await expect(api.locator("[data-chart] canvas")).toBeVisible({ timeout: 15_000 });
 
 	await page.getByRole("button", { name: "Add server" }).click();
 	const dialog = page.getByRole("dialog", { name: "Add a server" });
@@ -29,7 +35,8 @@ test("servers show live metrics, invitations, and cache cleanup", async ({ page,
 	expect(await page.evaluate(() => navigator.clipboard.readText())).toContain("/agent.sh");
 	await expect(page.locator("#servers-list")).toContainText("apps-2");
 
-	await expect(api.locator('[data-metric="cache"]')).toHaveText(/GiB of 5\.0 GiB/);
+	await expect(api.locator('[data-metric="cache"]')).toHaveText(/GiB$/);
+	await expect(api.locator("#server-limits-dev-server-api")).toContainText("Limit 5.0 GiB");
 	await api.getByRole("button", { name: "Free up space" }).click();
 	await page.getByRole("dialog", { name: "Free up space on Server api" }).getByRole("button", { name: "Clear cache" }).click();
 	await toast(page, "Clearing the build cache.");

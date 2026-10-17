@@ -1,7 +1,10 @@
 package pages
 
 import (
+	"cmp"
 	"encoding/json"
+	"slices"
+	"strings"
 	"github.com/Nelcota/NelcotaDeploy/web/i18n"
 	"net"
 	"strconv"
@@ -45,6 +48,35 @@ func (v ServersView) NextAddress() string {
 	return ""
 }
 
+// sorted puts servers that need attention (offline, recovering, or not ready)
+// first, keeping the service's order otherwise.
+func (v ServersView) sorted() []service.Server {
+	out := slices.Clone(v.Servers)
+	slices.SortStableFunc(out, func(a, b service.Server) int {
+		return cmp.Compare(serverRank(a), serverRank(b))
+	})
+	return out
+}
+
+func serverRank(s service.Server) int {
+	if serverStatus(s) == "online" {
+		return 1
+	}
+	return 0
+}
+
+// appsOn lists the apps placed on a server, by name.
+func (v ServersView) appsOn(server string) []service.App {
+	var out []service.App
+	for _, a := range v.Apps {
+		if a.ServerID == server {
+			out = append(out, a)
+		}
+	}
+	slices.SortFunc(out, func(a, b service.App) int { return strings.Compare(a.Name, b.Name) })
+	return out
+}
+
 func gib(b int64) string {
 	return strconv.FormatFloat(float64(b)/float64(1<<30), 'f', -1, 64)
 }
@@ -68,8 +100,8 @@ templ Servers(s Shell, v ServersView) {
 				if len(v.Servers) == 0 {
 					@ui.Empty("server", "No servers yet", "Add a server, then run the install command on it.")
 				}
-				for _, srv := range v.Servers {
-					@ServerPanel(s, srv)
+				for _, srv := range v.sorted() {
+					@ServerPanel(s, srv, v.appsOn(srv.ID))
 				}
 			</div>
 			if s.Admin() {
@@ -79,7 +111,7 @@ templ Servers(s Shell, v ServersView) {
 	}
 }
 
-templ ServerPanel(s Shell, srv service.Server) {
+templ ServerPanel(s Shell, srv service.Server, apps []service.App) {
 	<article id={ "server-" + srv.ID } class="card" data-server={ srv.ID } aria-labelledby={ "server-" + srv.ID + "-name" }>
 		<header class="sm:grid-cols-[1fr_auto]">
 			<h2 id={ "server-" + srv.ID + "-name" } class="flex flex-wrap items-center gap-2">
@@ -108,36 +140,54 @@ templ ServerPanel(s Shell, srv service.Server) {
 				</div>
 			}
 		</header>
-		<section class="grid gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
-			<figure class="grid gap-2">
-				<figcaption class="flex flex-wrap gap-x-4 gap-y-1 text-sm">
-					<span><span class="inline-block h-0.5 w-3 rounded-full bg-primary align-middle" aria-hidden="true"></span> { i18n.T(ctx, "CPU") } <span class="font-medium tabular-nums" data-metric="cpu">—</span></span>
-					<span><span class="inline-block w-3 border-t-2 border-dashed border-muted-foreground align-middle" aria-hidden="true"></span> { i18n.T(ctx, "Memory") } <span class="font-medium tabular-nums" data-metric="memory">—</span></span>
-				</figcaption>
-				<div class="chart h-24 rounded-xl border bg-background" data-chart aria-hidden="true">
-					<p class="grid h-full place-items-center text-xs text-muted-foreground" data-chart-empty>{ i18n.T(ctx, "Collecting samples…") }</p>
-				</div>
-			</figure>
-			<div class="grid content-start gap-4">
-				<div class="grid gap-1">
-					<div class="flex justify-between gap-2 text-xs">
-						<span class="text-muted-foreground">{ i18n.T(ctx, "Disk") }</span>
-						<span class="tabular-nums" data-metric="disk">—</span>
-					</div>
-					<progress class="meter" max="1000" value="0" data-metric="disk-meter" aria-label={ i18n.T(ctx, "Disk usage") }></progress>
-				</div>
+		<section class="grid gap-5">
+			// Same-shaped tiles, so servers compare at a glance. metrics.js fills
+			// the values from live samples; until the first one they show a dash.
+			<div class="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+				@statTile("CPU", "cpu", "", "CPU usage")
+				@statTile("Memory", "memory", "memory-of", "Memory usage")
+				@statTile("Disk", "disk", "disk-of", "Disk usage")
 				@ServerLimits(srv)
 			</div>
-		</section>
-		<section>
-			@ui.Disclosure("", "Containers", false, "", containersCount()) {
-				@ui.Table(i18n.Tf(ctx, "Containers on %s", srv.Name)) {
-					<thead><tr><th scope="col">{ i18n.T(ctx, "App") }</th><th scope="col">{ i18n.T(ctx, "CPU") }</th><th scope="col">{ i18n.T(ctx, "Memory") }</th><th scope="col">{ i18n.T(ctx, "Processes") }</th></tr></thead>
-					<tbody data-containers>
-						<tr><td colspan="4" class="text-muted-foreground">{ i18n.T(ctx, "Waiting for metrics…") }</td></tr>
-					</tbody>
+			<div class="grid gap-2">
+				<h3 class="text-sm font-medium">{ i18n.T(ctx, "Apps on this server") } <span class="font-normal text-muted-foreground" data-metric="containers-count"></span></h3>
+				if len(apps) == 0 {
+					<p class="text-sm text-muted-foreground">{ i18n.T(ctx, "No apps on this server yet.") }</p>
+				} else {
+					<ul class="grid gap-1" data-apps-list>
+						for _, a := range apps {
+							<li class="server-app" data-app={ a.ID }>
+								<a class="min-w-0 flex-1 truncate font-medium hover:underline" href={ templ.SafeURL("/apps/" + a.ID) }>{ a.Name }</a>
+								if a.Config.Stopped {
+									<span class="text-xs text-muted-foreground">{ i18n.T(ctx, "Stopped") }</span>
+								} else {
+									<span class="w-16 text-end text-muted-foreground tabular-nums" title={ i18n.T(ctx, "CPU") } data-app-cpu>—</span>
+									<span class="w-36 text-end text-muted-foreground tabular-nums" title={ i18n.T(ctx, "Memory") } data-app-memory>—</span>
+								}
+							</li>
+						}
+					</ul>
 				}
-			}
+			</div>
+			// The chart needs uPlot, which loads only when someone opens it.
+			<details class="disclosure" data-chart-details>
+				<summary>
+					@ui.Icon("chevron-right", "disclosure-chevron")
+					<span>{ i18n.T(ctx, "Usage chart") }</span>
+					<span class="hidden font-normal text-muted-foreground sm:inline">{ i18n.T(ctx, "since you opened this page") }</span>
+				</summary>
+				<div class="disclosure-body">
+					<figure class="grid gap-2">
+						<figcaption class="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+							<span><span class="inline-block h-0.5 w-3 rounded-full bg-primary align-middle" aria-hidden="true"></span> { i18n.T(ctx, "CPU") }</span>
+							<span><span class="inline-block w-3 border-t-2 border-dashed border-muted-foreground align-middle" aria-hidden="true"></span> { i18n.T(ctx, "Memory") }</span>
+						</figcaption>
+						<div class="chart h-32 rounded-xl border bg-background" data-chart aria-hidden="true">
+							<p class="grid h-full place-items-center text-xs text-muted-foreground" data-chart-empty>{ i18n.T(ctx, "Collecting samples…") }</p>
+						</div>
+					</figure>
+				</div>
+			</details>
 		</section>
 		if s.Admin() {
 			@ui.Dialog("free-"+srv.ID, i18n.Tf(ctx, "Free up space on %s", srv.Name), "Running apps aren't affected.") {
@@ -175,24 +225,44 @@ templ ServerPanel(s Shell, srv service.Server) {
 	</article>
 }
 
-templ containersCount() {
-	<span class="font-normal text-muted-foreground" data-metric="containers-count"></span>
+// statTile is one live number with its meter. sub is the data-metric key of
+// the "of total" line; CPU has none.
+templ statTile(label, key, sub, meterLabel string) {
+	<div class="stat-tile">
+		<span class="stat-label">{ i18n.T(ctx, label) }</span>
+		<span class="stat-value" data-metric={ key }>—</span>
+		// An empty line keeps every tile's meter at the same height.
+		if sub != "" {
+			<span class="stat-sub" data-metric={ sub }></span>
+		} else {
+			<span class="stat-sub"></span>
+		}
+		<progress class="meter" max="1000" value="0" data-metric={ key + "-meter" } aria-label={ i18n.T(ctx, meterLabel) }></progress>
+	</div>
 }
 
 templ ServerLimits(srv service.Server) {
-	// The build cache meter shows the size limit, so saving limits redraws it too.
-	<div id={ "server-limits-" + srv.ID } class="grid gap-4">
-		<div class="grid gap-1">
-			<div class="flex justify-between gap-2 text-xs">
-				<span class="text-muted-foreground">{ i18n.T(ctx, "Build cache") }</span>
-				<span class="tabular-nums" data-metric="cache">{ i18n.Tf(ctx, "Limit %s", ui.Bytes(srv.CacheBytes)) }</span>
-			</div>
+	// Both tiles show limits, so saving limits redraws them. The wrapper adds no
+	// box: its tiles sit in the card's grid.
+	<div id={ "server-limits-" + srv.ID } class="contents">
+		<div class="stat-tile">
+			<span class="stat-label">{ i18n.T(ctx, "Build cache") }</span>
+			<span class="stat-value" data-metric="cache">—</span>
+			<span class="stat-sub">{ i18n.Tf(ctx, "Limit %s", ui.Bytes(srv.CacheBytes)) }</span>
 			<progress class="meter" max="1000" value="0" data-metric="cache-meter" data-limit={ strconv.FormatInt(srv.CacheBytes, 10) } aria-label={ i18n.T(ctx, "Build cache usage") }></progress>
 		</div>
-		<dl class="text-sm">
-			<dt class="text-xs text-muted-foreground">{ i18n.T(ctx, "Builds at the same time") }</dt>
-			<dd class="font-medium">{ strconv.FormatInt(srv.BuildLimit, 10) }</dd>
-		</dl>
+		// On phones the fifth tile spans the row instead of sitting alone.
+		<div class="stat-tile col-span-2 sm:col-span-1">
+			<span class="stat-label">{ i18n.T(ctx, "Builds at the same time") }</span>
+			<span class="stat-value">{ strconv.FormatInt(srv.BuildLimit, 10) }</span>
+			<span class="stat-sub">
+				if srv.BuildLimit == 1 {
+					{ i18n.T(ctx, "One build at a time; others wait in line.") }
+				} else {
+					{ i18n.T(ctx, "More builds wait in line.") }
+				}
+			</span>
+		</div>
 	</div>
 }
 

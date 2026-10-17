@@ -3,7 +3,6 @@
 # Digits are written as #.
 
 # Loanwords Brazilian developers use as they are (see web/i18n/pt_br.go glossary).
-App
 Apps
 Apps · NelcotaDeploy
 Backups

@@ -56,7 +56,7 @@ func (h *handler) inviteServer(w http.ResponseWriter, r *http.Request) {
 		if err := s.patch(pages.InviteResult(h.inviteView(name, inv)), "", ""); err != nil {
 			return err
 		}
-		if err := s.patch(pages.ServerPanel(h.shell(r, "", ""), inv.Server), "#servers-list", modeAppend); err != nil {
+		if err := s.patch(pages.ServerPanel(h.shell(r, "", ""), inv.Server, nil), "#servers-list", modeAppend); err != nil {
 			return err
 		}
 		return s.closeAndReset("#invite")

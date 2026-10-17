@@ -31,9 +31,9 @@
 		}));
 	}
 	function chart(id, card) {
-		var host = card.querySelector("[data-chart]");
+		var host = card.querySelector("[data-chart]"), details = card.querySelector("[data-chart-details]");
 		var data = series[id];
-		if (data[0].length < 2) return;
+		if (!data || data[0].length < 2 || (details && !details.open)) return;
 		if (!window.uPlot) { uplot().then(function () { chart(id, card); }, function () {}); return; }
 		var empty = host.querySelector("[data-chart-empty]");
 		if (empty) empty.remove();
@@ -51,45 +51,53 @@
 		}, data, host);
 		new ResizeObserver(function () { charts[id] && charts[id].setSize({ width: host.clientWidth, height: host.clientHeight }); }).observe(host);
 	}
-	function containers(card, m) {
-		var body = card.querySelector("[data-containers]");
-		var rows = (m.containers || []).slice().sort(function (a, b) { return (b.cpu_percent || 0) - (a.cpu_percent || 0); });
-		text(card, "containers-count", "(" + rows.length + ")");
-		body.replaceChildren.apply(body, rows.length ? rows.map(function (c) {
-			var row = document.createElement("tr");
-			[names[c.app_id] || c.app_id || tr("Unknown"), (c.cpu_percent || 0).toFixed(1) + "%", bytes(c.memory_used || 0) + " / " + bytes(c.memory_limit || 0), String(c.pids || 0)].forEach(function (v, i) {
-				var td = document.createElement("td");
-				td.textContent = v;
-				if (i > 0) td.className = "tabular-nums";
-				row.append(td);
-			});
-			return row;
-		}) : [(function () { var row = document.createElement("tr"), td = document.createElement("td"); td.colSpan = 4; td.className = "text-muted-foreground"; td.textContent = tr("No containers running."); row.append(td); return row; })()]);
+	function apps(card, m) {
+		var rows = m.containers || [], sum = {};
+		text(card, "containers-count", "· " + tr(rows.length === 1 ? "%d container" : "%d containers", rows.length));
+		rows.forEach(function (c) {
+			var a = sum[c.app_id] || (sum[c.app_id] = { cpu: 0, used: 0, limit: 0 });
+			a.cpu += c.cpu_percent || 0; a.used += c.memory_used || 0; a.limit += c.memory_limit || 0;
+		});
+		card.querySelectorAll("[data-app]").forEach(function (li) {
+			var a = sum[li.dataset.app], cpu = li.querySelector("[data-app-cpu]"), mem = li.querySelector("[data-app-memory]");
+			if (cpu) cpu.textContent = a ? a.cpu.toFixed(1) + "%" : "—";
+			if (mem) mem.textContent = a ? bytes(a.used) + " / " + bytes(a.limit) : "—";
+		});
+	}
+	function meter(card, key, used, total) {
+		var el = card.querySelector('[data-metric="' + key + '-meter"]'), p = pct(used, total);
+		if (!el) return;
+		el.value = total > 0 ? Math.min(1000, Math.round(used * 1000 / total)) : 0;
+		el.setAttribute("aria-valuetext", tr("%d% used", p));
+		if (p >= 90) el.dataset.level = "high"; else delete el.dataset.level;
 	}
 	function sample(d) {
 		var card = document.querySelector('[data-server="' + CSS.escape(d.server_id) + '"]');
 		if (!card) return;
-		var m = d.metrics || {}, id = d.server_id;
-		var mem = pct(m.memory_used || 0, m.memory_total || 0), disk = pct(m.disk_used || 0, m.disk_total || 0);
-		text(card, "cpu", (m.cpu_percent || 0).toFixed(1) + "%");
-		text(card, "memory", bytes(m.memory_used || 0) + " / " + bytes(m.memory_total || 0) + " (" + mem + "%)");
-		text(card, "disk", bytes(m.disk_used || 0) + " / " + bytes(m.disk_total || 0) + " (" + disk + "%)");
-		var meter = card.querySelector('[data-metric="disk-meter"]');
-		meter.value = disk * 10;
-		meter.setAttribute("aria-valuetext", tr("%d% used", disk));
-		if (disk >= 90) meter.dataset.level = "high"; else delete meter.dataset.level;
+		var m = d.metrics || {}, id = d.server_id, cpu = Math.min(100, m.cpu_percent || 0);
+		text(card, "cpu", cpu.toFixed(1) + "%");
+		meter(card, "cpu", cpu, 100);
+		text(card, "memory", bytes(m.memory_used || 0));
+		text(card, "memory-of", tr("of %s", bytes(m.memory_total || 0)));
+		meter(card, "memory", m.memory_used || 0, m.memory_total || 0);
+		text(card, "disk", bytes(m.disk_used || 0));
+		text(card, "disk-of", tr("of %s", bytes(m.disk_total || 0)));
+		meter(card, "disk", m.disk_used || 0, m.disk_total || 0);
 		var cache = card.querySelector('[data-metric="cache-meter"]');
 		if (cache && m.cache_used !== undefined) {
-			var limit = +cache.dataset.limit || 0;
-			text(card, "cache", tr("%s of %s", bytes(m.cache_used || 0), bytes(limit)));
-			cache.value = limit ? Math.min(1000, Math.round((m.cache_used || 0) * 1000 / limit)) : 0;
+			text(card, "cache", bytes(m.cache_used || 0));
+			meter(card, "cache", m.cache_used || 0, +cache.dataset.limit || 0);
 		}
-		containers(card, m);
+		apps(card, m);
 		var s = series[id] || (series[id] = [[], [], []]);
-		s[0].push(Date.now() / 1000); s[1].push(Math.min(100, m.cpu_percent || 0)); s[2].push(mem);
+		s[0].push(Date.now() / 1000); s[1].push(cpu); s[2].push(pct(m.memory_used || 0, m.memory_total || 0));
 		if (s[0].length > MAX) s.forEach(function (a) { a.shift(); });
 		chart(id, card);
 	}
+	document.addEventListener("toggle", function (e) {
+		var card = e.target instanceof Element && e.target.matches("[data-chart-details]") && e.target.open && e.target.closest("[data-server]");
+		if (card) chart(card.dataset.server, card);
+	}, true);
 	function offline(d) {
 		var card = document.querySelector('[data-server="' + CSS.escape(d.id) + '"] [data-server-status] .status');
 		if (card) { card.dataset.tone = "danger"; card.dataset.status = "offline"; card.textContent = tr("Offline"); }
