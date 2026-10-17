@@ -33,12 +33,34 @@ type Container struct {
 	PIDs        int64   `json:"pids"`
 }
 
-// AppRow is an app with its state and server name.
+// AppRow is an app with its state and server name. Publish and Manage say
+// which row actions the viewer may use; services still enforce permissions.
 type AppRow struct {
 	App        service.App
 	Latest     service.Deployment
 	State      AppState
 	ServerName string
+	// Publish offers "Publish now": there is a version to publish and nothing
+	// is publishing or stopped.
+	Publish bool
+	// Manage offers restart, stop, and start (administrators only).
+	Manage bool
+}
+
+// Group is the status filter an app belongs to on the Apps page.
+func (a AppRow) Group() string {
+	switch a.State.Key {
+	case "update_failed", "not_live":
+		return "failing"
+	case "publishing", "live":
+		return a.State.Key
+	}
+	return "other"
+}
+
+// Search is the lowercase text the Apps page search matches: name and domains.
+func (a AppRow) Search() string {
+	return strings.ToLower(strings.Join(append([]string{a.App.Name}, a.App.Config.Domains...), " "))
 }
 
 // RedeploySHA is the commit a quick deploy rebuilds when the branch head is unknown.
@@ -152,7 +174,7 @@ templ DashboardBody(s Shell, v DashboardView) {
 					}
 				}
 			} else {
-				@AppsTable(v.Apps)
+				@AppsTable(v.Apps, false)
 			}
 		</section>
 		<section aria-labelledby="servers-heading" class="grid gap-3">
@@ -338,12 +360,52 @@ templ ServerCard(srv service.Server, m Metrics) {
 	</article>
 }
 
-templ AppsTable(rows []AppRow) {
+// AppsTable lists apps. With filter set, each row hides itself when it
+// doesn't match the Apps page search ($_q) and status filter ($_status).
+templ AppsTable(rows []AppRow, filter bool) {
 	<ul id="apps-body" class="rows" aria-label={ i18n.T(ctx, "Apps") }>
 		for _, row := range rows {
-			@AppRowView(row)
+			@AppRowView(row, filter)
 		}
 	</ul>
+	if len(rows) > 0 && rows[0].Manage {
+		@appConfirm("app-confirm-restart", "Restart %s?", "Requests may fail for a few seconds while containers restart.", "Restart", "restart", false)
+		@appConfirm("app-confirm-stop", "Stop %s?", "The app stops serving traffic until you start it again.", "Stop app", "stop", true)
+	}
+}
+
+// rowMatch is true when row el passes the search and the status filter.
+const rowMatch = "($_status === 'all' || $_status === el.dataset.group) && el.dataset.search.includes($_q.trim().toLowerCase())"
+
+// appConfirm confirms a row action for the app the menu chose ($_appId and
+// $_appName), so one dialog serves every row. title holds %s for the name.
+templ appConfirm(id, title, body, confirm, action string, destructive bool) {
+	{{ before, after, _ := strings.Cut(i18n.T(ctx, title), "%s") }}
+	<dialog id={ id } class="dialog" aria-labelledby={ id + "-title" } aria-describedby={ id + "-body" } data-signals="{_appId: '', _appName: ''}" data-on:click="evt.target === el && el.close()" data-ignore-morph>
+		<div class="w-[calc(100%-2rem)] max-w-md gap-4 rounded-2xl border bg-background p-6 shadow-lg">
+			<header class="gap-1.5">
+				<h2 id={ id + "-title" } class="text-lg font-semibold">{ before }<span data-text="$_appName"></span>{ after }</h2>
+				<p id={ id + "-body" } class="text-sm text-muted-foreground">{ i18n.T(ctx, body) }</p>
+			</header>
+			<footer class="gap-2">
+				<button type="button" class="btn" data-variant="outline" data-on:click="el.closest('dialog').close()">{ i18n.T(ctx, "Go back") }</button>
+				<button
+					type="button"
+					class="btn"
+					if destructive {
+						data-variant="destructive"
+					}
+					data-confirm
+					data-on:click={ "@post('/ui/apps/' + encodeURIComponent($_appId) + " + ui.JS("/action/"+action+"?from=list") + ",{headers:{'X-CSRF-Token':$_csrf}}); el.closest('dialog').close()" }
+				>{ i18n.T(ctx, confirm) }</button>
+			</footer>
+		</div>
+	</dialog>
+}
+
+// openConfirm points the shared dialog at row's app and opens it.
+func openConfirm(row AppRow, id string) string {
+	return "$_appId = " + ui.JS(row.App.ID) + "; $_appName = " + ui.JS(row.App.Name) + "; " + ui.Open(id)
 }
 
 // appSummary is the last-deploy column: what is online (or happening) and when.
@@ -380,8 +442,16 @@ func PublishingLine(ctx context.Context, d service.Deployment) string {
 
 // AppRowView is one app in a list. The name link covers the whole row; the
 // domain and Logs links sit above it. Columns line up across rows from md up.
-templ AppRowView(row AppRow) {
-	<li id={ "app-row-" + row.App.ID } class="row app-row">
+templ AppRowView(row AppRow, filter bool) {
+	<li
+		id={ "app-row-" + row.App.ID }
+		class="row app-row"
+		if filter {
+			data-group={ row.Group() }
+			data-search={ row.Search() }
+			data-attr:hidden={ "!(" + rowMatch + ")" }
+		}
+	>
 		<div class="app-row-name">
 			@AppLogo(row.App, "")
 			<div class="min-w-0">
@@ -407,5 +477,62 @@ templ AppRowView(row AppRow) {
 			@ui.Icon("scroll-text", "")
 			{ i18n.T(ctx, "Logs") }
 		</a>
+		@appRowMenu(row)
 	</li>
+}
+
+// appRowMenu holds the everyday actions for one app, so they don't need a
+// visit to the app's pages.
+templ appRowMenu(row AppRow) {
+	{{ base := "/apps/" + row.App.ID }}
+	<details class="menu row-menu row-over" data-opens="down">
+		<summary class="row-menu-trigger" aria-label={ i18n.Tf(ctx, "Actions for %s", row.App.Name) } title={ i18n.T(ctx, "Actions") }>
+			@ui.Icon("ellipsis", "")
+		</summary>
+		<div class="menu-list">
+			if row.Publish {
+				<button type="button" data-on:click={ ui.Post("/ui" + base + "/deploy?latest=1") }>
+					@ui.Icon("arrow-up-from-line", "")
+					{ i18n.T(ctx, "Publish now") }
+				</button>
+			}
+			if len(row.App.Config.Domains) > 0 {
+				<a href={ templ.SafeURL("https://" + row.App.Config.Domains[0]) } target="_blank" rel="noopener">
+					@ui.Icon("external-link", "")
+					{ i18n.T(ctx, "Open site") }
+				</a>
+				<button type="button" data-copy={ "app-url-" + row.App.ID }>
+					@ui.Icon("copy", "")
+					{ i18n.T(ctx, "Copy address") }
+				</button>
+				<span id={ "app-url-" + row.App.ID } hidden>{ "https://" + row.App.Config.Domains[0] }</span>
+			}
+			<a href={ templ.SafeURL(base + "/logs") } class="md:hidden">
+				@ui.Icon("scroll-text", "")
+				{ i18n.T(ctx, "Logs") }
+			</a>
+			<a href={ templ.SafeURL(base + "/settings") }>
+				@ui.Icon("sliders-horizontal", "")
+				{ i18n.T(ctx, "Settings") }
+			</a>
+			if row.Manage {
+				<hr class="menu-separator"/>
+				if row.App.Config.Stopped {
+					<button type="button" data-on:click={ ui.Post("/ui" + base + "/action/start?from=list") }>
+						@ui.Icon("play", "")
+						{ i18n.T(ctx, "Start") }
+					</button>
+				} else {
+					<button type="button" data-on:click={ openConfirm(row, "app-confirm-restart") }>
+						@ui.Icon("rotate-ccw", "")
+						{ i18n.T(ctx, "Restart") }
+					</button>
+					<button type="button" class="menu-danger" data-on:click={ openConfirm(row, "app-confirm-stop") }>
+						@ui.Icon("square", "")
+						{ i18n.T(ctx, "Stop") }
+					</button>
+				}
+			}
+		</div>
+	</details>
 }

@@ -63,7 +63,58 @@ func TestHomeAttentionForFailedRelease(t *testing.T) {
 func TestAppsListPage(t *testing.T) {
 	e := newEnv(t)
 	res := e.admin().get("/apps")
-	mustContain(t, res.body, "<h1 class=\"page-title\">Apps</h1>", "app-row-dev-app-blog", `aria-current="page"`)
+	mustContain(t, res.body, "<h1 class=\"page-title\">Apps</h1>", "app-row-dev-app-blog", `aria-current="page"`,
+		// Live updates, search, and the status filter with counts.
+		`data-init="@get(&#34;/ui/stream/apps&#34;`, `aria-keyshortcuts="/"`, "data-bind:_q", `id="apps-filters"`,
+		`data-filter="all"`, `data-filter="failing"`, `<span class="segmented-count">3</span>`,
+		`data-group="live"`, `data-search="api api.example.test"`, "No apps match your search.",
+		// Each row has a menu with everyday actions; administrators can also
+		// restart and stop, confirmed in a dialog shared by all rows.
+		`aria-label="Actions for api"`, "Publish now", "/ui/apps/dev-app-api/deploy?latest=1", "Open site", "Copy address",
+		`id="app-url-dev-app-api"`, `href="/apps/dev-app-api/settings"`, `id="app-confirm-stop"`, `id="app-confirm-restart"`,
+		"/action/stop?from=list")
+	member := e.member().get("/apps").body
+	mustContain(t, member, `aria-label="Actions for api"`, "Publish now")
+	mustNotContain(t, member, `id="app-confirm-stop"`, "New app")
+}
+
+func TestAppsListPutsFailingAppsFirst(t *testing.T) {
+	e := newEnv(t)
+	now := time.Now().Unix()
+	if _, err := e.core.DB.Write.ExecContext(e.ctx, `INSERT INTO deployments(id,app_id,sha,message,author,origin,status,queued_at,started_at,finished_at,timings,error_code) VALUES('broken','dev-app-store',?,'Upgrade','Ana','push','failed',?,?,?,'{"clone":100}','health_no_response')`, "dead"+strings.Repeat("0", 36), now, now, now+5); err != nil {
+		t.Fatal(err)
+	}
+	body := e.admin().get("/apps").body
+	store, api := strings.Index(body, `id="app-row-dev-app-store"`), strings.Index(body, `id="app-row-dev-app-api"`)
+	if store < 0 || api < 0 || store > api {
+		t.Fatalf("store (failing) at %d, api at %d", store, api)
+	}
+	mustContain(t, body, `data-group="failing"`)
+}
+
+func TestAppActionFromListLeavesSettingsCards(t *testing.T) {
+	e := newEnv(t)
+	s := e.admin()
+	res := s.post("/ui/apps/dev-app-blog/action/stop?from=list", nil)
+	mustContain(t, res.body, "blog stopped.")
+	mustNotContain(t, res.body, `elements <section id="runtime"`, `elements <section id="danger"`)
+	// A stopped app offers Start instead of Restart and Stop, and no publish.
+	body := s.get("/apps").body
+	row := body[strings.Index(body, `id="app-row-dev-app-blog"`):]
+	row = row[:strings.Index(row, "</li>")]
+	mustContain(t, row, "/ui/apps/dev-app-blog/action/start?from=list")
+	mustNotContain(t, row, "Publish now", "app-confirm-stop")
+}
+
+func TestAppsStream(t *testing.T) {
+	e := newEnv(t)
+	s := e.admin()
+	w, stop := s.open("/ui/stream/apps")
+	defer stop()
+	waitFor(t, w, `"_conn":"live"`)
+	mustContain(t, w.body(), `elements <div id="apps-filters"`, `elements <div id="apps-content"`)
+	s.post("/ui/apps/dev-app-blog/deploy?latest=1", nil)
+	waitFor(t, w, `data-group="publishing"`)
 }
 
 func TestPublishLatestUsesBranchHead(t *testing.T) {

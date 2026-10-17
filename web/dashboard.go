@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/Nelcota/NelcotaDeploy/internal/events"
@@ -29,6 +30,7 @@ func (h *handler) appRows(ctx context.Context) ([]pages.AppRow, []service.Server
 	for _, s := range servers {
 		names[s.ID] = s.Name
 	}
+	p, _ := service.CurrentUser(ctx)
 	rows := make([]pages.AppRow, 0, len(apps))
 	for _, a := range apps {
 		deploys, err := h.s.Deploys.List(ctx, a.ID)
@@ -37,9 +39,24 @@ func (h *handler) appRows(ctx context.Context) ([]pages.AppRow, []service.Server
 		}
 		row := pages.AppRow{App: a, ServerName: names[a.ServerID], State: pages.StateOf(a, deploys)}
 		row.Latest = row.State.Latest
+		row.Publish = (h.s.Repos != nil || row.RedeploySHA() != "") && !a.Config.Stopped && row.State.Key != "publishing"
+		row.Manage = p.Role == "admin"
 		rows = append(rows, row)
 	}
+	// Apps that need a person come first, then those publishing; otherwise
+	// the services' order stays.
+	slices.SortStableFunc(rows, func(a, b pages.AppRow) int { return rowRank(a) - rowRank(b) })
 	return rows, servers, nil
+}
+
+func rowRank(r pages.AppRow) int {
+	switch r.Group() {
+	case "failing":
+		return 0
+	case "publishing":
+		return 1
+	}
+	return 2
 }
 
 // firstSteps is the setup checklist for administrators, derived from existing

@@ -42,7 +42,7 @@ func (h *handler) commandPalette(w http.ResponseWriter, r *http.Request) {
 				pages.Command{Label: a.Name, Hint: "Runtime logs", Icon: "terminal", Href: base + "/logs?deployment=runtime"},
 				pages.Command{Label: a.Name, Hint: "Settings", Icon: "sliders-horizontal", Href: base + "/settings", Keywords: "environment variables domains"},
 			)
-			if (h.s.Repos != nil || row.RedeploySHA() != "") && !a.Config.Stopped && row.State.Key != "publishing" {
+			if row.Publish {
 				deploys = append(deploys, pages.Command{Label: i18n.Tf(r.Context(), "Publish %s", a.Name), Hint: "Latest version", Icon: "arrow-up-from-line", Action: ui.Post("/ui" + base + "/deploy?latest=1"), Keywords: "deploy release"})
 			}
 		}

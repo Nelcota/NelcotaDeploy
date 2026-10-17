@@ -132,6 +132,12 @@
 		var el = e.target instanceof Element ? e.target : null;
 		if (el && el.closest("input, textarea, select, [contenteditable], dialog[open]")) return;
 		var key = e.key.toLowerCase();
+		// "/" jumps to the page's search field, where there is one.
+		if (key === "/") {
+			var search = document.querySelector('[aria-keyshortcuts="/"]');
+			if (search) { e.preventDefault(); search.focus(); }
+			return;
+		}
 		if (pendingG && Date.now() - pendingG < 1200) {
 			pendingG = 0;
 			var link = document.querySelector('a[aria-keyshortcuts="g ' + CSS.escape(key) + '"]');
@@ -154,7 +160,8 @@
 	document.addEventListener("click", async function (e) {
 		var t = e.target instanceof Element ? e.target : null;
 		if (!t) return;
-		closeMenus(t.closest("details.menu"));
+		// Choosing an item closes its menu too.
+		closeMenus(t.closest(".menu-list :is(a, button)") ? null : t.closest("details.menu"));
 		var dismiss = t.closest("[data-toast-dismiss]");
 		if (dismiss) { dismiss.closest("[data-toast]").remove(); return; }
 		var copy = t.closest("[data-copy]");

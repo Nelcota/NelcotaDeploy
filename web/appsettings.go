@@ -395,12 +395,15 @@ func (h *handler) appAction(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			return err
 		}
-		// Stopping enables deletion, so the danger zone is redrawn too.
-		if err := s.patch(pages.RuntimeCard(app), "", ""); err != nil {
-			return err
-		}
-		if err := s.patch(pages.DangerCard(app), "", ""); err != nil {
-			return err
+		// On the settings page, stopping enables deletion, so the danger zone
+		// is redrawn too. App lists follow the change on their live stream.
+		if r.URL.Query().Get("from") != "list" {
+			if err := s.patch(pages.RuntimeCard(app), "", ""); err != nil {
+				return err
+			}
+			if err := s.patch(pages.DangerCard(app), "", ""); err != nil {
+				return err
+			}
 		}
 		messages := map[string]string{"start": "%s is starting.", "stop": "%s stopped.", "restart": "%s is restarting."}
 		tone := "info" // starting and restarting are still under way

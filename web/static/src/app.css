@@ -217,6 +217,12 @@
   .segmented a {
     @apply flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground aria-[current=true]:bg-background aria-[current=true]:font-medium aria-[current=true]:text-foreground aria-[current=true]:shadow-sm;
   }
+  .segmented button {
+    @apply flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm whitespace-nowrap text-muted-foreground outline-none hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50 aria-pressed:bg-background aria-pressed:font-medium aria-pressed:text-foreground aria-pressed:shadow-sm;
+  }
+  .segmented-count {
+    @apply min-w-5 rounded-full bg-foreground/[0.06] px-1.5 text-center text-xs text-muted-foreground tabular-nums;
+  }
   /* Image editor (pages.ImageEditor, editor.js). The canvas is the uploaded
      image; photos show the round crop people will see, logos a checkerboard
      behind transparent areas. */
@@ -452,7 +458,70 @@
   }
   /* App rows: name, last deploy, server, and Logs line up in columns. */
   .app-row {
-    @apply grid grid-cols-1 gap-x-6 gap-y-2 px-3 py-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)_auto] md:items-center lg:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)_10rem_auto];
+    @apply grid grid-cols-1 gap-x-6 gap-y-2 px-3 py-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)_auto_auto] md:items-center lg:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)_10rem_auto_auto];
+  }
+  /* The row menu sits in the last column; on phones, in the top corner. */
+  .app-row > .row-menu {
+    @apply max-md:absolute max-md:top-3 max-md:right-3;
+  }
+  .app-row-name {
+    @apply max-md:pe-10;
+  }
+  .row-menu[open] {
+    @apply z-20;
+  }
+  .row-menu-trigger {
+    @apply grid size-8 place-items-center rounded-lg text-muted-foreground outline-none hover:bg-foreground/5 hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50 [&_svg]:size-4;
+  }
+  .menu-separator {
+    @apply my-1 border-border;
+  }
+  .menu-list .menu-danger {
+    @apply text-destructive [&_svg]:text-destructive;
+  }
+  /* A list with row menus lets them overflow; its ends keep the rounded
+     corners, and a filtered-out last row leaves no divider behind. */
+  .rows:has(.row-menu) {
+    @apply overflow-visible;
+  }
+  .rows:has(.row-menu) > :first-child {
+    @apply rounded-t-xl;
+  }
+  .rows:has(.row-menu) > :last-child {
+    @apply rounded-b-xl;
+  }
+  .rows > li:not(:has(~ li:not([hidden]))) {
+    border-bottom-width: 0;
+  }
+  /* Apps page: search and status filter, hidden while there are no apps. */
+  .apps-toolbar {
+    @apply flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between;
+  }
+  /* On phones the filter spans the width and scrolls if it must. */
+  .apps-toolbar > .segmented {
+    @apply max-sm:w-full max-sm:overflow-x-auto max-sm:[scrollbar-width:none] max-sm:[&>button]:flex-1 max-sm:[&>button]:justify-center max-sm:[&>button]:gap-1.5 max-sm:[&>button]:px-2;
+  }
+  .apps-view:not(:has(.app-row)) .apps-toolbar {
+    @apply hidden;
+  }
+  .apps-search {
+    @apply relative flex w-full items-center sm:max-w-xs;
+  }
+  .apps-search > svg {
+    @apply pointer-events-none absolute left-3 size-4 text-muted-foreground;
+  }
+  .apps-search > .input {
+    @apply h-9 ps-9 pe-9 [&::-webkit-search-cancel-button]:hidden;
+  }
+  .apps-search > .kbd {
+    @apply pointer-events-none absolute right-2.5 max-sm:hidden;
+  }
+  .apps-search:focus-within > .kbd,
+  .apps-search:has(.input:not(:placeholder-shown)) > .kbd {
+    @apply hidden;
+  }
+  .apps-no-match {
+    @apply rounded-xl bg-card px-4 py-10 text-center text-sm text-muted-foreground;
   }
   .app-row .row-thumb {
     @apply size-10 rounded-lg sm:size-10 [&>*]:size-6;

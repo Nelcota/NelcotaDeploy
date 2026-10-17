@@ -36,6 +36,7 @@ func (h *handler) pages(r chi.Router) {
 func (h *handler) actions(r chi.Router) {
 	r.Get("/cmdk", h.commandPalette)
 	r.Get("/stream/dashboard", h.dashboardStream)
+	r.Get("/stream/apps", h.appsStream)
 	r.Get("/stream/apps/{id}/deployments", h.deploymentsStream)
 	r.Get("/stream/apps/{id}/overview", h.overviewStream)
 	r.Post("/apps/{id}/dns", h.checkDNS)

@@ -38,7 +38,7 @@ for name in layout-dashboard server settings arrow-up-from-line git-branch termi
 	database-backup history download refresh-cw x check circle-alert circle-check circle-x loader-circle \
 	sun moon monitor search plus trash-2 eye copy pause play square rotate-ccw undo-2 circle-arrow-up \
 	log-out menu chevron-right cpu clock info triangle-alert external-link lock fingerprint smartphone \
-	user-plus filter ban sliders-horizontal globe arrow-down-to-line brush-cleaning activity box link \
+	user-plus filter ban ellipsis sliders-horizontal globe arrow-down-to-line brush-cleaning activity box link \
 	user camera image-up rotate-cw flip-horizontal-2 mail message-square cloud webhook bell hard-drive memory-stick database layers package; do
 	cp "$modules/lucide-static/icons/$name.svg" "$icons/"
 done

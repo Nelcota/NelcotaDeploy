@@ -3,11 +3,16 @@ package pages
 import (
 	"github.com/Nelcota/NelcotaDeploy/web/i18n"
 	"github.com/Nelcota/NelcotaDeploy/web/ui"
+	"strconv"
 )
 
+// AppsList is the Apps page. Search and the status filter run in the browser
+// ($_q and $_status), so the live stream can redraw rows and counts without
+// touching what the person typed or chose.
 templ AppsList(s Shell, rows []AppRow, err string) {
 	@App(s) {
 		@PageHeader("Apps", "") {
+			@Connection()
 			if s.Admin() {
 				@ui.LinkButton("/apps/new", "", "sm", nil) {
 					@ui.Icon("plus", "")
@@ -15,18 +20,85 @@ templ AppsList(s Shell, rows []AppRow, err string) {
 				}
 			}
 		}
+		@LiveStream("/ui/stream/apps")
+		<div class="apps-view grid gap-4" data-signals="{_q: '', _status: 'all'}">
+			<div class="apps-toolbar">
+				<label class="apps-search">
+					@ui.Icon("search", "")
+					<input
+						type="search"
+						class="input"
+						placeholder={ i18n.T(ctx, "Search apps") }
+						aria-label={ i18n.T(ctx, "Search apps") }
+						aria-keyshortcuts="/"
+						autocomplete="off"
+						spellcheck="false"
+						data-bind:_q
+						data-on:keydown="evt.key === 'Escape' && ($_q = '')"
+					/>
+					<kbd class="kbd" aria-hidden="true">/</kbd>
+				</label>
+				@AppsFilters(rows)
+			</div>
+			@AppsContent(rows, err, s.Admin())
+		</div>
+	}
+}
+
+// appFilter is one status filter with how many apps it holds.
+type appFilter struct {
+	Key, Label string
+	Count      int
+}
+
+func appFilters(rows []AppRow) []appFilter {
+	f := []appFilter{{"all", "All", len(rows)}, {"live", "Live", 0}, {"failing", "Failing", 0}, {"publishing", "Publishing", 0}}
+	for _, r := range rows {
+		for i := range f[1:] {
+			if f[i+1].Key == r.Group() {
+				f[i+1].Count++
+			}
+		}
+	}
+	return f
+}
+
+// AppsFilters picks which apps the list shows. The pressed state comes from
+// $_status alone, so redrawing the counts never resets the choice.
+templ AppsFilters(rows []AppRow) {
+	<div id="apps-filters" class="segmented" role="group" aria-label={ i18n.T(ctx, "Filter by status") }>
+		for _, f := range appFilters(rows) {
+			<button
+				type="button"
+				data-filter={ f.Key }
+				data-on:click={ "$_status = " + ui.JS(f.Key) }
+				data-attr:aria-pressed={ "($_status === " + ui.JS(f.Key) + ") + ''" }
+			>
+				{ i18n.T(ctx, f.Label) }
+				<span class="segmented-count">{ strconv.Itoa(f.Count) }</span>
+			</button>
+		}
+	</div>
+}
+
+// AppsContent is the list, or why there is none.
+templ AppsContent(rows []AppRow, err string, admin bool) {
+	<div id="apps-content">
 		if err != "" {
 			@ui.ErrorState("Apps unavailable", err)
 		} else if len(rows) == 0 {
 			@ui.Empty("box", "No apps yet", "Create an app from a GitHub repository with a Dockerfile.") {
-				if s.Admin() {
+				if admin {
 					@ui.LinkButton("/apps/new", "", "sm", nil) {
 						{ i18n.T(ctx, "New app") }
 					}
 				}
 			}
 		} else {
-			@AppsTable(rows)
+			@AppsTable(rows, true)
+			<p class="apps-no-match" hidden data-attr:hidden={ "[...document.querySelectorAll('#apps-body > li')].some(el => " + rowMatch + ")" }>
+				{ i18n.T(ctx, "No apps match your search.") }
+			</p>
 		}
-	}
+	</div>
 }
