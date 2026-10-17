@@ -533,7 +533,7 @@
     @apply min-w-0 max-md:ps-13;
   }
   .app-row-server {
-    @apply hidden min-w-0 items-center gap-1.5 text-sm text-muted-foreground lg:flex;
+    @apply hidden min-w-0 items-center gap-1.5 text-sm lg:flex [&_svg]:text-muted-foreground;
   }
   .row-main {
     @apply flex min-w-0 flex-1 items-center gap-4 p-3;
@@ -571,7 +571,7 @@
     @apply flex items-center gap-1 border-t px-2 py-2 sm:border-t-0 sm:px-4 sm:py-0;
   }
   .row-action {
-    @apply inline-flex h-8 flex-1 items-center justify-center gap-1.5 rounded-lg px-3 text-sm text-muted-foreground transition-colors hover:bg-foreground/5 hover:text-foreground disabled:opacity-50 sm:flex-none [&_svg]:size-4;
+    @apply inline-flex h-8 flex-1 items-center justify-center gap-1.5 rounded-lg px-3 text-sm transition-colors hover:bg-foreground/5 disabled:opacity-50 [&_svg]:text-muted-foreground sm:flex-none [&_svg]:size-4;
   }
   .mini-meter {
     @apply inline-flex items-center gap-1.5;
@@ -586,8 +586,12 @@
   /* A colored dot and a plain label; color stays on the dot except when the
      state needs attention. */
   .status {
-    @apply inline-flex items-center gap-1.5 text-xs font-medium whitespace-nowrap text-muted-foreground;
+    @apply inline-flex items-center gap-1.5 text-xs font-medium whitespace-nowrap text-foreground;
     --status-dot: var(--muted-foreground);
+  }
+  /* Neutral states (stopped, not published) stay quiet. */
+  .status[data-tone="muted"] {
+    @apply text-muted-foreground;
   }
   .status::before {
     content: "";
@@ -660,7 +664,7 @@
     @apply grid gap-2;
   }
   .settings-group > h3 {
-    @apply px-1 text-sm font-medium text-muted-foreground;
+    @apply px-1 text-sm font-medium;
   }
   .settings-list {
     @apply divide-y rounded-xl bg-card;

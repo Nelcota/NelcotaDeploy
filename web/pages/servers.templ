@@ -166,8 +166,8 @@ templ ServerPanel(s Shell, srv service.Server, apps []service.App) {
 								if a.Config.Stopped {
 									<span class="text-xs text-muted-foreground">{ i18n.T(ctx, "Stopped") }</span>
 								} else {
-									<span class="w-16 text-end text-muted-foreground tabular-nums" title={ i18n.T(ctx, "CPU") } data-app-cpu>—</span>
-									<span class="w-36 text-end text-muted-foreground tabular-nums" title={ i18n.T(ctx, "Memory") } data-app-memory>—</span>
+									<span class="w-16 text-end tabular-nums" title={ i18n.T(ctx, "CPU") } data-app-cpu>—</span>
+									<span class="w-36 text-end tabular-nums" title={ i18n.T(ctx, "Memory") } data-app-memory>—</span>
 								}
 							</li>
 						}

@@ -289,7 +289,7 @@ templ AttentionList(items []Attention) {
 	<section id="attention" class="grid gap-3" aria-labelledby="attention-title">
 		if len(items) == 0 {
 			// Nothing to do: a quiet line instead of a whole section.
-			<p id="attention-title" class="flex items-center gap-2 text-sm text-muted-foreground">
+			<p id="attention-title" class="flex items-center gap-2 text-sm">
 				@ui.Icon("circle-check", "size-4 text-success")
 				{ i18n.T(ctx, "Everything is running normally.") }
 			</p>

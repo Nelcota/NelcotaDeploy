@@ -729,14 +729,14 @@ func OverviewBody(c AppContext, v OverviewView) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 42, "<div class=\"grid gap-4 md:grid-cols-3\"><section class=\"surface grid content-start gap-3 p-5\" aria-labelledby=\"recent-title\"><h2 id=\"recent-title\" class=\"text-sm font-medium text-muted-foreground\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 42, "<div class=\"grid gap-4 md:grid-cols-3\"><section class=\"surface grid content-start gap-3 p-5\" aria-labelledby=\"recent-title\"><h2 id=\"recent-title\" class=\"text-sm font-medium\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var32 string
 		templ_7745c5c3_Var32, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "Recent deployments"))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/overview.templ`, Line: 191, Col: 111}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/overview.templ`, Line: 191, Col: 89}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var32))
 		if templ_7745c5c3_Err != nil {
@@ -835,7 +835,7 @@ func OverviewBody(c AppContext, v OverviewView) templ.Component {
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 52, "</span> <span class=\"min-w-0 flex-1 truncate text-muted-foreground\">")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 52, "</span> <span class=\"min-w-0 flex-1 truncate\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -943,14 +943,14 @@ func OverviewBody(c AppContext, v OverviewView) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 61, "<section class=\"surface grid content-start gap-3 p-5\" aria-labelledby=\"runs-title\"><h2 id=\"runs-title\" class=\"text-sm font-medium text-muted-foreground\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 61, "<section class=\"surface grid content-start gap-3 p-5\" aria-labelledby=\"runs-title\"><h2 id=\"runs-title\" class=\"text-sm font-medium\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var46 string
 		templ_7745c5c3_Var46, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "Runs on"))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/overview.templ`, Line: 219, Col: 98}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/overview.templ`, Line: 219, Col: 76}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var46))
 		if templ_7745c5c3_Err != nil {
@@ -1756,14 +1756,14 @@ func liveCard(c AppContext, v OverviewView) templ.Component {
 			templ_7745c5c3_Var89 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 122, "<section class=\"surface grid gap-4 p-5 sm:p-6\" aria-labelledby=\"live-title\"><div class=\"flex flex-wrap items-start justify-between gap-3\"><div class=\"grid gap-1\"><h2 id=\"live-title\" class=\"text-sm font-medium text-muted-foreground\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 122, "<section class=\"surface grid gap-4 p-5 sm:p-6\" aria-labelledby=\"live-title\"><div class=\"flex flex-wrap items-start justify-between gap-3\"><div class=\"grid gap-1\"><h2 id=\"live-title\" class=\"text-sm font-medium\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var90 string
 		templ_7745c5c3_Var90, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "Online now"))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/overview.templ`, Line: 371, Col: 101}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/overview.templ`, Line: 371, Col: 79}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var90))
 		if templ_7745c5c3_Err != nil {
@@ -2279,14 +2279,14 @@ func UsageCard(app service.App, usage []Container) templ.Component {
 			templ_7745c5c3_Var116 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 167, "<section id=\"usage\" class=\"surface grid content-start gap-3 p-5\" aria-labelledby=\"usage-title\"><h2 id=\"usage-title\" class=\"text-sm font-medium text-muted-foreground\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 167, "<section id=\"usage\" class=\"surface grid content-start gap-3 p-5\" aria-labelledby=\"usage-title\"><h2 id=\"usage-title\" class=\"text-sm font-medium\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var117 string
 		templ_7745c5c3_Var117, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "Usage now"))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/overview.templ`, Line: 455, Col: 99}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/overview.templ`, Line: 455, Col: 77}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var117))
 		if templ_7745c5c3_Err != nil {
