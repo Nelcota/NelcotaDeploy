@@ -12,6 +12,8 @@ import (
 type AppContext struct {
 	App        service.App
 	ServerName string
+	// Server is the app's server, for its status on the overview.
+	Server service.Server
 	Tab        string
 	// Repos is true when the panel can read the app's repository on GitHub.
 	Repos bool

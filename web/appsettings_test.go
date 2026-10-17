@@ -132,13 +132,13 @@ func TestRuntimeActionsAndDelete(t *testing.T) {
 	e := newEnv(t)
 	s := e.admin()
 	mustContain(t, s.post("/ui/apps/dev-app-blog/delete", url.Values{"confirm_name": {"blog"}}).body, "Stop the app before deleting it")
-	mustContain(t, s.post("/ui/apps/dev-app-blog/action/stop", nil).body, "blog stopped.", `elements <section id="runtime"`, "Start")
+	mustContain(t, s.post("/ui/apps/dev-app-blog/action/stop", nil).body, "blog stopped.", `elements <section id="runtime"`, "Start", `elements <section id="danger"`)
 	mustContain(t, s.post("/ui/apps/dev-app-blog/delete", url.Values{"confirm_name": {"wrong"}}).body, "Type the app name exactly to confirm.")
 	mustContain(t, s.post("/ui/apps/dev-app-blog/delete", url.Values{"confirm_name": {"blog"}}).body, `data-redirect="/apps"`)
 	if _, err := e.services().Apps.Get(withUser(e, "development-user"), "dev-app-blog"); err == nil {
 		t.Fatal("app still exists")
 	}
-	mustContain(t, s.post("/ui/apps/dev-app-api/action/start", nil).body, "api starting.")
+	mustContain(t, s.post("/ui/apps/dev-app-api/action/start", nil).body, "api is starting.")
 	mustContain(t, s.post("/ui/apps/dev-app-api/action/restart", nil).body, "Agent unavailable")
 	mustContain(t, s.post("/ui/apps/dev-app-api/action/explode", nil).body, "Invalid action")
 }

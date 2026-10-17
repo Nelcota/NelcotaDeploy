@@ -386,6 +386,7 @@ templ AppSettings(s Shell, c AppContext, v AppSettingsView) {
 				@ImageEditor()
 				@EnvCard(c.App, v.Env, v.EnvErr)
 				@RuntimeCard(c.App)
+				@DangerCard(c.App)
 			} else {
 				@ui.Card("Configuration", "") {
 					@configSummary(c.App)
@@ -576,8 +577,14 @@ templ RuntimeCard(a service.App) {
 				@ui.ConfirmDialog("confirm-stop", i18n.Tf(ctx, "Stop %s?", a.Name), "The app stops serving traffic until you start it again.", "Stop app", ui.Post("/ui/apps/"+a.ID+"/action/stop"), true)
 			}
 		</div>
-		<div class="mt-6 grid gap-3 border-t pt-6">
-			<h3 class="text-sm font-medium text-destructive">{ i18n.T(ctx, "Delete app") }</h3>
+	}
+}
+
+// DangerCard holds the irreversible action, apart from everyday controls.
+// Deleting needs a stopped app, so stopping or starting redraws this card.
+templ DangerCard(a service.App) {
+	@ui.Panel(ui.CardProps{ID: "danger", Class: "danger-zone scroll-mt-6", Title: "Danger zone"}) {
+		<div class="grid gap-3">
 			<p class="muted">{ i18n.T(ctx, "Deleting removes the app, its deployments, and its environment variables. Stop the app and wait for pending deployments first.") }</p>
 			<div>
 				@ui.Button("destructive", "sm", templ.Attributes{"data-on:click": ui.Open("confirm-delete"), "disabled": !a.Config.Stopped}) {

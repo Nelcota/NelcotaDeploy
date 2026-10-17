@@ -392,15 +392,19 @@ func (h *handler) appAction(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			return err
 		}
+		// Stopping enables deletion, so the danger zone is redrawn too.
 		if err := s.patch(pages.RuntimeCard(app), "", ""); err != nil {
 			return err
 		}
-		messages := map[string]string{"start": "starting.", "stop": "stopped.", "restart": "restarting."}
+		if err := s.patch(pages.DangerCard(app), "", ""); err != nil {
+			return err
+		}
+		messages := map[string]string{"start": "%s is starting.", "stop": "%s stopped.", "restart": "%s is restarting."}
 		tone := "info" // starting and restarting are still under way
 		if action == "stop" {
 			tone = "success"
 		}
-		return s.toast(tone, app.Name+" "+messages[action])
+		return s.toast(tone, i18n.Tf(r.Context(), messages[action], app.Name))
 	})
 }
 

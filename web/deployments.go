@@ -23,6 +23,7 @@ func (h *handler) appContext(r *http.Request, tab string) (pages.AppContext, err
 		for _, s := range servers {
 			if s.ID == app.ServerID {
 				c.ServerName = s.Name
+				c.Server = s
 			}
 		}
 	}

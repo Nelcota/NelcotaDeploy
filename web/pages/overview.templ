@@ -192,13 +192,22 @@ templ OverviewBody(c AppContext, v OverviewView) {
 				if len(v.Deployments) == 0 {
 					<p class="text-sm">{ i18n.T(ctx, "None yet") }</p>
 				} else {
-					<ol class="grid gap-1.5 text-sm">
+					<ol class="-mx-2 grid text-sm">
 						for _, d := range v.recent() {
-							<li class="flex items-center gap-2">
-								<span class="release-dot" data-tone={ ui.Tone(d.Status) } aria-hidden="true"></span>
-								<span class="mono">{ ui.ShortSHA(d.SHA) }</span>
-								<span class="text-muted-foreground">{ i18n.T(ctx, ui.StatusLabel(d.Status)) }</span>
-								<time class="ms-auto text-xs text-muted-foreground" datetime={ ui.ISO(d.QueuedAt) } title={ ui.Timestamp(d.QueuedAt) }>{ i18n.T(ctx, ui.Ago(d.QueuedAt)) }</time>
+							<li>
+								<a class="recent-row" href={ templ.SafeURL("/apps/" + c.App.ID + "/logs?deployment=" + d.ID) } title={ i18n.T(ctx, ui.StatusLabel(d.Status)) }>
+									<span class="release-dot" data-tone={ ui.Tone(d.Status) } aria-hidden="true"></span>
+									<span class="sr-only">{ i18n.T(ctx, ui.StatusLabel(d.Status)) }:</span>
+									<span class="mono shrink-0">{ ui.ShortSHA(d.SHA) }</span>
+									<span class="min-w-0 flex-1 truncate text-muted-foreground">
+										if d.Message != "" {
+											{ d.Message }
+										} else {
+											{ i18n.T(ctx, ui.StatusLabel(d.Status)) }
+										}
+									</span>
+									<time class="shrink-0 text-xs text-muted-foreground" datetime={ ui.ISO(d.QueuedAt) } title={ ui.Timestamp(d.QueuedAt) }>{ i18n.T(ctx, ui.Ago(d.QueuedAt)) }</time>
+								</a>
 							</li>
 						}
 					</ol>
@@ -206,10 +215,29 @@ templ OverviewBody(c AppContext, v OverviewView) {
 				}
 			</section>
 			@UsageCard(c.App, v.Usage)
-			<section class="surface grid content-start gap-2 p-5" aria-labelledby="runs-title">
+			<section class="surface grid content-start gap-3 p-5" aria-labelledby="runs-title">
 				<h2 id="runs-title" class="text-sm font-medium text-muted-foreground">{ i18n.T(ctx, "Runs on") }</h2>
-				<p class="font-medium">{ c.ServerName }</p>
-				<p class="text-sm text-muted-foreground">{ u32(c.App.Config.Replicas) } × { ui.Bytes(c.App.Config.MemoryBytes) }, { ui.CPUs(c.App.Config.NanoCPUs) } CPU</p>
+				<div class="flex flex-wrap items-center gap-2">
+					<a class="font-medium hover:underline" href={ templ.SafeURL("/servers#server-" + c.App.ServerID) }>{ c.ServerName }</a>
+					if c.Server.ID != "" {
+						@ui.Status(serverStatus(c.Server))
+					}
+				</div>
+				<dl class="grid grid-cols-3 gap-2 text-sm">
+					<div class="grid gap-0.5">
+						<dt class="text-xs text-muted-foreground">{ i18n.T(ctx, "Copies") }</dt>
+						<dd class="font-medium tabular-nums">{ u32(c.App.Config.Replicas) }</dd>
+					</div>
+					<div class="grid gap-0.5">
+						<dt class="text-xs text-muted-foreground">{ i18n.T(ctx, "Memory") }</dt>
+						<dd class="font-medium tabular-nums">{ ui.Bytes(c.App.Config.MemoryBytes) }</dd>
+					</div>
+					<div class="grid gap-0.5">
+						<dt class="text-xs text-muted-foreground">CPU</dt>
+						<dd class="font-medium tabular-nums">{ ui.CPUs(c.App.Config.NanoCPUs) }</dd>
+					</div>
+				</dl>
+				<p class="text-xs text-muted-foreground">{ i18n.T(ctx, "Limits per copy.") }</p>
 			</section>
 		</div>
 	</div>
@@ -357,9 +385,24 @@ templ liveCard(c AppContext, v OverviewView) {
 						if v.State.Live.Author != "" {
 							{ i18n.Tf(ctx, "by %s", v.State.Live.Author) }
 						}
+						if v.State.Live.StartedAt > 0 && v.State.Live.FinishedAt > 0 {
+							· { i18n.Tf(ctx, "took %s", ui.Span(v.State.Live.StartedAt, v.State.Live.FinishedAt)) }
+						}
 					</p>
 				}
 			</div>
+			if v.State.Live.ID != "" && !c.App.Config.Stopped {
+				<div class="flex flex-wrap gap-2">
+					@ui.LinkButton(templ.SafeURL("/apps/"+c.App.ID+"/logs?deployment=runtime"), "outline", "sm", nil) {
+						@ui.Icon("terminal", "")
+						{ i18n.T(ctx, "Live logs") }
+					}
+					@ui.LinkButton(templ.SafeURL("/apps/"+c.App.ID+"/logs?deployment="+v.State.Live.ID), "ghost", "sm", nil) {
+						@ui.Icon("scroll-text", "")
+						{ i18n.T(ctx, "Build log") }
+					}
+				</div>
+			}
 		</div>
 		if len(c.App.Config.Domains) > 0 {
 			<div class="grid gap-2">
@@ -408,14 +451,26 @@ templ DNSResults(checks []service.DomainCheck) {
 }
 
 templ UsageCard(app service.App, usage []Container) {
-	<section id="usage" class="surface grid content-start gap-2 p-5" aria-labelledby="usage-title">
+	<section id="usage" class="surface grid content-start gap-3 p-5" aria-labelledby="usage-title">
 		<h2 id="usage-title" class="text-sm font-medium text-muted-foreground">{ i18n.T(ctx, "Usage now") }</h2>
 		if len(usage) == 0 {
 			<p class="text-sm">{ i18n.T(ctx, "Waiting for metrics…") }</p>
 		} else {
-			for _, u := range usage {
-				<p class="text-sm"><span class="font-medium tabular-nums">{ ui.Percent(u.CPUPercent) }</span> CPU · <span class="font-medium tabular-nums">{ ui.Bytes(u.MemoryUsed) }</span> { i18n.Tf(ctx, "of %s", ui.Bytes(u.MemoryLimit)) }</p>
-			}
+			{{ cpu, used, limit, cpus := usageTotals(app, usage) }}
+			<div class="grid gap-1.5">
+				<p class="flex items-baseline justify-between text-sm">
+					<span>CPU</span>
+					<span class="text-muted-foreground"><span class="font-medium text-foreground tabular-nums">{ ui.Percent(cpu) }</span> { i18n.Tf(ctx, "of %s", ui.CPUs(cpus) + " CPU") }</span>
+				</p>
+				<progress class="meter" max="1000" value={ permille(cpu, float64(cpus)/1e7) } aria-label={ "CPU " + ui.Percent(cpu) }></progress>
+			</div>
+			<div class="grid gap-1.5">
+				<p class="flex items-baseline justify-between text-sm">
+					<span>{ i18n.T(ctx, "Memory") }</span>
+					<span class="text-muted-foreground"><span class="font-medium text-foreground tabular-nums">{ ui.Bytes(used) }</span> { i18n.Tf(ctx, "of %s", ui.Bytes(limit)) }</span>
+				</p>
+				<progress class="meter" max="1000" value={ ui.Permille(used, limit) } aria-label={ i18n.T(ctx, "Memory") + " " + ui.Usage(used, limit) }></progress>
+			</div>
 			<p class="text-xs text-muted-foreground">{ i18n.N(ctx, len(usage), "%d container", "%d containers") }</p>
 		}
 	</section>

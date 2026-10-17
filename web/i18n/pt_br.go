@@ -993,6 +993,16 @@ var ptBR = map[string]string{
 	"Warmth":          "Temperatura",
 	"Start over":      "Recomeçar",
 	"Save":            "Salvar",
+
+	// App overview and settings.
+	"Live logs":         "Logs ao vivo",
+	"Build log":         "Log da publicação",
+	"took %s":           "levou %s",
+	"Limits per copy.":  "Limites por cópia.",
+	"Danger zone":       "Zona de perigo",
+	"%s is starting.":   "%s está iniciando.",
+	"%s stopped.":       "%s parou.",
+	"%s is restarting.": "%s está reiniciando.",
 }
 
 // ScriptKeys are the strings scripts render in the browser; pages embed their

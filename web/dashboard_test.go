@@ -134,6 +134,10 @@ func TestOverviewPage(t *testing.T) {
 		t.Fatal(res.code)
 	}
 	mustContain(t, res.body, `aria-current="page"`, ">Overview<", ">History<", "Online now", "Version <span class=\"mono\">bbbbbbb</span>", "Publish latest", "Publish a commit", `id="deploy-commit"`, "Recent deployments", "Usage now", "Runs on", "Checking DNS…", "Check again", `data-ignore-morph`, `data-init="@get(&#34;/ui/stream/apps/dev-app-api/overview&#34;`)
+	// Shortcuts to this version's logs, recent rows that open their log, and
+	// the server's status with readable limits.
+	mustContain(t, res.body, "Live logs</a>", `href="/apps/dev-app-api/logs?deployment=runtime"`, "Build log</a>", `href="/apps/dev-app-api/logs?deployment=dev-deploy-api-success"`,
+		`class="recent-row"`, "Demo deployment", `href="/servers#server-dev-server-api"`, `data-status="online"`, "Copies", "Limits per copy.")
 	if res := s.get("/apps/nope"); res.code != http.StatusNotFound {
 		t.Fatal(res.code)
 	}
@@ -254,7 +258,8 @@ func TestOverviewStreamUsage(t *testing.T) {
 	sample, _ := json.Marshal(map[string]any{"server_id": "dev-server-api", "metrics": map[string]any{"containers": []map[string]any{{"app_id": "dev-app-api", "cpu_percent": 7.5, "memory_used": 100 << 20, "memory_limit": 256 << 20}, {"app_id": "other", "cpu_percent": 99}}}})
 	e.core.Hub.Publish("servers", "server.metrics", sample)
 	body := waitFor(t, w, "7.5%")
-	mustContain(t, body, `elements <section id="usage"`, "100.0 MiB", "256.0 MiB")
+	// Meters: 7.5% of one CPU is 75 thousandths; 100 of 256 MiB is 390.
+	mustContain(t, body, `elements <section id="usage"`, "100.0 MiB", "256.0 MiB", "of 1 CPU", `<progress class="meter" max="1000" value="75"`, `value="390"`)
 	mustNotContain(t, body, "99.0%")
 }
 

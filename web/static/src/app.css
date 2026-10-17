@@ -286,6 +286,17 @@
   .see-all {
     @apply text-sm text-link hover:underline;
   }
+  /* Overview: each recent deployment opens its log. */
+  .recent-row {
+    @apply flex items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-muted focus-visible:bg-muted;
+  }
+  /* App settings: the irreversible action stands apart. */
+  .card.danger-zone {
+    @apply ring-1 ring-destructive/35;
+  }
+  .card.danger-zone > header h2 {
+    @apply text-destructive;
+  }
   .section-title {
     @apply text-lg font-medium;
   }
