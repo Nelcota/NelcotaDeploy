@@ -22,8 +22,10 @@ test("switch to Portuguese in account settings and back", async ({ page }) => {
 	await page.goto("/servers");
 	const words = await catalog(page);
 	await expect(page.locator("#metrics-conn")).toHaveText(words["Connected"]);
-	await page.locator('aside a.rail-link[href="/"]').click();
-	await page.locator("#app-row-dev-app-api button[aria-label$=' api']").first().click();
+	await page.locator('aside a.rail-link[href="/apps"]').click();
+	await page.locator("#app-row-dev-app-api .row-link").click();
+	await expect(page).toHaveURL("/apps/dev-app-api");
+	await page.locator('main button[data-on\\:click*="deploy?latest=1"]').click();
 	const toaster = page.locator("#toaster");
 	await expect(toaster).toContainText(" api ");
 	await expect(toaster).not.toContainText("Publishing");

@@ -25,11 +25,13 @@ func TestHomePage(t *testing.T) {
 		`id="first-steps"`, "Suggested next step", "Add a passkey to your account", "/ui/first-steps/hide",
 		"Everything is running normally.",
 		`id="app-row-dev-app-api"`, `href="/apps/dev-app-api"`, `data-state="live"`, ">Live<", "api.example.test", "bbbbbbb",
-		`aria-label="Publish the latest version of api"`, "deploy?latest=1", `id="server-dev-server-api"`, "Waiting for metrics", "New app")
+		`href="https://api.example.test"`, `id="server-dev-server-api"`, "Waiting for metrics", "New app")
+	// Publishing lives on the app page and in the command palette, not in the list.
+	mustNotContain(t, res.body, `aria-label="Publish the latest version of api"`)
 	mustNotContain(t, res.body, "Get your first app online", "checkmark")
 	member := e.member().get("/")
 	mustNotContain(t, member.body, "New app", `id="first-steps"`)
-	mustContain(t, member.body, `aria-label="Publish the latest version of api"`)
+	mustContain(t, member.body, `id="app-row-dev-app-api"`)
 }
 
 func TestFirstStepsChecklistUntilAnAppIsLive(t *testing.T) {

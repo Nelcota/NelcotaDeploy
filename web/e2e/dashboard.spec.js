@@ -1,7 +1,7 @@
 const { test, expect } = require("./fixtures");
 const { devLogin, toast, newClient, connected } = require("./helpers");
 
-test("home shows live metrics, and Publish updates the app's status live", async ({ page }) => {
+test("home shows live metrics, and publishing updates the app's row live", async ({ page }) => {
 	await newClient(page);
 	await devLogin(page);
 	await connected(page);
@@ -9,7 +9,11 @@ test("home shows live metrics, and Publish updates the app's status live", async
 	await expect(page.getByText("Everything is running normally.")).toBeVisible();
 	await expect(page.locator("#server-dev-server-api").getByText("CPU")).toBeVisible();
 	const row = page.locator("#app-row-dev-app-api");
-	await row.getByRole("button", { name: "Publish the latest version of api" }).click();
+	// The list has no Publish button; the command palette publishes in place.
+	await page.keyboard.press("Control+K");
+	const input = page.getByRole("dialog", { name: "Command palette" }).getByRole("combobox");
+	await input.fill("publish api");
+	await input.press("Enter");
 	await toast(page, "Publishing api at");
 	const status = row.locator("[data-state]");
 	await expect(status).toHaveAttribute("data-state", /publishing|live/);
