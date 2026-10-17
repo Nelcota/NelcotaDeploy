@@ -43,7 +43,7 @@ func (h *handler) commandPalette(w http.ResponseWriter, r *http.Request) {
 				pages.Command{Label: a.Name, Hint: "Settings", Icon: "sliders-horizontal", Href: base + "/settings", Keywords: "environment variables domains"},
 			)
 			if (h.s.Repos != nil || row.RedeploySHA() != "") && !a.Config.Stopped && row.State.Key != "publishing" {
-				deploys = append(deploys, pages.Command{Label: i18n.Tf(r.Context(), "Publish %s", a.Name), Hint: "Latest version", Icon: "rocket", Action: ui.Post("/ui" + base + "/deploy?latest=1"), Keywords: "deploy release"})
+				deploys = append(deploys, pages.Command{Label: i18n.Tf(r.Context(), "Publish %s", a.Name), Hint: "Latest version", Icon: "arrow-up-from-line", Action: ui.Post("/ui" + base + "/deploy?latest=1"), Keywords: "deploy release"})
 			}
 		}
 		groups = append(groups, pages.CommandGroup{Label: "Apps", Commands: apps})

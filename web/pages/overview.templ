@@ -52,7 +52,7 @@ templ overviewActions(c AppContext, v OverviewView) {
 	} else if !c.App.Config.Stopped {
 		if v.CanLatest || v.State.Latest.SHA != "" || c.App.DesiredSHA != "" {
 			@ui.Button("", "sm", templ.Attributes{"data-on:click": ui.Post("/ui/apps/" + c.App.ID + "/deploy?latest=1")}) {
-				@ui.Icon("rocket", "")
+				@ui.Icon("arrow-up-from-line", "")
 				{ i18n.T(ctx, "Publish latest") }
 			}
 		}
@@ -336,7 +336,7 @@ templ failureCard(c AppContext, v OverviewView) {
 			// When the log names the real port, switching to it is the likely fix.
 			if v.Admin && v.SuggestedPort > 0 {
 				<button type="button" class="btn" data-size="sm" data-on:click={ ui.Post("/ui/deployments/" + v.State.Latest.ID + "/port?port=" + u32(v.SuggestedPort)) }>
-					@ui.Icon("rocket", "")
+					@ui.Icon("arrow-up-from-line", "")
 					{ i18n.Tf(ctx, "Use port %d and publish", v.SuggestedPort) }
 				</button>
 			}

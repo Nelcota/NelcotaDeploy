@@ -34,7 +34,7 @@ cp "$basecoat/styles/vega.css" "$vendor/basecoat/styles/"
 cp "$modules/basecoat-css/LICENSE"* "$vendor/basecoat/" 2>/dev/null || true
 
 # Lucide icons used by web/ui. Add a name here, then run make web-vendor.
-for name in layout-dashboard server settings rocket git-branch terminal scroll-text users key-round \
+for name in layout-dashboard server settings arrow-up-from-line git-branch terminal scroll-text users key-round \
 	database-backup history download refresh-cw x check circle-alert circle-check circle-x loader-circle \
 	sun moon monitor search plus trash-2 eye copy pause play square rotate-ccw undo-2 circle-arrow-up \
 	log-out menu chevron-right cpu clock info triangle-alert external-link lock fingerprint smartphone \

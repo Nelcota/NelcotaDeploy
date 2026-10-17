@@ -69,7 +69,7 @@ func TestExpressionsEscapeValues(t *testing.T) {
 }
 
 func TestIcons(t *testing.T) {
-	out := markup(t, Icon("rocket", "size-5"))
+	out := markup(t, Icon("arrow-up-from-line", "size-5"))
 	if !strings.HasPrefix(out, "<svg") || !strings.Contains(out, `aria-hidden="true"`) || !strings.Contains(out, `class="size-5"`) || !strings.Contains(out, "<path") {
 		t.Fatal(out)
 	}
