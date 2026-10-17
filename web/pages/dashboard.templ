@@ -116,8 +116,10 @@ templ Dashboard(s Shell, v DashboardView) {
 		@PageHeader("Home", "") {
 			@Connection()
 			if s.Admin() {
-				@ui.LinkButton("/apps/new", "", "sm", nil) {
-					@ui.Icon("plus", "")
+				@ui.LinkButton("/apps/new", "cta", "", nil) {
+					<span class="btn-cta-icon">
+						@ui.Icon("plus", "")
+					</span>
 					{ i18n.T(ctx, "New app") }
 				}
 			}
