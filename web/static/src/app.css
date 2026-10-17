@@ -146,13 +146,13 @@
     @apply relative grid size-11 place-items-center rounded-xl transition-colors [&_svg]:size-5;
   }
   .rail-link:hover .rail-icon {
-    @apply bg-muted;
+    @apply bg-foreground/5;
   }
   .rail-link[aria-current="page"] {
     @apply font-medium text-foreground;
   }
   .rail-link[aria-current="page"] .rail-icon {
-    @apply bg-primary/20 text-link;
+    @apply bg-foreground/10 text-foreground;
   }
   .rail-button {
     @apply grid size-10 place-items-center rounded-xl text-muted-foreground hover:bg-muted hover:text-foreground [&_svg]:size-5;
