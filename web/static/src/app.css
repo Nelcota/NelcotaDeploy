@@ -43,6 +43,8 @@
    accent colors in both themes. */
 :root {
   --radius: 0.625rem;
+  /* Filled controls; white text on it meets WCAG AA in both themes. */
+  --accent-fill: #047857;
   --frame: #e8ece9;
   --background: #ffffff;
   --foreground: #101412;
@@ -655,6 +657,21 @@
     to {
       opacity: 0;
     }
+  }
+  /* Buttons follow Apple's current controls: capsules, a filled accent for
+     the primary action, no shadow, and a slight press instead of a lift. */
+  .btn,
+  .btn[data-size] {
+    @apply rounded-full transition-[background-color,color,filter,scale] duration-150 active:not-aria-[haspopup]:translate-y-0 active:not-aria-[haspopup]:scale-[0.97] motion-reduce:active:scale-100;
+  }
+  .btn:not([data-variant]),
+  .btn[data-variant="primary"] {
+    @apply bg-[var(--accent-fill)] font-semibold text-white hover:bg-[var(--accent-fill)] hover:brightness-110;
+  }
+  .btn:not([data-size]),
+  .btn[data-size="default"],
+  .btn[data-size="sm"] {
+    @apply gap-1.5 px-4;
   }
   .btn[aria-pressed="true"] {
     @apply border-primary/40 bg-muted text-foreground;
