@@ -33,7 +33,7 @@ func (v DeploymentsView) redeploySHA(app service.App) string {
 templ deployActions(c AppContext, v DeploymentsView) {
 	if !c.App.Config.Stopped && v.redeploySHA(c.App) != "" {
 		@ui.Button("", "sm", templ.Attributes{"data-on:click": ui.Post("/ui/apps/" + c.App.ID + "/deploy?latest=1")}) {
-			@ui.Icon("rocket", "")
+			@ui.Icon("arrow-up-from-line", "")
 			{ i18n.T(ctx, "Publish latest") }
 		}
 	}
@@ -55,7 +55,7 @@ templ DeploymentsTable(app service.App, v DeploymentsView) {
 		if v.Err != "" {
 			@ui.ErrorState("Deployments unavailable", v.Err)
 		} else if len(v.Deployments) == 0 {
-			@ui.Empty("rocket", "No deployments yet", i18n.Tf(ctx, "Pushes to %s publish automatically once the GitHub App is installed.", app.Branch))
+			@ui.Empty("arrow-up-from-line", "No deployments yet", i18n.Tf(ctx, "Pushes to %s publish automatically once the GitHub App is installed.", app.Branch))
 		} else {
 			<ul class="rows" aria-label={ i18n.T(ctx, "Deployment history") }>
 				for _, d := range v.Deployments {
@@ -99,7 +99,7 @@ func message(ctx context.Context, d service.Deployment) string {
 templ deploymentRow(app service.App, d service.Deployment, live bool) {
 	<li id={ "deployment-" + d.ID } class="row" data-deployment-status={ d.Status }>
 		<div class="row-main items-start">
-			<span class="row-thumb size-12 rounded-xl" data-tone={ deployTone(d.Status) } aria-hidden="true">
+			<span class={ "row-thumb size-12 rounded-xl", deployIconColor(d.Status) } data-tone="muted" aria-hidden="true">
 				if ui.Active(d.Status) && d.Status != "queued" {
 					@ui.Icon(statusIcon(d.Status), "animate-spin")
 				} else {
@@ -184,15 +184,16 @@ templ deploymentRow(app service.App, d service.Deployment, live bool) {
 	</li>
 }
 
-// deployTone maps a status to a pastel tile; failures use a neutral tile with
-// the danger color carried by the status pill.
-func deployTone(status string) string {
+// deployIconColor colors the status icon on its neutral tile.
+func deployIconColor(status string) string {
 	switch status {
 	case "success":
-		return "1"
-	case "failed", "cancelled":
-		return "muted"
+		return "text-success"
+	case "failed":
+		return "text-destructive"
+	case "cancelled":
+		return ""
 	default:
-		return "2"
+		return "text-foreground"
 	}
 }

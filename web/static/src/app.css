@@ -376,16 +376,16 @@
     @apply flex flex-wrap gap-1.5;
   }
   .stage {
-    @apply inline-flex items-center gap-1.5 rounded-full border border-border px-2.5 py-1 text-xs text-muted-foreground;
+    @apply inline-flex items-center gap-1.5 py-1 pe-3 text-xs text-muted-foreground;
   }
   .stage[data-state="done"] {
-    @apply border-success/40 text-foreground [&_svg]:text-success;
+    @apply text-foreground/80 [&_svg]:text-success;
   }
   .stage[data-state="current"] {
-    @apply border-primary/50 bg-primary/10 font-medium text-foreground;
+    @apply font-medium text-foreground;
   }
   .stage[data-state="failed"] {
-    @apply border-destructive/50 bg-destructive/10 font-medium text-destructive;
+    @apply font-medium text-destructive;
   }
   .failure {
     @apply rounded-[1.5rem] border border-destructive/30 bg-destructive/[0.06];
@@ -462,13 +462,10 @@
     @apply -ms-2.5 me-1 text-muted-foreground/60 max-sm:hidden;
   }
   .row-actions {
-    @apply flex border-t sm:border-t-0 sm:border-l;
+    @apply flex items-center gap-1 border-t px-2 py-2 sm:border-t-0 sm:px-4 sm:py-0;
   }
   .row-action {
-    @apply flex flex-1 flex-row items-center justify-center gap-2 px-4 py-3 text-xs text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50 sm:w-24 sm:flex-none sm:flex-col sm:py-0 [&_svg]:size-4;
-  }
-  .row-action + .row-action {
-    @apply border-l;
+    @apply inline-flex h-8 flex-1 items-center justify-center gap-1.5 rounded-lg px-3 text-sm text-muted-foreground transition-colors hover:bg-foreground/5 hover:text-foreground disabled:opacity-50 sm:flex-none [&_svg]:size-4;
   }
   .mini-meter {
     @apply inline-flex items-center gap-1.5;
@@ -480,30 +477,32 @@
   .skip-link {
     @apply sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-50 focus:rounded-md focus:bg-primary focus:px-3 focus:py-2 focus:text-primary-foreground;
   }
+  /* A colored dot and a plain label; color stays on the dot except when the
+     state needs attention. */
   .status {
-    @apply inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-xs font-medium whitespace-nowrap;
+    @apply inline-flex items-center gap-1.5 text-xs font-medium whitespace-nowrap text-muted-foreground;
+    --status-dot: var(--muted-foreground);
   }
   .status::before {
     content: "";
-    @apply size-1.5 rounded-full bg-current;
+    @apply size-1.5 shrink-0 rounded-full bg-[var(--status-dot)];
   }
   .status[data-tone="success"] {
-    @apply border-success/30 bg-success/10 text-success;
+    --status-dot: var(--success);
   }
   .status[data-tone="danger"] {
-    @apply border-destructive/30 bg-destructive/10 text-destructive;
+    @apply text-destructive;
+    --status-dot: var(--destructive);
   }
   .status[data-tone="warning"] {
-    @apply border-warning/30 bg-warning/10 text-warning;
+    @apply text-warning;
+    --status-dot: var(--warning);
   }
   .status[data-tone="progress"] {
-    @apply border-primary/30 bg-primary/10 text-link;
+    --status-dot: var(--primary);
   }
   .status[data-tone="info"] {
-    @apply border-info/30 bg-info/10 text-info;
-  }
-  .status[data-tone="muted"] {
-    @apply border-border bg-muted text-muted-foreground;
+    --status-dot: var(--info);
   }
   .toaster {
     @apply pointer-events-none fixed inset-x-0 bottom-0 z-50 flex flex-col items-center gap-2 p-4 sm:items-end;

@@ -311,10 +311,7 @@ templ miniMeter(label string, used, total int64) {
 
 templ ServerCard(srv service.Server, m Metrics) {
 	<article id={ "server-" + srv.ID } class="row" aria-label={ srv.Name }>
-		<div class="row-main">
-			<span class="row-thumb" data-tone="muted" aria-hidden="true">
-				@ui.Icon("server", "")
-			</span>
+		<div class="row-main px-5 py-4">
 			<div class="min-w-0 flex-1">
 				<div class="flex flex-wrap items-center gap-2">
 					<h3 class="truncate font-medium">{ srv.Name }</h3>
@@ -334,8 +331,8 @@ templ ServerCard(srv service.Server, m Metrics) {
 		</div>
 		<div class="row-actions">
 			<a class="row-action" href="/servers" aria-label={ i18n.Tf(ctx, "Details for %s", srv.Name) }>
-				@ui.Icon("chevron-right", "")
 				{ i18n.T(ctx, "Details") }
+				@ui.Icon("chevron-right", "")
 			</a>
 		</div>
 	</article>
@@ -416,7 +413,7 @@ templ AppRowView(row AppRow) {
 					</a>
 				default:
 					<button type="button" class="row-action" data-on:click={ ui.Post("/ui/apps/" + row.App.ID + "/deploy?latest=1") } aria-label={ i18n.Tf(ctx, "Publish the latest version of %s", row.App.Name) }>
-						@ui.Icon("rocket", "")
+						@ui.Icon("arrow-up-from-line", "")
 						{ i18n.T(ctx, "Publish") }
 					</button>
 			}
