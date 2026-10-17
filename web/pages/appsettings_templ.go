@@ -320,7 +320,7 @@ func AppForm(v AppFormView, logo templ.Component) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 21, "<div class=\"sticky bottom-24 z-10 hidden flex-wrap items-center justify-end gap-3 rounded-[1.5rem] border bg-background/90 p-3 shadow-lg shadow-black/10 backdrop-blur lg:bottom-6\" data-class:hidden=\"!$_dirty\" data-class:flex=\"$_dirty\"><p class=\"me-auto text-sm text-muted-foreground\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 21, "<div class=\"sticky bottom-24 z-10 hidden flex-wrap items-center justify-end gap-3 rounded-2xl border bg-background/90 p-3 shadow-lg shadow-black/10 backdrop-blur lg:bottom-6\" data-class:hidden=\"!$_dirty\" data-class:flex=\"$_dirty\"><p class=\"me-auto text-sm text-muted-foreground\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -3717,14 +3717,14 @@ func DangerCard(a service.App) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 232, "</div><dialog id=\"confirm-delete\" class=\"dialog\" aria-labelledby=\"confirm-delete-title\" data-on:click=\"evt.target === el && el.close()\" data-ignore-morph><form class=\"w-[calc(100%-2rem)] max-w-md gap-4 rounded-[1.5rem] border bg-background p-6 shadow-lg\" data-on:submit=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 232, "</div><dialog id=\"confirm-delete\" class=\"dialog\" aria-labelledby=\"confirm-delete-title\" data-on:click=\"evt.target === el && el.close()\" data-ignore-morph><form class=\"w-[calc(100%-2rem)] max-w-md gap-4 rounded-2xl border bg-background p-6 shadow-lg\" data-on:submit=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var187 string
 			templ_7745c5c3_Var187, templ_7745c5c3_Err = templ.ResolveAttributeValue(ui.PostForm("/ui/apps/" + a.ID + "/delete"))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/appsettings.templ`, Line: 617, Col: 165}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/appsettings.templ`, Line: 617, Col: 160}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var187)
 			if templ_7745c5c3_Err != nil {

@@ -194,14 +194,14 @@ func ReauthDialog(email string) templ.Component {
 			templ_7745c5c3_Var8 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, "<dialog id=\"reauth\" class=\"dialog\" aria-labelledby=\"reauth-title\" data-effect=\"$_reauth && !el.open && el.showModal()\" data-on:close=\"$_reauth = false\"><div class=\"w-[calc(100%-2rem)] max-w-md gap-4 rounded-[1.5rem] border bg-background p-6 shadow-lg\" data-reauth-root data-email=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, "<dialog id=\"reauth\" class=\"dialog\" aria-labelledby=\"reauth-title\" data-effect=\"$_reauth && !el.open && el.showModal()\" data-on:close=\"$_reauth = false\"><div class=\"w-[calc(100%-2rem)] max-w-md gap-4 rounded-2xl border bg-background p-6 shadow-lg\" data-reauth-root data-email=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var9 string
 		templ_7745c5c3_Var9, templ_7745c5c3_Err = templ.ResolveAttributeValue(email)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/common.templ`, Line: 42, Col: 137}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/common.templ`, Line: 42, Col: 132}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var9)
 		if templ_7745c5c3_Err != nil {

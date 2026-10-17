@@ -12,7 +12,7 @@ import (
 // closes on an outside click, so a stray click can't discard edits.
 templ ImageEditor() {
 	<dialog id="image-editor" class="dialog" aria-labelledby="image-editor-title" aria-describedby="image-editor-body" data-src={ static.Path("editor.js") } data-ignore-morph>
-		<div class="w-[calc(100%-2rem)] max-w-2xl gap-5 overflow-y-auto rounded-[1.5rem] border bg-background p-6 shadow-lg">
+		<div class="w-[calc(100%-2rem)] max-w-2xl gap-5 overflow-y-auto rounded-2xl border bg-background p-6 shadow-lg">
 			<header class="gap-1.5">
 				<h2 id="image-editor-title" class="text-lg font-semibold">{ i18n.T(ctx, "Edit image") }</h2>
 				<p id="image-editor-body" class="text-sm text-muted-foreground">{ i18n.T(ctx, "Drag to position it, then adjust. Nothing is saved until you select Save.") }</p>

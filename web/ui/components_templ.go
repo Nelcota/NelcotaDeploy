@@ -1557,7 +1557,7 @@ func ConfirmDialog(id, title, body, confirmLabel, action string, destructive boo
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 115, "\" data-on:click=\"evt.target === el && el.close()\" data-ignore-morph><div class=\"w-[calc(100%-2rem)] max-w-md gap-4 rounded-[1.5rem] border bg-background p-6 shadow-lg\"><header class=\"gap-1.5\"><h2 id=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 115, "\" data-on:click=\"evt.target === el && el.close()\" data-ignore-morph><div class=\"w-[calc(100%-2rem)] max-w-md gap-4 rounded-2xl border bg-background p-6 shadow-lg\"><header class=\"gap-1.5\"><h2 id=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -1722,7 +1722,7 @@ func Dialog(id, title, description string) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 128, "\" data-on:click=\"evt.target === el && el.close()\" data-ignore-morph><div class=\"w-[calc(100%-2rem)] max-w-lg gap-4 overflow-y-auto rounded-[1.5rem] border bg-background p-6 shadow-lg\"><header class=\"gap-1.5 pr-8\"><h2 id=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 128, "\" data-on:click=\"evt.target === el && el.close()\" data-ignore-morph><div class=\"w-[calc(100%-2rem)] max-w-lg gap-4 overflow-y-auto rounded-2xl border bg-background p-6 shadow-lg\"><header class=\"gap-1.5 pr-8\"><h2 id=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

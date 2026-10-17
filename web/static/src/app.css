@@ -42,7 +42,7 @@
    link text are at least 5.2:1 on the frame, background, card, muted, and
    accent colors in both themes. */
 :root {
-  --radius: 1rem;
+  --radius: 0.625rem;
   --frame: #e8ece9;
   --background: #ffffff;
   --foreground: #101412;
@@ -322,7 +322,7 @@
 
   /* Stat tiles */
   .tile {
-    @apply flex min-h-32 flex-col justify-between gap-6 rounded-[1.5rem] bg-[var(--tile-1)] p-5 text-tile-fg sm:min-h-36 sm:p-6;
+    @apply flex min-h-32 flex-col justify-between gap-6 rounded-xl bg-[var(--tile-1)] p-5 text-tile-fg sm:min-h-36 sm:p-6;
   }
   .tile[data-tone="2"] {
     @apply bg-[var(--tile-2)];
@@ -333,7 +333,7 @@
 
   /* Surfaces and lists */
   .surface {
-    @apply rounded-[1.5rem] bg-card;
+    @apply rounded-xl bg-card;
   }
   .checkitem {
     @apply flex flex-wrap items-center gap-3 rounded-xl border border-border px-3 py-2.5 sm:flex-nowrap;
@@ -361,7 +361,7 @@
     @apply grid size-6 shrink-0 place-items-center rounded-md bg-muted text-xs font-semibold text-muted-foreground tabular-nums;
   }
   .notice-row {
-    @apply flex flex-wrap items-center gap-3 rounded-[1.5rem] border border-l-4 bg-card px-4 py-3 sm:flex-nowrap;
+    @apply flex flex-wrap items-center gap-3 rounded-xl border border-l-4 bg-card px-4 py-3 sm:flex-nowrap;
   }
   .notice-row[data-tone="danger"] {
     @apply border-l-destructive;
@@ -388,7 +388,7 @@
     @apply font-medium text-destructive;
   }
   .failure {
-    @apply rounded-[1.5rem] border border-destructive/30 bg-destructive/[0.06];
+    @apply rounded-xl border border-destructive/30 bg-destructive/[0.06];
   }
   .log-tail {
     @apply overflow-x-auto rounded-xl bg-[#0b0d10] p-3 font-mono text-xs leading-relaxed whitespace-pre text-[#d4d8dd];
@@ -423,11 +423,46 @@
   }
 
   /* Rows */
+  /* A list is one surface with dividers, so long lists stay calm. */
   .rows {
-    @apply grid gap-2.5;
+    @apply grid divide-y divide-border overflow-hidden rounded-xl bg-card;
   }
   .row {
-    @apply flex flex-col overflow-hidden rounded-[1.5rem] bg-card sm:flex-row;
+    @apply relative flex flex-col sm:flex-row;
+  }
+  /* A row whose main link covers it: hover tints the row, and links marked
+     row-over stay clickable above the cover. */
+  .row:has(.row-link):hover {
+    @apply bg-foreground/[0.025];
+  }
+  .row-link::after {
+    content: "";
+    @apply absolute inset-0;
+  }
+  .row-link:focus-visible {
+    @apply outline-none;
+  }
+  .row:has(.row-link:focus-visible) {
+    @apply outline-2 -outline-offset-2 outline-ring;
+  }
+  .row-over {
+    @apply relative z-10;
+  }
+  /* App rows: name, last deploy, server, and Logs line up in columns. */
+  .app-row {
+    @apply grid grid-cols-1 gap-x-6 gap-y-2 px-3 py-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)_auto] md:items-center lg:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)_10rem_auto];
+  }
+  .app-row .row-thumb {
+    @apply size-10 rounded-lg sm:size-10 [&>*]:size-6;
+  }
+  .app-row-name {
+    @apply flex min-w-0 items-center gap-3;
+  }
+  .app-row-deploy {
+    @apply min-w-0 max-md:ps-13;
+  }
+  .app-row-server {
+    @apply hidden min-w-0 items-center gap-1.5 text-sm text-muted-foreground lg:flex;
   }
   .row-main {
     @apply flex min-w-0 flex-1 items-center gap-4 p-3;
@@ -557,7 +592,7 @@
     @apply px-1 text-sm font-medium text-muted-foreground;
   }
   .settings-list {
-    @apply divide-y rounded-[1.5rem] bg-card;
+    @apply divide-y rounded-xl bg-card;
   }
   .setting-row {
     @apply grid gap-4 p-5 sm:px-6;
@@ -649,9 +684,9 @@
     @apply flex items-center justify-between gap-3 px-4 py-2.5;
   }
 
-  /* Rounder Basecoat surfaces to match the panel. */
+  /* Basecoat cards use the same radius as other inner surfaces. */
   .card {
-    @apply rounded-[1.5rem] bg-card ring-0;
+    @apply rounded-xl bg-card ring-0;
   }
 
   /* Phones: at least 44 px to tap. An invisible layer around small controls

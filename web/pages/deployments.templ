@@ -99,7 +99,7 @@ func message(ctx context.Context, d service.Deployment) string {
 templ deploymentRow(app service.App, d service.Deployment, live bool) {
 	<li id={ "deployment-" + d.ID } class="row" data-deployment-status={ d.Status }>
 		<div class="row-main items-start">
-			<span class={ "row-thumb size-12 rounded-xl", deployIconColor(d.Status) } data-tone="muted" aria-hidden="true">
+			<span class={ "row-thumb size-10 rounded-lg sm:size-10", deployIconColor(d.Status) } data-tone="muted" aria-hidden="true">
 				if ui.Active(d.Status) && d.Status != "queued" {
 					@ui.Icon(statusIcon(d.Status), "animate-spin")
 				} else {

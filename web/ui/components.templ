@@ -298,7 +298,7 @@ templ ToastTemplates() {
 // morphing so live re-renders never close one the user has open.
 templ ConfirmDialog(id, title, body, confirmLabel, action string, destructive bool) {
 	<dialog id={ id } class="dialog" aria-labelledby={ id + "-title" } aria-describedby={ id + "-body" } data-on:click="evt.target === el && el.close()" data-ignore-morph>
-		<div class="w-[calc(100%-2rem)] max-w-md gap-4 rounded-[1.5rem] border bg-background p-6 shadow-lg">
+		<div class="w-[calc(100%-2rem)] max-w-md gap-4 rounded-2xl border bg-background p-6 shadow-lg">
 			<header class="gap-1.5">
 				<h2 id={ id + "-title" } class="text-lg font-semibold">{ i18n.T(ctx, title) }</h2>
 				<p id={ id + "-body" } class="text-sm text-muted-foreground">{ i18n.T(ctx, body) }</p>
@@ -323,7 +323,7 @@ templ ConfirmDialog(id, title, body, confirmLabel, action string, destructive bo
 // Dialog renders a general modal with a close button.
 templ Dialog(id, title, description string) {
 	<dialog id={ id } class="dialog" aria-labelledby={ id + "-title" } data-on:click="evt.target === el && el.close()" data-ignore-morph>
-		<div class="w-[calc(100%-2rem)] max-w-lg gap-4 overflow-y-auto rounded-[1.5rem] border bg-background p-6 shadow-lg">
+		<div class="w-[calc(100%-2rem)] max-w-lg gap-4 overflow-y-auto rounded-2xl border bg-background p-6 shadow-lg">
 			<header class="gap-1.5 pr-8">
 				<h2 id={ id + "-title" } class="text-lg font-semibold">{ i18n.T(ctx, title) }</h2>
 				if description != "" {

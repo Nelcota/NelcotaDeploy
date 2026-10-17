@@ -337,7 +337,7 @@ templ LiveStream(url string) {
 
 templ CommandPalette() {
 	<dialog id="cmdk" class="dialog" aria-label={ i18n.T(ctx, "Command palette") }>
-		<div class="top-[12vh] w-[calc(100%-2rem)] max-w-xl -translate-y-0 gap-0 overflow-hidden rounded-[1.5rem] border bg-popover p-0 text-popover-foreground shadow-lg">
+		<div class="top-[12vh] w-[calc(100%-2rem)] max-w-xl -translate-y-0 gap-0 overflow-hidden rounded-2xl border bg-popover p-0 text-popover-foreground shadow-lg">
 			<div class="flex items-center gap-2 border-b px-3">
 				@ui.Icon("search", "size-4 text-muted-foreground")
 				<input id="cmdk-input" class="h-12 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground" type="text" placeholder={ i18n.T(ctx, "Search apps, pages, and actions") } autocomplete="off" spellcheck="false" role="combobox" aria-expanded="true" aria-controls="cmdk-list" aria-autocomplete="list"/>

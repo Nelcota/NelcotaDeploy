@@ -1774,7 +1774,7 @@ func CommandPalette() templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 121, "\"><div class=\"top-[12vh] w-[calc(100%-2rem)] max-w-xl -translate-y-0 gap-0 overflow-hidden rounded-[1.5rem] border bg-popover p-0 text-popover-foreground shadow-lg\"><div class=\"flex items-center gap-2 border-b px-3\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 121, "\"><div class=\"top-[12vh] w-[calc(100%-2rem)] max-w-xl -translate-y-0 gap-0 overflow-hidden rounded-2xl border bg-popover p-0 text-popover-foreground shadow-lg\"><div class=\"flex items-center gap-2 border-b px-3\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

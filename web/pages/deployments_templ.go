@@ -343,7 +343,7 @@ func deploymentRow(app service.App, d service.Deployment, live bool) templ.Compo
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		var templ_7745c5c3_Var13 = []any{"row-thumb size-12 rounded-xl", deployIconColor(d.Status)}
+		var templ_7745c5c3_Var13 = []any{"row-thumb size-10 rounded-lg sm:size-10", deployIconColor(d.Status)}
 		templ_7745c5c3_Err = templ.RenderCSSItems(ctx, templ_7745c5c3_Buffer, templ_7745c5c3_Var13...)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err

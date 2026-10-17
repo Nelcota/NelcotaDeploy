@@ -39,7 +39,7 @@ templ ReauthDialog(email string) {
 		data-effect="$_reauth && !el.open && el.showModal()"
 		data-on:close="$_reauth = false"
 	>
-		<div class="w-[calc(100%-2rem)] max-w-md gap-4 rounded-[1.5rem] border bg-background p-6 shadow-lg" data-reauth-root data-email={ email }>
+		<div class="w-[calc(100%-2rem)] max-w-md gap-4 rounded-2xl border bg-background p-6 shadow-lg" data-reauth-root data-email={ email }>
 			<header class="gap-1.5">
 				<h2 id="reauth-title" class="text-lg font-semibold">{ i18n.T(ctx, "Confirm it's you") }</h2>
 				<p class="text-sm text-muted-foreground">{ i18n.T(ctx, "This action requires a passkey sign-in within the last five minutes.") }</p>

@@ -65,7 +65,7 @@ templ AppForm(v AppFormView, logo templ.Component) {
 				@runtimeFields(v.Input.Config)
 			</div>
 		}
-		<div class="sticky bottom-24 z-10 hidden flex-wrap items-center justify-end gap-3 rounded-[1.5rem] border bg-background/90 p-3 shadow-lg shadow-black/10 backdrop-blur lg:bottom-6" data-class:hidden="!$_dirty" data-class:flex="$_dirty">
+		<div class="sticky bottom-24 z-10 hidden flex-wrap items-center justify-end gap-3 rounded-2xl border bg-background/90 p-3 shadow-lg shadow-black/10 backdrop-blur lg:bottom-6" data-class:hidden="!$_dirty" data-class:flex="$_dirty">
 			<p class="me-auto text-sm text-muted-foreground">{ i18n.T(ctx, "Saving restarts the app with the new settings.") }</p>
 			<button type="submit" class="btn">{ i18n.T(ctx, "Save changes") }</button>
 		</div>
@@ -614,7 +614,7 @@ templ DangerCard(a service.App) {
 				}
 			</div>
 			<dialog id="confirm-delete" class="dialog" aria-labelledby="confirm-delete-title" data-on:click="evt.target === el && el.close()" data-ignore-morph>
-				<form class="w-[calc(100%-2rem)] max-w-md gap-4 rounded-[1.5rem] border bg-background p-6 shadow-lg" data-on:submit={ ui.PostForm("/ui/apps/" + a.ID + "/delete") }>
+				<form class="w-[calc(100%-2rem)] max-w-md gap-4 rounded-2xl border bg-background p-6 shadow-lg" data-on:submit={ ui.PostForm("/ui/apps/" + a.ID + "/delete") }>
 					<header class="gap-1.5">
 						<h2 id="confirm-delete-title" class="text-lg font-semibold">{ i18n.Tf(ctx, "Delete %s?", a.Name) }</h2>
 						<p class="text-sm text-muted-foreground">{ i18n.T(ctx, "This cannot be undone. Type the app name to confirm.") }</p>
