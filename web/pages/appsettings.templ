@@ -383,6 +383,7 @@ templ AppSettings(s Shell, c AppContext, v AppSettingsView) {
 			if s.Admin() {
 				@AppForm(v.Form, LogoSettings(c.App))
 				@LogoForm(c.App)
+				@ImageEditor()
 				@EnvCard(c.App, v.Env, v.EnvErr)
 				@RuntimeCard(c.App)
 			} else {
@@ -401,7 +402,7 @@ templ LogoForm(a service.App) {
 }
 
 // LogoSettings shows the app's logo with upload and remove controls. The
-// browser shrinks the chosen image before sending it (app.js).
+// chosen image opens in the image editor before it is sent (editor.js).
 templ LogoSettings(a service.App) {
 	<div id="app-logo" class="flex flex-wrap items-center gap-4">
 		@AppLogo(a, "")

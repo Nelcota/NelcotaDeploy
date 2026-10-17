@@ -221,11 +221,28 @@
 		c.getContext("2d").drawImage(b, (n - w) / 2, (n - h) / 2, w, h);
 		return new Promise(function (resolve) { c.toBlob(resolve, "image/png"); });
 	}
+	// Pages with the image editor dialog load editor.js on first use; without
+	// it (or if it fails to load) the image is shrunk or fitted directly.
+	var editing;
+	function editor() {
+		var d = document.getElementById("image-editor");
+		if (!d) return Promise.resolve(null);
+		return editing || (editing = new Promise(function (done, fail) {
+			var s = document.createElement("script");
+			s.src = d.dataset.src;
+			s.onload = function () { done(window.NelcotaEditor); };
+			s.onerror = function () { editing = null; fail(); };
+			document.head.append(s);
+		}));
+	}
 	document.addEventListener("change", async function (e) {
 		var input = e.target instanceof HTMLInputElement && e.target.matches("[data-avatar-input], [data-logo-input]") ? e.target : null;
 		if (!input || !input.files || !input.files[0]) return;
-		var logo = input.matches("[data-logo-input]"), blob;
-		try { blob = await (logo ? fit : shrink)(input.files[0]); } catch (err) { blob = null; }
+		var logo = input.matches("[data-logo-input]"), file = input.files[0], edit = null, blob;
+		try { edit = await editor(); } catch (err) {}
+		try { blob = edit ? await edit(file, logo) : (await (logo ? fit : shrink)(file)) || undefined; } catch (err) { blob = undefined; }
+		// null means the person closed the editor: nothing to upload or report.
+		if (blob === null) { input.value = ""; return; }
 		if (!blob) {
 			input.value = "";
 			toast("danger", tr("This image can't be read. Use a JPEG, PNG, or WebP image."));

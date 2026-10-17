@@ -9,8 +9,9 @@ test("add, see, and remove a profile photo", async ({ page }) => {
 	const sidebar = page.getByRole("complementary", { name: "Sidebar" });
 	await expect(sidebar.locator("summary.avatar img")).toHaveCount(0);
 
-	// The browser shrinks the image, then uploads it.
+	// The image opens in the editor; saving uploads it.
 	await page.locator("#avatar-file").setInputFiles(path.join(__dirname, "../static/src/mascot.png"));
+	await page.locator("#image-editor").getByRole("button", { name: "Save" }).click();
 	await toast(page, "Profile photo saved.");
 	const img = sidebar.locator("summary.avatar img");
 	await expect(img).toBeVisible();
@@ -30,7 +31,7 @@ test("add, see, and remove a profile photo", async ({ page }) => {
 	await expect(page.getByRole("button", { name: "Add photo" })).toBeVisible();
 });
 
-test("a large camera photo is shrunk in the browser before upload", async ({ page }) => {
+test("a large camera photo is reduced in the browser before upload", async ({ page }) => {
 	await newClient(page);
 	await devLogin(page);
 	await page.goto("/settings");
@@ -49,6 +50,7 @@ test("a large camera photo is shrunk in the browser before upload", async ({ pag
 		return blob.size;
 	});
 	expect(size).toBeGreaterThan(2 << 20);
+	await page.locator("#image-editor").getByRole("button", { name: "Save" }).click();
 	await toast(page, "Profile photo saved.");
 	await expect(page.locator("#profile-photo img")).toBeVisible();
 });
@@ -59,4 +61,5 @@ test("an unreadable file gets a clear message", async ({ page }) => {
 	await page.goto("/settings");
 	await page.locator("#avatar-file").setInputFiles({ name: "notes.png", mimeType: "image/png", buffer: Buffer.from("not an image") });
 	await toast(page, "This image can't be read. Use a JPEG, PNG, or WebP image.");
+	await expect(page.getByRole("heading", { name: "Edit image" })).toBeHidden();
 });

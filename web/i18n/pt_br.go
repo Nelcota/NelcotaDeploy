@@ -972,6 +972,27 @@ var ptBR = map[string]string{
 	"Build variables reach the build as secrets: %s.":     "Variáveis de build chegam ao build como segredos: %s.",
 	"It won't be shown again. Send it as %s.":             "Ele não será exibido de novo. Envie como %s.",
 	"Done:": "Concluído:",
+
+	// Image editor (pages.ImageEditor).
+	"Edit image": "Editar imagem",
+	"Drag to position it, then adjust. Nothing is saved until you select Save.": "Arraste para posicionar e depois ajuste. Nada é salvo até você selecionar Salvar.",
+	"Image preview. Use the arrow keys to move it and + or - to zoom.":          "Prévia da imagem. Use as setas para mover e + ou - para aproximar.",
+	"Zoom":            "Zoom",
+	"Rotate left":     "Girar para a esquerda",
+	"Rotate right":    "Girar para a direita",
+	"Flip":            "Espelhar",
+	"Style":           "Estilo",
+	"Original":        "Original",
+	"Black and white": "Preto e branco",
+	"Warm":            "Quente",
+	"Cool":            "Frio",
+	"Vivid":           "Vívido",
+	"Brightness":      "Brilho",
+	"Contrast":        "Contraste",
+	"Saturation":      "Saturação",
+	"Warmth":          "Temperatura",
+	"Start over":      "Recomeçar",
+	"Save":            "Salvar",
 }
 
 // ScriptKeys are the strings scripts render in the browser; pages embed their

@@ -99,6 +99,7 @@ templ Account(s Shell, v AccountView) {
 		<div class="settings-list">
 			@ProfilePhoto(s.User)
 		</div>
+		@ImageEditor()
 		<section id="preferences" class="settings-group" aria-labelledby="preferences-title">
 			<h3 id="preferences-title">{ i18n.T(ctx, "Preferences") }</h3>
 			<div class="settings-list">

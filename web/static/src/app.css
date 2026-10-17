@@ -16,6 +16,7 @@
 @import "../vendor/basecoat/components/kbd.css";
 @import "../vendor/basecoat/components/label.css";
 @import "../vendor/basecoat/components/native-select.css";
+@import "../vendor/basecoat/components/range.css";
 @import "../vendor/basecoat/components/skeleton.css";
 @import "../vendor/basecoat/components/switch.css";
 @import "../vendor/basecoat/components/checkbox.css";
@@ -213,6 +214,27 @@
   }
   .segmented a {
     @apply flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground aria-[current=true]:bg-background aria-[current=true]:font-medium aria-[current=true]:text-foreground aria-[current=true]:shadow-sm;
+  }
+  /* Image editor (pages.ImageEditor, editor.js). The canvas is the uploaded
+     image; photos show the round crop people will see, logos a checkerboard
+     behind transparent areas. */
+  .editor-stage {
+    @apply relative aspect-square w-full cursor-grab touch-none overflow-hidden rounded-2xl border bg-muted outline-none select-none focus-visible:ring-[3px] focus-visible:ring-ring/50 active:cursor-grabbing;
+  }
+  .editor-stage canvas {
+    @apply block size-full;
+  }
+  .editor-mask {
+    @apply pointer-events-none absolute inset-0 rounded-full shadow-[0_0_0_100vmax_rgb(0_0_0/0.55)] ring-2 ring-white/80;
+  }
+  #image-editor[data-shape="square"] .editor-mask {
+    @apply hidden;
+  }
+  #image-editor[data-shape="square"] .editor-stage {
+    background: repeating-conic-gradient(var(--muted) 0 25%, var(--background) 0 50%) 0 0 / 16px 16px;
+  }
+  #image-editor .editor-preset[aria-pressed="true"] {
+    @apply border-primary bg-primary text-primary-foreground hover:bg-primary/90 hover:text-primary-foreground;
   }
   /* Underlined section tabs (ui.TabNav), shared by app pages and settings. On
      narrow screens they scroll sideways; app.js marks the sides that have more

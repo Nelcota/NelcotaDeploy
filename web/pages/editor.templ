@@ -1,0 +1,87 @@
+package pages
+
+import (
+	"github.com/Nelcota/NelcotaDeploy/web/i18n"
+	"github.com/Nelcota/NelcotaDeploy/web/static"
+	"github.com/Nelcota/NelcotaDeploy/web/ui"
+)
+
+// ImageEditor is the dialog where people crop, rotate, and adjust a profile
+// photo or an app logo before it is uploaded. app.js loads editor.js (data-src)
+// the first time someone picks an image on a page that renders it. It never
+// closes on an outside click, so a stray click can't discard edits.
+templ ImageEditor() {
+	<dialog id="image-editor" class="dialog" aria-labelledby="image-editor-title" aria-describedby="image-editor-body" data-src={ static.Path("editor.js") } data-ignore-morph>
+		<div class="w-[calc(100%-2rem)] max-w-2xl gap-5 overflow-y-auto rounded-[1.5rem] border bg-background p-6 shadow-lg">
+			<header class="gap-1.5">
+				<h2 id="image-editor-title" class="text-lg font-semibold">{ i18n.T(ctx, "Edit image") }</h2>
+				<p id="image-editor-body" class="text-sm text-muted-foreground">{ i18n.T(ctx, "Drag to position it, then adjust. Nothing is saved until you select Save.") }</p>
+			</header>
+			<div class="grid gap-6 sm:grid-cols-[minmax(0,18rem)_1fr]">
+				<div class="grid content-start gap-3">
+					<div class="editor-stage" tabindex="0" role="img" aria-label={ i18n.T(ctx, "Image preview. Use the arrow keys to move it and + or - to zoom.") } data-editor-stage>
+						<canvas width="512" height="512"></canvas>
+						<span class="editor-mask" aria-hidden="true"></span>
+					</div>
+					<div class="grid gap-1.5">
+						<label for="editor-zoom" class="text-sm font-medium">{ i18n.T(ctx, "Zoom") }</label>
+						<div class="flex items-center gap-2">
+							<input id="editor-zoom" class="input min-w-0 flex-1" type="range" min="1" max="4" step="0.01" value="1" data-editor="zoom"/>
+							@editorTool("rotate-left", "rotate-ccw", "Rotate left")
+							@editorTool("rotate-right", "rotate-cw", "Rotate right")
+							@editorTool("flip", "flip-horizontal-2", "Flip")
+						</div>
+					</div>
+				</div>
+				<div class="grid content-start gap-5">
+					<fieldset class="grid gap-2">
+						<legend class="mb-2 text-sm font-medium">{ i18n.T(ctx, "Style") }</legend>
+						<div class="flex flex-wrap gap-2">
+							@editorPreset("original", "Original")
+							@editorPreset("mono", "Black and white")
+							@editorPreset("warm", "Warm")
+							@editorPreset("cool", "Cool")
+							@editorPreset("vivid", "Vivid")
+						</div>
+					</fieldset>
+					@editorSlider("brightness", "Brightness")
+					@editorSlider("contrast", "Contrast")
+					@editorSlider("saturation", "Saturation")
+					@editorSlider("warmth", "Warmth")
+				</div>
+			</div>
+			<footer class="flex flex-row flex-wrap items-center justify-between gap-2">
+				<button type="button" class="btn" data-variant="ghost" data-size="sm" data-editor-action="reset">
+					@ui.Icon("undo-2", "")
+					{ i18n.T(ctx, "Start over") }
+				</button>
+				<span class="flex gap-2">
+					<button type="button" class="btn" data-variant="outline" data-editor-action="cancel">{ i18n.T(ctx, "Cancel") }</button>
+					<button type="button" class="btn" data-editor-action="save">{ i18n.T(ctx, "Save") }</button>
+				</span>
+			</footer>
+		</div>
+	</dialog>
+}
+
+// editorTool is an icon button; its label is the accessible name and tooltip.
+templ editorTool(action, icon, label string) {
+	<button type="button" class="btn shrink-0" data-variant="outline" data-size="icon-sm" aria-label={ i18n.T(ctx, label) } title={ i18n.T(ctx, label) } data-editor-action={ action }>
+		@ui.Icon(icon, "")
+	</button>
+}
+
+templ editorPreset(name, label string) {
+	<button type="button" class="btn editor-preset" data-variant="outline" data-size="sm" aria-pressed="false" data-editor-preset={ name }>{ i18n.T(ctx, label) }</button>
+}
+
+// editorSlider is a color adjustment from -100 to 100; 0 leaves the image as is.
+templ editorSlider(name, label string) {
+	<div class="grid gap-1.5">
+		<span class="flex items-center justify-between text-sm">
+			<label for={ "editor-" + name } class="font-medium">{ i18n.T(ctx, label) }</label>
+			<output for={ "editor-" + name } class="text-muted-foreground tabular-nums">0</output>
+		</span>
+		<input id={ "editor-" + name } class="input" type="range" min="-100" max="100" step="1" value="0" data-editor={ name }/>
+	</div>
+}

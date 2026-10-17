@@ -73,7 +73,7 @@ commit=$(git rev-parse --short=12 HEAD)
 	printf '%s\n' "$start"
 	printf '%s\n' '| Measure | Value |' '| --- | --- |'
 	printf '| Playwright browser tests | %s |\n' "$playwright_row"
-	printf '| All JavaScript (Brotli) | %s (`TestAssetBudget`, budget < 100 KB) |\n' "$(kb "$js")"
+	printf '| All JavaScript (Brotli) | %s (`TestAssetBudget`, budget < 105 KB) |\n' "$(kb "$js")"
 	printf '| All CSS (Brotli) | %s (`TestAssetBudget`, budget < 50 KB) |\n' "$(kb "$css")"
 	printf '| Page JavaScript, Logs | %s (`TestPageScriptBudget`) |\n' "$(kb "$logs")"
 	printf '| Page JavaScript, Servers | %s (`TestPageScriptBudget`) |\n' "$(kb "$servers")"

@@ -49,6 +49,7 @@ func run(root string) error {
 		"settings.js":   filepath.Join(root, "src", "js", "settings.js"),
 		"cmdk.js":       filepath.Join(root, "src", "js", "cmdk.js"),
 		"theme-boot.js": filepath.Join(root, "src", "js", "theme-boot.js"),
+		"editor.js":     filepath.Join(root, "src", "js", "editor.js"),
 	}
 	dist := filepath.Join(root, "dist")
 	if err := os.RemoveAll(dist); err != nil {

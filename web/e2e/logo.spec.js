@@ -9,8 +9,10 @@ test("upload, see, and remove an app logo", async ({ page }) => {
 	const header = page.locator("#app-header-logo");
 	await expect(header.locator("img")).toHaveCount(0);
 
-	// The browser fits the image into a square, then uploads it.
+	// The image opens in the editor, fitted whole into a square; saving uploads it.
 	await page.locator("#logo-file").setInputFiles(path.join(__dirname, "../static/src/mascot.png"));
+	await expect(page.locator("#image-editor")).toHaveAttribute("data-shape", "square");
+	await page.locator("#image-editor").getByRole("button", { name: "Save" }).click();
 	await toast(page, "Logo saved.");
 	await expect(header.locator("img")).toBeVisible();
 	await expect.poll(() => header.locator("img").evaluate((el) => el.complete && el.naturalWidth)).toBe(256);
