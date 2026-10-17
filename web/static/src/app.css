@@ -656,17 +656,6 @@
       opacity: 0;
     }
   }
-  /* Primary call to action (data-variant="cta"): a pill with the icon in its
-     own round chip, a soft top highlight, and a glow that lifts on hover. */
-  .btn[data-variant="cta"] {
-    @apply h-9 gap-2 rounded-full bg-primary pr-4 pl-1.5 font-semibold text-primary-foreground shadow-[inset_0_1px_0_rgb(255_255_255/0.25),0_1px_2px_rgb(0_0_0/0.12),0_4px_14px_-4px_color-mix(in_oklab,var(--primary)_70%,transparent)] hover:-translate-y-px hover:bg-primary/90 hover:shadow-[inset_0_1px_0_rgb(255_255_255/0.3),0_2px_4px_rgb(0_0_0/0.12),0_8px_22px_-6px_color-mix(in_oklab,var(--primary)_80%,transparent)] active:translate-y-0 motion-reduce:hover:translate-y-0;
-  }
-  .btn-cta-icon {
-    @apply grid size-6 place-items-center rounded-full bg-primary-foreground/15 ring-1 ring-primary-foreground/10 transition-transform duration-300 ease-out [&_svg]:size-3.5 [&_svg]:stroke-[2.5];
-  }
-  .btn[data-variant="cta"]:hover .btn-cta-icon {
-    @apply rotate-90 motion-reduce:rotate-0;
-  }
   .btn[aria-pressed="true"] {
     @apply border-primary/40 bg-muted text-foreground;
   }
