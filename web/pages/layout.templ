@@ -140,6 +140,11 @@ func LogoURL(a service.App) string {
 templ AppLogo(a service.App, class string) {
 	if a.LogoAt > 0 {
 		<img src={ LogoURL(a) } alt="" class={ "row-thumb object-contain", class } data-tone="logo" width="64" height="64" loading="lazy" decoding="async" data-logo={ a.ID }/>
+	} else if a.Config.Runtime != "" {
+		// Without an uploaded logo, the app's language or server stands in.
+		<span class={ "row-thumb", class } data-tone="brand" title={ RuntimeLabel(a.Config.Runtime) } data-logo={ a.ID }>
+			@ui.Brand(RuntimeBrand(a.Config.Runtime), "size-7 sm:size-9", false)
+		</span>
 	} else {
 		<span class={ "row-thumb", class } data-tone={ tone(a.Name) } aria-hidden="true" data-logo={ a.ID }>{ initial(a.Name) }</span>
 	}

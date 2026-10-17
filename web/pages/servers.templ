@@ -157,6 +157,11 @@ templ ServerPanel(s Shell, srv service.Server, apps []service.App) {
 					<ul class="grid gap-1" data-apps-list>
 						for _, a := range apps {
 							<li class="server-app" data-app={ a.ID }>
+								if a.Config.Runtime != "" {
+									@ui.Brand(RuntimeBrand(a.Config.Runtime), "size-4 shrink-0", false)
+								} else {
+									@ui.Icon("box", "size-4 shrink-0 text-muted-foreground")
+								}
 								<a class="min-w-0 flex-1 truncate font-medium hover:underline" href={ templ.SafeURL("/apps/" + a.ID) }>{ a.Name }</a>
 								if a.Config.Stopped {
 									<span class="text-xs text-muted-foreground">{ i18n.T(ctx, "Stopped") }</span>

@@ -30,6 +30,9 @@ func appInput(form url.Values, base service.AppConfig) (service.AppInput, error)
 	cfg := &in.Config
 	cfg.Dockerfile = strings.TrimSpace(form.Get("dockerfile"))
 	cfg.HealthPath = strings.TrimSpace(form.Get("health_path"))
+	if form.Has("runtime") {
+		cfg.Runtime = form.Get("runtime")
+	}
 	cfg.CacheEnabled = form.Get("cache_enabled") == "true"
 	cfg.Domains = []string{}
 	for _, d := range strings.FieldsFunc(form.Get("domains"), func(r rune) bool { return r == '\n' || r == '\r' || r == ',' || r == ' ' }) {

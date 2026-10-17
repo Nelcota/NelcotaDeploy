@@ -1,0 +1,132 @@
+{
+	"apache": {
+		"title": "Apache",
+		"hex": "D22128",
+		"guidelines": "https://www.apache.org/foundation/marks"
+	},
+	"backblaze": {
+		"title": "Backblaze",
+		"hex": "E21E29",
+		"guidelines": "https://www.backblaze.com/company/news.html"
+	},
+	"bun": {
+		"title": "Bun",
+		"hex": "000000",
+		"guidelines": ""
+	},
+	"caddy": {
+		"title": "Caddy",
+		"hex": "1F88C0",
+		"guidelines": ""
+	},
+	"cloudflare": {
+		"title": "Cloudflare",
+		"hex": "F38020",
+		"guidelines": "https://www.cloudflare.com/trademark/"
+	},
+	"debian": {
+		"title": "Debian",
+		"hex": "A81D33",
+		"guidelines": "https://www.debian.org/logos/"
+	},
+	"deno": {
+		"title": "Deno",
+		"hex": "000000",
+		"guidelines": "https://deno.com/brand"
+	},
+	"discord": {
+		"title": "Discord",
+		"hex": "5865F2",
+		"guidelines": "https://discord.com/branding"
+	},
+	"docker": {
+		"title": "Docker",
+		"hex": "2496ED",
+		"guidelines": ""
+	},
+	"dotnet": {
+		"title": ".NET",
+		"hex": "512BD4",
+		"guidelines": "https://github.com/dotnet/brand/blob/c7d0f51b8ec59531332d05fb27a5b758a7a3d689/dotnet-styleGuide-2024.pdf"
+	},
+	"elixir": {
+		"title": "Elixir",
+		"hex": "4B275F",
+		"guidelines": ""
+	},
+	"erlang": {
+		"title": "Erlang",
+		"hex": "A90533",
+		"guidelines": ""
+	},
+	"git": {
+		"title": "Git",
+		"hex": "F03C2E",
+		"guidelines": ""
+	},
+	"github": {
+		"title": "GitHub",
+		"hex": "181717",
+		"guidelines": "https://github.com/logos"
+	},
+	"go": {
+		"title": "Go",
+		"hex": "00ADD8",
+		"guidelines": "https://blog.golang.org/go-brand"
+	},
+	"letsencrypt": {
+		"title": "Let's Encrypt",
+		"hex": "003A70",
+		"guidelines": "https://letsencrypt.org/trademarks/"
+	},
+	"minio": {
+		"title": "MinIO",
+		"hex": "C72E49",
+		"guidelines": "https://min.io/logo"
+	},
+	"nginx": {
+		"title": "NGINX",
+		"hex": "009639",
+		"guidelines": "https://www.nginx.com/press/"
+	},
+	"nodedotjs": {
+		"title": "Node.js",
+		"hex": "5FA04E",
+		"guidelines": "https://nodejs.org/en/about/branding"
+	},
+	"openjdk": {
+		"title": "OpenJDK",
+		"hex": "000000",
+		"guidelines": ""
+	},
+	"php": {
+		"title": "PHP",
+		"hex": "777BB4",
+		"guidelines": ""
+	},
+	"python": {
+		"title": "Python",
+		"hex": "3776AB",
+		"guidelines": "https://www.python.org/community/logos/"
+	},
+	"ruby": {
+		"title": "Ruby",
+		"hex": "CC342D",
+		"guidelines": ""
+	},
+	"rust": {
+		"title": "Rust",
+		"hex": "000000",
+		"guidelines": "https://www.rust-lang.org/policies/media-guide"
+	},
+	"ubuntu": {
+		"title": "Ubuntu",
+		"hex": "E95420",
+		"guidelines": "https://design.ubuntu.com/brand"
+	},
+	"wireguard": {
+		"title": "WireGuard",
+		"hex": "88171A",
+		"guidelines": "https://www.wireguard.com/trademark-policy"
+	}
+}

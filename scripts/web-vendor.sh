@@ -39,7 +39,7 @@ for name in layout-dashboard server settings rocket git-branch terminal scroll-t
 	sun moon monitor search plus trash-2 eye copy pause play square rotate-ccw undo-2 circle-arrow-up \
 	log-out menu chevron-right cpu clock info triangle-alert external-link lock fingerprint smartphone \
 	user-plus filter ban sliders-horizontal globe arrow-down-to-line brush-cleaning activity box link \
-	user camera image-up rotate-cw flip-horizontal-2; do
+	user camera image-up rotate-cw flip-horizontal-2 mail message-square cloud webhook bell hard-drive memory-stick database layers package; do
 	cp "$modules/lucide-static/icons/$name.svg" "$icons/"
 done
 cp "$modules/lucide-static/LICENSE" "$icons/LICENSE"
@@ -47,3 +47,31 @@ cp "$modules/lucide-static/LICENSE" "$icons/LICENSE"
 # as outlines (fill="none"), so the filled mark sets its own fill.
 sed 's/<path /<path fill="currentColor" stroke="none" /' "$modules/@primer/octicons/build/svg/mark-github-24.svg" >"$icons/github.svg"
 cp "$modules/@primer/octicons/LICENSE" "$icons/LICENSE-octicons"
+
+# Official brand marks from Simple Icons (CC0; the marks stay their owners'
+# trademarks, used only to name the product). Add a slug here, then run
+# make web-vendor. brands.json keeps each title, color, and guidelines link.
+brands=$web/ui/brands
+rm -rf "$brands"
+mkdir -p "$brands"
+brand_slugs=(nodedotjs bun deno go python rust ruby php openjdk dotnet elixir erlang nginx caddy apache docker
+	github git discord cloudflare backblaze minio debian ubuntu wireguard letsencrypt)
+for slug in "${brand_slugs[@]}"; do
+	cp "$modules/simple-icons/icons/$slug.svg" "$brands/"
+done
+cp "$modules/simple-icons/LICENSE.md" "$brands/LICENSE.md"
+cp "$modules/simple-icons/DISCLAIMER.md" "$brands/DISCLAIMER.md"
+(cd "$web" && node -e '
+const fs = require("node:fs");
+const data = JSON.parse(fs.readFileSync("node_modules/simple-icons/data/simple-icons.json", "utf8"));
+const list = Array.isArray(data) ? data : data.icons;
+const out = {};
+for (const slug of process.argv.slice(1).sort()) {
+	const svg = fs.readFileSync("node_modules/simple-icons/icons/" + slug + ".svg", "utf8");
+	const title = svg.match(/<title>([^<]*)<\/title>/)[1].replace(/&amp;/g, "&").replace(/&apos;|&#39;/g, "\x27");
+	const icon = list.find((i) => i.title === title);
+	if (!icon) { console.error("missing brand " + slug); process.exit(1); }
+	out[slug] = { title: icon.title, hex: icon.hex, guidelines: icon.guidelines || "" };
+}
+process.stdout.write(JSON.stringify(out, null, "\t") + "\n");
+' "${brand_slugs[@]}") >"$brands/brands.json"

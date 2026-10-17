@@ -987,6 +987,13 @@ var ptBR = map[string]string{
 	"Start over":      "Recomeçar",
 	"Save":            "Salvar",
 
+	// App runtime marks.
+	"Language or server": "Linguagem ou servidor",
+	"Detected from the Dockerfile. Shown as the app's mark when it has no logo.": "Detectado pelo Dockerfile. Aparece como a marca do app quando ele não tem logo.",
+	"Not set":         "Não definido",
+	"%s app":          "App %s",
+	"Unknown runtime": "Linguagem desconhecida",
+
 	// Servers page.
 	"Apps on this server":                       "Apps neste servidor",
 	"No apps on this server yet.":               "Nenhum app neste servidor ainda.",

@@ -13,7 +13,7 @@ test("create an app with the wizard and it publishes right away", async ({ page 
 	await expect(page.getByLabel("Name")).toHaveValue("docs");
 	await expect(page.getByLabel("Your app listens on port")).toHaveValue("8080");
 	await page.getByLabel("Branch").selectOption("main");
-	await page.getByLabel("Server").selectOption({ label: "Server blog" });
+	await page.getByLabel("Server", { exact: true }).selectOption({ label: "Server blog" });
 	await page.getByLabel("Web addresses").fill("docs.example.org");
 	await page.getByRole("button", { name: "Create and publish" }).click();
 	await expect(page).toHaveURL(/\/apps\/[^/]+$/);

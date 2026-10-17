@@ -127,3 +127,30 @@ func TestPhraseEscapesTextAndParts(t *testing.T) {
 		t.Fatalf("%s, want %s", got, want)
 	}
 }
+
+func TestBrands(t *testing.T) {
+	for slug, b := range Brands() {
+		if b.Title == "" || len(b.Hex) != 6 || b.path == "" {
+			t.Errorf("%s: incomplete brand %+v", slug, b)
+		}
+	}
+	// Near-black marks follow the text color so they show on the dark theme.
+	if Brands()["github"].fill != "currentColor" || Brands()["docker"].fill != "#2496ED" {
+		t.Fatal(Brands()["github"].fill, Brands()["docker"].fill)
+	}
+	var b strings.Builder
+	if err := Brand("docker", "size-5", false).Render(context.Background(), &b); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{`role="img"`, `aria-label="Docker"`, `fill="#2496ED"`, `class="size-5"`, `<path d="M13.983`} {
+		if !strings.Contains(b.String(), want) {
+			t.Errorf("missing %s in %s", want, b.String())
+		}
+	}
+	defer func() {
+		if recover() == nil {
+			t.Error("unknown brand did not panic")
+		}
+	}()
+	Brand("nope", "", true)
+}

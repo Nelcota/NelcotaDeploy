@@ -94,6 +94,19 @@ templ healthPathField(path string) {
 
 // runtimeFields are the build and resource settings under Advanced.
 templ runtimeFields(c service.AppConfig) {
+	@ui.Field("Language or server", "app-runtime", "Detected from the Dockerfile. Shown as the app's mark when it has no logo.", "") {
+		<select id="app-runtime" name="runtime" class="select w-full" aria-describedby="app-runtime-hint">
+			<option value="">{ i18n.T(ctx, "Not set") }</option>
+			for _, r := range runtimeOptions() {
+				<option
+					value={ r }
+					if r == c.Runtime {
+						selected
+					}
+				>{ RuntimeLabel(r) }</option>
+			}
+		</select>
+	}
 	@ui.Field("Dockerfile path", "app-dockerfile", "", "") {
 		<input id="app-dockerfile" name="dockerfile" class="input font-mono" value={ c.Dockerfile }/>
 	}
@@ -225,6 +238,12 @@ templ WizardSettings(v WizardView) {
 							{ i18n.T(ctx, "No Dockerfile at the root. Set its path under Advanced, or add one to the repository.") }
 						</li>
 					}
+					if v.Info.Runtime != "" {
+						<li class="flex items-center gap-2">
+							@ui.Brand(RuntimeBrand(v.Info.Runtime), "size-4 shrink-0", true)
+							{ i18n.Tf(ctx, "%s app", RuntimeLabel(v.Info.Runtime)) }
+						</li>
+					}
 					if v.Info.Port > 0 {
 						@found() {
 							{ i18n.Tf(ctx, "Port %s read from EXPOSE", u32(v.Info.Port)) }
@@ -322,7 +341,9 @@ func (v WizardView) installation() int64 {
 
 // config is the wizard's starting point for the Advanced fields.
 func (v WizardView) config() service.AppConfig {
-	return NewAppInput().Config
+	c := NewAppInput().Config
+	c.Runtime = v.Info.Runtime
+	return c
 }
 
 // found is one thing the panel read from the repository.

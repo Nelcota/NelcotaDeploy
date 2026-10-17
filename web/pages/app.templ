@@ -72,6 +72,12 @@ templ AppLayout(s Shell, c AppContext, actions templ.Component) {
 						}
 					</h1>
 					<p class="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground">
+						if c.App.Config.Runtime != "" {
+							<span class="inline-flex items-center gap-1">
+								@ui.Brand(RuntimeBrand(c.App.Config.Runtime), "size-3.5", true)
+								{ RuntimeLabel(c.App.Config.Runtime) }
+							</span>
+						}
 						<a class="inline-flex items-center gap-1 hover:text-foreground" href={ templ.SafeURL(c.App.Repository) } rel="noopener noreferrer" target="_blank">
 							@ui.Icon("github", "size-3.5")
 							{ repoName(c.App.Repository) }
