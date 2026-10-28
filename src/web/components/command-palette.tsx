@@ -1,0 +1,207 @@
+import { useQuery } from "@tanstack/react-query";
+import { useNavigate } from "@tanstack/react-router";
+import { BoxesIcon, CornerDownLeftIcon, type LucideIcon, PlusIcon, SearchIcon } from "lucide-react";
+import { type KeyboardEvent, useEffect, useMemo, useState } from "react";
+
+import { listProjectsFn } from "@/web/functions/projects.functions";
+
+import { RAIL_ITEMS, SETTINGS_SECTIONS } from "./navigation";
+import { cn } from "./ui/class-names";
+import { Dialog, DialogContent, DialogTitle } from "./ui/dialog";
+
+type Command = {
+  readonly id: string;
+  readonly group: "Projetos" | "Páginas";
+  readonly label: string;
+  readonly hint: string;
+  readonly icon: LucideIcon;
+  readonly run: () => Promise<void>;
+};
+
+/** Opens the palette with Ctrl+K or Cmd+K anywhere in the panel. */
+export function useCommandPaletteShortcut(open: () => void): void {
+  useEffect(() => {
+    const handler = (event: globalThis.KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        open();
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [open]);
+}
+
+function normalize(text: string): string {
+  return text
+    .normalize("NFD")
+    .replaceAll(/[̀-ͯ]/g, "")
+    .toLowerCase();
+}
+
+/** Keyboard-first search over projects and panel pages. */
+export function CommandPalette({
+  open,
+  onOpenChange,
+  permissions,
+}: {
+  readonly open: boolean;
+  readonly onOpenChange: (open: boolean) => void;
+  readonly permissions: readonly string[];
+}) {
+  const navigate = useNavigate();
+  const [query, setQuery] = useState("");
+  const [activeIndex, setActiveIndex] = useState(0);
+  const projects = useQuery({
+    queryKey: ["projects", ""],
+    queryFn: () => listProjectsFn({ data: { search: "" } }),
+    enabled: open,
+  });
+
+  const commands = useMemo<Command[]>(() => {
+    const projectCommands: Command[] = (projects.data ?? []).map((project) => ({
+      id: `project-${project.id}`,
+      group: "Projetos",
+      label: project.name,
+      hint: project.repositoryFullName,
+      icon: BoxesIcon,
+      run: async () =>
+        await navigate({ to: "/projects/$projectId", params: { projectId: project.id } }),
+    }));
+    const pageCommands: Command[] = [
+      ...RAIL_ITEMS.map((item) => ({
+        id: `page-${item.to}`,
+        group: "Páginas" as const,
+        label: item.label,
+        hint: item.to,
+        icon: item.icon,
+        run: async () => await navigate({ to: item.to }),
+      })),
+      {
+        id: "page-new-project",
+        group: "Páginas",
+        label: "Novo projeto",
+        hint: "/projects/new",
+        icon: PlusIcon,
+        run: async () => await navigate({ to: "/projects/new" }),
+      },
+      ...SETTINGS_SECTIONS.filter(
+        (section) => section.permission == null || permissions.includes(section.permission),
+      ).map((section) => ({
+        id: `settings-${section.tab}`,
+        group: "Páginas" as const,
+        label: `Configurações · ${section.label}`,
+        hint: `/settings?tab=${section.tab}`,
+        icon: section.icon,
+        run: async () => await navigate({ to: "/settings", search: { tab: section.tab } }),
+      })),
+    ];
+    const needle = normalize(query.trim());
+    return [...projectCommands, ...pageCommands].filter(
+      (command) => needle === "" || normalize(`${command.label} ${command.hint}`).includes(needle),
+    );
+  }, [projects.data, navigate, permissions, query]);
+
+  useEffect(() => {
+    setActiveIndex(0);
+  }, [query, open]);
+
+  const choose = (command: Command | undefined) => {
+    if (command == null) {
+      return;
+    }
+    onOpenChange(false);
+    setQuery("");
+    void command.run();
+  };
+
+  const onKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      setActiveIndex((index) => Math.min(index + 1, commands.length - 1));
+    } else if (event.key === "ArrowUp") {
+      event.preventDefault();
+      setActiveIndex((index) => Math.max(index - 1, 0));
+    } else if (event.key === "Enter") {
+      event.preventDefault();
+      choose(commands[activeIndex]);
+    }
+  };
+
+  const groups = Object.groupBy(commands, (command) => command.group);
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent
+        showCloseButton={false}
+        className="top-[18%] translate-y-0 gap-0 overflow-hidden p-0 sm:max-w-xl"
+      >
+        <DialogTitle className="sr-only">Buscar no painel</DialogTitle>
+        <div className="flex items-center gap-3 border-b px-4">
+          <SearchIcon aria-hidden className="size-5 text-muted-foreground" />
+          <input
+            autoFocus
+            role="combobox"
+            aria-expanded="true"
+            aria-controls="command-results"
+            aria-activedescendant={commands[activeIndex]?.id}
+            aria-label="Buscar projetos e páginas"
+            placeholder="Buscar projetos e páginas…"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            onKeyDown={onKeyDown}
+            className="h-14 flex-1 bg-transparent text-base outline-none placeholder:text-muted-foreground"
+          />
+          <kbd className="rounded-md border px-1.5 py-0.5 font-mono text-xs text-muted-foreground">
+            Esc
+          </kbd>
+        </div>
+        <div id="command-results" role="listbox" className="max-h-[22rem] overflow-y-auto p-2">
+          {commands.length === 0 ? (
+            <p className="px-3 py-8 text-center text-sm text-muted-foreground">Nada encontrado.</p>
+          ) : null}
+          {(["Projetos", "Páginas"] as const).map((group) => {
+            const items = groups[group] ?? [];
+            if (items.length === 0) {
+              return null;
+            }
+            return (
+              <div key={group} className="pb-2">
+                <p className="px-3 pt-2 pb-1 text-xs font-medium text-muted-foreground">{group}</p>
+                {items.map((command) => {
+                  const active = commands[activeIndex]?.id === command.id;
+                  return (
+                    <button
+                      type="button"
+                      key={command.id}
+                      id={command.id}
+                      role="option"
+                      aria-selected={active}
+                      onMouseEnter={() => setActiveIndex(commands.indexOf(command))}
+                      onClick={() => choose(command)}
+                      className={cn(
+                        "flex w-full cursor-pointer items-center gap-3 rounded-lg px-3 py-2.5 text-left",
+                        active ? "bg-accent text-accent-foreground" : "text-foreground",
+                      )}
+                    >
+                      <command.icon aria-hidden className="size-4 shrink-0 text-muted-foreground" />
+                      <span className="truncate text-sm font-medium">{command.label}</span>
+                      <span className="ml-auto truncate font-mono text-xs text-muted-foreground">
+                        {command.hint}
+                      </span>
+                      {active ? (
+                        <CornerDownLeftIcon
+                          aria-hidden
+                          className="size-3.5 shrink-0 text-muted-foreground"
+                        />
+                      ) : null}
+                    </button>
+                  );
+                })}
+              </div>
+            );
+          })}
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}

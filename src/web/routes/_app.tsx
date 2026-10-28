@@ -1,6 +1,6 @@
 import { createFileRoute, Outlet, redirect } from "@tanstack/react-router";
 
-import { AppSidebar } from "@/web/components/app-sidebar";
+import { AppShell } from "@/web/components/app-shell";
 import { getSessionFn } from "@/web/functions/session.functions";
 
 export const Route = createFileRoute("/_app")({
@@ -20,13 +20,8 @@ export const Route = createFileRoute("/_app")({
 function AppLayout() {
   const { user } = Route.useRouteContext();
   return (
-    <div className="flex min-h-svh flex-col md:flex-row">
-      <AppSidebar user={user} />
-      <main id="main" className="min-w-0 flex-1 px-5 py-8 md:px-10 md:py-10">
-        <div className="mx-auto max-w-7xl space-y-8">
-          <Outlet />
-        </div>
-      </main>
-    </div>
+    <AppShell user={user}>
+      <Outlet />
+    </AppShell>
   );
 }

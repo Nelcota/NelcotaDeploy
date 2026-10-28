@@ -1,94 +1,72 @@
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import {
-  ActivityIcon,
-  AlertTriangleIcon,
-  BoxesIcon,
-  CircleCheckIcon,
-  CircleOffIcon,
-  type LucideIcon,
-  RocketIcon,
-  ServerIcon,
-} from "lucide-react";
+import { BoxesIcon, PlusIcon, RocketIcon, ServerIcon, WebhookIcon } from "lucide-react";
+import { useState } from "react";
 
-import { durationBetween, formatBytes, formatDuration, formatRelativeTime } from "@/shared/format";
-import { MetricChart } from "@/web/components/metric-chart";
-import { PageHeader } from "@/web/components/page-header";
-import { EmptyState, ErrorState, ListSkeleton } from "@/web/components/states";
-import { DeploymentStatusBadge, StatusPill } from "@/web/components/status-badge";
 import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/web/components/ui/card";
+  durationBetween,
+  formatBytes,
+  formatDuration,
+  formatPercent,
+  formatRelativeTime,
+} from "@/shared/format";
+import { MetricChart } from "@/web/components/metric-chart";
+import {
+  MetricStrip,
+  ProgressRing,
+  SegmentedControl,
+  SummaryCard,
+  SummaryGrid,
+} from "@/web/components/overview";
+import { EmptyState, ErrorState, ListSkeleton } from "@/web/components/states";
+import { DeploymentStatusBadge } from "@/web/components/status-badge";
+import { Button } from "@/web/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/web/components/ui/card";
+import { cn } from "@/web/components/ui/class-names";
 import { Skeleton } from "@/web/components/ui/skeleton";
-import { UsageMeter, usagePercent } from "@/web/components/usage-meter";
+import { usagePercent } from "@/web/components/usage-meter";
+import { useCan } from "@/web/components/use-permissions";
 import { getDashboardFn, getHostMetricsFn } from "@/web/functions/dashboard.functions";
 
 const REFRESH_INTERVAL_IN_MS = 10_000;
+const SHORT_SHA_LENGTH = 7;
+const HOURS_PER_DAY = 24;
+const WINDOWS = [
+  { value: 1, label: "1 hora" },
+  { value: HOURS_PER_DAY, label: "24 horas" },
+] as const;
+const SERIES = [
+  { value: "cpu", label: "CPU", color: "--chart-1" },
+  { value: "memory", label: "Memória", color: "--chart-2" },
+] as const;
 
 export const Route = createFileRoute("/_app/")({
   head: () => ({ meta: [{ title: "Painel · Nelcota Deploy" }] }),
   component: DashboardPage,
 });
 
-const HEALTH_PILLS = {
-  healthy: { tone: "success", label: "Ambiente saudável" },
-  degraded: { tone: "warning", label: "Ambiente com alertas" },
-  unavailable: { tone: "danger", label: "Worker ou Docker indisponível" },
+const HEALTH_LABELS = {
+  healthy: { value: "Saudável", detail: "worker e Docker online" },
+  degraded: { value: "Com alertas", detail: "há aplicações offline" },
+  unavailable: { value: "Indisponível", detail: "worker ou Docker fora do ar" },
 } as const;
 
-const STAT_TONES = {
-  brand: "bg-accent text-brand",
-  success: "bg-success/12 text-success",
-  neutral: "bg-secondary text-muted-foreground",
-  danger: "bg-destructive/12 text-destructive",
-} as const;
-
-function StatCard({
-  label,
-  value,
-  icon: Icon,
-  hint,
-  tone,
-}: {
-  readonly label: string;
-  readonly value: number | string;
-  readonly icon: LucideIcon;
-  readonly hint?: string | undefined;
-  readonly tone: keyof typeof STAT_TONES;
-}) {
-  return (
-    <Card className="gap-0 py-5">
-      <CardContent className="flex items-start justify-between gap-4 px-5">
-        <div className="space-y-1.5">
-          <p className="text-[0.88rem] font-medium text-muted-foreground">{label}</p>
-          <p className="text-[2.1rem] leading-none font-bold tracking-tight tabular-nums">
-            {value}
-          </p>
-          <p className="min-h-5 text-[0.82rem] text-muted-foreground">{hint ?? ""}</p>
-        </div>
-        <span
-          className={`flex size-11 shrink-0 items-center justify-center rounded-xl ${STAT_TONES[tone]}`}
-        >
-          <Icon aria-hidden className="size-5" />
-        </span>
-      </CardContent>
-    </Card>
-  );
+function percentOf(part: number, total: number): number | null {
+  return total > 0 ? (part / total) * 100 : null;
 }
 
 function DashboardPage() {
+  const can = useCan();
+  const [hours, setHours] = useState<number>(1);
+  const [series, setSeries] = useState<(typeof SERIES)[number]["value"]>("cpu");
   const dashboard = useQuery({
     queryKey: ["dashboard"],
     queryFn: () => getDashboardFn(),
     refetchInterval: REFRESH_INTERVAL_IN_MS,
   });
   const hostMetrics = useQuery({
-    queryKey: ["host-metrics", 1],
-    queryFn: () => getHostMetricsFn({ data: { hours: 1 } }),
+    queryKey: ["host-metrics", hours],
+    queryFn: () => getHostMetricsFn({ data: { hours } }),
     refetchInterval: REFRESH_INTERVAL_IN_MS,
   });
 
@@ -98,124 +76,203 @@ function DashboardPage() {
   const data = dashboard.data;
   const now = new Date();
   const host = data?.hostSample ?? null;
-  const health = data == null ? null : HEALTH_PILLS[data.health];
+  const finished = (data?.recentDeployments ?? []).filter(
+    (deployment) => deployment.status === "succeeded" || deployment.status === "failed",
+  );
+  const succeeded = finished.filter((deployment) => deployment.status === "succeeded").length;
+  const memoryPercent = usagePercent(host?.memoryUsedBytes, host?.memoryTotalBytes);
+  const selectedSeries = SERIES.find((item) => item.value === series) ?? SERIES[0];
 
   return (
     <>
-      <PageHeader
-        title="Painel"
-        description="Visão geral das aplicações e do servidor."
-        actions={
-          health == null ? (
-            <Skeleton className="h-6 w-40" />
-          ) : (
-            <StatusPill tone={health.tone} label={health.label} />
-          )
-        }
-      />
-
-      <section aria-label="Resumo" className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <section className="flex flex-col gap-6 2xl:flex-row 2xl:items-start 2xl:justify-between">
+        <div className="min-w-0 flex-1 space-y-4">
+          <h1 className="text-3xl leading-tight font-semibold tracking-tight">Painel</h1>
+          <div className="flex flex-wrap gap-2">
+            {can("project:write") ? (
+              <Button size="sm" asChild>
+                <Link to="/projects/new">
+                  <PlusIcon aria-hidden />
+                  Novo projeto
+                </Link>
+              </Button>
+            ) : null}
+            <Button size="sm" variant="outline" asChild>
+              <Link to="/deployments">
+                <RocketIcon aria-hidden />
+                Ver deploys
+              </Link>
+            </Button>
+            <Button size="sm" variant="outline" asChild>
+              <Link to="/settings" search={{ tab: "server" }}>
+                <WebhookIcon aria-hidden />
+                Configurar webhook
+              </Link>
+            </Button>
+          </div>
+        </div>
         {data == null ? (
-          Array.from({ length: 4 }, (_, index) => (
-            <Skeleton key={index} className="h-[7.5rem] rounded-2xl" />
-          ))
+          <Skeleton className="h-[6.5rem] w-full rounded-xl 2xl:w-[38rem]" />
         ) : (
-          <>
-            <StatCard
-              label="Aplicações"
-              value={data.projectCount}
-              icon={BoxesIcon}
-              tone="brand"
-              hint={`${data.neverDeployedCount} sem deploy`}
-            />
-            <StatCard
-              label="Online"
-              value={data.onlineCount}
-              icon={CircleCheckIcon}
-              tone="success"
-            />
-            <StatCard
-              label="Offline"
-              value={data.offlineCount}
-              icon={CircleOffIcon}
-              tone="neutral"
-              hint={data.unhealthyCount > 0 ? `${data.unhealthyCount} sem saúde` : undefined}
-            />
-            <StatCard
-              label="Falhas (24h)"
-              value={data.recentFailures.length}
-              icon={AlertTriangleIcon}
-              tone="danger"
-            />
-          </>
+          <MetricStrip
+            className="2xl:w-[38rem] 2xl:shrink-0"
+            metrics={[
+              {
+                label: "Ambiente",
+                value: HEALTH_LABELS[data.health].value,
+                detail: HEALTH_LABELS[data.health].detail,
+              },
+              {
+                label: "Online",
+                value: data.onlineCount,
+                percent: percentOf(data.onlineCount, data.projectCount - data.neverDeployedCount),
+                detail: `${data.offlineCount} offline`,
+              },
+              {
+                label: "Falhas (24h)",
+                value: data.recentFailures.length,
+                percent: percentOf(data.recentFailures.length, data.recentDeployments.length),
+                detail: `de ${data.recentDeployments.length} deploys recentes`,
+              },
+            ]}
+          />
         )}
       </section>
 
-      <section className="grid gap-4 lg:grid-cols-3">
-        <Card className="lg:col-span-1">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-base">
-              <ServerIcon aria-hidden className="size-4" />
-              Servidor
-            </CardTitle>
-            <CardDescription>
-              {data?.worker == null
-                ? "Worker nunca conectou"
-                : `Worker ${data.worker.online ? "online" : "offline"} · Docker ${data.worker.dockerAvailable ? (data.worker.dockerVersion ?? "") : "indisponível"}`}
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {data == null ? (
-              <ListSkeleton rows={3} />
-            ) : (
-              <>
-                <UsageMeter label="CPU" percent={host?.cpuPercent ?? null} />
-                <UsageMeter
-                  label="Memória"
-                  percent={usagePercent(host?.memoryUsedBytes, host?.memoryTotalBytes)}
-                  detail={
-                    host?.memoryTotalBytes == null
-                      ? undefined
-                      : `${formatBytes(host.memoryUsedBytes)} de ${formatBytes(host.memoryTotalBytes)}`
-                  }
-                />
-                <UsageMeter
-                  label="Disco"
-                  percent={usagePercent(host?.diskUsedBytes, host?.diskTotalBytes)}
-                  detail={
-                    host?.diskTotalBytes == null
-                      ? undefined
-                      : `${formatBytes(host.diskUsedBytes)} de ${formatBytes(host.diskTotalBytes)}`
-                  }
-                />
-                <p className="text-[0.82rem] text-muted-foreground">
-                  {host == null
-                    ? "Nenhuma amostra coletada ainda."
-                    : `Última amostra ${formatRelativeTime(host.createdAt, now)}`}
-                </p>
-              </>
-            )}
-          </CardContent>
-        </Card>
-        <Card className="lg:col-span-2">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-base">
-              <ActivityIcon aria-hidden className="size-4" />
-              CPU na última hora
-            </CardTitle>
+      {data == null ? (
+        <Skeleton className="h-72 rounded-xl" />
+      ) : (
+        <SummaryGrid>
+          <SummaryCard
+            icon={BoxesIcon}
+            iconClassName="text-brand"
+            title="Aplicações"
+            link={{ to: "/projects" }}
+            metricLabel="Online agora"
+            value={data.onlineCount}
+            caption={`de ${data.projectCount - data.neverDeployedCount} com deploy`}
+            aside={
+              <ProgressRing
+                label="Aplicações online"
+                percent={percentOf(data.onlineCount, data.projectCount - data.neverDeployedCount)}
+              />
+            }
+            links={[
+              { label: "Ver projetos", to: "/projects" },
+              { label: "Novo projeto", to: "/projects/new" },
+            ]}
+          />
+          <SummaryCard
+            icon={RocketIcon}
+            iconClassName="text-success"
+            title="Deploys"
+            link={{ to: "/deployments" }}
+            metricLabel="Concluídos com sucesso"
+            value={succeeded}
+            caption={
+              data.recentDeployments[0] == null
+                ? "Nenhum deploy ainda"
+                : `Último ${formatRelativeTime(data.recentDeployments[0].createdAt, now)}`
+            }
+            aside={
+              <ProgressRing
+                label="Taxa de sucesso"
+                percent={percentOf(succeeded, finished.length)}
+              />
+            }
+            links={[
+              { label: "Histórico", to: "/deployments" },
+              { label: "Webhook", to: "/settings", search: { tab: "server" } },
+            ]}
+          />
+          <SummaryCard
+            icon={ServerIcon}
+            iconClassName="text-warning"
+            title="Servidor"
+            link={{ to: "/settings", search: { tab: "server" } }}
+            metricLabel="CPU"
+            value={formatPercent(host?.cpuPercent ?? null)}
+            caption={
+              host?.memoryTotalBytes == null
+                ? "Memória indisponível"
+                : `Memória ${formatBytes(host.memoryUsedBytes)} de ${formatBytes(host.memoryTotalBytes)}`
+            }
+            aside={<ProgressRing label="Memória em uso" percent={memoryPercent} />}
+            links={[
+              { label: "Recursos", to: "/settings", search: { tab: "server" } },
+              { label: "Auditoria", to: "/settings", search: { tab: "audit" } },
+            ]}
+          />
+        </SummaryGrid>
+      )}
+
+      <section className="space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <p className="text-sm text-muted-foreground">
+            {hours === 1 ? "Última hora" : "Últimas 24 horas"} ·{" "}
+            {data?.worker == null
+              ? "worker nunca conectou"
+              : `worker ${data.worker.online ? "online" : "offline"}, Docker ${data.worker.dockerVersion ?? "indisponível"}`}
+          </p>
+          <SegmentedControl
+            label="Janela de tempo"
+            options={WINDOWS}
+            value={hours}
+            onChange={setHours}
+          />
+        </div>
+        <Card className="gap-4">
+          <CardHeader className="flex flex-row items-center justify-between">
+            <div
+              role="radiogroup"
+              aria-label="Série"
+              className="inline-flex rounded-lg border bg-surface-sunken/70 p-1"
+            >
+              {SERIES.map((item) => (
+                <button
+                  key={item.value}
+                  type="button"
+                  role="radio"
+                  aria-checked={series === item.value}
+                  onClick={() => setSeries(item.value)}
+                  className={cn(
+                    "flex h-9 items-center gap-2 rounded-lg px-3.5 text-sm font-semibold transition-colors focus-visible:ring-4 focus-visible:ring-ring/30 focus-visible:outline-none",
+                    series === item.value
+                      ? "bg-surface-raised text-foreground"
+                      : "text-muted-foreground hover:text-foreground",
+                  )}
+                >
+                  <span
+                    aria-hidden
+                    className="size-2 rounded-full"
+                    style={{ background: `var(${item.color})` }}
+                  />
+                  {item.label}
+                </button>
+              ))}
+            </div>
+            <span className="text-sm text-muted-foreground">
+              Atual{" "}
+              <strong className="text-foreground tabular-nums">
+                {formatPercent(series === "cpu" ? (host?.cpuPercent ?? null) : memoryPercent)}
+              </strong>
+            </span>
           </CardHeader>
           <CardContent>
             {hostMetrics.data == null ? (
-              <Skeleton className="h-64 rounded-xl" />
+              <Skeleton className="h-64 rounded-lg" />
             ) : (
               <MetricChart
-                label="CPU"
-                colorVariable="--chart-1"
+                label={selectedSeries.label}
+                colorVariable={selectedSeries.color}
                 maxValue={100}
                 formatValue={(value) => `${Math.round(value)}%`}
                 points={hostMetrics.data.map((sample) => ({
                   createdAt: sample.createdAt,
-                  value: sample.cpuPercent,
+                  value:
+                    series === "cpu"
+                      ? sample.cpuPercent
+                      : usagePercent(sample.memoryUsedBytes, sample.memoryTotalBytes),
                 }))}
               />
             )}
@@ -226,7 +283,7 @@ function DashboardPage() {
       <section className="grid gap-4 lg:grid-cols-2">
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Deploys recentes</CardTitle>
+            <CardTitle>Deploys recentes</CardTitle>
           </CardHeader>
           <CardContent>
             {data == null ? (
@@ -242,7 +299,7 @@ function DashboardPage() {
         </Card>
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Falhas recentes</CardTitle>
+            <CardTitle>Falhas recentes</CardTitle>
           </CardHeader>
           <CardContent>
             {data == null ? (
@@ -284,18 +341,18 @@ function DeploymentList({
           <Link
             to="/projects/$projectId/deployments/$deploymentId"
             params={{ projectId: deployment.projectId, deploymentId: deployment.id }}
-            className="flex items-center justify-between gap-3 rounded-md px-2 py-3 hover:bg-muted/50 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+            className="flex items-center justify-between gap-3 rounded-lg px-3 py-3 transition-colors hover:bg-surface-raised focus-visible:ring-4 focus-visible:ring-ring/30 focus-visible:outline-none"
           >
             <div className="min-w-0">
-              <p className="truncate text-[0.92rem] font-medium">{deployment.projectName}</p>
-              <p className="truncate text-[0.82rem] text-muted-foreground">
-                {deployment.commitSha?.slice(0, 7) ?? "—"} ·{" "}
+              <p className="truncate text-sm font-medium">{deployment.projectName}</p>
+              <p className="truncate text-xs text-muted-foreground">
+                {deployment.commitSha?.slice(0, SHORT_SHA_LENGTH) ?? "—"} ·{" "}
                 {deployment.commitMessage ?? deployment.errorMessage ?? "sem mensagem"}
               </p>
             </div>
             <div className="flex shrink-0 flex-col items-end gap-1">
               <DeploymentStatusBadge status={deployment.status} />
-              <span className="text-[0.82rem] text-muted-foreground">
+              <span className="text-xs text-muted-foreground">
                 {formatRelativeTime(deployment.createdAt, now)} ·{" "}
                 {formatDuration(durationBetween(deployment.startedAt, deployment.finishedAt))}
               </span>

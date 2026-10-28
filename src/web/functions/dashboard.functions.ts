@@ -2,7 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 
 import { getDatabase } from "@/db";
-import { getDashboardSummary, listHostSamples } from "@/monitoring";
+import { getDashboardSummary, getWorkerStatus, listHostSamples } from "@/monitoring";
 import { authorize } from "@/web/server/authorization";
 
 const MILLISECONDS_PER_HOUR = 3_600_000;
@@ -22,3 +22,9 @@ export const getHostMetricsFn = createServerFn({ method: "GET" })
       new Date(Date.now() - data.hours * MILLISECONDS_PER_HOUR),
     );
   });
+
+/** Worker liveness and Docker availability, polled by the sidebar footer. */
+export const getWorkerStatusFn = createServerFn({ method: "GET" }).handler(async () => {
+  await authorize("project:read");
+  return getWorkerStatus(getDatabase());
+});

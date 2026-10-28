@@ -97,7 +97,7 @@ function useColumns(now: Date) {
               >
                 {row.original.name}
               </Link>
-              <p className="font-mono text-[0.82rem] text-muted-foreground">{row.original.slug}</p>
+              <p className="font-mono text-xs text-muted-foreground">{row.original.slug}</p>
             </div>
           ),
         }),
@@ -105,11 +105,9 @@ function useColumns(now: Date) {
           id: "repository",
           header: "Repositório",
           cell: ({ row }) => (
-            <div className="min-w-0 text-[0.92rem]">
+            <div className="min-w-0 text-sm">
               <p className="truncate">{row.original.repositoryFullName}</p>
-              <p className="font-mono text-[0.82rem] text-muted-foreground">
-                {row.original.branch}
-              </p>
+              <p className="font-mono text-xs text-muted-foreground">{row.original.branch}</p>
             </div>
           ),
         }),
@@ -132,12 +130,12 @@ function useColumns(now: Date) {
           cell: ({ row }) => {
             const latest = row.original.latestDeployment;
             if (latest == null || isDeploymentStatus(latest.status) === false) {
-              return <span className="text-[0.92rem] text-muted-foreground">Nenhum</span>;
+              return <span className="text-sm text-muted-foreground">Nenhum</span>;
             }
             return (
               <div className="flex flex-col items-start gap-1">
                 <DeploymentStatusBadge status={latest.status} />
-                <span className="text-[0.82rem] text-muted-foreground">
+                <span className="text-xs text-muted-foreground">
                   {formatRelativeTime(latest.createdAt, now)}
                 </span>
               </div>
@@ -148,9 +146,7 @@ function useColumns(now: Date) {
           id: "autoDeploy",
           header: "Deploy automático",
           cell: ({ row }) => (
-            <span className="text-[0.92rem]">
-              {row.original.autoDeploy ? "Ativado" : "Desativado"}
-            </span>
+            <span className="text-sm">{row.original.autoDeploy ? "Ativado" : "Desativado"}</span>
           ),
         }),
       ]),

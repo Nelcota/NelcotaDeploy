@@ -25,7 +25,7 @@ export function UsageMeter({
   }
   return (
     <div className="space-y-2">
-      <div className="flex items-baseline justify-between gap-2 text-[0.92rem]">
+      <div className="flex items-baseline justify-between gap-2 text-sm">
         <span className="font-semibold">{label}</span>
         <span className="font-semibold text-foreground tabular-nums">
           {known ? formatPercent(clamped) : "Indisponível"}
@@ -45,7 +45,7 @@ export function UsageMeter({
           style={{ width: `${clamped}%` }}
         />
       </div>
-      {detail == null ? null : <p className="text-[0.82rem] text-muted-foreground">{detail}</p>}
+      {detail == null ? null : <p className="text-xs text-muted-foreground">{detail}</p>}
     </div>
   );
 }

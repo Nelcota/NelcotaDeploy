@@ -70,7 +70,7 @@ function DomainsPage() {
         title="Domínios"
         description="Endereços públicos roteados pelo Traefik até a porta interna do contêiner."
       />
-      <div className="flex flex-col gap-3 rounded-lg border bg-muted/40 p-4 text-[0.92rem] sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-col gap-3 rounded-lg border bg-muted/40 p-4 text-sm sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-start gap-2">
           <InfoIcon aria-hidden className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
           <div className="space-y-1">
@@ -162,7 +162,7 @@ function DomainList({
               href={`${domain.httpsEnabled ? "https" : "http"}://${domain.hostname}`}
               target="_blank"
               rel="noreferrer noopener"
-              className="inline-flex items-center gap-1 truncate font-mono text-[0.92rem] hover:underline"
+              className="inline-flex items-center gap-1 truncate font-mono text-sm hover:underline"
             >
               {domain.hostname}
               <ExternalLinkIcon aria-hidden className="size-3.5" />

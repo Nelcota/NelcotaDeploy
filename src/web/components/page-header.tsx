@@ -12,9 +12,9 @@ export function PageHeader({
   return (
     <header className="flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
       <div className="min-w-0 space-y-1.5">
-        <h1 className="truncate text-[1.9rem] leading-tight font-bold tracking-tight">{title}</h1>
+        <h1 className="truncate text-3xl leading-tight font-semibold tracking-tight">{title}</h1>
         {description == null ? null : (
-          <div className="max-w-3xl text-[0.98rem] leading-relaxed text-muted-foreground">
+          <div className="max-w-3xl text-base leading-relaxed text-muted-foreground">
             {description}
           </div>
         )}

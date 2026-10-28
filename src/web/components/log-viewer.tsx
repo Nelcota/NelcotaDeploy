@@ -120,10 +120,10 @@ export function LogViewer({
 
   const pill = STATE_PILLS[state];
   return (
-    <div className="overflow-hidden rounded-2xl border bg-card">
+    <div className="overflow-hidden rounded-xl border bg-card">
       <div className="flex flex-wrap items-center gap-3 border-b px-4 py-3">
         <StatusPill tone={pill.tone} label={pill.label} />
-        <span className="text-[0.85rem] text-muted-foreground">{lines.length} linhas</span>
+        <span className="text-sm text-muted-foreground">{lines.length} linhas</span>
         <div className="relative ml-auto w-full sm:w-64">
           <SearchIcon
             aria-hidden
@@ -152,7 +152,7 @@ export function LogViewer({
           );
         }}
         className={cn(
-          "overflow-auto bg-console px-4 py-3 font-mono text-[0.82rem] leading-[1.7] text-console-foreground",
+          "overflow-auto bg-console px-4 py-3 font-mono text-xs leading-[1.7] text-console-foreground",
           heightClass,
         )}
       >

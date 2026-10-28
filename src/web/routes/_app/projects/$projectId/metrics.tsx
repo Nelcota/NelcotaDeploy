@@ -54,7 +54,7 @@ function ProjectMetricsPage() {
   return (
     <section aria-label="Métricas" className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="text-[0.92rem] text-muted-foreground">
+        <p className="text-sm text-muted-foreground">
           CPU e memória do contêiner atual, coletadas pelo worker.
         </p>
         <div role="group" aria-label="Período" className="flex gap-1">
@@ -101,32 +101,32 @@ function ProjectMetricsPage() {
           </CardHeader>
           <CardContent>
             {container == null ? (
-              <p className="text-[0.92rem] text-muted-foreground">
+              <p className="text-sm text-muted-foreground">
                 Nenhum contêiner do deploy atual foi observado pelo worker.
               </p>
             ) : (
               <dl className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-1">
-                  <dt className="text-[0.82rem] text-muted-foreground">Estado</dt>
+                  <dt className="text-xs text-muted-foreground">Estado</dt>
                   <dd>
                     <ContainerStateBadge state={container.state} health={container.health} />
                   </dd>
                 </div>
                 <div className="space-y-1">
-                  <dt className="text-[0.82rem] text-muted-foreground">Nome</dt>
-                  <dd className="truncate font-mono text-[0.82rem]">{container.name}</dd>
+                  <dt className="text-xs text-muted-foreground">Nome</dt>
+                  <dd className="truncate font-mono text-xs">{container.name}</dd>
                 </div>
                 <div className="space-y-1">
-                  <dt className="text-[0.82rem] text-muted-foreground">Em execução desde</dt>
-                  <dd className="text-[0.92rem]">
+                  <dt className="text-xs text-muted-foreground">Em execução desde</dt>
+                  <dd className="text-sm">
                     {container.startedAt == null
                       ? "—"
                       : `${formatDateTime(container.startedAt)} (${formatRelativeTime(container.startedAt, now)})`}
                   </dd>
                 </div>
                 <div className="space-y-1">
-                  <dt className="text-[0.82rem] text-muted-foreground">Reinicializações</dt>
-                  <dd className="text-[0.92rem] tabular-nums">{container.restartCount}</dd>
+                  <dt className="text-xs text-muted-foreground">Reinicializações</dt>
+                  <dd className="text-sm tabular-nums">{container.restartCount}</dd>
                 </div>
               </dl>
             )}

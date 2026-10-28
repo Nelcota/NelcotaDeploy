@@ -43,7 +43,7 @@ function RuntimeLogsPage() {
   return (
     <section aria-label="Logs de execução" className="space-y-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-        <div className="space-y-1 text-[0.92rem] text-muted-foreground">
+        <div className="space-y-1 text-sm text-muted-foreground">
           <p>Saída stdout e stderr dos contêineres do projeto, atualizada em tempo real.</p>
           <p>
             As linhas aparecem quando o worker detecta o contêiner em execução. Apenas as linhas

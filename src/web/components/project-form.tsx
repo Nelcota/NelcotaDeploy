@@ -230,10 +230,10 @@ export function ProjectForm({
                 aria-describedby="project-auto-deploy-hint"
               />
               <div className="space-y-1">
-                <label htmlFor="project-auto-deploy" className="text-[0.92rem] font-medium">
+                <label htmlFor="project-auto-deploy" className="text-sm font-medium">
                   Deploy automático
                 </label>
-                <p id="project-auto-deploy-hint" className="text-[0.82rem] text-muted-foreground">
+                <p id="project-auto-deploy-hint" className="text-xs text-muted-foreground">
                   Faz deploy a cada push na branch, via webhook do GitHub.
                 </p>
               </div>
@@ -241,7 +241,7 @@ export function ProjectForm({
           )}
         </form.Field>
         <details className="group rounded-md border p-3 sm:col-span-2">
-          <summary className="cursor-pointer text-[0.92rem] font-medium focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none">
+          <summary className="cursor-pointer text-sm font-medium focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none">
             Avançado
           </summary>
           <div className="mt-4 grid gap-4 sm:grid-cols-2">
