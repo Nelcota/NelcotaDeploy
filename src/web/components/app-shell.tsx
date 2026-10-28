@@ -1,19 +1,20 @@
-import { useQuery } from "@tanstack/react-query";
-import { Link, useLocation, useRouter } from "@tanstack/react-router";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Link, useRouter } from "@tanstack/react-router";
 import {
-  ArrowLeftIcon,
-  ArrowRightIcon,
-  ChevronRightIcon,
+  ActivityIcon,
+  ChevronDownIcon,
   LogOutIcon,
   MenuIcon,
   MoonIcon,
+  RefreshCwIcon,
   SearchIcon,
   SunIcon,
 } from "lucide-react";
 import { type ReactNode, useState } from "react";
 import { toast } from "sonner";
 
-import { getSidebarStatusFn } from "@/web/functions/dashboard.functions";
+import { getDashboardFn, getSidebarStatusFn } from "@/web/functions/dashboard.functions";
+import { listProjectsFn } from "@/web/functions/projects.functions";
 import type { SessionUser } from "@/web/functions/session.functions";
 
 import { authClient } from "./auth-client";
@@ -21,8 +22,8 @@ import { NelcotaMark } from "./brand-logo";
 import { CommandPalette, useCommandPaletteShortcut } from "./command-palette";
 import { useDeploymentNotifications } from "./deployment-notifications";
 import { ROLE_LABELS } from "./labels";
-import { breadcrumbTrail, MAIN_AREAS, projectIdFromPath } from "./navigation";
-import { projectQueryOptions } from "./project-query";
+import { MAIN_AREAS } from "./navigation";
+import { containerAccent, type RowAccent } from "./project-accent";
 import { useTheme } from "./theme";
 import { Button } from "./ui/button";
 import { cn } from "./ui/class-names";
@@ -38,9 +39,17 @@ import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "./ui/sheet";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 
 const STATUS_POLL_INTERVAL_IN_MS = 10_000;
+/** Projects listed in the sidebar; the rest are one click away on the projects page. */
+const SIDEBAR_PROJECT_LIMIT = 6;
 
-/** Width of every page; the panel uses the screen, but very wide monitors keep a margin. */
-const PAGE_WIDTH = "mx-auto w-full max-w-[96rem] px-5 md:px-8";
+const ACCENT_DOTS: Record<RowAccent, string> = {
+  none: "bg-faint",
+  success: "bg-success",
+  warning: "bg-warning",
+  danger: "bg-destructive",
+  progress: "bg-brand",
+  neutral: "bg-faint",
+};
 
 function initialsOf(name: string): string {
   return name
@@ -51,131 +60,277 @@ function initialsOf(name: string): string {
     .toUpperCase();
 }
 
+/** Worker and Docker health plus running deployments, shared by the sidebar and the top bar. */
+function useSystemStatus() {
+  return useQuery({
+    queryKey: ["sidebar-status"],
+    queryFn: () => getSidebarStatusFn(),
+    refetchInterval: STATUS_POLL_INTERVAL_IN_MS,
+  });
+}
+
+function useProjectList() {
+  return useQuery({
+    queryKey: ["projects", ""],
+    queryFn: () => listProjectsFn({ data: { search: "" } }),
+    refetchInterval: STATUS_POLL_INTERVAL_IN_MS,
+  });
+}
+
 function Brand() {
   return (
     <Link
       to="/"
       aria-label="Nelcota Deploy — Painel"
-      className="flex shrink-0 items-center gap-2.5 rounded-md focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+      className="flex shrink-0 items-center gap-3 rounded-lg px-2 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
     >
-      <NelcotaMark className="h-7 w-auto" />
-      <span className="text-base font-bold tracking-tight">
-        Nelcota <span className="font-medium text-muted-foreground">Deploy</span>
+      <NelcotaMark aria-hidden className="h-8 w-auto" />
+      <span className="text-xl font-semibold tracking-tight">Nelcota Deploy</span>
+    </Link>
+  );
+}
+
+function CountBadge({ count }: { readonly count: number }) {
+  return (
+    <span className="ml-auto min-w-6 rounded-md bg-well px-1.5 py-0.5 text-center text-xs font-medium text-muted-foreground tabular-nums group-data-[status=active]:bg-white/20 group-data-[status=active]:text-primary-foreground">
+      {count}
+    </span>
+  );
+}
+
+const SIDEBAR_ITEM =
+  "group flex h-11 items-center gap-3 rounded-xl px-3 text-[0.95rem] text-muted-foreground transition-colors hover:bg-well hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none data-[status=active]:bg-primary data-[status=active]:text-primary-foreground";
+
+function SidebarGroup({
+  label,
+  children,
+}: {
+  readonly label: string;
+  readonly children: ReactNode;
+}) {
+  return (
+    <div className="space-y-1">
+      <p className="px-3 pb-1 text-xs font-medium tracking-wider text-faint uppercase">{label}</p>
+      {children}
+    </div>
+  );
+}
+
+function SidebarProjects({ onNavigate }: { readonly onNavigate: () => void }) {
+  const projects = useProjectList();
+  const list = projects.data ?? [];
+  if (projects.isPending) {
+    return null;
+  }
+  return (
+    <SidebarGroup label="Projetos">
+      {list.length === 0 ? <p className="px-3 text-sm text-faint">Nenhum projeto ainda.</p> : null}
+      {list.slice(0, SIDEBAR_PROJECT_LIMIT).map((project) => (
+        <Link
+          key={project.id}
+          to="/projects/$projectId"
+          params={{ projectId: project.id }}
+          onClick={onNavigate}
+          className="flex h-10 items-center gap-3 rounded-xl px-3 text-sm text-muted-foreground transition-colors hover:bg-well hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none data-[status=active]:bg-well data-[status=active]:text-foreground"
+        >
+          <span
+            aria-hidden
+            className={cn(
+              "size-2 shrink-0 rounded-full",
+              ACCENT_DOTS[containerAccent(project.containerState, project.containerHealth)],
+            )}
+          />
+          <span className="truncate">{project.name}</span>
+        </Link>
+      ))}
+      {list.length > SIDEBAR_PROJECT_LIMIT ? (
+        <Link
+          to="/projects"
+          onClick={onNavigate}
+          className="flex h-9 items-center px-3 text-sm text-faint transition-colors hover:text-foreground"
+        >
+          Ver todos ({list.length})
+        </Link>
+      ) : null}
+    </SidebarGroup>
+  );
+}
+
+/** Sidebar body: brand, the overview areas with counts, the projects, and the account area. */
+function SidebarContent({ onNavigate }: { readonly onNavigate: () => void }) {
+  const projects = useProjectList();
+  const status = useSystemStatus();
+  const counts: Readonly<Record<string, number | null>> = {
+    "/projects": projects.data?.length ?? null,
+    "/deployments": status.data?.activeDeployments ?? null,
+  };
+  return (
+    <div className="flex h-full w-full flex-col px-4 pb-5">
+      <div className="flex h-20 shrink-0 items-center">
+        <Brand />
+      </div>
+      <nav
+        aria-label="Principal"
+        className="flex min-h-0 flex-1 flex-col gap-7 overflow-y-auto pt-4"
+      >
+        <SidebarGroup label="Visão geral">
+          {MAIN_AREAS.filter((area) => area.group === "overview").map((area) => {
+            const count = counts[area.to] ?? null;
+            return (
+              <Link
+                key={area.to}
+                to={area.to}
+                activeOptions={{ exact: area.exact }}
+                onClick={onNavigate}
+                className={SIDEBAR_ITEM}
+              >
+                <area.icon aria-hidden className="size-[1.15rem] shrink-0" />
+                {area.label}
+                {count == null || count === 0 ? null : <CountBadge count={count} />}
+              </Link>
+            );
+          })}
+        </SidebarGroup>
+        <SidebarProjects onNavigate={onNavigate} />
+      </nav>
+      <div className="border-t border-border pt-5">
+        <SidebarGroup label="Conta">
+          {MAIN_AREAS.filter((area) => area.group === "account").map((area) => (
+            <Link
+              key={area.to}
+              to={area.to}
+              activeOptions={{ exact: area.exact }}
+              onClick={onNavigate}
+              className={SIDEBAR_ITEM}
+            >
+              <area.icon aria-hidden className="size-[1.15rem] shrink-0" />
+              {area.label}
+            </Link>
+          ))}
+        </SidebarGroup>
+      </div>
+    </div>
+  );
+}
+
+function MobileNavigation() {
+  const [open, setOpen] = useState(false);
+  return (
+    <Sheet open={open} onOpenChange={setOpen}>
+      <SheetTrigger asChild>
+        <Button variant="ghost" size="icon-sm" aria-label="Abrir menu" className="lg:hidden">
+          <MenuIcon aria-hidden />
+        </Button>
+      </SheetTrigger>
+      <SheetContent side="left" className="w-72 bg-background p-0">
+        <SheetTitle className="sr-only">Menu</SheetTitle>
+        <SidebarContent onNavigate={() => setOpen(false)} />
+      </SheetContent>
+    </Sheet>
+  );
+}
+
+function ShortcutPill({
+  to,
+  label,
+  count,
+}: {
+  readonly to: "/projects" | "/deployments";
+  readonly label: string;
+  readonly count: number | null;
+}) {
+  return (
+    <Link
+      to={to}
+      className="flex h-10 items-center gap-2.5 rounded-full bg-well px-4 text-sm whitespace-nowrap ring-1 ring-border transition-colors hover:bg-well-hover focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+    >
+      {label}
+      <span className="rounded-md bg-background/60 px-1.5 text-xs text-muted-foreground tabular-nums">
+        {count ?? "–"}
       </span>
     </Link>
   );
 }
 
-/** The Nelcota emblem straight on the rail, in the brand blue of the current theme. */
-function BrandTile() {
-  return (
-    <Link
-      to="/"
-      aria-label="Nelcota Deploy — Painel"
-      className="flex size-10 items-center justify-center rounded-xl transition-opacity hover:opacity-80 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
-    >
-      <NelcotaMark aria-hidden className="h-7 w-auto" />
-    </Link>
-  );
-}
-
-/** Narrow column of icons for the main areas; the tooltip and the label name each one. */
-function RailNavigation() {
-  return (
-    <nav aria-label="Principal" className="flex flex-col items-center gap-2">
-      {MAIN_AREAS.map((area) => (
-        <Tooltip key={area.to}>
-          <TooltipTrigger asChild>
-            <Link
-              to={area.to}
-              activeOptions={{ exact: area.exact }}
-              aria-label={area.label}
-              className="flex size-10 items-center justify-center rounded-xl text-muted-foreground transition-colors hover:bg-well hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none data-[status=active]:bg-well data-[status=active]:text-foreground data-[status=active]:ring-1 data-[status=active]:ring-border/70"
-            >
-              <area.icon aria-hidden className="size-[1.15rem]" />
-            </Link>
-          </TooltipTrigger>
-          <TooltipContent side="right">{area.label}</TooltipContent>
-        </Tooltip>
-      ))}
-    </nav>
-  );
-}
-
-function HistoryButtons() {
-  const router = useRouter();
-  return (
-    <div className="hidden items-center sm:flex">
-      <Button
-        variant="ghost"
-        size="icon-sm"
-        aria-label="Voltar"
-        onClick={() => router.history.back()}
-      >
-        <ArrowLeftIcon aria-hidden />
-      </Button>
-      <Button
-        variant="ghost"
-        size="icon-sm"
-        aria-label="Avançar"
-        onClick={() => router.history.forward()}
-      >
-        <ArrowRightIcon aria-hidden />
-      </Button>
-    </div>
-  );
-}
-
-/** Where the current page sits, from the dashboard down; the project name comes from its cache. */
-function Breadcrumbs() {
-  const pathname = useLocation({ select: (location) => location.pathname });
-  const projectId = projectIdFromPath(pathname);
-  const project = useQuery({ ...projectQueryOptions(projectId ?? ""), enabled: projectId != null });
-  const projectName = projectId == null ? null : (project.data?.project.name ?? null);
-  const trail = breadcrumbTrail(pathname, projectName);
-  return (
-    <nav aria-label="Trilha de navegação" className="min-w-0">
-      <ol className="flex min-w-0 items-center gap-1.5 text-sm">
-        {trail.map((crumb, index) => (
-          <li
-            key={`${index}-${crumb.label}`}
-            className={cn(
-              "min-w-0 items-center gap-1.5",
-              index === trail.length - 1 ? "flex" : "hidden sm:flex",
-            )}
-          >
-            {index > 0 ? (
-              <ChevronRightIcon
-                aria-hidden
-                className="hidden size-3.5 shrink-0 text-faint sm:block"
-              />
-            ) : null}
-            {crumb.link == null ? (
-              <span aria-current="page" className="truncate font-medium text-foreground">
-                {crumb.label}
-              </span>
-            ) : (
-              <Link
-                {...crumb.link}
-                className="truncate text-muted-foreground transition-colors hover:text-foreground focus-visible:text-foreground focus-visible:outline-none"
-              >
-                {crumb.label}
-              </Link>
-            )}
-          </li>
-        ))}
-      </ol>
-    </nav>
-  );
-}
-
-/** Worker and Docker health in one dot; the tooltip and the server page tell the details. */
-function SystemStatus() {
-  const status = useQuery({
-    queryKey: ["sidebar-status"],
-    queryFn: () => getSidebarStatusFn(),
+/** Quick counts that answer "is anything wrong?" from any page. */
+function ShortcutPills() {
+  const dashboard = useQuery({
+    queryKey: ["dashboard"],
+    queryFn: () => getDashboardFn(),
     refetchInterval: STATUS_POLL_INTERVAL_IN_MS,
   });
+  const status = useSystemStatus();
+  return (
+    <nav aria-label="Atalhos" className="hidden items-center gap-2 xl:flex">
+      <ShortcutPill to="/projects" label="Online" count={dashboard.data?.onlineCount ?? null} />
+      <ShortcutPill
+        to="/projects"
+        label="Precisam de atenção"
+        count={dashboard.data?.offlineCount ?? null}
+      />
+      <ShortcutPill
+        to="/deployments"
+        label="Em andamento"
+        count={status.data?.activeDeployments ?? null}
+      />
+    </nav>
+  );
+}
+
+function SearchButton({ onSearch }: { readonly onSearch: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onSearch}
+      aria-label="Buscar projetos e páginas"
+      className="flex h-10 min-w-0 flex-1 items-center gap-3 rounded-full bg-well px-4 text-sm text-muted-foreground ring-1 ring-border transition-colors hover:bg-well-hover hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none sm:max-w-md"
+    >
+      <SearchIcon aria-hidden className="size-4 shrink-0" />
+      <span className="hidden truncate sm:inline">Buscar projetos, deploys e páginas</span>
+      <kbd className="ml-auto hidden rounded border border-border px-1.5 font-mono text-xs whitespace-nowrap text-faint sm:inline">
+        Ctrl K
+      </kbd>
+    </button>
+  );
+}
+
+const ROUND_ICON_BUTTON =
+  "relative flex size-10 shrink-0 items-center justify-center rounded-full bg-well text-muted-foreground ring-1 ring-border transition-colors hover:bg-well-hover hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none";
+
+function RefreshButton() {
+  const queryClient = useQueryClient();
+  const [refreshing, setRefreshing] = useState(false);
+  const refresh = async () => {
+    setRefreshing(true);
+    try {
+      await queryClient.invalidateQueries();
+    } catch (error) {
+      console.error("failed to refresh queries", error);
+      toast.error("Não foi possível atualizar. Tente novamente.");
+    } finally {
+      setRefreshing(false);
+    }
+  };
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button
+          type="button"
+          aria-label="Atualizar dados"
+          onClick={() => void refresh()}
+          className={ROUND_ICON_BUTTON}
+        >
+          <RefreshCwIcon aria-hidden className={cn("size-4", refreshing ? "animate-spin" : "")} />
+        </button>
+      </TooltipTrigger>
+      <TooltipContent>Atualizar dados</TooltipContent>
+    </Tooltip>
+  );
+}
+
+/** Worker and Docker health in one icon; the badge color and the tooltip tell the state. */
+function SystemStatus() {
+  const status = useSystemStatus();
   const worker = status.data?.worker ?? null;
   const active = status.data?.activeDeployments ?? 0;
   const healthy = worker?.online === true && worker.dockerAvailable;
@@ -197,35 +352,24 @@ function SystemStatus() {
         <Link
           to="/settings"
           search={{ tab: "server" }}
-          className="hidden h-9 items-center gap-2 rounded-xl bg-well px-3 text-xs font-medium text-muted-foreground ring-1 ring-border/50 transition-colors hover:bg-well-hover hover:text-foreground lg:flex"
+          aria-label={label}
+          className={ROUND_ICON_BUTTON}
         >
-          <span aria-hidden className={cn("size-2 rounded-full", dot)} />
-          {label}
+          <ActivityIcon aria-hidden className="size-4" />
+          <span
+            aria-hidden
+            className={cn(
+              "absolute -top-0.5 -right-0.5 size-3 rounded-full ring-2 ring-background",
+              dot,
+            )}
+          />
         </Link>
       </TooltipTrigger>
       <TooltipContent>
-        {worker?.dockerVersion == null
-          ? "Estado do worker e do Docker"
-          : `Docker ${worker.dockerVersion}`}
+        {label}
+        {worker?.dockerVersion == null ? "" : ` · Docker ${worker.dockerVersion}`}
       </TooltipContent>
     </Tooltip>
-  );
-}
-
-function SearchButton({ onSearch }: { readonly onSearch: () => void }) {
-  return (
-    <button
-      type="button"
-      onClick={onSearch}
-      aria-label="Buscar projetos e páginas"
-      className="flex h-9 items-center gap-2.5 rounded-xl bg-well px-3 text-sm text-muted-foreground ring-1 ring-border/50 transition-colors hover:bg-well-hover hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none sm:w-64"
-    >
-      <SearchIcon aria-hidden className="size-4" />
-      <span className="hidden truncate sm:inline">Buscar…</span>
-      <kbd className="ml-auto hidden rounded border border-border px-1.5 font-mono text-xs whitespace-nowrap text-faint sm:inline">
-        Ctrl K
-      </kbd>
-    </button>
   );
 }
 
@@ -246,9 +390,16 @@ function AccountMenu({ user }: { readonly user: SessionUser }) {
         <button
           type="button"
           aria-label={`Conta de ${user.name}`}
-          className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-primary text-xs font-bold text-primary-foreground ring-offset-2 ring-offset-background transition-shadow hover:ring-2 hover:ring-primary/40 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+          className="flex shrink-0 items-center gap-3 rounded-full py-1 pr-2 pl-1 transition-colors hover:bg-well focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
         >
-          {initialsOf(user.name)}
+          <span className="flex size-9 items-center justify-center rounded-full bg-primary text-xs font-bold text-primary-foreground">
+            {initialsOf(user.name)}
+          </span>
+          <span className="hidden min-w-0 text-left md:block">
+            <span className="block max-w-36 truncate text-sm font-medium">{user.name}</span>
+            <span className="block text-xs text-faint">{ROLE_LABELS[user.role]}</span>
+          </span>
+          <ChevronDownIcon aria-hidden className="hidden size-4 text-muted-foreground md:block" />
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-64">
@@ -272,40 +423,9 @@ function AccountMenu({ user }: { readonly user: SessionUser }) {
   );
 }
 
-function MobileNavigation() {
-  const [open, setOpen] = useState(false);
-  return (
-    <Sheet open={open} onOpenChange={setOpen}>
-      <SheetTrigger asChild>
-        <Button variant="ghost" size="icon-sm" aria-label="Abrir menu" className="md:hidden">
-          <MenuIcon aria-hidden />
-        </Button>
-      </SheetTrigger>
-      <SheetContent side="left" className="w-72 gap-6 bg-background px-5 py-6">
-        <SheetTitle className="sr-only">Menu</SheetTitle>
-        <Brand />
-        <nav aria-label="Principal" className="flex flex-col gap-1">
-          {MAIN_AREAS.map((area) => (
-            <Link
-              key={area.to}
-              to={area.to}
-              activeOptions={{ exact: area.exact }}
-              onClick={() => setOpen(false)}
-              className="flex h-11 items-center gap-3 rounded-lg px-3 text-base text-muted-foreground data-[status=active]:bg-secondary data-[status=active]:text-foreground"
-            >
-              <area.icon aria-hidden className="size-5" />
-              {area.label}
-            </Link>
-          ))}
-        </nav>
-      </SheetContent>
-    </Sheet>
-  );
-}
-
 /**
- * Application frame: an icon rail with the main areas on the left, and a top bar with
- * history, breadcrumbs, system status, search and account above the page.
+ * Application frame: a sidebar with the areas and projects, a top bar with shortcuts,
+ * search, refresh, system status and account, and the page on a raised panel.
  */
 export function AppShell({
   user,
@@ -318,31 +438,32 @@ export function AppShell({
   useCommandPaletteShortcut(() => setSearchOpen(true));
   useDeploymentNotifications();
   return (
-    <div className="flex min-h-svh">
+    <div className="flex min-h-svh bg-background">
       <a
         href="#main"
         className="sr-only z-50 rounded-lg bg-primary px-4 py-2 text-primary-foreground focus:not-sr-only focus:fixed focus:top-3 focus:left-3"
       >
         Pular para o conteúdo
       </a>
-      <aside className="sticky top-0 hidden h-svh w-[4.5rem] shrink-0 flex-col items-center gap-8 border-r border-sidebar-border/70 py-4 md:flex">
-        <BrandTile />
-        <RailNavigation />
+      <aside className="sticky top-0 hidden h-svh w-[17rem] shrink-0 lg:flex">
+        <SidebarContent onNavigate={() => undefined} />
       </aside>
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="sticky top-0 z-40 bg-background/70 backdrop-blur-md">
-          <div className={cn(PAGE_WIDTH, "flex h-16 items-center gap-3")}>
-            <MobileNavigation />
-            <HistoryButtons />
-            <Breadcrumbs />
-            <div className="ml-auto flex shrink-0 items-center gap-2">
-              <SystemStatus />
-              <SearchButton onSearch={() => setSearchOpen(true)} />
-              <AccountMenu user={user} />
-            </div>
+        <header className="sticky top-0 z-40 flex h-20 shrink-0 items-center gap-3 bg-background px-4 lg:px-6">
+          <MobileNavigation />
+          <ShortcutPills />
+          <div className="ml-auto flex min-w-0 flex-1 items-center justify-end gap-2.5">
+            <SearchButton onSearch={() => setSearchOpen(true)} />
+            <RefreshButton />
+            <SystemStatus />
+            <AccountMenu user={user} />
           </div>
         </header>
-        <main id="main" tabIndex={-1} className="flex-1 focus:outline-none">
+        <main
+          id="main"
+          tabIndex={-1}
+          className="flex-1 bg-panel ring-1 ring-border/60 focus:outline-none lg:rounded-tl-3xl"
+        >
           {children}
         </main>
       </div>
@@ -355,7 +476,7 @@ export function AppShell({
   );
 }
 
-/** Standard page body: centered column with vertical rhythm. */
+/** Standard page body: full-width column with vertical rhythm. */
 export function PageBody({
   children,
   className,
@@ -363,5 +484,9 @@ export function PageBody({
   readonly children: ReactNode;
   readonly className?: string;
 }) {
-  return <div className={cn(PAGE_WIDTH, "space-y-8 pt-4 pb-10", className)}>{children}</div>;
+  return (
+    <div className={cn("mx-auto w-full max-w-[110rem] space-y-6 p-4 md:p-6", className)}>
+      {children}
+    </div>
+  );
 }
