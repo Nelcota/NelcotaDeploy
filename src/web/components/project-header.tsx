@@ -249,7 +249,7 @@ function ProjectActions({
   const running = containerState === "running";
 
   return (
-    <div className="flex items-center gap-2 max-lg:pb-1">
+    <div className="flex items-center gap-2 max-lg:border-b max-lg:border-border/70 max-lg:pb-4">
       {url == null ? null : (
         <Button variant="outline" size="sm" asChild>
           <a href={url} target="_blank" rel="noreferrer noopener">
