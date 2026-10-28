@@ -176,9 +176,9 @@
   }
   body {
     @apply bg-background font-sans text-foreground;
-    /* The soft light in the top-right corner of the reference "control room" look. */
+    /* Soft light centered above the page. */
     background-image: radial-gradient(
-      60rem 32rem at 85% -10%,
+      60rem 32rem at 50% -10%,
       color-mix(in oklab, var(--glow) 90%, transparent),
       transparent 70%
     );

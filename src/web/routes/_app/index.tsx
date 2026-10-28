@@ -21,6 +21,7 @@ import {
   formatRelativeTime,
   pluralize,
 } from "@/shared/format";
+import { NelcotaMark } from "@/web/components/brand-logo";
 import { DEPLOYMENT_STATUS_LABELS } from "@/web/components/labels";
 import { ListRow, type Stat, StatRow } from "@/web/components/layout";
 import { MetricChart } from "@/web/components/metric-chart";
@@ -327,9 +328,9 @@ function SummaryCard({ data }: { readonly data: DashboardSummary | null }) {
       </CardHeader>
       <CardContent className="px-2">
         <CardWell className="relative flex min-h-64 flex-col gap-3 overflow-hidden rounded-2xl bg-gradient-to-br from-well-hover to-well p-6">
-          <span
+          <NelcotaMark
             aria-hidden
-            className="pointer-events-none absolute -top-24 -right-24 size-72 rounded-full border-[2.5rem] border-foreground/[0.03]"
+            className="pointer-events-none absolute right-6 bottom-6 h-36 w-auto opacity-[0.14]"
           />
           <h2 className="relative text-2xl leading-tight font-semibold tracking-tight">
             {data == null ? "Carregando…" : <Headline data={data} />}
