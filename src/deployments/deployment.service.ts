@@ -387,6 +387,7 @@ export type DeploymentProgress = {
   readonly commitMessage?: string;
   readonly imageTag?: string;
   readonly containerName?: string;
+  readonly runtimeConfigHash?: string;
   readonly errorMessage?: string | null;
 };
 

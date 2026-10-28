@@ -5,6 +5,7 @@ export {
   requestContainerAction,
 } from "./container-action.service";
 export { summarizeDeployments } from "./deployment-stats.service";
+export { hasPendingRuntimeChanges, runtimeConfigFingerprint } from "./runtime-config";
 export {
   DeploymentNotFoundError,
   NoActiveContainerError,

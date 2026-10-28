@@ -220,6 +220,8 @@ export const deployments = sqliteTable(
     commitSha: text("commit_sha"),
     commitMessage: text("commit_message"),
     imageTag: text("image_tag"),
+    // Fingerprint of the variables and domains the container started with (see runtime-config.ts).
+    runtimeConfigHash: text("runtime_config_hash"),
     containerName: text("container_name"),
     sourceDeploymentId: text("source_deployment_id"),
     errorMessage: text("error_message"),

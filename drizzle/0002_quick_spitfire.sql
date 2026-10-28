@@ -1,0 +1,1 @@
+ALTER TABLE `deployments` ADD `runtime_config_hash` text;

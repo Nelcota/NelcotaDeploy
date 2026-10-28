@@ -3,6 +3,7 @@ import { z } from "zod";
 
 import { userActor } from "@/auth";
 import { getDatabase } from "@/db";
+import { hasPendingRuntimeChanges } from "@/deployments";
 import { listProjectDomains } from "@/domains";
 import { listProjectContainers, getWorkerStatus } from "@/monitoring";
 import {
@@ -41,6 +42,8 @@ export const getProjectFn = createServerFn({ method: "GET" })
       domains: listProjectDomains(database, project.id, getSystemSettings(database)),
       containers: listProjectContainers(database, project.id),
       worker: getWorkerStatus(database),
+      /** Variables or domains changed since the live container started. */
+      pendingRuntimeChanges: hasPendingRuntimeChanges(database, project.id),
     };
   });
 

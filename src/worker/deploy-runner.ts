@@ -5,6 +5,7 @@ import {
   getDeployment,
   isCancellationRequested,
   isTerminalStatus,
+  runtimeConfigFingerprint,
   transitionDeployment,
 } from "@/deployments";
 import {
@@ -178,6 +179,8 @@ async function deploy(
   const { deployment, project, logs, signal } = context;
 
   const environment = await resolveEnvironment(database, secretBox, project.id);
+  // Taken with the variables it describes, so later edits show up as pending changes.
+  const runtimeConfigHash = runtimeConfigFingerprint(database, project.id);
   const repositoryToken = await readRepositoryToken(database, secretBox, project.id);
   context.state.useRedactor(createRedactor([...environment.secretValues, repositoryToken ?? ""]));
   logs.useRedactor(context.state.redact);
@@ -192,7 +195,11 @@ async function deploy(
   assertNotCancelled(signal);
 
   const containerName = containerNameFor(project.slug, deployment.id);
-  transitionDeployment(database, deployment.id, "starting", { imageTag, containerName });
+  transitionDeployment(database, deployment.id, "starting", {
+    imageTag,
+    containerName,
+    runtimeConfigHash,
+  });
   logs.system(`Starting container ${containerName}`);
   await docker.ensureNetwork(config.network);
   const leftover = await docker.inspectContainer(containerName);
