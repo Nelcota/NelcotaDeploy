@@ -5,7 +5,7 @@ import { type KeyboardEvent, useEffect, useMemo, useState } from "react";
 
 import { listProjectsFn } from "@/web/functions/projects.functions";
 
-import { RAIL_ITEMS, SETTINGS_SECTIONS } from "./navigation";
+import { MAIN_AREAS, SETTINGS_SECTIONS } from "./navigation";
 import { cn } from "./ui/class-names";
 import { Dialog, DialogContent, DialogTitle } from "./ui/dialog";
 
@@ -69,7 +69,7 @@ export function CommandPalette({
         await navigate({ to: "/projects/$projectId", params: { projectId: project.id } }),
     }));
     const pageCommands: Command[] = [
-      ...RAIL_ITEMS.map((item) => ({
+      ...MAIN_AREAS.map((item) => ({
         id: `page-${item.to}`,
         group: "Páginas" as const,
         label: item.label,
@@ -90,7 +90,7 @@ export function CommandPalette({
       ).map((section) => ({
         id: `settings-${section.tab}`,
         group: "Páginas" as const,
-        label: `Configurações · ${section.label}`,
+        label: `Administração · ${section.label}`,
         hint: `/settings?tab=${section.tab}`,
         icon: section.icon,
         run: async () => await navigate({ to: "/settings", search: { tab: section.tab } }),

@@ -106,7 +106,7 @@ function ProjectOverviewPage() {
             {project.autoDeploy ? (
               <p className="mt-3 rounded-md bg-muted p-3 text-xs text-muted-foreground">
                 Para o deploy automático funcionar, configure o webhook do GitHub apontando para a
-                URL exibida em Configurações › Servidor, com o evento “push”.
+                URL exibida em Administração › Servidor, com o evento “push”.
               </p>
             ) : null}
           </CardContent>

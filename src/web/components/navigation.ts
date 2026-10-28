@@ -11,6 +11,7 @@ import {
   ScrollTextIcon,
   ServerIcon,
   SettingsIcon,
+  ShieldCheckIcon,
   ShieldIcon,
   UsersIcon,
   VariableIcon,
@@ -18,15 +19,15 @@ import {
 
 import type { Permission } from "@/shared/roles";
 
-/** Top-level areas shown as icons in the narrow rail. */
-export const RAIL_ITEMS = [
+/** Top-level areas of the panel. */
+export const MAIN_AREAS = [
   { to: "/", label: "Painel", icon: HomeIcon, exact: true },
   { to: "/projects", label: "Projetos", icon: BoxesIcon, exact: false },
   { to: "/deployments", label: "Deploys", icon: RocketIcon, exact: false },
-  { to: "/settings", label: "Configurações", icon: SettingsIcon, exact: false },
+  { to: "/settings", label: "Administração", icon: ShieldCheckIcon, exact: false },
 ] as const;
 
-/** Pages of one project, listed in the context sidebar while a project is open. */
+/** Pages of one project, listed in the sidebar while a project is open. */
 export const PROJECT_SECTIONS = [
   { to: "/projects/$projectId", label: "Visão geral", icon: HomeIcon, exact: true },
   { to: "/projects/$projectId/deployments", label: "Deploys", icon: RocketIcon, exact: false },

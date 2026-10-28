@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, isNotNull, lt, ne } from "drizzle-orm";
+import { and, count, desc, eq, inArray, isNotNull, lt, ne } from "drizzle-orm";
 
 import { type Actor, recordAuditEvent } from "@/audit";
 import { type Database, tables, type Transaction } from "@/db";
@@ -462,4 +462,19 @@ export function isCancellationRequested(database: Database, deploymentId: string
     .where(eq(tables.deployments.id, deploymentId))
     .get();
   return row?.cancelRequestedAt != null;
+}
+
+/**
+ * Counts deployments waiting in the queue or running right now.
+ *
+ * @param database - Database.
+ * @returns Number of unfinished deployments.
+ */
+export function countActiveDeployments(database: Database): number {
+  const row = database
+    .select({ total: count() })
+    .from(tables.deployments)
+    .where(inArray(tables.deployments.status, ["queued", ...IN_PROGRESS_STATUSES]))
+    .get();
+  return row?.total ?? 0;
 }

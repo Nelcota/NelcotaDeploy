@@ -17,6 +17,7 @@ import {
 import {
   cancelDeployment,
   completeDeployment,
+  countActiveDeployments,
   getDeployment,
   requestDeployment,
   transitionDeployment,
@@ -252,5 +253,27 @@ describe("requestContainerAction", () => {
     });
 
     expect(second).toEqual({ jobId: first.jobId, created: false });
+  });
+});
+
+describe("countActiveDeployments", () => {
+  test("counts queued and running deployments but not finished ones", () => {
+    const database = openMemoryDatabase();
+    const project = createTestProject(database);
+    const finished = requestDeployment(database, {
+      projectId: project.id,
+      ...manual,
+      commitSha: "a".repeat(40),
+    });
+    transitionDeployment(database, finished.deploymentId, "failed");
+    const running = requestDeployment(database, {
+      projectId: project.id,
+      ...manual,
+      commitSha: "b".repeat(40),
+    });
+    transitionDeployment(database, running.deploymentId, "cloning");
+    requestDeployment(database, { projectId: project.id, ...manual, commitSha: "c".repeat(40) });
+
+    expect(countActiveDeployments(database)).toBe(2);
   });
 });

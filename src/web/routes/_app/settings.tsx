@@ -93,6 +93,14 @@ const SETTINGS_TITLES: Record<(typeof SETTINGS_SECTIONS)[number], string> = {
   audit: "Auditoria",
 };
 
+const SETTINGS_DESCRIPTIONS: Record<(typeof SETTINGS_SECTIONS)[number], string> = {
+  organization: "Nome da organização e domínio base dos projetos.",
+  users: "Quem acessa o painel e o que cada pessoa pode fazer.",
+  server: "Recursos da VPS, estado do worker e configuração do webhook.",
+  tokens: "Tokens para o servidor MCP e outras integrações.",
+  audit: "Registro de quem fez o quê, e webhooks recebidos.",
+};
+
 const GENERATED_PASSWORD_BYTES = 18;
 const SERVER_REFRESH_INTERVAL_IN_MS = 15_000;
 /** Characters of ids and SHAs shown in tables; the full value is in the audit details. */
@@ -132,10 +140,7 @@ function SettingsPage() {
   const { tab = "organization" } = Route.useSearch();
   return (
     <>
-      <PageHeader
-        title={SETTINGS_TITLES[tab]}
-        description="Organização, usuários, servidor, tokens de API e auditoria."
-      />
+      <PageHeader title={SETTINGS_TITLES[tab]} description={SETTINGS_DESCRIPTIONS[tab]} />
       <Tabs
         value={tab}
         onValueChange={(value) => {

@@ -2,6 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 
 import { getDatabase } from "@/db";
+import { countActiveDeployments } from "@/deployments";
 import { getDashboardSummary, getWorkerStatus, listHostSamples } from "@/monitoring";
 import { authorize } from "@/web/server/authorization";
 
@@ -23,8 +24,9 @@ export const getHostMetricsFn = createServerFn({ method: "GET" })
     );
   });
 
-/** Worker liveness and Docker availability, polled by the sidebar footer. */
-export const getWorkerStatusFn = createServerFn({ method: "GET" }).handler(async () => {
+/** Worker liveness, Docker availability and running deployments, polled by the sidebar. */
+export const getSidebarStatusFn = createServerFn({ method: "GET" }).handler(async () => {
   await authorize("project:read");
-  return getWorkerStatus(getDatabase());
+  const database = getDatabase();
+  return { worker: getWorkerStatus(database), activeDeployments: countActiveDeployments(database) };
 });

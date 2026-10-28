@@ -13,6 +13,7 @@ export {
 export {
   cancelDeployment,
   completeDeployment,
+  countActiveDeployments,
   type Deployment,
   type DeploymentTrigger,
   getDeployment,
