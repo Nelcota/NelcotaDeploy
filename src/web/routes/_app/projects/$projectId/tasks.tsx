@@ -8,6 +8,7 @@ import {
   InfoIcon,
   HistoryIcon,
   ListChecksIcon,
+  LoaderCircleIcon,
   PencilIcon,
   PlayIcon,
   PlusIcon,
@@ -33,7 +34,6 @@ import { TabHeader } from "@/web/components/project-header";
 import { EmptyState, ErrorState, ListSkeleton } from "@/web/components/states";
 import { TaskStatusBadge } from "@/web/components/status-badge";
 import { Button } from "@/web/components/ui/button";
-import { cn } from "@/web/components/ui/class-names";
 import {
   Dialog,
   DialogContent,
@@ -197,6 +197,14 @@ function TasksPage() {
           icon={ListChecksIcon}
           title="Nenhuma task ainda"
           description="Use tasks para migrações, limpezas de cache ou rotinas agendadas."
+          action={
+            canWrite ? (
+              <Button size="sm" onClick={() => openDialog(null)}>
+                <PlusIcon aria-hidden />
+                Nova task
+              </Button>
+            ) : undefined
+          }
         />
       ) : null}
       {tasks.length > 0 ? (
@@ -211,6 +219,7 @@ function TasksPage() {
               toggling={toggle.isPending && toggle.variables.task.id === task.id}
               onToggle={(enabled) => toggle.mutate({ task, enabled })}
               onOpenHistory={() => setHistoryTaskId(task.id)}
+              running={run.isPending && run.variables === task.id}
               onRun={() => run.mutate(task.id)}
               onEdit={() => openDialog(task)}
               onDelete={() => remove.mutate(task.id)}
@@ -265,12 +274,16 @@ function executionAccent(status: string | null): "success" | "danger" | "progres
   return status == null ? "neutral" : "progress";
 }
 
+const TASK_PILL =
+  "shrink-0 rounded-md bg-well px-1.5 py-0.5 text-xs text-muted-foreground ring-1 ring-border/60";
+
 function TaskListRow({
   task,
   now,
   canRun,
   canWrite,
   toggling,
+  running,
   onToggle,
   onOpenHistory,
   onRun,
@@ -282,6 +295,8 @@ function TaskListRow({
   readonly canRun: boolean;
   readonly canWrite: boolean;
   readonly toggling: boolean;
+  /** This task's run request is on its way, so another click would queue it twice. */
+  readonly running: boolean;
   readonly onToggle: (enabled: boolean) => void;
   readonly onOpenHistory: () => void;
   readonly onRun: () => void;
@@ -301,37 +316,53 @@ function TaskListRow({
       >
         <ScheduleIcon className="size-4" />
       </span>
-      <div className={cn("min-w-0 flex-1 basis-56 space-y-1", task.enabled ? "" : "opacity-60")}>
-        <button
-          type="button"
-          className="block max-w-full truncate text-left text-sm font-medium hover:underline focus-visible:underline focus-visible:outline-none"
-          title="Abrir histórico de execuções"
-          onClick={onOpenHistory}
-        >
-          {task.name}
-          <span className="sr-only">: abrir histórico de execuções</span>
-        </button>
+      <div className="min-w-0 flex-1 basis-56 space-y-1">
+        <p className="flex min-w-0 items-center gap-2">
+          <button
+            type="button"
+            className="min-w-0 truncate rounded-sm text-left text-sm font-medium hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+            title="Abrir histórico de execuções"
+            onClick={onOpenHistory}
+          >
+            {task.name}
+            <span className="sr-only">: abrir histórico de execuções</span>
+          </button>
+          {task.enabled ? null : <span className={TASK_PILL}>Pausada</span>}
+        </p>
         <code className="block truncate font-mono text-xs text-muted-foreground" title={command}>
           {command}
         </code>
       </div>
-      <ScheduleCell task={task} now={now} />
-      <LastExecutionCell execution={task.latestExecution} now={now} />
-      <div className="flex shrink-0 items-center gap-1">
-        <div className="mr-2 flex items-center gap-2">
+      <div className="grid w-full grid-cols-2 gap-4 lg:flex lg:w-auto">
+        <ScheduleCell task={task} now={now} />
+        <LastExecutionCell execution={task.latestExecution} now={now} />
+      </div>
+      <div className="flex w-full shrink-0 items-center justify-end gap-1 lg:w-auto">
+        <div className="mr-auto flex items-center gap-2 lg:mr-2">
           <Switch
             id={`task-enabled-${task.id}`}
+            aria-label={`Task ${task.name} ativa`}
             checked={task.enabled}
             disabled={canWrite === false || toggling}
             onCheckedChange={onToggle}
           />
-          <label htmlFor={`task-enabled-${task.id}`} className="w-14 text-xs text-muted-foreground">
+          <span aria-hidden className="w-14 text-xs text-muted-foreground">
             {task.enabled ? "Ativa" : "Pausada"}
-          </label>
+          </span>
         </div>
         {canRun ? (
-          <Button variant="outline" size="sm" onClick={onRun}>
-            <PlayIcon aria-hidden />
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={running}
+            aria-label={`Executar ${task.name}`}
+            onClick={onRun}
+          >
+            {running ? (
+              <LoaderCircleIcon aria-hidden className="animate-spin" />
+            ) : (
+              <PlayIcon aria-hidden />
+            )}
             Executar
           </Button>
         ) : null}
@@ -344,7 +375,7 @@ function TaskListRow({
 function ScheduleCell({ task, now }: { readonly task: TaskRow; readonly now: Date }) {
   if (task.schedule == null) {
     return (
-      <div className="w-44 shrink-0 text-xs">
+      <div className="min-w-0 text-xs lg:w-44 lg:shrink-0">
         <p className="text-muted-foreground">Sob demanda</p>
         <p className="text-faint">sem agendamento</p>
       </div>
@@ -352,16 +383,16 @@ function ScheduleCell({ task, now }: { readonly task: TaskRow; readonly now: Dat
   }
   const description = describeCronSchedule(task.schedule);
   return (
-    <div className="w-44 shrink-0 space-y-0.5 text-xs">
+    <div className="min-w-0 space-y-0.5 text-xs lg:w-44 lg:shrink-0">
       <p className="truncate text-muted-foreground" title={task.schedule}>
         {description ?? <span className="font-mono">{task.schedule}</span>}
       </p>
       {task.enabled && task.nextRunAt != null ? (
-        <p className="truncate text-faint" title={formatDateTime(task.nextRunAt)}>
+        <p className="truncate text-muted-foreground" title={formatDateTime(task.nextRunAt)}>
           próxima {formatRelativeTime(task.nextRunAt, now)}
         </p>
       ) : (
-        <p className="truncate text-faint">{task.enabled ? "" : "pausada"}</p>
+        <p className="truncate text-muted-foreground">{task.enabled ? "" : "pausada"}</p>
       )}
     </div>
   );
@@ -375,10 +406,12 @@ function LastExecutionCell({
   readonly now: Date;
 }) {
   if (execution == null) {
-    return <p className="w-36 shrink-0 text-xs text-faint">Nunca executada</p>;
+    return (
+      <p className="min-w-0 text-xs text-muted-foreground lg:w-36 lg:shrink-0">Nunca executada</p>
+    );
   }
   return (
-    <div className="w-36 shrink-0 space-y-0.5">
+    <div className="min-w-0 space-y-0.5 lg:w-36 lg:shrink-0">
       <TaskStatusBadge status={execution.status} />
       <p className="text-xs text-faint tabular-nums">
         {execution.startedAt == null
@@ -666,7 +699,14 @@ function TaskDialog({
                     min={1}
                     value={field.state.value}
                     onBlur={field.handleBlur}
-                    onChange={(event) => field.handleChange(event.target.valueAsNumber)}
+                    onChange={(event) =>
+                      // An emptied field gives NaN; 0 lets the schema answer with its own message.
+                      field.handleChange(
+                        Number.isFinite(event.target.valueAsNumber)
+                          ? event.target.valueAsNumber
+                          : 0,
+                      )
+                    }
                   />
                 )}
               </FormField>
@@ -691,6 +731,7 @@ function TaskDialog({
             <form.Subscribe selector={(state) => state.isSubmitting}>
               {(isSubmitting) => (
                 <Button type="submit" disabled={isSubmitting}>
+                  {isSubmitting ? <LoaderCircleIcon aria-hidden className="animate-spin" /> : null}
                   Salvar
                 </Button>
               )}

@@ -14,6 +14,7 @@ import { type FormEvent, useState } from "react";
 import { z } from "zod";
 
 import { domainInputSchema } from "@/shared/domain.schema";
+import { ApplyChangesBanner } from "@/web/components/apply-changes-banner";
 import { ConfirmDialog } from "@/web/components/confirm-dialog";
 import { CopyButton } from "@/web/components/copy-button";
 import { CardTitleRow, List, ListRow } from "@/web/components/layout";
@@ -101,18 +102,11 @@ function DomainsPage() {
         }
       />
       {showApplyBanner ? (
-        <div
-          role="status"
-          className="flex flex-col gap-3 rounded-xl bg-warning/8 px-5 py-4 ring-1 ring-warning/25 sm:flex-row sm:items-center sm:justify-between"
-        >
-          <p className="flex items-start gap-2 text-sm">
-            <RefreshCwIcon aria-hidden className="mt-0.5 size-4 shrink-0 text-warning" />
-            Os domínios mudaram. O roteamento só é atualizado quando o contêiner é recriado.
-          </p>
-          <Button size="sm" disabled={redeploy.isPending} onClick={() => redeploy.mutate()}>
-            Aplicar agora
-          </Button>
-        </div>
+        <ApplyChangesBanner
+          message="Os domínios mudaram. O roteamento só é atualizado quando o contêiner é recriado."
+          applying={redeploy.isPending}
+          onApply={() => redeploy.mutate()}
+        />
       ) : null}
       {details == null ? (
         <ListSkeleton rows={2} />
@@ -172,7 +166,7 @@ function DomainRows({
           href={`${domain.httpsEnabled ? "https" : "http"}://${domain.hostname}`}
           target="_blank"
           rel="noreferrer noopener"
-          className="group inline-flex max-w-full items-center gap-1.5 font-mono text-sm font-medium hover:underline focus-visible:underline focus-visible:outline-none"
+          className="group inline-flex max-w-full items-center gap-1.5 rounded-sm font-mono text-sm font-medium hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
         >
           <span className="truncate">{domain.hostname}</span>
           <ExternalLinkIcon
@@ -280,7 +274,10 @@ function AddDomainForm({
             aria-describedby="domain-hostname-error"
             className="h-full rounded-none bg-transparent pl-0.5 font-mono ring-0 hover:ring-0 focus-visible:bg-transparent focus-visible:ring-0"
             value={hostname}
-            onChange={(event) => setHostname(event.target.value)}
+            onChange={(event) => {
+              setHostname(event.target.value);
+              setError(null);
+            }}
           />
         </div>
         <div className="flex items-center gap-2">
@@ -316,7 +313,7 @@ function DnsCard({ automaticHostname }: { readonly automaticHostname: string | n
       </p>
       <div className="overflow-x-auto rounded-lg ring-1 ring-border/70">
         <table className="w-full text-sm">
-          <thead className="bg-well/50 text-left text-xs text-faint">
+          <thead className="bg-well/50 text-left text-xs text-muted-foreground">
             <tr>
               <th scope="col" className="px-4 py-2 font-medium">
                 Tipo

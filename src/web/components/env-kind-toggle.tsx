@@ -1,4 +1,5 @@
 import { EyeIcon, LockIcon } from "lucide-react";
+import type { KeyboardEvent } from "react";
 
 import { cn } from "./ui/class-names";
 
@@ -9,21 +10,40 @@ const OPTIONS = [
   { value: "secret", label: "Secret", hint: "criptografado", icon: LockIcon },
 ] as const;
 
-/** Two-option switch between a visible configuration value and an encrypted secret. */
+const ARROW_KEYS = new Set(["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"]);
+
+/**
+ * Two-option switch between a visible configuration value and an encrypted secret. Behaves
+ * like a radio group: one Tab stop, and the arrow keys move the choice.
+ */
 export function VariableKindToggle({
   id,
   value,
   onChange,
+  describedBy,
 }: {
   readonly id: string;
   readonly value: VariableKind;
   readonly onChange: (value: VariableKind) => void;
+  /** Ids of the hint and error text, as given by a form field. */
+  readonly describedBy?: string;
 }) {
+  const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (ARROW_KEYS.has(event.key) === false) {
+      return;
+    }
+    event.preventDefault();
+    const next: VariableKind = value === "plain" ? "secret" : "plain";
+    onChange(next);
+    event.currentTarget.querySelector<HTMLButtonElement>(`[data-value="${next}"]`)?.focus();
+  };
   return (
     <div
       id={id}
       role="radiogroup"
-      aria-label="Tipo"
+      aria-labelledby={`${id}-label`}
+      aria-describedby={describedBy}
+      onKeyDown={onKeyDown}
       className="grid grid-cols-2 gap-1 rounded-lg bg-secondary p-1 ring-1 ring-border ring-inset"
     >
       {OPTIONS.map((option) => (
@@ -31,6 +51,8 @@ export function VariableKindToggle({
           key={option.value}
           type="button"
           role="radio"
+          data-value={option.value}
+          tabIndex={value === option.value ? 0 : -1}
           title={option.hint}
           aria-checked={value === option.value}
           onClick={() => onChange(option.value)}

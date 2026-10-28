@@ -4,6 +4,7 @@ import {
   EyeIcon,
   HammerIcon,
   KeyRoundIcon,
+  LoaderCircleIcon,
   LockIcon,
   PencilIcon,
   PlusIcon,
@@ -19,6 +20,7 @@ import type { EnvironmentVariableView } from "@/environments";
 import { normalizeVariableKey } from "@/shared/dotenv";
 import { environmentVariableInputSchema } from "@/shared/environment-variable.schema";
 import { formatDateTime, formatRelativeTime, pluralize } from "@/shared/format";
+import { ApplyChangesBanner } from "@/web/components/apply-changes-banner";
 import { ConfirmDialog } from "@/web/components/confirm-dialog";
 import { EnvImportDialog } from "@/web/components/env-import-dialog";
 import { type VariableKind, VariableKindToggle } from "@/web/components/env-kind-toggle";
@@ -77,20 +79,26 @@ function EnvironmentPage() {
   });
   const [editing, setEditing] = useState<EnvironmentVariableView | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
+  // Variables reach the container only when it is recreated, so changes made here wait for it.
+  const [pendingApply, setPendingApply] = useState(false);
+  const markPending = () => setPendingApply(true);
 
   const redeploy = useAction({
     action: () => redeployProjectFn({ data: { projectId } }),
     successMessage: "Redeploy colocado na fila",
     invalidate: [["project", projectId], ["deployments"]],
+    onSuccess: () => setPendingApply(false),
   });
   const remove = useAction({
     action: (variableId: string) =>
       deleteEnvironmentVariableFn({ data: { projectId, variableId } }),
     successMessage: "Variável excluída",
     invalidate: [["environment", projectId]],
+    onSuccess: markPending,
   });
 
   const canRedeploy = project.data?.project.currentDeploymentId != null && can("deployment:create");
+  const showApplyBanner = pendingApply && canRedeploy;
 
   const openCreate = () => {
     setEditing(null);
@@ -115,7 +123,7 @@ function EnvironmentPage() {
         }
         actions={
           <>
-            {canRedeploy ? (
+            {canRedeploy && showApplyBanner === false ? (
               <Button
                 variant="outline"
                 disabled={redeploy.isPending}
@@ -128,7 +136,7 @@ function EnvironmentPage() {
             ) : null}
             {canEdit ? (
               <>
-                <EnvImportDialog projectId={projectId} />
+                <EnvImportDialog projectId={projectId} onImported={markPending} />
                 <Button onClick={openCreate}>
                   <PlusIcon aria-hidden />
                   Nova variável
@@ -138,14 +146,22 @@ function EnvironmentPage() {
           </>
         }
       />
+      {showApplyBanner ? (
+        <ApplyChangesBanner
+          message="As variáveis mudaram. Elas chegam à aplicação quando o contêiner é recriado."
+          applying={redeploy.isPending}
+          onApply={() => redeploy.mutate()}
+        />
+      ) : null}
       <VariablesList
         query={variables}
         canEdit={canEdit}
+        onCreate={openCreate}
         onEdit={openEdit}
         onDelete={(variableId) => remove.mutate(variableId)}
       />
       <details className="group text-sm text-muted-foreground">
-        <summary className="w-fit cursor-pointer text-xs font-medium text-faint hover:text-foreground focus-visible:text-foreground focus-visible:outline-none">
+        <summary className="w-fit cursor-pointer rounded-sm text-xs font-medium text-muted-foreground hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none">
           Saiba mais sobre secrets e redeploy
         </summary>
         <p className="mt-2 max-w-2xl text-xs leading-relaxed">
@@ -159,6 +175,7 @@ function EnvironmentPage() {
         open={dialogOpen}
         onOpenChange={setDialogOpen}
         variable={editing}
+        onSaved={markPending}
       />
     </>
   );
@@ -176,11 +193,13 @@ const VARIABLE_TAG =
 function VariablesList({
   query,
   canEdit,
+  onCreate,
   onEdit,
   onDelete,
 }: {
   readonly query: ReturnType<typeof useQuery<EnvironmentVariableView[]>>;
   readonly canEdit: boolean;
+  readonly onCreate: () => void;
   readonly onEdit: (variable: EnvironmentVariableView) => void;
   readonly onDelete: (variableId: string) => void;
 }) {
@@ -197,6 +216,14 @@ function VariablesList({
         icon={KeyRoundIcon}
         title="Nenhuma variável ainda"
         description="Adicione configurações como NODE_ENV ou secrets como DATABASE_URL."
+        action={
+          canEdit ? (
+            <Button size="sm" onClick={onCreate}>
+              <PlusIcon aria-hidden />
+              Nova variável
+            </Button>
+          ) : undefined
+        }
       />
     );
   }
@@ -227,14 +254,17 @@ function VariablesList({
         ) : null}
         {visible.map((variable) => (
           <ListRow key={variable.id} className="flex-wrap sm:flex-nowrap">
-            <div className="min-w-0 flex-1 space-y-1">
+            <div className="min-w-0 flex-1 basis-full space-y-1 sm:basis-auto">
               <p className="truncate font-mono text-sm font-medium">{variable.key}</p>
               <p
                 className="truncate font-mono text-xs text-muted-foreground"
                 title={variable.value ?? undefined}
               >
                 {variable.kind === "secret" ? (
-                  <span aria-label="Valor oculto">{MASKED_VALUE}</span>
+                  <>
+                    <span aria-hidden>{MASKED_VALUE}</span>
+                    <span className="sr-only">Valor oculto</span>
+                  </>
                 ) : (
                   <PlainValue value={variable.value} />
                 )}
@@ -299,11 +329,13 @@ function VariableDialog({
   open,
   onOpenChange,
   variable,
+  onSaved,
 }: {
   readonly projectId: string;
   readonly open: boolean;
   readonly onOpenChange: (open: boolean) => void;
   readonly variable: EnvironmentVariableView | null;
+  readonly onSaved: () => void;
 }) {
   const [draft, setDraft] = useState<VariableDraft>(
     variable == null
@@ -321,7 +353,10 @@ function VariableDialog({
       saveEnvironmentVariableFn({ data: { projectId, variable: input } }),
     successMessage: "Variável salva",
     invalidate: [["environment", projectId]],
-    onSuccess: () => onOpenChange(false),
+    onSuccess: () => {
+      onSaved();
+      onOpenChange(false);
+    },
   });
   const editingSecret = variable?.kind === "secret" && draft.kind === "secret";
 
@@ -339,8 +374,15 @@ function VariableDialog({
     save.mutate(parsed.data);
   };
 
-  const update = (patch: Partial<VariableDraft>) =>
+  const update = (patch: Partial<VariableDraft>) => {
     setDraft((current) => ({ ...current, ...patch }));
+    // An error stays only until the user changes that field.
+    setErrors((current) =>
+      Object.fromEntries(
+        Object.entries(current).filter(([field]) => Object.hasOwn(patch, field) === false),
+      ),
+    );
+  };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -374,6 +416,7 @@ function VariableDialog({
             {(props) => (
               <VariableKindToggle
                 id={props.id}
+                describedBy={props["aria-describedby"]}
                 value={draft.kind}
                 onChange={(kind) => update({ kind })}
               />
@@ -400,7 +443,7 @@ function VariableDialog({
           <div className="flex items-start justify-between gap-4 rounded-lg bg-secondary p-3 ring-1 ring-border ring-inset">
             <div className="space-y-1">
               <Label htmlFor="variable-build">Disponível no build</Label>
-              <p id="variable-build-hint" className="text-xs text-faint">
+              <p id="variable-build-hint" className="text-xs text-muted-foreground">
                 Também entregue ao build da imagem (ARG no Dockerfile).
               </p>
             </div>
@@ -416,6 +459,7 @@ function VariableDialog({
               Cancelar
             </Button>
             <Button type="submit" disabled={save.isPending}>
+              {save.isPending ? <LoaderCircleIcon aria-hidden className="animate-spin" /> : null}
               Salvar
             </Button>
           </DialogFooter>

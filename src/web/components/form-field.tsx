@@ -48,7 +48,9 @@ export function FormField({
   const errorId = `${id}-error`;
   return (
     <div className="space-y-1.5">
-      <Label htmlFor={id}>{label}</Label>
+      <Label id={`${id}-label`} htmlFor={id}>
+        {label}
+      </Label>
       {children({
         id,
         "aria-describedby": hint == null ? errorId : `${hintId} ${errorId}`,

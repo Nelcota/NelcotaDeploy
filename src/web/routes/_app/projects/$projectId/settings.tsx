@@ -56,6 +56,11 @@ function ProjectSettingsPage() {
         title="Ajustes do projeto"
         description="Repositório, build e porta. As mudanças valem no próximo deploy."
       />
+      {can("project:write") ? null : (
+        <p role="status" className="text-sm text-muted-foreground">
+          Você pode ver estes ajustes, mas só quem tem permissão de edição pode alterá-los.
+        </p>
+      )}
       <ProjectSettingsForm
         key={project.updatedAt}
         projectId={projectId}
