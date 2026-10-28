@@ -50,47 +50,57 @@ const STAT_TONES = {
   danger: "text-destructive",
 } as const;
 
-/** Key figures as tiles: the value on top, the label (and detail) at the bottom. */
+/** Key figures as tiles on one card: the value on top, the label (and detail) at the bottom. */
 export function StatRow({
   stats,
+  title,
+  icon,
   className,
 }: {
   readonly stats: readonly Stat[];
+  /** Optional card title, shown with `icon` like the other panel cards. */
+  readonly title?: string;
+  readonly icon?: LucideIcon;
   readonly className?: string;
 }) {
   return (
-    <dl
+    <div
       className={cn(
-        "grid grid-cols-2 gap-3 lg:grid-cols-[repeat(var(--stats),minmax(0,1fr))]",
+        "flex flex-col gap-4 rounded-2xl bg-card p-5 text-card-foreground ring-1 ring-border/70",
         className,
       )}
-      style={{ "--stats": stats.length } as React.CSSProperties}
     >
-      {stats.map((stat) => (
-        <div
-          key={stat.label}
-          className="flex min-h-28 min-w-0 flex-col-reverse justify-between gap-3 rounded-xl bg-card p-4 ring-1 ring-border/70"
-        >
-          <dt className="flex min-w-0 items-center gap-2 text-sm text-muted-foreground">
-            {stat.icon == null ? null : <stat.icon aria-hidden className="size-4 shrink-0" />}
-            <span className="leading-tight">{stat.label}</span>
-          </dt>
-          <dd className="min-w-0 space-y-0.5">
-            <span
-              className={cn(
-                "block truncate text-2xl leading-tight font-semibold tracking-tight tabular-nums",
-                STAT_TONES[stat.tone ?? "default"],
+      {title == null || icon == null ? null : <CardTitleRow icon={icon} title={title} />}
+      <dl
+        className="grid grid-cols-2 gap-3 lg:grid-cols-[repeat(var(--stats),minmax(0,1fr))]"
+        style={{ "--stats": stats.length } as React.CSSProperties}
+      >
+        {stats.map((stat) => (
+          <div
+            key={stat.label}
+            className="flex min-h-28 min-w-0 flex-col-reverse justify-between gap-4 rounded-xl bg-well p-4 ring-1 ring-border/70"
+          >
+            <dt className="flex min-w-0 items-center gap-2 text-sm leading-tight text-muted-foreground">
+              {stat.icon == null ? null : <stat.icon aria-hidden className="size-4 shrink-0" />}
+              <span>{stat.label}</span>
+            </dt>
+            <dd className="min-w-0 space-y-1">
+              <span
+                className={cn(
+                  "block truncate text-2xl leading-none font-semibold tracking-tight tabular-nums",
+                  STAT_TONES[stat.tone ?? "default"],
+                )}
+              >
+                {stat.value}
+              </span>
+              {stat.detail == null ? null : (
+                <span className="block truncate text-xs text-faint">{stat.detail}</span>
               )}
-            >
-              {stat.value}
-            </span>
-            {stat.detail == null ? null : (
-              <span className="block truncate text-xs text-faint">{stat.detail}</span>
-            )}
-          </dd>
-        </div>
-      ))}
-    </dl>
+            </dd>
+          </div>
+        ))}
+      </dl>
+    </div>
   );
 }
 

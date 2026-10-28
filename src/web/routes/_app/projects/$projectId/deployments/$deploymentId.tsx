@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { OctagonXIcon } from "lucide-react";
+import { InfoIcon, ListChecksIcon, OctagonXIcon } from "lucide-react";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
@@ -8,10 +8,12 @@ import { durationBetween, formatDateTime, formatDuration } from "@/shared/format
 import { ConfirmDialog } from "@/web/components/confirm-dialog";
 import { DeploymentStages } from "@/web/components/deployment-stages";
 import { ACTIVE_DEPLOYMENT_STATUSES, DEPLOYMENT_TRIGGER_LABELS } from "@/web/components/labels";
+import { CardTitleRow } from "@/web/components/layout";
 import { LogViewer } from "@/web/components/log-viewer";
 import { ErrorState, ListSkeleton } from "@/web/components/states";
 import { DeploymentStatusBadge } from "@/web/components/status-badge";
 import { Button } from "@/web/components/ui/button";
+import { Card } from "@/web/components/ui/card";
 import { useAction } from "@/web/components/use-action";
 import { useCan } from "@/web/components/use-permissions";
 import { cancelDeploymentFn, getDeploymentFn } from "@/web/functions/deployments.functions";
@@ -126,7 +128,7 @@ function DeploymentDetailPage() {
     ) : null;
 
   return (
-    <section aria-label="Detalhes do deploy" className="space-y-8">
+    <section aria-label="Detalhes do deploy" className="space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div className="min-w-0 space-y-1.5">
           <Link
@@ -152,7 +154,10 @@ function DeploymentDetailPage() {
         {cancelButton}
       </div>
 
-      <DeploymentStages deployment={data} />
+      <Card className="gap-5 p-5">
+        <CardTitleRow icon={ListChecksIcon} title="Etapas" />
+        <DeploymentStages deployment={data} />
+      </Card>
 
       {data.status === "failed" && data.errorMessage != null ? (
         <div
@@ -168,41 +173,44 @@ function DeploymentDetailPage() {
         </div>
       ) : null}
 
-      <dl className="grid gap-x-10 gap-y-2.5 border-y border-border py-5 md:grid-cols-2">
-        <Detail label="Branch">
-          <span className="font-mono">{data.branch}</span>
-        </Detail>
-        <Detail label="Origem">
-          {DEPLOYMENT_TRIGGER_LABELS[data.trigger]} · {data.triggeredByLabel}
-        </Detail>
-        <Detail label="Início">{formatDateTime(data.startedAt ?? data.createdAt)}</Detail>
-        <Detail label="Duração">
-          <span className="tabular-nums">
-            {formatDuration(durationBetween(data.startedAt, finishedAt))}
-          </span>
-        </Detail>
-        <Detail label="Imagem">
-          <span className="font-mono" title={data.imageTag ?? undefined}>
-            {data.imageTag ?? "—"}
-          </span>
-        </Detail>
-        <Detail label="Contêiner">
-          <span className="font-mono" title={data.containerName ?? undefined}>
-            {data.containerName ?? "—"}
-          </span>
-        </Detail>
-        {data.sourceDeploymentId == null ? null : (
-          <Detail label="Imagem de">
-            <Link
-              to="/projects/$projectId/deployments/$deploymentId"
-              params={{ projectId, deploymentId: data.sourceDeploymentId }}
-              className="underline underline-offset-4"
-            >
-              deploy anterior
-            </Link>
+      <Card className="gap-4 p-5">
+        <CardTitleRow icon={InfoIcon} title="Detalhes" />
+        <dl className="grid gap-x-10 gap-y-2.5 md:grid-cols-2">
+          <Detail label="Branch">
+            <span className="font-mono">{data.branch}</span>
           </Detail>
-        )}
-      </dl>
+          <Detail label="Origem">
+            {DEPLOYMENT_TRIGGER_LABELS[data.trigger]} · {data.triggeredByLabel}
+          </Detail>
+          <Detail label="Início">{formatDateTime(data.startedAt ?? data.createdAt)}</Detail>
+          <Detail label="Duração">
+            <span className="tabular-nums">
+              {formatDuration(durationBetween(data.startedAt, finishedAt))}
+            </span>
+          </Detail>
+          <Detail label="Imagem">
+            <span className="font-mono" title={data.imageTag ?? undefined}>
+              {data.imageTag ?? "—"}
+            </span>
+          </Detail>
+          <Detail label="Contêiner">
+            <span className="font-mono" title={data.containerName ?? undefined}>
+              {data.containerName ?? "—"}
+            </span>
+          </Detail>
+          {data.sourceDeploymentId == null ? null : (
+            <Detail label="Imagem de">
+              <Link
+                to="/projects/$projectId/deployments/$deploymentId"
+                params={{ projectId, deploymentId: data.sourceDeploymentId }}
+                className="underline underline-offset-4"
+              >
+                deploy anterior
+              </Link>
+            </Detail>
+          )}
+        </dl>
+      </Card>
 
       <LogViewer
         url={`/api/deployments/${deploymentId}/logs`}

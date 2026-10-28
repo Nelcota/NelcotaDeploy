@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, useRouteContext } from "@tanstack/react-router";
 import {
+  Building2Icon,
   CopyIcon,
   KeyRoundIcon,
   PlusIcon,
@@ -267,7 +268,10 @@ function OrganizationForm({
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-base">Organização</CardTitle>
+        <CardTitle>
+          <Building2Icon aria-hidden />
+          Organização
+        </CardTitle>
         <CardDescription>Preferências que valem para todos os projetos.</CardDescription>
       </CardHeader>
       <CardContent>
@@ -861,8 +865,8 @@ function CreateTokenCard({ onCreated }: { readonly onCreated: (token: string) =>
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-base">
-          <ShieldIcon aria-hidden className="size-4 text-muted-foreground" />
+        <CardTitle>
+          <ShieldIcon aria-hidden />
           Novo token de API
         </CardTitle>
         <CardDescription>

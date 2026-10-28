@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { KeyRoundIcon, Trash2Icon } from "lucide-react";
+import { GitBranchIcon, KeyRoundIcon, Trash2Icon } from "lucide-react";
 import { type FormEvent, useState } from "react";
 import { toast } from "sonner";
 
@@ -50,7 +50,10 @@ function ProjectSettingsPage() {
       />
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Repositório e build</CardTitle>
+          <CardTitle>
+            <GitBranchIcon aria-hidden />
+            Repositório e build
+          </CardTitle>
           <CardDescription>
             Trocar o repositório exige nova aprovação de um administrador.
           </CardDescription>
@@ -109,8 +112,8 @@ function RepositoryTokenCard({
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-base">
-          <KeyRoundIcon aria-hidden className="size-4 text-muted-foreground" />
+        <CardTitle>
+          <KeyRoundIcon aria-hidden />
           Repositório privado
         </CardTitle>
         <CardDescription>
