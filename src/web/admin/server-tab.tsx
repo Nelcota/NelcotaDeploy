@@ -1,12 +1,32 @@
+import {
+  ActivityIcon,
+  ContainerIcon,
+  CpuIcon,
+  GaugeIcon,
+  GlobeIcon,
+  HardDriveIcon,
+  HeartPulseIcon,
+  LayersIcon,
+  LockKeyholeIcon,
+  type LucideIcon,
+  MemoryStickIcon,
+  NetworkIcon,
+  RouteIcon,
+  ServerIcon,
+  TriangleAlertIcon,
+  WebhookIcon,
+} from "lucide-react";
 import { type ReactNode } from "react";
 
-import { formatBytes, formatRelativeTime } from "@/shared/format";
+import { formatBytes, formatRelativeTime, formatTimeAgo } from "@/shared/format";
 import { CopyButton } from "@/web/components/copy-button";
 import { Section, StatRow } from "@/web/components/layout";
 import { ErrorState, ListSkeleton } from "@/web/components/states";
 import { StatusPill } from "@/web/components/status-badge";
+import { Input } from "@/web/components/ui/input";
 import { usagePercent } from "@/web/components/usage-meter";
 
+import { isUnreachableFromInternet } from "./public-url";
 import { useSettings } from "./use-settings";
 
 /** Usage at or above these percentages is shown as a warning or a problem. */
@@ -24,10 +44,21 @@ function formatPercent(percent: number | null): string {
   return percent == null ? "—" : `${Math.round(percent)}%`;
 }
 
-function InfoRow({ label, children }: { readonly label: string; readonly children: ReactNode }) {
+function InfoRow({
+  icon: Icon,
+  label,
+  children,
+}: {
+  readonly icon: LucideIcon;
+  readonly label: string;
+  readonly children: ReactNode;
+}) {
   return (
     <div className="flex flex-col gap-1 px-5 py-3 sm:flex-row sm:items-center sm:justify-between">
-      <dt className="text-sm text-muted-foreground">{label}</dt>
+      <dt className="flex items-center gap-2 text-sm text-muted-foreground">
+        <Icon aria-hidden className="size-4 shrink-0" />
+        {label}
+      </dt>
       <dd className="text-sm font-medium">{children}</dd>
     </div>
   );
@@ -51,6 +82,7 @@ export function ServerTab() {
   return (
     <div className="space-y-10">
       <Section
+        icon={ServerIcon}
         title="Servidor (VPS)"
         description={
           host == null
@@ -60,9 +92,15 @@ export function ServerTab() {
       >
         <StatRow
           stats={[
-            { label: "CPU", value: formatPercent(cpuPercent), tone: usageTone(cpuPercent) },
+            {
+              label: "CPU",
+              icon: CpuIcon,
+              value: formatPercent(cpuPercent),
+              tone: usageTone(cpuPercent),
+            },
             {
               label: "Memória",
+              icon: MemoryStickIcon,
               value: formatPercent(memoryPercent),
               tone: usageTone(memoryPercent),
               detail:
@@ -72,6 +110,7 @@ export function ServerTab() {
             },
             {
               label: "Disco",
+              icon: HardDriveIcon,
               value: formatPercent(diskPercent),
               tone: usageTone(diskPercent),
               detail:
@@ -82,9 +121,9 @@ export function ServerTab() {
           ]}
         />
       </Section>
-      <Section title="Worker e Docker">
+      <Section icon={ContainerIcon} title="Worker e Docker">
         <dl className="divide-y divide-border overflow-hidden rounded-2xl bg-card ring-1 ring-border/70">
-          <InfoRow label="Worker">
+          <InfoRow icon={ActivityIcon} label="Worker">
             {server.worker == null ? (
               <StatusPill tone="danger" label="Nunca conectou" />
             ) : (
@@ -94,25 +133,36 @@ export function ServerTab() {
               />
             )}
           </InfoRow>
-          <InfoRow label="Último sinal do worker">
-            {formatRelativeTime(server.worker?.lastSeenAt, now)}
+          <InfoRow icon={HeartPulseIcon} label="Último sinal do worker">
+            {formatTimeAgo(server.worker?.lastSeenAt, now)}
           </InfoRow>
-          <InfoRow label="Docker">
-            {server.worker?.dockerAvailable === true
-              ? (server.worker.dockerVersion ?? "Disponível")
-              : "Indisponível"}
+          <InfoRow icon={ContainerIcon} label="Docker">
+            {server.worker?.dockerAvailable === true ? (
+              (server.worker.dockerVersion ?? "Disponível")
+            ) : (
+              <StatusPill tone="danger" label="Indisponível" />
+            )}
           </InfoRow>
-          <InfoRow label="Rede Docker">
+          <InfoRow icon={NetworkIcon} label="Rede Docker">
             <span className="font-mono">{server.dockerNetwork}</span>
           </InfoRow>
-          <InfoRow label="Traefik">{server.traefikEnabled ? "Ativado" : "Desativado"}</InfoRow>
-          <InfoRow label="Jobs simultâneos">{server.workerConcurrency}</InfoRow>
-          <InfoRow label="Coleta de métricas">
+          <InfoRow icon={RouteIcon} label="Traefik">
+            <StatusPill
+              tone={server.traefikEnabled ? "success" : "warning"}
+              label={server.traefikEnabled ? "Ativado" : "Desativado"}
+            />
+          </InfoRow>
+          <InfoRow icon={LayersIcon} label="Jobs simultâneos">
+            {server.workerConcurrency}
+          </InfoRow>
+          <InfoRow icon={GaugeIcon} label="Coleta de métricas">
             a cada {server.metricsIntervalInSeconds} s, retenção de {server.metricsRetentionInHours}{" "}
             h
           </InfoRow>
-          <InfoRow label="Fuso dos agendamentos">{server.scheduleTimeZone}</InfoRow>
-          <InfoRow label="Chave de criptografia">
+          <InfoRow icon={GlobeIcon} label="Fuso dos agendamentos">
+            {server.scheduleTimeZone}
+          </InfoRow>
+          <InfoRow icon={LockKeyholeIcon} label="Chave de criptografia">
             <StatusPill
               tone={server.encryptionConfigured ? "success" : "danger"}
               label={server.encryptionConfigured ? "Configurada" : "Ausente"}
@@ -121,14 +171,27 @@ export function ServerTab() {
         </dl>
       </Section>
       <Section
+        icon={WebhookIcon}
         title="Webhook do GitHub"
         description="Deploy automático a cada push na branch configurada de projetos com deploy automático ativo."
       >
-        <div className="flex flex-wrap items-center gap-2">
-          <code className="rounded-md bg-secondary px-2 py-1 font-mono text-sm break-all ring-1 ring-border ring-inset">
-            {server.webhookUrl}
-          </code>
-          <CopyButton text={server.webhookUrl} label="Copiar URL" />
+        <div className="flex max-w-2xl gap-2">
+          <Input
+            readOnly
+            aria-label="URL do webhook"
+            className="font-mono"
+            value={server.webhookUrl}
+          />
+          <CopyButton text={server.webhookUrl} label="Copiar" />
+        </div>
+        {isUnreachableFromInternet(server.webhookUrl) ? (
+          <p className="flex items-start gap-1.5 text-sm text-warning">
+            <TriangleAlertIcon aria-hidden className="mt-0.5 size-4 shrink-0" />
+            Esta URL não é acessível pelo GitHub. Defina PUBLIC_URL com o endereço público do
+            painel.
+          </p>
+        ) : null}
+        <div>
           <StatusPill
             tone={server.webhookConfigured ? "success" : "warning"}
             label={

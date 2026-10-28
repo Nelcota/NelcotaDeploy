@@ -1,4 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { useEffect, useRef } from "react";
 import { z } from "zod";
 
 import { AuditTab, OrganizationTab, ServerTab, TokensTab, UsersTab } from "@/web/admin";
@@ -60,6 +61,13 @@ function SettingsPage() {
   };
   // A link to a section this user cannot open falls back to the first one instead of a blank page.
   const activeTab = canSee(tab) ? tab : "organization";
+  const tabListRef = useRef<HTMLDivElement>(null);
+  // On phones the tabs scroll sideways; keep the open one in view, also when opened by a link.
+  useEffect(() => {
+    tabListRef.current
+      ?.querySelector("[data-state=active]")
+      ?.scrollIntoView({ inline: "nearest", block: "nearest" });
+  }, [activeTab]);
   return (
     <>
       <PageHeader title="Administração" description={SETTINGS_DESCRIPTIONS[activeTab]} />
@@ -72,6 +80,7 @@ function SettingsPage() {
         className="gap-8"
       >
         <TabsList
+          ref={tabListRef}
           aria-label="Seções da administração"
           className="[scrollbar-width:none] max-sm:[mask-image:linear-gradient(to_right,black_calc(100%-2rem),transparent)]"
         >

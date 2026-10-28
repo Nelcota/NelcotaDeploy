@@ -16,6 +16,12 @@ const dateTimeFormat = new Intl.DateTimeFormat(LOCALE, {
   minute: "2-digit",
   second: "2-digit",
 });
+const dateFormat = new Intl.DateTimeFormat(LOCALE, {
+  timeZone: TIME_ZONE,
+  day: "2-digit",
+  month: "2-digit",
+  year: "numeric",
+});
 const timeFormat = new Intl.DateTimeFormat(LOCALE, {
   timeZone: TIME_ZONE,
   hour: "2-digit",
@@ -71,6 +77,12 @@ function parseDate(isoDate: string | null | undefined): Date | undefined {
 export function formatDateTime(isoDate: string | null | undefined): string {
   const date = parseDate(isoDate);
   return date == null ? UNAVAILABLE : dateTimeFormat.format(date);
+}
+
+/** Formats a UTC ISO date as "dd/mm/aaaa" in São Paulo time, or "—". */
+export function formatDate(isoDate: string | null | undefined): string {
+  const date = parseDate(isoDate);
+  return date == null ? UNAVAILABLE : dateFormat.format(date);
 }
 
 /** Formats a UTC ISO date as "hh:mm:ss" in São Paulo time, or "—". */
@@ -134,6 +146,22 @@ export function bytesToMebibytes(bytes: number | null | undefined): number | nul
  */
 export function formatMebibytes(mebibytes: number): string {
   return formatBytes(mebibytes * BYTES_PER_KIBIBYTE * BYTES_PER_KIBIBYTE);
+}
+
+/**
+ * Formats how long ago something happened, never in the future: a clock running ahead of
+ * the browser's shows "agora" instead of "em 5 minutos".
+ *
+ * @param isoDate - UTC ISO date of something that already happened.
+ * @param now - Reference time.
+ * @returns Relative time in Portuguese, "agora" for future dates, or "—" for a missing date.
+ */
+export function formatTimeAgo(isoDate: string | null | undefined, now: Date): string {
+  const date = parseDate(isoDate);
+  if (date != null && date.getTime() > now.getTime()) {
+    return "agora";
+  }
+  return formatRelativeTime(isoDate, now);
 }
 
 /**

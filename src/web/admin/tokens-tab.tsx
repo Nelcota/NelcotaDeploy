@@ -1,16 +1,26 @@
 import { useQuery } from "@tanstack/react-query";
-import { KeyRoundIcon, LoaderCircleIcon } from "lucide-react";
+import {
+  BanIcon,
+  CalendarClockIcon,
+  ClockIcon,
+  EyeIcon,
+  KeyRoundIcon,
+  LoaderCircleIcon,
+  type LucideIcon,
+  PlusIcon,
+  RocketIcon,
+  ShieldPlusIcon,
+} from "lucide-react";
 import { type FormEvent, useState } from "react";
 
-import { formatDateTime, formatRelativeTime } from "@/shared/format";
+import { formatDate, formatRelativeTime } from "@/shared/format";
 import { ConfirmDialog } from "@/web/components/confirm-dialog";
 import { CopyButton } from "@/web/components/copy-button";
 import { FormField } from "@/web/components/form-field";
-import { List, ListRow, Section } from "@/web/components/layout";
+import { List, ListRow, Section, Tag } from "@/web/components/layout";
 import { EmptyState, ErrorState, ListSkeleton } from "@/web/components/states";
 import { StatusPill } from "@/web/components/status-badge";
 import { Button } from "@/web/components/ui/button";
-import { Card } from "@/web/components/ui/card";
 import { Checkbox } from "@/web/components/ui/checkbox";
 import {
   Dialog,
@@ -29,19 +39,39 @@ import {
   revokeApiTokenFn,
 } from "@/web/functions/settings.functions";
 
+import { expiryFor, tokenState } from "./token-state";
+
 // Same limit the server applies to token validity.
 const MAX_TOKEN_DAYS = 365;
 
 type TokenScope = "read" | "deploy";
 
-const SCOPE_LABELS: Record<TokenScope, string> = {
-  read: "Leitura (consultar projetos, deploys, logs e métricas)",
-  deploy: "Deploy (disparar deploys e reiniciar contêineres)",
-};
+const DEFAULT_TOKEN_DAYS = "90";
+
+const SCOPES: readonly {
+  readonly value: TokenScope;
+  readonly label: string;
+  readonly description: string;
+  readonly icon: LucideIcon;
+}[] = [
+  {
+    value: "read",
+    label: "Leitura",
+    description: "Consultar projetos, deploys, logs e métricas.",
+    icon: EyeIcon,
+  },
+  {
+    value: "deploy",
+    label: "Deploy",
+    description: "Disparar deploys e reiniciar contêineres.",
+    icon: RocketIcon,
+  },
+];
 
 /** API tokens for the MCP server: create, list and revoke. */
 export function TokensTab() {
   const tokens = useQuery({ queryKey: ["api-tokens"], queryFn: () => listApiTokensFn() });
+  const [createOpen, setCreateOpen] = useState(false);
   const [createdToken, setCreatedToken] = useState<string | null>(null);
   const revoke = useAction({
     action: (tokenId: string) => revokeApiTokenFn({ data: { tokenId } }),
@@ -50,55 +80,70 @@ export function TokensTab() {
   });
   const now = new Date();
   return (
-    <div className="space-y-10">
-      <CreateTokenCard onCreated={setCreatedToken} />
-      <Section
-        title="Tokens existentes"
-        description="Usados pelo servidor MCP. Apenas o hash do token é armazenado."
-      >
-        {tokens.isError ? (
-          <ErrorState error={tokens.error} onRetry={() => void tokens.refetch()} />
-        ) : null}
-        {tokens.data == null && tokens.isError === false ? <ListSkeleton rows={2} /> : null}
-        {tokens.data?.length === 0 ? (
-          <EmptyState icon={KeyRoundIcon} title="Nenhum token criado" />
-        ) : null}
-        {tokens.data != null && tokens.data.length > 0 ? (
-          <List>
-            {tokens.data.map((token) => (
+    <Section
+      icon={KeyRoundIcon}
+      title="Tokens de API"
+      description="Usados pelo servidor MCP. Dê a cada cliente o menor escopo possível; só o hash do token é guardado."
+      action={
+        <Button onClick={() => setCreateOpen(true)}>
+          <PlusIcon aria-hidden />
+          Novo token
+        </Button>
+      }
+    >
+      {tokens.isError ? (
+        <ErrorState error={tokens.error} onRetry={() => void tokens.refetch()} />
+      ) : null}
+      {tokens.data == null && tokens.isError === false ? <ListSkeleton rows={2} /> : null}
+      {tokens.data?.length === 0 ? (
+        <EmptyState
+          icon={KeyRoundIcon}
+          title="Nenhum token criado"
+          description="Crie um token para conectar o Claude Code ou outro cliente MCP."
+        />
+      ) : null}
+      {tokens.data != null && tokens.data.length > 0 ? (
+        <List>
+          {tokens.data.map((token) => {
+            const state = tokenState(token, now);
+            return (
               <ListRow key={token.id} className="flex-wrap md:flex-nowrap">
-                <div className="min-w-0 flex-1 space-y-0.5">
+                <div className="min-w-0 flex-1 basis-full space-y-1.5 md:basis-auto">
                   <p className="truncate text-sm font-medium">{token.name}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {token.scopes
-                      .map((scope) => (scope === "deploy" ? "Deploy" : "Leitura"))
-                      .join(" · ")}
-                  </p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {SCOPES.filter((scope) => token.scopes.includes(scope.value)).map((scope) => (
+                      <Tag key={scope.value} icon={scope.icon}>
+                        {scope.label}
+                      </Tag>
+                    ))}
+                  </div>
                 </div>
-                <dl className="flex w-full gap-6 text-xs md:w-auto md:shrink-0">
-                  <div>
-                    <dt className="text-muted-foreground">Último uso</dt>
+                <dl className="flex gap-6 text-xs md:shrink-0">
+                  <div className="space-y-0.5">
+                    <dt className="flex items-center gap-1.5 text-muted-foreground">
+                      <ClockIcon aria-hidden className="size-3.5" />
+                      Último uso
+                    </dt>
                     <dd>
                       {token.lastUsedAt == null
                         ? "Nunca usado"
                         : formatRelativeTime(token.lastUsedAt, now)}
                     </dd>
                   </div>
-                  <div>
-                    <dt className="text-muted-foreground">Expira em</dt>
-                    <dd>
-                      {token.expiresAt == null ? "Não expira" : formatDateTime(token.expiresAt)}
-                    </dd>
+                  <div className="space-y-0.5">
+                    <dt className="flex items-center gap-1.5 text-muted-foreground">
+                      <CalendarClockIcon aria-hidden className="size-3.5" />
+                      Expira em
+                    </dt>
+                    <dd>{token.expiresAt == null ? "Não expira" : formatDate(token.expiresAt)}</dd>
                   </div>
                 </dl>
-                <StatusPill
-                  tone={token.revokedAt == null ? "success" : "neutral"}
-                  label={token.revokedAt == null ? "Ativo" : "Revogado"}
-                />
+                <StatusPill tone={state.tone} label={state.label} />
                 {token.revokedAt == null ? (
                   <ConfirmDialog
                     trigger={
                       <Button variant="ghost" size="sm">
+                        <BanIcon aria-hidden />
                         Revogar
                       </Button>
                     }
@@ -110,19 +155,35 @@ export function TokensTab() {
                   />
                 ) : null}
               </ListRow>
-            ))}
-          </List>
-        ) : null}
-      </Section>
+            );
+          })}
+        </List>
+      ) : null}
+      {/* Mounted only while open, so a cancelled draft starts clean next time. */}
+      {createOpen ? (
+        <CreateTokenDialog
+          onClose={() => setCreateOpen(false)}
+          onCreated={(token) => {
+            setCreateOpen(false);
+            setCreatedToken(token);
+          }}
+        />
+      ) : null}
       <CreatedTokenDialog token={createdToken} onClose={() => setCreatedToken(null)} />
-    </div>
+    </Section>
   );
 }
 
-function CreateTokenCard({ onCreated }: { readonly onCreated: (token: string) => void }) {
+function CreateTokenDialog({
+  onClose,
+  onCreated,
+}: {
+  readonly onClose: () => void;
+  readonly onCreated: (token: string) => void;
+}) {
   const [name, setName] = useState("");
   const [scopes, setScopes] = useState<ReadonlySet<TokenScope>>(new Set<TokenScope>(["read"]));
-  const [expiresInDays, setExpiresInDays] = useState("");
+  const [expiresInDays, setExpiresInDays] = useState(DEFAULT_TOKEN_DAYS);
   const [errors, setErrors] = useState<{
     readonly name?: string;
     readonly scopes?: string;
@@ -133,13 +194,10 @@ function CreateTokenCard({ onCreated }: { readonly onCreated: (token: string) =>
       createApiTokenFn({ data }),
     successMessage: "Token criado",
     invalidate: [["api-tokens"]],
-    onSuccess: (result) => {
-      setName("");
-      setScopes(new Set<TokenScope>(["read"]));
-      setExpiresInDays("");
-      onCreated(result.token);
-    },
+    onSuccess: (result) => onCreated(result.token),
   });
+  const now = new Date();
+  const expiry = expiryFor(expiresInDays, now, MAX_TOKEN_DAYS);
   const toggleScope = (scope: TokenScope, checked: boolean) => {
     setScopes((current) =>
       checked ? current.union(new Set([scope])) : current.difference(new Set([scope])),
@@ -147,12 +205,10 @@ function CreateTokenCard({ onCreated }: { readonly onCreated: (token: string) =>
   };
   const submit = (event: FormEvent) => {
     event.preventDefault();
-    const trimmedDays = expiresInDays.trim();
-    const days = trimmedDays === "" ? null : Number(trimmedDays);
     const nextErrors = {
       ...(name.trim() === "" ? { name: "Informe um nome" } : {}),
       ...(scopes.size === 0 ? { scopes: "Escolha pelo menos um escopo" } : {}),
-      ...(days != null && (Number.isInteger(days) === false || days < 1 || days > MAX_TOKEN_DAYS)
+      ...(expiry === undefined
         ? { expiresInDays: `Informe de 1 a ${MAX_TOKEN_DAYS} dias inteiros, ou deixe em branco` }
         : {}),
     };
@@ -160,15 +216,19 @@ function CreateTokenCard({ onCreated }: { readonly onCreated: (token: string) =>
     if (Object.keys(nextErrors).length > 0) {
       return;
     }
+    const days = expiresInDays.trim() === "" ? null : Number(expiresInDays.trim());
     create.mutate({ name: name.trim(), scopes: [...scopes], expiresInDays: days });
   };
   return (
-    <Section
-      title="Novo token de API"
-      description="Dê a cada cliente o menor escopo possível. O token é exibido uma única vez."
-    >
-      <Card className="p-5">
-        <form className="max-w-lg space-y-4" onSubmit={submit}>
+    <Dialog open onOpenChange={(open) => (open ? undefined : onClose())}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Novo token de API</DialogTitle>
+          <DialogDescription>
+            O token é exibido uma única vez, logo após a criação.
+          </DialogDescription>
+        </DialogHeader>
+        <form noValidate className="space-y-4" onSubmit={submit}>
           <FormField id="token-name" label="Nome" errors={errors.name == null ? [] : [errors.name]}>
             {(props) => (
               <Input
@@ -179,18 +239,26 @@ function CreateTokenCard({ onCreated }: { readonly onCreated: (token: string) =>
               />
             )}
           </FormField>
-          <fieldset className="space-y-2" aria-describedby="token-scopes-error">
-            <legend className="text-sm font-medium">Escopos</legend>
-            {(["read", "deploy"] as const).map((scope) => (
-              <div key={scope} className="flex items-center gap-2">
+          <fieldset className="space-y-3" aria-describedby="token-scopes-error">
+            <legend className="mb-2 text-sm font-medium">Escopos</legend>
+            {SCOPES.map((scope) => (
+              <div key={scope.value} className="flex items-start gap-2.5">
                 <Checkbox
-                  id={`token-scope-${scope}`}
-                  checked={scopes.has(scope)}
-                  onCheckedChange={(checked) => toggleScope(scope, checked === true)}
+                  id={`token-scope-${scope.value}`}
+                  className="mt-0.5"
+                  checked={scopes.has(scope.value)}
+                  onCheckedChange={(checked) => toggleScope(scope.value, checked === true)}
+                  aria-describedby={`token-scope-${scope.value}-hint`}
                 />
-                <Label htmlFor={`token-scope-${scope}`} className="font-normal">
-                  {SCOPE_LABELS[scope]}
-                </Label>
+                <div className="space-y-0.5">
+                  <Label htmlFor={`token-scope-${scope.value}`}>{scope.label}</Label>
+                  <p
+                    id={`token-scope-${scope.value}-hint`}
+                    className="text-xs text-muted-foreground"
+                  >
+                    {scope.description}
+                  </p>
+                </div>
               </div>
             ))}
             <p
@@ -204,7 +272,11 @@ function CreateTokenCard({ onCreated }: { readonly onCreated: (token: string) =>
           <FormField
             id="token-expiry"
             label="Validade em dias"
-            hint="Deixe em branco para não expirar."
+            hint={
+              typeof expiry === "string"
+                ? `Expira em ${formatDate(expiry)}.`
+                : "Deixe em branco para não expirar (não recomendado)."
+            }
             errors={errors.expiresInDays == null ? [] : [errors.expiresInDays]}
           >
             {(props) => (
@@ -213,18 +285,28 @@ function CreateTokenCard({ onCreated }: { readonly onCreated: (token: string) =>
                 type="number"
                 inputMode="numeric"
                 min={1}
+                max={MAX_TOKEN_DAYS}
                 value={expiresInDays}
                 onChange={(event) => setExpiresInDays(event.target.value)}
               />
             )}
           </FormField>
-          <Button type="submit" disabled={create.isPending}>
-            {create.isPending ? <LoaderCircleIcon aria-hidden className="animate-spin" /> : null}
-            Criar token
-          </Button>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={onClose}>
+              Cancelar
+            </Button>
+            <Button type="submit" disabled={create.isPending}>
+              {create.isPending ? (
+                <LoaderCircleIcon aria-hidden className="animate-spin" />
+              ) : (
+                <ShieldPlusIcon aria-hidden />
+              )}
+              Criar token
+            </Button>
+          </DialogFooter>
         </form>
-      </Card>
-    </Section>
+      </DialogContent>
+    </Dialog>
   );
 }
 

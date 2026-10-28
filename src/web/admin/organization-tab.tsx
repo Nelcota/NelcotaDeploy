@@ -1,4 +1,4 @@
-import { LoaderCircleIcon } from "lucide-react";
+import { Building2Icon, TriangleAlertIcon, LoaderCircleIcon } from "lucide-react";
 import { type FormEvent, useState } from "react";
 import { z } from "zod";
 
@@ -25,18 +25,28 @@ export function OrganizationTab({ canEdit }: { readonly canEdit: boolean }) {
   if (settings.data == null) {
     return <ListSkeleton rows={3} />;
   }
-  return <OrganizationForm initial={settings.data.settings} canEdit={canEdit} />;
+  return (
+    <OrganizationForm
+      initial={settings.data.settings}
+      canEdit={canEdit}
+      traefikEnabled={settings.data.server.traefikEnabled}
+    />
+  );
 }
 
 function OrganizationForm({
   initial,
   canEdit,
+  traefikEnabled,
 }: {
   readonly initial: SystemSettings;
   readonly canEdit: boolean;
+  /** Without the proxy, automatic domains and HTTPS are never applied. */
+  readonly traefikEnabled: boolean;
 }) {
   const [organizationName, setOrganizationName] = useState(initial.organizationName);
   const [baseDomain, setBaseDomain] = useState(initial.baseDomain ?? "");
+  const exampleDomain = baseDomain.trim() === "" ? "apps.exemplo.com" : baseDomain.trim();
   const [httpsByDefault, setHttpsByDefault] = useState(initial.httpsByDefault);
   const [errors, setErrors] = useState<{ organizationName?: string[]; baseDomain?: string[] }>({});
   const save = useAction({
@@ -62,7 +72,11 @@ function OrganizationForm({
   };
 
   return (
-    <Section title="Organização" description="Preferências que valem para todos os projetos.">
+    <Section
+      icon={Building2Icon}
+      title="Organização"
+      description="Preferências que valem para todos os projetos."
+    >
       <Card className="p-5">
         <form className="max-w-lg space-y-4" onSubmit={submit}>
           <FormField
@@ -82,7 +96,7 @@ function OrganizationForm({
           <FormField
             id="base-domain"
             label="Domínio base"
-            hint="Com um domínio base, cada projeto recebe automaticamente o endereço <slug>.<domínio base>. Aponte um DNS curinga (*.apps.exemplo.com) para este servidor."
+            hint={`Cada projeto recebe o endereço <identificador>.${exampleDomain}. Aponte um DNS curinga (*.${exampleDomain}) para este servidor.`}
             errors={errors.baseDomain ?? []}
           >
             {(props) => (
@@ -108,10 +122,16 @@ function OrganizationForm({
               <Label htmlFor="https-default">HTTPS nos domínios automáticos</Label>
               <p id="https-default-hint" className="text-xs text-muted-foreground">
                 O Traefik emite um certificado Let&apos;s Encrypt para cada domínio
-                &lt;identificador&gt;.&lt;domínio base&gt;.
+                &lt;identificador&gt;.{exampleDomain}.
               </p>
             </div>
           </div>
+          {traefikEnabled ? null : (
+            <p role="status" className="flex items-start gap-1.5 text-sm text-warning">
+              <TriangleAlertIcon aria-hidden className="mt-0.5 size-4 shrink-0" />O Traefik está
+              desativado neste servidor: domínios automáticos e HTTPS não são aplicados.
+            </p>
+          )}
           {canEdit ? (
             <div className="flex items-center gap-3">
               <Button type="submit" disabled={save.isPending || changed === false}>

@@ -3,7 +3,9 @@ import { describe, expect, test } from "bun:test";
 import {
   bytesToMebibytes,
   dayKey,
+  formatDate,
   formatMebibytes,
+  formatTimeAgo,
   formatDayHeading,
   formatShortDay,
   formatBytes,
@@ -130,5 +132,32 @@ describe("bytesToMebibytes", () => {
 describe("formatMebibytes", () => {
   test("formats MiB with the byte unit", () => {
     expect(formatMebibytes(240)).toBe("240 MB");
+  });
+});
+
+describe("formatTimeAgo", () => {
+  const now = new Date("2026-10-28T12:00:00Z");
+
+  test("says how long ago a past date was", () => {
+    expect(formatTimeAgo("2026-10-28T11:55:00Z", now)).toBe("há 5 minutos");
+  });
+
+  test("says agora for a date in the future", () => {
+    expect(formatTimeAgo("2026-10-28T12:30:00Z", now)).toBe("agora");
+  });
+
+  test("shows a dash for a missing date", () => {
+    expect(formatTimeAgo(null, now)).toBe("—");
+  });
+});
+
+describe("formatDate", () => {
+  test("formats the São Paulo calendar day of a UTC date", () => {
+    expect(formatDate("2026-10-29T02:00:00Z")).toBe("28/10/2026");
+  });
+
+  test("shows a dash for a missing or invalid date", () => {
+    expect(formatDate(null)).toBe("—");
+    expect(formatDate("not a date")).toBe("—");
   });
 });

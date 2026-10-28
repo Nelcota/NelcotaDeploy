@@ -1,17 +1,24 @@
 import { useQuery } from "@tanstack/react-query";
 import { useRouteContext } from "@tanstack/react-router";
-import { LoaderCircleIcon, PlusIcon, UsersIcon, WandSparklesIcon } from "lucide-react";
+import {
+  KeyRoundIcon,
+  LoaderCircleIcon,
+  PlusIcon,
+  ShieldCheckIcon,
+  UsersIcon,
+  WandSparklesIcon,
+} from "lucide-react";
 import { useState } from "react";
 import { z } from "zod";
 
-import { formatDateTime } from "@/shared/format";
+import { formatDate } from "@/shared/format";
 import { type Role, ROLES } from "@/shared/roles";
 import { newUserSchema, PASSWORD_MIN_LENGTH, passwordSchema } from "@/shared/user.schema";
 import { ConfirmDialog } from "@/web/components/confirm-dialog";
 import { CopyButton } from "@/web/components/copy-button";
 import { FormField } from "@/web/components/form-field";
 import { ROLE_LABELS } from "@/web/components/labels";
-import { List, ListRow, Section } from "@/web/components/layout";
+import { List, ListRow, Section, Tag } from "@/web/components/layout";
 import { EmptyState, ErrorState, ListSkeleton } from "@/web/components/states";
 import { StatusPill } from "@/web/components/status-badge";
 import { Button } from "@/web/components/ui/button";
@@ -76,6 +83,7 @@ export function UsersTab() {
 
   return (
     <Section
+      icon={UsersIcon}
       title="Usuários"
       description="Administradores têm acesso total; desenvolvedores fazem deploys e gerenciam projetos; leitores só visualizam."
       action={
@@ -107,72 +115,73 @@ export function UsersTab() {
                 <p className="truncate text-sm text-muted-foreground" title={user.email}>
                   {user.email}
                 </p>
+                <p className="text-xs text-muted-foreground">
+                  Criado em {formatDate(user.createdAt)}
+                </p>
               </div>
-              <span className="hidden shrink-0 text-xs text-muted-foreground lg:block">
-                desde {formatDateTime(user.createdAt)}
-              </span>
-              <Select
-                value={user.role}
-                disabled={user.id === currentUser.id}
-                onValueChange={(value) => {
-                  const role = ROLES.find((candidate) => candidate === value);
-                  if (role != null) {
-                    updateRole.mutate({ userId: user.id, role });
-                  }
-                }}
-              >
-                <SelectTrigger
-                  aria-label={`Papel de ${user.name}`}
-                  className="w-40"
+              <div className="flex w-full flex-wrap items-center gap-3 pl-13 md:w-auto md:flex-nowrap md:pl-0">
+                {user.id === currentUser.id ? (
+                  // Your own role and access cannot change here, so show them instead of
+                  // controls that would only ever be disabled.
+                  <Tag icon={ShieldCheckIcon}>{ROLE_LABELS[user.role]}</Tag>
+                ) : (
+                  <>
+                    <Select
+                      value={user.role}
+                      onValueChange={(value) => {
+                        const role = ROLES.find((candidate) => candidate === value);
+                        if (role != null) {
+                          updateRole.mutate({ userId: user.id, role });
+                        }
+                      }}
+                    >
+                      <SelectTrigger
+                        aria-label={`Papel de ${user.name}`}
+                        className="w-40"
+                        size="sm"
+                      >
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {ROLES.map((role) => (
+                          <SelectItem key={role} value={role}>
+                            {ROLE_LABELS[role]}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <div className="flex items-center gap-2">
+                      <Switch
+                        id={`user-active-${user.id}`}
+                        aria-label={`${user.name} ativo`}
+                        checked={user.disabled === false}
+                        onCheckedChange={(active) => {
+                          if (active) {
+                            setDisabled.mutate({ userId: user.id, disabled: false });
+                            return;
+                          }
+                          setDisablingUser({ id: user.id, name: user.name });
+                        }}
+                      />
+                      <Label
+                        htmlFor={`user-active-${user.id}`}
+                        aria-hidden
+                        className="text-sm font-normal"
+                      >
+                        Ativo
+                      </Label>
+                    </div>
+                  </>
+                )}
+                <Button
+                  variant="ghost"
                   size="sm"
-                  title={
-                    user.id === currentUser.id ? "Você não pode alterar o próprio papel" : undefined
-                  }
+                  onClick={() => setResetUser({ id: user.id, name: user.name })}
                 >
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {ROLES.map((role) => (
-                    <SelectItem key={role} value={role}>
-                      {ROLE_LABELS[role]}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <div className="flex items-center gap-2">
-                <Switch
-                  id={`user-active-${user.id}`}
-                  aria-label={`${user.name} ativo`}
-                  checked={user.disabled === false}
-                  disabled={user.id === currentUser.id}
-                  title={
-                    user.id === currentUser.id
-                      ? "Você não pode desativar a própria conta"
-                      : undefined
-                  }
-                  onCheckedChange={(active) => {
-                    if (active) {
-                      setDisabled.mutate({ userId: user.id, disabled: false });
-                      return;
-                    }
-                    setDisablingUser({ id: user.id, name: user.name });
-                  }}
-                />
-                <Label
-                  htmlFor={`user-active-${user.id}`}
-                  aria-hidden
-                  className="text-sm font-normal"
-                >
-                  Ativo
-                </Label>
+                  <KeyRoundIcon aria-hidden />
+                  Redefinir senha
+                </Button>
               </div>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setResetUser({ id: user.id, name: user.name })}
-              >
-                Redefinir senha
-              </Button>
             </ListRow>
           ))}
         </List>

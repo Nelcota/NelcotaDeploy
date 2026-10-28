@@ -1,12 +1,28 @@
 import { useQuery } from "@tanstack/react-query";
-import { LoaderCircleIcon, ShieldIcon, WebhookIcon } from "lucide-react";
-import { useState } from "react";
+import {
+  BoxesIcon,
+  ClockIcon,
+  ContainerIcon,
+  GlobeIcon,
+  HistoryIcon,
+  KeyRoundIcon,
+  LoaderCircleIcon,
+  type LucideIcon,
+  RocketIcon,
+  ServerIcon,
+  ShieldIcon,
+  UserRoundIcon,
+  UsersIcon,
+  VariableIcon,
+  WebhookIcon,
+} from "lucide-react";
+import { Fragment, useState } from "react";
 import { toast } from "sonner";
 
-import { formatDateTime, pluralize } from "@/shared/format";
+import { dayKey, formatDateTime, formatDayHeading, formatTime, pluralize } from "@/shared/format";
 import { toUserMessage } from "@/web/components/error-message";
 import { AUDIT_ACTION_LABELS, WEBHOOK_REASON_LABELS } from "@/web/components/labels";
-import { List, ListRow, Section } from "@/web/components/layout";
+import { DayHeading, List, ListRow, Section } from "@/web/components/layout";
 import { EmptyState, ErrorState, ListSkeleton } from "@/web/components/states";
 import { StatusPill } from "@/web/components/status-badge";
 import { Button } from "@/web/components/ui/button";
@@ -18,11 +34,34 @@ const SHORT_SHA_LENGTH = 7;
 
 type AuditEvent = Awaited<ReturnType<typeof listAuditEventsFn>>[number];
 
-const ACTOR_TYPE_LABELS: Record<string, string> = {
+const ACTOR_TYPES: Record<string, { readonly label: string; readonly icon: LucideIcon }> = {
+  user: { label: "Usuário", icon: UserRoundIcon },
+  token: { label: "Token", icon: KeyRoundIcon },
+  webhook: { label: "Webhook", icon: WebhookIcon },
+  system: { label: "Sistema", icon: ServerIcon },
+};
+
+/** Icon of each audited area, the part of the action code before the dot. */
+const AREA_ICONS: Record<string, LucideIcon> = {
+  deployment: RocketIcon,
+  environment_variable: VariableIcon,
+  domain: GlobeIcon,
+  task: ClockIcon,
+  project: BoxesIcon,
+  user: UsersIcon,
+  api_token: KeyRoundIcon,
+  container: ContainerIcon,
+};
+
+const TARGET_TYPE_LABELS: Record<string, string> = {
+  task: "Task",
+  project: "Projeto",
+  deployment: "Deploy",
   user: "Usuário",
-  token: "Token",
-  webhook: "Webhook",
-  system: "Sistema",
+  api_token: "Token",
+  domain: "Domínio",
+  environment_variable: "Variável",
+  container: "Contêiner",
 };
 
 /** Audit events and the latest GitHub webhook deliveries. */
@@ -35,6 +74,7 @@ export function AuditTab() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [exhausted, setExhausted] = useState(false);
   const events = [...(firstPage.data ?? []), ...olderPages];
+  const now = new Date();
 
   const loadMore = async () => {
     const last = events.at(-1);
@@ -56,6 +96,7 @@ export function AuditTab() {
   return (
     <div className="space-y-10">
       <Section
+        icon={HistoryIcon}
         title="Eventos de auditoria"
         description="Ações administrativas e operacionais. Valores de secrets nunca são registrados."
       >
@@ -68,45 +109,16 @@ export function AuditTab() {
         ) : null}
         {events.length > 0 ? (
           <List>
-            {events.map((event) => (
-              <ListRow
-                key={event.id}
-                className="flex-col items-stretch gap-2 py-3 sm:flex-row sm:items-start"
-              >
-                <div className="min-w-0 flex-1 space-y-1">
-                  <p className="flex flex-wrap items-baseline gap-x-2 text-sm">
-                    <span className="font-medium">
-                      {AUDIT_ACTION_LABELS[event.action] ?? event.action}
-                    </span>
-                    <span className="font-mono text-xs text-muted-foreground">
-                      {event.targetType}
-                      {event.targetId == null ? "" : ` ${event.targetId.slice(-SHORT_ID_LENGTH)}`}
-                    </span>
-                  </p>
-                  {event.details === "" || event.details === "{}" ? null : (
-                    <details className="text-xs">
-                      <summary className="w-fit cursor-pointer rounded-sm text-muted-foreground hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none">
-                        Ver detalhes
-                      </summary>
-                      <pre className="mt-1 font-mono break-all whitespace-pre-wrap text-muted-foreground">
-                        {event.details}
-                      </pre>
-                    </details>
-                  )}
-                </div>
-                <div className="space-y-1 text-xs sm:shrink-0 sm:text-right">
-                  <p className="break-all">
-                    <span className="text-muted-foreground">
-                      {ACTOR_TYPE_LABELS[event.actorType] ?? event.actorType}:
-                    </span>{" "}
-                    {event.actorLabel}
-                  </p>
-                  <p className="whitespace-nowrap text-muted-foreground">
-                    {formatDateTime(event.createdAt)}
-                  </p>
-                </div>
-              </ListRow>
-            ))}
+            {[...Map.groupBy(events, (event) => dayKey(event.createdAt) ?? event.createdAt)].map(
+              ([day, items]) => (
+                <Fragment key={day}>
+                  <DayHeading>{formatDayHeading(items[0]?.createdAt ?? "", now)}</DayHeading>
+                  {items.map((event) => (
+                    <AuditRow key={event.id} event={event} />
+                  ))}
+                </Fragment>
+              ),
+            )}
           </List>
         ) : null}
         {events.length > 0 && exhausted === false ? (
@@ -126,6 +138,48 @@ export function AuditTab() {
   );
 }
 
+function AuditRow({ event }: { readonly event: AuditEvent }) {
+  const AreaIcon = AREA_ICONS[event.action.split(".")[0] ?? ""] ?? HistoryIcon;
+  const actor = ACTOR_TYPES[event.actorType];
+  const ActorIcon = actor?.icon ?? UserRoundIcon;
+  return (
+    <ListRow className="items-start gap-3 py-3">
+      <AreaIcon aria-hidden className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+      <div className="min-w-0 flex-1 space-y-1">
+        <p className="flex flex-wrap items-baseline gap-x-2 text-sm">
+          <span className="font-medium">{AUDIT_ACTION_LABELS[event.action] ?? event.action}</span>
+          <span className="text-xs text-muted-foreground">
+            {TARGET_TYPE_LABELS[event.targetType] ?? event.targetType}
+            {event.targetId == null ? null : (
+              <span className="font-mono"> {event.targetId.slice(-SHORT_ID_LENGTH)}</span>
+            )}
+          </span>
+        </p>
+        <p className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
+          <span className="inline-flex min-w-0 items-center gap-1.5">
+            <ActorIcon aria-hidden className="size-3.5 shrink-0" />
+            <span className="sr-only">{actor?.label ?? event.actorType}: </span>
+            <span className="break-all">{event.actorLabel}</span>
+          </span>
+          <time dateTime={event.createdAt} title={formatDateTime(event.createdAt)}>
+            {formatTime(event.createdAt)}
+          </time>
+        </p>
+        {event.details === "" || event.details === "{}" ? null : (
+          <details className="text-xs">
+            <summary className="w-fit cursor-pointer rounded-sm text-muted-foreground hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none">
+              Ver detalhes
+            </summary>
+            <pre className="mt-1 font-mono break-all whitespace-pre-wrap text-muted-foreground">
+              {event.details}
+            </pre>
+          </details>
+        )}
+      </div>
+    </ListRow>
+  );
+}
+
 function WebhookDeliveriesCard() {
   const deliveries = useQuery({
     queryKey: ["webhook-deliveries"],
@@ -133,6 +187,7 @@ function WebhookDeliveriesCard() {
   });
   return (
     <Section
+      icon={WebhookIcon}
       title="Webhooks recebidos"
       description="Entregas do GitHub com assinatura válida, deduplicadas pelo identificador de entrega."
     >

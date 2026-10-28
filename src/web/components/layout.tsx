@@ -5,12 +5,15 @@ import { cn } from "./ui/class-names";
 
 /** A titled block of a page. Sections are separated by space; their content brings its own panel. */
 export function Section({
+  icon: Icon,
   title,
   description,
   action,
   children,
   className,
 }: {
+  /** Icon beside the title, like the one of the matching tab or card. */
+  readonly icon?: LucideIcon;
   readonly title: ReactNode;
   readonly description?: ReactNode;
   readonly action?: ReactNode;
@@ -21,7 +24,12 @@ export function Section({
     <section className={cn("space-y-4", className)}>
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between sm:gap-4">
         <div className="min-w-0 space-y-1">
-          <h2 className="text-base font-semibold tracking-tight">{title}</h2>
+          <h2 className="flex items-center gap-3 text-base font-semibold tracking-tight">
+            {Icon == null ? null : (
+              <Icon aria-hidden className="size-[1.15rem] shrink-0 text-muted-foreground" />
+            )}
+            {title}
+          </h2>
           {description == null ? null : (
             <p className="text-sm text-muted-foreground">{description}</p>
           )}
