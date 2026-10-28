@@ -29,12 +29,15 @@ import { Input } from "@/web/components/ui/input";
 import { Switch } from "@/web/components/ui/switch";
 import { useAction } from "@/web/components/use-action";
 import { useCan } from "@/web/components/use-permissions";
-import { addDomainFn, removeDomainFn } from "@/web/functions/domains.functions";
+import { addDomainFn, getServerAddressFn, removeDomainFn } from "@/web/functions/domains.functions";
 
 export const Route = createFileRoute("/_app/projects/$projectId/domains")({
   head: () => ({ meta: [{ title: "Domínios · Nelcota Deploy" }] }),
   component: DomainsPage,
 });
+
+// The server's address rarely changes; asking once per visit is enough.
+const SERVER_ADDRESS_STALE_IN_MS = 10 * 60 * 1000;
 
 type DomainItem = {
   readonly id: string | null;
@@ -48,6 +51,11 @@ function DomainsPage() {
   const can = useCan();
   const canEdit = can("domain:write");
   const project = useQuery(projectQueryOptions(projectId));
+  const serverAddress = useQuery({
+    queryKey: ["server-address"],
+    queryFn: () => getServerAddressFn(),
+    staleTime: SERVER_ADDRESS_STALE_IN_MS,
+  });
   const remove = useAction({
     action: (domainId: string) => removeDomainFn({ data: { projectId, domainId } }),
     successMessage: "Domínio removido",
@@ -98,7 +106,7 @@ function DomainsPage() {
           />
         </List>
       )}
-      <DnsCard automaticHostname={automaticHostname} />
+      <DnsCard automaticHostname={automaticHostname} serverAddress={serverAddress.data ?? null} />
     </>
   );
 }
@@ -267,7 +275,23 @@ function AddDomainForm({ projectId }: { readonly projectId: string }) {
 }
 
 /** The DNS record a custom domain needs, pointing at the automatic hostname when there is one. */
-function DnsCard({ automaticHostname }: { readonly automaticHostname: string | null }) {
+function DnsCard({
+  automaticHostname,
+  serverAddress,
+}: {
+  readonly automaticHostname: string | null;
+  /** Public IP of this server, when it could be found from PUBLIC_URL. */
+  readonly serverAddress: string | null;
+}) {
+  const serverIp =
+    serverAddress == null ? (
+      <span className="text-sm">IP deste servidor</span>
+    ) : (
+      <>
+        <span className="font-mono text-sm">{serverAddress}</span>
+        <CopyButton text={serverAddress} label="Copiar" />
+      </>
+    );
   return (
     <Card className="gap-4 p-5">
       <CardTitleRow icon={ServerIcon} title="Configurar DNS" />
@@ -288,7 +312,7 @@ function DnsCard({ automaticHostname }: { readonly automaticHostname: string | n
           <dt className="text-xs text-muted-foreground">Valor</dt>
           <dd className="flex flex-wrap items-center gap-2">
             {automaticHostname == null ? (
-              <span className="text-sm">IP deste servidor</span>
+              serverIp
             ) : (
               <>
                 <span className="min-w-0 font-mono text-sm break-all">{automaticHostname}</span>
@@ -301,7 +325,8 @@ function DnsCard({ automaticHostname }: { readonly automaticHostname: string | n
       {automaticHostname == null ? null : (
         <p className="text-xs text-faint">
           O CNAME aponta para o domínio automático do projeto. Para a raiz do domínio (sem
-          subdomínio), use um registro A com o IP deste servidor.
+          subdomínio), use um registro A com o IP deste servidor
+          {serverAddress == null ? "" : `: ${serverAddress}`}.
         </p>
       )}
     </Card>
