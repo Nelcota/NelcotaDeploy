@@ -10,16 +10,24 @@ const RING_RADIUS = 18;
 const RING_CIRCUMFERENCE = 2 * Math.PI * RING_RADIUS;
 const RING_WARNING_PERCENT = 60;
 
+const VALUE_TONES = {
+  neutral: "text-foreground",
+  success: "text-success",
+  warning: "text-warning",
+  danger: "text-destructive",
+} as const;
+
 /** One figure of a {@link MetricStrip}. */
 export type StripMetric = {
   readonly label: string;
+  readonly icon: LucideIcon;
   readonly value: ReactNode;
-  readonly detail?: ReactNode;
-  /** 0–100; draws a thin bar under the value. Null hides the bar. */
-  readonly percent?: number | null;
+  readonly detail: ReactNode;
+  /** Colors the value, for figures that are a status. */
+  readonly tone?: keyof typeof VALUE_TONES;
 };
 
-/** Compact row of key figures, shown at the top right of overview pages. */
+/** Row of key figures with the same layout each: icon, label, value and one detail line. */
 export function MetricStrip({
   metrics,
   className,
@@ -39,25 +47,25 @@ export function MetricStrip({
         <div
           key={metric.label}
           className={cn(
-            "min-w-0 space-y-2 px-5 py-4",
+            "flex min-w-0 items-start gap-3.5 px-5 py-4",
             index > 0 ? "border-t sm:border-t-0 sm:border-l" : "",
           )}
         >
-          <dt className="truncate text-sm text-muted-foreground">{metric.label}</dt>
-          <dd className="truncate text-2xl leading-none font-bold tracking-tight tabular-nums">
-            {metric.value}
-          </dd>
-          {metric.percent === undefined ? null : (
-            <div aria-hidden className="h-1 overflow-hidden rounded-full bg-surface-sunken">
-              <div
-                className="h-full rounded-full bg-primary"
-                style={{ width: `${Math.min(Math.max(metric.percent ?? 0, 0), 100)}%` }}
-              />
-            </div>
-          )}
-          {metric.detail == null ? null : (
+          <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-secondary text-muted-foreground">
+            <metric.icon aria-hidden className="size-5" />
+          </span>
+          <div className="min-w-0 space-y-1">
+            <dt className="truncate text-sm text-muted-foreground">{metric.label}</dt>
+            <dd
+              className={cn(
+                "truncate text-2xl leading-tight font-semibold tracking-tight tabular-nums",
+                VALUE_TONES[metric.tone ?? "neutral"],
+              )}
+            >
+              {metric.value}
+            </dd>
             <dd className="truncate text-xs text-muted-foreground">{metric.detail}</dd>
-          )}
+          </div>
         </div>
       ))}
     </dl>

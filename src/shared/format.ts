@@ -155,3 +155,15 @@ export function formatPercent(percent: number | null | undefined): string {
   }
   return percentFormat.format(percent / 100);
 }
+
+/**
+ * Picks the singular or plural form for a count, such as "1 projeto" or "3 projetos".
+ *
+ * @param count - Quantity; only exactly 1 is singular.
+ * @param singular - Form used for 1.
+ * @param plural - Form used for every other count, including 0.
+ * @returns The count followed by the matching word.
+ */
+export function pluralize(count: number, singular: string, plural: string): string {
+  return `${count} ${count === 1 ? singular : plural}`;
+}

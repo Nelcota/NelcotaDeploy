@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import {
+  BoxIcon,
   GitBranchIcon,
   GitForkIcon,
   PlayIcon,
@@ -88,18 +89,21 @@ export function ProjectHeader({ details }: { readonly details: ProjectDetails })
         <ProjectActions details={details} hasContainer={container != null} />
       </div>
       <MetricStrip
-        className="2xl:w-[34rem] 2xl:shrink-0"
+        className="2xl:w-[40rem] 2xl:shrink-0"
         metrics={[
           {
             label: "Contêiner",
+            icon: BoxIcon,
+            tone: container?.state === "running" ? "success" : "neutral",
             value: containerLabel(container),
             detail:
               container?.startedAt == null
                 ? "nunca iniciado"
-                : `desde ${formatRelativeTime(container.startedAt, now)}`,
+                : `iniciado ${formatRelativeTime(container.startedAt, now)}`,
           },
           {
             label: "Último deploy",
+            icon: RocketIcon,
             value:
               latest.data == null
                 ? "—"
@@ -107,12 +111,15 @@ export function ProjectHeader({ details }: { readonly details: ProjectDetails })
             detail:
               latest.data?.commitSha == null
                 ? "sem deploy concluído"
-                : `${formatRelativeTime(latest.data.finishedAt ?? latest.data.createdAt, now)} · ${latest.data.commitSha.slice(0, SHORT_SHA_LENGTH)}`,
+                : `commit ${latest.data.commitSha.slice(0, SHORT_SHA_LENGTH)}`,
           },
           {
             label: "Reinícios",
+            icon: RotateCwIcon,
+            tone: (container?.restartCount ?? 0) > 0 ? "warning" : "neutral",
             value: container?.restartCount ?? 0,
-            detail: `${details.domains.length} domínio(s)`,
+            detail:
+              (container?.restartCount ?? 0) > 0 ? "desde o último deploy" : "contêiner estável",
           },
         ]}
       />

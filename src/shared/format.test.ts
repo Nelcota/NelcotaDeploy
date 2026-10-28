@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { formatBytes, formatDateTime, formatDuration, formatPercent } from "./format";
+import { formatBytes, formatDateTime, formatDuration, formatPercent, pluralize } from "./format";
 
 describe("format", () => {
   test("formats dates in São Paulo time", () => {
@@ -27,5 +27,11 @@ describe("format", () => {
   test("shows a dash for unavailable percentages instead of zero", () => {
     expect(formatPercent(null)).toBe("—");
     expect(formatPercent(42.5)).toBe("42,5%");
+  });
+
+  test("uses the singular only for exactly one", () => {
+    expect(pluralize(1, "deploy", "deploys")).toBe("1 deploy");
+    expect(pluralize(0, "deploy", "deploys")).toBe("0 deploys");
+    expect(pluralize(3, "deploy", "deploys")).toBe("3 deploys");
   });
 });

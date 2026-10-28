@@ -1,6 +1,14 @@
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { BoxesIcon, PlusIcon, RocketIcon, ServerIcon, WebhookIcon } from "lucide-react";
+import {
+  AlertTriangleIcon,
+  BoxesIcon,
+  HeartPulseIcon,
+  PlusIcon,
+  RocketIcon,
+  ServerIcon,
+  WebhookIcon,
+} from "lucide-react";
 import { useState } from "react";
 
 import {
@@ -9,6 +17,7 @@ import {
   formatDuration,
   formatPercent,
   formatRelativeTime,
+  pluralize,
 } from "@/shared/format";
 import { MetricChart } from "@/web/components/metric-chart";
 import {
@@ -46,10 +55,31 @@ export const Route = createFileRoute("/_app/")({
 });
 
 const HEALTH_LABELS = {
-  healthy: { value: "Saudável", detail: "worker e Docker online" },
-  degraded: { value: "Com alertas", detail: "há aplicações offline" },
-  unavailable: { value: "Indisponível", detail: "worker ou Docker fora do ar" },
+  healthy: { value: "Saudável", detail: "worker e Docker online", tone: "success" },
+  degraded: { value: "Com alertas", detail: "há aplicações offline", tone: "warning" },
+  unavailable: { value: "Indisponível", detail: "worker ou Docker fora do ar", tone: "danger" },
 } as const;
+
+type DashboardSummary = NonNullable<Awaited<ReturnType<typeof getDashboardFn>>>;
+
+/** One sentence that says how things are, so the page reads at a glance. */
+function summaryLine(data: DashboardSummary): string {
+  const applications = pluralize(data.projectCount, "aplicação", "aplicações");
+  if (data.projectCount === 0) {
+    return "Nenhuma aplicação ainda. Crie o primeiro projeto para fazer deploy.";
+  }
+  if (data.health === "unavailable") {
+    return `${applications} · o worker ou o Docker está fora do ar, deploys ficam na fila.`;
+  }
+  if (data.offlineCount > 0) {
+    const offline =
+      data.offlineCount === 1
+        ? "1 está offline e precisa de atenção"
+        : `${data.offlineCount} estão offline e precisam de atenção`;
+    return `${applications} · ${offline}.`;
+  }
+  return `${applications} · tudo funcionando normalmente.`;
+}
 
 function percentOf(part: number, total: number): number | null {
   return total > 0 ? (part / total) * 100 : null;
@@ -85,9 +115,14 @@ function DashboardPage() {
 
   return (
     <>
-      <section className="flex flex-col gap-6 2xl:flex-row 2xl:items-start 2xl:justify-between">
-        <div className="min-w-0 flex-1 space-y-4">
-          <h1 className="text-3xl leading-tight font-medium tracking-tight">Painel</h1>
+      <section className="flex flex-col gap-6 2xl:flex-row 2xl:items-center 2xl:justify-between">
+        <div className="min-w-0 flex-1 space-y-5">
+          <div className="space-y-1.5">
+            <h1 className="text-3xl leading-tight font-medium tracking-tight">Painel</h1>
+            <p className="text-base text-muted-foreground">
+              {data == null ? "Carregando a situação do servidor…" : summaryLine(data)}
+            </p>
+          </div>
           <div className="flex flex-wrap gap-2">
             {can("project:write") ? (
               <Button size="sm" asChild>
@@ -112,27 +147,37 @@ function DashboardPage() {
           </div>
         </div>
         {data == null ? (
-          <Skeleton className="h-[6.5rem] w-full rounded-xl 2xl:w-[38rem]" />
+          <Skeleton className="h-[5.5rem] w-full rounded-xl 2xl:w-[44rem]" />
         ) : (
           <MetricStrip
-            className="2xl:w-[38rem] 2xl:shrink-0"
+            className="2xl:w-[44rem] 2xl:shrink-0"
             metrics={[
               {
                 label: "Ambiente",
+                icon: HeartPulseIcon,
+                tone: HEALTH_LABELS[data.health].tone,
                 value: HEALTH_LABELS[data.health].value,
                 detail: HEALTH_LABELS[data.health].detail,
               },
               {
-                label: "Online",
-                value: data.onlineCount,
-                percent: percentOf(data.onlineCount, data.projectCount - data.neverDeployedCount),
-                detail: `${data.offlineCount} offline`,
+                label: "Aplicações online",
+                icon: BoxesIcon,
+                tone: data.offlineCount > 0 ? "warning" : "neutral",
+                value: `${data.onlineCount} de ${data.projectCount - data.neverDeployedCount}`,
+                detail:
+                  data.offlineCount === 0
+                    ? "nenhuma offline"
+                    : pluralize(data.offlineCount, "offline", "offline"),
               },
               {
-                label: "Falhas (24h)",
+                label: "Falhas em 24 h",
+                icon: AlertTriangleIcon,
+                tone: data.recentFailures.length > 0 ? "danger" : "neutral",
                 value: data.recentFailures.length,
-                percent: percentOf(data.recentFailures.length, data.recentDeployments.length),
-                detail: `de ${data.recentDeployments.length} deploys recentes`,
+                detail:
+                  data.recentDeployments.length === 0
+                    ? "nenhum deploy recente"
+                    : `em ${pluralize(data.recentDeployments.length, "deploy recente", "deploys recentes")}`,
               },
             ]}
           />
