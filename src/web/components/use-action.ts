@@ -1,6 +1,8 @@
 import { type QueryKey, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
+import { toUserMessage } from "./error-message";
+
 /**
  * Wraps a server function call with a success toast, an error toast and cache
  * invalidation, so every action gives the same feedback.
@@ -39,7 +41,7 @@ export function useAction<TVariables = void, TResult = unknown>(options: {
       );
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : "Não foi possível concluir a ação.");
+      toast.error(toUserMessage(error, "Não foi possível concluir a ação."));
     },
   });
 }

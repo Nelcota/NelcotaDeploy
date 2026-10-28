@@ -5,6 +5,7 @@ import { type FormEvent, type ReactNode, useState } from "react";
 import { toast } from "sonner";
 
 import { ConfirmDialog } from "@/web/components/confirm-dialog";
+import { toUserMessage } from "@/web/components/error-message";
 import {
   AutoDeployField,
   BuildFields,
@@ -128,7 +129,7 @@ function ProjectSettingsForm({
           queryClient.invalidateQueries({ queryKey: ["projects"] }),
         ]);
       } catch (error) {
-        toast.error(error instanceof Error ? error.message : "Não foi possível salvar.");
+        toast.error(toUserMessage(error, "Não foi possível salvar."));
       }
     },
   });

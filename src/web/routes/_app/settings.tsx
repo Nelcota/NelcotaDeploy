@@ -19,6 +19,7 @@ import { type SystemSettings, systemSettingsSchema } from "@/shared/settings.sch
 import { newUserSchema, PASSWORD_MIN_LENGTH, passwordSchema } from "@/shared/user.schema";
 import { ConfirmDialog } from "@/web/components/confirm-dialog";
 import { CopyButton } from "@/web/components/copy-button";
+import { toUserMessage } from "@/web/components/error-message";
 import { FormField } from "@/web/components/form-field";
 import { AUDIT_ACTION_LABELS, ROLE_LABELS, WEBHOOK_REASON_LABELS } from "@/web/components/labels";
 import { List, ListRow, Section, StatRow } from "@/web/components/layout";
@@ -1104,9 +1105,7 @@ function AuditTab() {
       setOlderPages((current) => [...current, ...page]);
       setExhausted(page.length === 0);
     } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : "Não foi possível carregar mais eventos.",
-      );
+      toast.error(toUserMessage(error, "Não foi possível carregar mais eventos."));
     } finally {
       setLoadingMore(false);
     }

@@ -2,6 +2,7 @@ import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { ChevronLeftIcon, InfoIcon } from "lucide-react";
 import { toast } from "sonner";
 
+import { toUserMessage } from "@/web/components/error-message";
 import { PageHeader } from "@/web/components/page-header";
 import { EMPTY_PROJECT_FORM, ProjectForm } from "@/web/components/project-form";
 import { Card, CardContent } from "@/web/components/ui/card";
@@ -56,9 +57,7 @@ function NewProjectPage() {
                     params: { projectId: project.id },
                   });
                 } catch (error) {
-                  toast.error(
-                    error instanceof Error ? error.message : "Não foi possível criar o projeto.",
-                  );
+                  toast.error(toUserMessage(error, "Não foi possível criar o projeto."));
                 }
               }}
             />
