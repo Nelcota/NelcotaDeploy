@@ -1,0 +1,31 @@
+import { describe, expect, test } from "bun:test";
+
+import { InvalidConfigError, parseConfig } from "./config";
+
+describe("parseConfig", () => {
+  test("applies defaults and resolves paths to absolute", () => {
+    const config = parseConfig({});
+
+    expect(config.PORT).toBe(3000);
+    expect(config.DATABASE_PATH.startsWith("/")).toBe(true);
+    expect(config.TRAEFIK_ENABLED).toBe(false);
+  });
+
+  test("throws InvalidConfigError for an encryption key with the wrong length", () => {
+    expect(() =>
+      parseConfig({ NELCOTA_ENCRYPTION_KEY: Buffer.alloc(16).toString("base64") }),
+    ).toThrow(InvalidConfigError);
+  });
+
+  test("throws InvalidConfigError for a short auth secret", () => {
+    expect(() => parseConfig({ BETTER_AUTH_SECRET: "short" })).toThrow(InvalidConfigError);
+  });
+
+  test("throws InvalidConfigError for an unknown schedule time zone", () => {
+    expect(() => parseConfig({ SCHEDULE_TIME_ZONE: "Mars/Olympus" })).toThrow(InvalidConfigError);
+  });
+
+  test("keeps the in-memory database path unchanged", () => {
+    expect(parseConfig({ DATABASE_PATH: ":memory:" }).DATABASE_PATH).toBe(":memory:");
+  });
+});
