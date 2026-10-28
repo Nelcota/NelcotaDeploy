@@ -1,17 +1,39 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { ChevronLeftIcon, InfoIcon, ListChecksIcon, OctagonXIcon, RocketIcon } from "lucide-react";
+import {
+  CalendarCheckIcon,
+  CalendarClockIcon,
+  ChevronLeftIcon,
+  ContainerIcon,
+  ExternalLinkIcon,
+  GitBranchIcon,
+  GitCommitHorizontalIcon,
+  InfoIcon,
+  ListChecksIcon,
+  type LucideIcon,
+  OctagonXIcon,
+  PackageIcon,
+  RocketIcon,
+  ScrollTextIcon,
+  TimerIcon,
+  Undo2Icon,
+} from "lucide-react";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { durationBetween, formatDateTime, formatDuration } from "@/shared/format";
 import { ConfirmDialog } from "@/web/components/confirm-dialog";
 import { DeploymentStages } from "@/web/components/deployment-stages";
-import { ACTIVE_DEPLOYMENT_STATUSES, DEPLOYMENT_TRIGGER_LABELS } from "@/web/components/labels";
+import {
+  ACTIVE_DEPLOYMENT_STATUSES,
+  DEPLOYMENT_TRIGGER_ICONS,
+  DEPLOYMENT_TRIGGER_LABELS,
+} from "@/web/components/labels";
 import { CardTitleRow } from "@/web/components/layout";
 import { LogViewer } from "@/web/components/log-viewer";
 import { TabHeader } from "@/web/components/project-header";
 import { projectQueryOptions } from "@/web/components/project-query";
+import { RollbackButton } from "@/web/components/rollback-button";
 import { ErrorState } from "@/web/components/states";
 import { DeploymentStatusBadge } from "@/web/components/status-badge";
 import { Button } from "@/web/components/ui/button";
@@ -44,10 +66,21 @@ function useNow(enabled: boolean): Date {
   return now;
 }
 
-function Detail({ label, children }: { readonly label: string; readonly children: ReactNode }) {
+function Detail({
+  icon: Icon,
+  label,
+  children,
+}: {
+  readonly icon: LucideIcon;
+  readonly label: string;
+  readonly children: ReactNode;
+}) {
   return (
     <div className="flex min-w-0 flex-col gap-0.5 sm:flex-row sm:items-baseline sm:gap-4">
-      <dt className="shrink-0 text-sm text-muted-foreground sm:w-28">{label}</dt>
+      <dt className="flex shrink-0 items-center gap-2 text-sm text-muted-foreground sm:w-32">
+        <Icon aria-hidden className="size-4 shrink-0" />
+        {label}
+      </dt>
       <dd className="min-w-0 text-sm break-all sm:truncate">{children}</dd>
     </div>
   );
@@ -132,6 +165,14 @@ function DeploymentDetailPage() {
   const finishedAt =
     data.finishedAt ?? (active && data.startedAt != null ? now.toISOString() : null);
 
+  const repositoryFullName = project.data?.project.repositoryFullName ?? null;
+  const TriggerIcon = DEPLOYMENT_TRIGGER_ICONS[data.trigger];
+  const canRollback =
+    data.status === "succeeded" &&
+    data.imageTag != null &&
+    data.isLive === false &&
+    can("deployment:create");
+
   const cancelButton =
     active && can("deployment:create") ? (
       <ConfirmDialog
@@ -172,7 +213,7 @@ function DeploymentDetailPage() {
             </>
           }
           description={data.commitMessage ?? "sem mensagem de commit"}
-          actions={cancelButton}
+          actions={canRollback ? <RollbackButton deployment={data} /> : cancelButton}
         />
       </div>
 
@@ -197,30 +238,51 @@ function DeploymentDetailPage() {
       <Card className="gap-4 p-5">
         <CardTitleRow icon={InfoIcon} title="Detalhes" />
         <dl className="grid gap-x-10 gap-y-2.5 md:grid-cols-2">
-          <Detail label="Branch">
+          <Detail icon={GitCommitHorizontalIcon} label="Commit">
+            {sha == null || repositoryFullName == null ? (
+              <span className="font-mono">{sha?.slice(0, SHORT_SHA_LENGTH) ?? "—"}</span>
+            ) : (
+              <a
+                href={`https://github.com/${repositoryFullName}/commit/${sha}`}
+                target="_blank"
+                rel="noreferrer noopener"
+                className="inline-flex items-center gap-1 rounded-sm font-mono underline-offset-4 hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+              >
+                {sha.slice(0, SHORT_SHA_LENGTH)}
+                <ExternalLinkIcon aria-hidden className="size-3.5" />
+                <span className="sr-only">(abre no GitHub)</span>
+              </a>
+            )}
+          </Detail>
+          <Detail icon={GitBranchIcon} label="Branch">
             <span className="font-mono">{data.branch}</span>
           </Detail>
-          <Detail label="Origem">
+          <Detail icon={TriggerIcon} label="Origem">
             {DEPLOYMENT_TRIGGER_LABELS[data.trigger]} · {data.triggeredByLabel}
           </Detail>
-          <Detail label="Início">{formatDateTime(data.startedAt ?? data.createdAt)}</Detail>
-          <Detail label="Duração">
+          <Detail icon={CalendarClockIcon} label="Início">
+            {formatDateTime(data.startedAt ?? data.createdAt)}
+          </Detail>
+          <Detail icon={CalendarCheckIcon} label="Fim">
+            {data.finishedAt == null ? "—" : formatDateTime(data.finishedAt)}
+          </Detail>
+          <Detail icon={TimerIcon} label="Duração">
             <span className="tabular-nums">
               {formatDuration(durationBetween(data.startedAt, finishedAt))}
             </span>
           </Detail>
-          <Detail label="Imagem">
+          <Detail icon={PackageIcon} label="Imagem">
             <span className="font-mono" title={data.imageTag ?? undefined}>
               {data.imageTag ?? "—"}
             </span>
           </Detail>
-          <Detail label="Contêiner">
+          <Detail icon={ContainerIcon} label="Contêiner">
             <span className="font-mono" title={data.containerName ?? undefined}>
               {data.containerName ?? "—"}
             </span>
           </Detail>
           {data.sourceDeploymentId == null ? null : (
-            <Detail label="Imagem de">
+            <Detail icon={Undo2Icon} label="Imagem de">
               <Link
                 to="/projects/$projectId/deployments/$deploymentId"
                 params={{ projectId, deploymentId: data.sourceDeploymentId }}
@@ -233,8 +295,13 @@ function DeploymentDetailPage() {
         </dl>
       </Card>
 
+      <h2 className="flex items-center gap-3 text-base font-semibold">
+        <ScrollTextIcon aria-hidden className="size-[1.15rem] text-muted-foreground" />
+        Logs do deploy
+      </h2>
       <LogViewer
         url={`/api/deployments/${deploymentId}/logs`}
+        heightClass={active ? "h-[28rem]" : "max-h-[28rem] min-h-24"}
         downloadName={`deploy-${deploymentId}.log`}
         emptyMessage={
           data.status === "queued"

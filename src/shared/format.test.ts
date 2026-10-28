@@ -1,7 +1,9 @@
 import { describe, expect, test } from "bun:test";
 
 import {
+  bytesToMebibytes,
   dayKey,
+  formatMebibytes,
   formatDayHeading,
   formatShortDay,
   formatBytes,
@@ -109,5 +111,24 @@ describe("formatShortDay", () => {
     const label = formatShortDay("2026-13-40");
 
     expect(label).toBe("—");
+  });
+});
+
+describe("bytesToMebibytes", () => {
+  test("converts bytes to MiB", () => {
+    expect(bytesToMebibytes(256 * 1024 * 1024)).toBe(256);
+  });
+
+  test.each([null, undefined, -1, Number.NaN, Number.POSITIVE_INFINITY])(
+    "returns null for %p",
+    (value) => {
+      expect(bytesToMebibytes(value)).toBeNull();
+    },
+  );
+});
+
+describe("formatMebibytes", () => {
+  test("formats MiB with the byte unit", () => {
+    expect(formatMebibytes(240)).toBe("240 MB");
   });
 });

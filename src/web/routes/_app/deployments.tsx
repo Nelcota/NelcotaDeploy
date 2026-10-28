@@ -5,41 +5,35 @@ import {
   CircleCheckIcon,
   CircleXIcon,
   GitBranchIcon,
-  GitCommitHorizontalIcon,
+  CalendarDaysIcon,
+  FilterXIcon,
+  RocketIcon,
   ListIcon,
   TimerIcon,
 } from "lucide-react";
 import { Fragment, useMemo, useState } from "react";
 
 import type { DeploymentStatus } from "@/deployments";
+import { dayKey, formatDayHeading, formatDuration, formatPercent } from "@/shared/format";
 import {
-  dayKey,
-  durationBetween,
-  formatDateTime,
-  formatDayHeading,
-  formatDuration,
-  formatPercent,
-  formatShortTime,
-} from "@/shared/format";
-import { DeploymentListRow } from "@/web/components/deployment-row";
+  DeploymentListRow,
+  DeploymentMobileMeta,
+  DeploymentOriginColumn,
+  DeploymentTimingColumn,
+} from "@/web/components/deployment-row";
 import { DeploymentsChart } from "@/web/components/deployments-chart";
-import {
-  ACTIVE_DEPLOYMENT_STATUSES,
-  DEPLOYMENT_STATUS_LABELS,
-  DEPLOYMENT_TRIGGER_LABELS,
-} from "@/web/components/labels";
+import { ACTIVE_DEPLOYMENT_STATUSES, DEPLOYMENT_STATUS_LABELS } from "@/web/components/labels";
 import {
   CardTitleRow,
   DayHeading,
   List,
-  ListRow,
   LiveBadge,
   type Stat,
   StatRow,
 } from "@/web/components/layout";
 import { SegmentedControl } from "@/web/components/overview";
 import { PageHeader } from "@/web/components/page-header";
-import { ErrorState, ListSkeleton } from "@/web/components/states";
+import { EmptyState, ErrorState, ListSkeleton } from "@/web/components/states";
 import { DeploymentStatusBadge } from "@/web/components/status-badge";
 import { Button } from "@/web/components/ui/button";
 import { Card } from "@/web/components/ui/card";
@@ -115,7 +109,7 @@ function Summary() {
       {/* Beside the chart the tiles only have half the width, so they wrap two per row. */}
       <StatRow
         title="Últimos 7 dias"
-        icon={GitCommitHorizontalIcon}
+        icon={CalendarDaysIcon}
         stats={summaryStats(stats.data)}
         className="xl:[&_dl]:grid-cols-2"
       />
@@ -129,7 +123,7 @@ function Summary() {
 
 function summaryStats(data: DeploymentStatsData): Stat[] {
   return [
-    { label: "Deploys", icon: GitCommitHorizontalIcon, value: data.total },
+    { label: "Deploys", icon: RocketIcon, value: data.total },
     {
       label: "Taxa de sucesso",
       icon: CircleCheckIcon,
@@ -225,17 +219,33 @@ function History() {
         <ErrorState error={deployments.error} onRetry={() => void deployments.refetch()} />
       ) : null}
       {deployments.isPending ? <ListSkeleton rows={6} /> : null}
-      {deployments.isSuccess ? (
+      {deployments.isSuccess && rows.length === 0 && filtered ? (
+        <EmptyState
+          icon={FilterXIcon}
+          title="Nenhum deploy com estes filtros"
+          action={
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setStatusFilter(ALL_STATUSES);
+                setProjectFilter(ALL_PROJECTS);
+              }}
+            >
+              Limpar filtros
+            </Button>
+          }
+        />
+      ) : null}
+      {deployments.isSuccess && rows.length === 0 && filtered === false ? (
+        <EmptyState
+          icon={RocketIcon}
+          title="Nenhum deploy ainda"
+          description="Eles aparecem aqui assim que forem solicitados."
+        />
+      ) : null}
+      {deployments.isSuccess && rows.length > 0 ? (
         <List>
-          {rows.length === 0 ? (
-            <ListRow>
-              <p className="text-sm text-muted-foreground">
-                {filtered
-                  ? "Nenhum deploy com estes filtros."
-                  : "Nenhum deploy ainda. Eles aparecem aqui assim que forem solicitados."}
-              </p>
-            </ListRow>
-          ) : null}
           {groups.map(([day, items]) => (
             <Fragment key={day}>
               <DayHeading>{formatDayHeading(items[0]?.createdAt ?? "", now)}</DayHeading>
@@ -286,7 +296,9 @@ function HistoryRow({ deployment }: { readonly deployment: DeploymentItem }) {
           >
             {deployment.projectName}
           </Link>
-          <span className="shrink-0 font-mono text-xs text-muted-foreground">{shortSha}</span>
+          <span className="hidden shrink-0 font-mono text-xs text-muted-foreground sm:inline">
+            {shortSha}
+          </span>
           {deployment.isLive ? <LiveBadge /> : null}
         </p>
         <p
@@ -295,30 +307,18 @@ function HistoryRow({ deployment }: { readonly deployment: DeploymentItem }) {
         >
           {deployment.commitMessage ?? "sem mensagem"}
         </p>
+        <DeploymentMobileMeta shortSha={shortSha} timing={deployment} />
       </div>
       <span className="hidden w-36 shrink-0 items-center gap-1.5 truncate font-mono text-xs text-muted-foreground lg:inline-flex">
         <GitBranchIcon aria-hidden className="size-3.5 shrink-0" />
         <span className="truncate">{deployment.branch}</span>
       </span>
-      <div className="hidden w-36 shrink-0 text-xs md:block">
-        <p className="truncate text-muted-foreground">
-          {DEPLOYMENT_TRIGGER_LABELS[deployment.trigger]}
-        </p>
-        <p className="truncate text-muted-foreground">{deployment.triggeredByLabel}</p>
-      </div>
-      <div className="hidden w-24 shrink-0 text-right text-xs sm:block">
-        <time
-          dateTime={deployment.createdAt}
-          title={formatDateTime(deployment.createdAt)}
-          className="block text-muted-foreground tabular-nums"
-        >
-          {formatShortTime(deployment.createdAt)}
-        </time>
-        <span className="text-faint tabular-nums">
-          {formatDuration(durationBetween(deployment.startedAt, deployment.finishedAt))}
-        </span>
-      </div>
-      <div className="flex w-32 shrink-0 justify-end">
+      <DeploymentOriginColumn
+        trigger={deployment.trigger}
+        triggeredBy={deployment.triggeredByLabel}
+      />
+      <DeploymentTimingColumn timing={deployment} />
+      <div className="flex shrink-0 justify-end sm:w-32">
         <DeploymentStatusBadge status={deployment.status} />
       </div>
     </DeploymentListRow>

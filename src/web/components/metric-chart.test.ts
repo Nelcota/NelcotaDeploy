@@ -21,6 +21,21 @@ describe("niceUpperBound", () => {
     ).toBe(10);
   });
 
+  test("rounds the bound so every tick is a round number", () => {
+    const bound = niceUpperBound([{ createdAt: "a", value: 200 }]);
+
+    expect(bound).toBe(240);
+  });
+
+  test("ignores non-finite samples", () => {
+    const bound = niceUpperBound([
+      { createdAt: "a", value: Number.POSITIVE_INFINITY },
+      { createdAt: "b", value: 8 },
+    ]);
+
+    expect(bound).toBe(10);
+  });
+
   test("returns a positive bound for an all-zero or empty series", () => {
     expect(niceUpperBound([{ createdAt: "a", value: 0 }])).toBe(1);
     expect(niceUpperBound([])).toBe(1);

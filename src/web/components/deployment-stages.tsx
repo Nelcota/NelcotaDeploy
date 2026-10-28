@@ -1,3 +1,13 @@
+import {
+  CircleCheckIcon,
+  CircleDashedIcon,
+  CircleIcon,
+  CircleSlashIcon,
+  CircleXIcon,
+  LoaderCircleIcon,
+  type LucideIcon,
+} from "lucide-react";
+
 import type { DeploymentStatus } from "@/deployments";
 
 import { cn } from "./ui/class-names";
@@ -12,7 +22,7 @@ const STAGES = [
   { key: "cloning", label: "Clonando" },
   { key: "building", label: "Construindo" },
   { key: "starting", label: "Iniciando" },
-  { key: "health_checking", label: "Saúde" },
+  { key: "health_checking", label: "Verificação" },
   { key: "live", label: "No ar" },
 ] as const;
 
@@ -33,36 +43,54 @@ const STATUS_INDEX: Readonly<Record<DeploymentStatus, number>> = {
   cancelled: -1,
 };
 
-/** Dot, connector and label color of each state; the label text keeps color from being the only cue. */
-const STATE_STYLES: Record<StageState, { dot: string; line: string; text: string; label: string }> =
-  {
-    done: { dot: "bg-success", line: "bg-success/60", text: "text-foreground", label: "concluído" },
-    current: {
-      dot: "bg-brand ring-4 ring-brand/20 motion-safe:animate-pulse",
-      line: "bg-border",
-      text: "text-foreground",
-      label: "em andamento",
-    },
-    failed: {
-      dot: "bg-destructive ring-4 ring-destructive/20",
-      line: "bg-border",
-      text: "text-destructive",
-      label: "falhou",
-    },
-    cancelled: {
-      dot: "bg-faint",
-      line: "bg-border",
-      text: "text-muted-foreground",
-      label: "cancelado",
-    },
-    pending: {
-      dot: "bg-background ring-1 ring-border",
-      line: "bg-border",
-      text: "text-faint",
-      label: "pendente",
-    },
-    skipped: { dot: "bg-faint/50", line: "bg-border", text: "text-faint", label: "pulado" },
-  };
+/** Icon, connector and label color of each state; the icon shape keeps color from being the only cue. */
+const STATE_STYLES: Record<
+  StageState,
+  { icon: LucideIcon; iconClass: string; line: string; text: string; label: string }
+> = {
+  done: {
+    icon: CircleCheckIcon,
+    iconClass: "text-success",
+    line: "bg-success/60",
+    text: "text-foreground",
+    label: "concluído",
+  },
+  current: {
+    icon: LoaderCircleIcon,
+    iconClass: "text-brand motion-safe:animate-spin",
+    line: "bg-border",
+    text: "text-foreground",
+    label: "em andamento",
+  },
+  failed: {
+    icon: CircleXIcon,
+    iconClass: "text-destructive",
+    line: "bg-border",
+    text: "text-destructive",
+    label: "falhou",
+  },
+  cancelled: {
+    icon: CircleSlashIcon,
+    iconClass: "text-muted-foreground",
+    line: "bg-border",
+    text: "text-muted-foreground",
+    label: "cancelado",
+  },
+  pending: {
+    icon: CircleIcon,
+    iconClass: "text-faint",
+    line: "bg-border",
+    text: "text-faint",
+    label: "pendente",
+  },
+  skipped: {
+    icon: CircleDashedIcon,
+    iconClass: "text-faint",
+    line: "bg-border",
+    text: "text-faint",
+    label: "pulado",
+  },
+};
 
 /** Fields of a deployment that tell how far it got. */
 export type StageSource = {
@@ -131,7 +159,7 @@ export function DeploymentStages({ deployment }: { readonly deployment: StageSou
             className="relative min-w-0 space-y-2.5"
           >
             <div className="flex items-center">
-              <span aria-hidden className={cn("size-2.5 shrink-0 rounded-full", style.dot)} />
+              <style.icon aria-hidden className={cn("size-4 shrink-0", style.iconClass)} />
               {last ? null : (
                 <span
                   aria-hidden

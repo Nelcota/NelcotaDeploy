@@ -12,9 +12,12 @@ import { formatShortTime } from "@/shared/format";
 
 const TICK_COUNT = 5;
 /** Headroom above the highest sample, so the line never touches the top of the chart. */
-const HEADROOM = 1.25;
+const HEADROOM = 1.1;
+// Tick steps people read easily, times a power of ten.
+const NICE_STEPS = [1, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10] as const;
+const DECIMAL_BASE = 10;
 /** Room for the value labels; compact charts hide the axis and only keep the stroke inset. */
-const AXIS_WIDTH_IN_PX = 56;
+const AXIS_WIDTH_IN_PX = 64;
 const COMPACT_INSET_IN_PX = 4;
 
 /**
@@ -25,8 +28,19 @@ const COMPACT_INSET_IN_PX = 4;
  * @returns A positive upper bound.
  */
 export function niceUpperBound(points: readonly MetricPoint[]): number {
-  const highest = Math.max(0, ...points.map((point) => point.value ?? 0));
-  return highest > 0 ? highest * HEADROOM : 1;
+  const highest = Math.max(
+    0,
+    ...points.map((point) => point.value ?? 0).filter((value) => Number.isFinite(value)),
+  );
+  if (highest <= 0) {
+    return 1;
+  }
+  const intervals = TICK_COUNT - 1;
+  const rawStep = (highest * HEADROOM) / intervals;
+  const magnitude = DECIMAL_BASE ** Math.floor(Math.log10(rawStep));
+  const step =
+    (NICE_STEPS.find((candidate) => candidate * magnitude >= rawStep) ?? DECIMAL_BASE) * magnitude;
+  return step * intervals;
 }
 
 /** One point of a time series; null means the value could not be collected. */

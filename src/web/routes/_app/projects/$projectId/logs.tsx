@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { ContainerIcon, ScrollTextIcon } from "lucide-react";
+import { ClockIcon, ContainerIcon, RotateCwIcon, ScrollTextIcon } from "lucide-react";
 import { useState } from "react";
 
 import { formatDateTime, formatRelativeTime, pluralize } from "@/shared/format";
@@ -185,20 +185,29 @@ function SourceDescription({
   }
   const restarts = container.restartCount ?? 0;
   return (
-    <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
-      <span className="font-mono text-xs" title={container.image ?? undefined}>
-        {container.name}
+    <span className="flex flex-wrap items-center gap-x-4 gap-y-1">
+      <span className="inline-flex min-w-0 items-center gap-1.5">
+        <ContainerIcon aria-hidden className="size-3.5 shrink-0" />
+        <span className="truncate font-mono text-xs" title={container.image ?? undefined}>
+          {container.name}
+        </span>
       </span>
       {container.state === "running" && container.startedAt != null ? (
-        <>
-          <span aria-hidden>·</span>
+        <span className="inline-flex items-center gap-1.5">
+          <ClockIcon aria-hidden className="size-3.5 shrink-0" />
           <time dateTime={container.startedAt} title={formatDateTime(container.startedAt)}>
             iniciado {formatRelativeTime(container.startedAt, now)}
           </time>
-        </>
+        </span>
       ) : null}
-      <span aria-hidden>·</span>
-      <span className={restarts > 0 ? "text-warning" : undefined}>
+      <span
+        className={
+          restarts > 0
+            ? "inline-flex items-center gap-1.5 text-warning"
+            : "inline-flex items-center gap-1.5"
+        }
+      >
+        <RotateCwIcon aria-hidden className="size-3.5 shrink-0" />
         {pluralize(restarts, "reinício", "reinícios")}
       </span>
     </span>

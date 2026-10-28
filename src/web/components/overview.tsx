@@ -16,7 +16,8 @@ export function SegmentedControl<TValue extends string | number>({
     <div
       role="radiogroup"
       aria-label={label}
-      className="flex max-w-full flex-wrap items-center gap-2"
+      // On phones the options scroll sideways in one line instead of wrapping into a second row.
+      className="-m-1 flex max-w-full items-center gap-2 overflow-x-auto p-1 [scrollbar-width:none] sm:flex-wrap sm:overflow-visible"
     >
       {options.map((option) => (
         <button

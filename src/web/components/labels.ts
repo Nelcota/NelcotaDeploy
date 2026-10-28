@@ -1,3 +1,12 @@
+import {
+  BotIcon,
+  HandIcon,
+  type LucideIcon,
+  RefreshCwIcon,
+  Undo2Icon,
+  WebhookIcon,
+} from "lucide-react";
+
 import type { DeploymentStatus, DeploymentTrigger } from "@/deployments";
 import type { Role } from "@/shared/roles";
 
@@ -18,6 +27,15 @@ export const DEPLOYMENT_TRIGGER_LABELS: Record<DeploymentTrigger, string> = {
   redeploy: "Redeploy",
   rollback: "Rollback",
   mcp: "MCP",
+};
+
+/** Icon shown beside each deploy origin, so the origin reads at a glance. */
+export const DEPLOYMENT_TRIGGER_ICONS: Record<DeploymentTrigger, LucideIcon> = {
+  manual: HandIcon,
+  webhook: WebhookIcon,
+  redeploy: RefreshCwIcon,
+  rollback: Undo2Icon,
+  mcp: BotIcon,
 };
 
 export const ROLE_LABELS: Record<Role, string> = {

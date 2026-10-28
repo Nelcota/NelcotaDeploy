@@ -10,7 +10,14 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 
-import { formatBytes, formatPercent, formatRelativeTime, formatShortTime } from "@/shared/format";
+import {
+  bytesToMebibytes,
+  formatBytes,
+  formatMebibytes,
+  formatPercent,
+  formatRelativeTime,
+  formatShortTime,
+} from "@/shared/format";
 import { CardTitleRow, type Stat, StatRow } from "@/web/components/layout";
 import { MetricChart } from "@/web/components/metric-chart";
 import { SegmentedControl } from "@/web/components/overview";
@@ -66,7 +73,7 @@ function ProjectMetricsPage() {
       detail: latest == null ? "sem amostras" : formatRelativeTime(latest.createdAt, now),
     },
     {
-      label: "Memória em uso",
+      label: "Memória",
       icon: MemoryStickIcon,
       value: formatBytes(latest?.memoryUsedBytes ?? null),
       // Docker reports the host memory as the limit when the container has none.
@@ -82,7 +89,7 @@ function ProjectMetricsPage() {
       tone: (container?.restartCount ?? 0) > 0 ? "warning" : "default",
     },
     {
-      label: "Em execução desde",
+      label: "No ar desde",
       icon: ClockIcon,
       value: container?.startedAt == null ? "—" : formatShortTime(container.startedAt),
       detail:
@@ -177,10 +184,10 @@ function ProjectMetrics({
             <MetricChart
               label="Memória"
               colorVariable="--chart-2"
-              formatValue={formatBytes}
+              formatValue={formatMebibytes}
               points={samples.map((sample) => ({
                 createdAt: sample.createdAt,
-                value: sample.memoryUsedBytes,
+                value: bytesToMebibytes(sample.memoryUsedBytes),
               }))}
             />
           </Card>

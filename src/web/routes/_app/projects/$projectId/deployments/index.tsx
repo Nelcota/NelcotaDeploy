@@ -1,38 +1,27 @@
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { RocketIcon, RotateCcwIcon } from "lucide-react";
+import { FilterXIcon, GitBranchIcon, RocketIcon } from "lucide-react";
 import { Fragment, useMemo, useState } from "react";
 
 import type { Deployment, DeploymentStatus } from "@/deployments";
+import { dayKey, formatDayHeading } from "@/shared/format";
 import {
-  dayKey,
-  durationBetween,
-  formatDateTime,
-  formatDayHeading,
-  formatDuration,
-  formatShortTime,
-} from "@/shared/format";
-import { ConfirmDialog } from "@/web/components/confirm-dialog";
-import { DeploymentListRow } from "@/web/components/deployment-row";
-import {
-  ACTIVE_DEPLOYMENT_STATUSES,
-  DEPLOYMENT_STATUS_LABELS,
-  DEPLOYMENT_TRIGGER_LABELS,
-} from "@/web/components/labels";
-import { DayHeading, List, ListRow, LiveBadge } from "@/web/components/layout";
+  DeploymentListRow,
+  DeploymentMobileMeta,
+  DeploymentOriginColumn,
+  DeploymentTimingColumn,
+} from "@/web/components/deployment-row";
+import { ACTIVE_DEPLOYMENT_STATUSES, DEPLOYMENT_STATUS_LABELS } from "@/web/components/labels";
+import { DayHeading, List, LiveBadge } from "@/web/components/layout";
 import { SegmentedControl } from "@/web/components/overview";
 import { TabHeader } from "@/web/components/project-header";
 import { projectQueryOptions } from "@/web/components/project-query";
-import { ErrorState, ListSkeleton } from "@/web/components/states";
+import { RollbackButton } from "@/web/components/rollback-button";
+import { EmptyState, ErrorState, ListSkeleton } from "@/web/components/states";
 import { DeploymentStatusBadge } from "@/web/components/status-badge";
 import { Button } from "@/web/components/ui/button";
-import { useAction } from "@/web/components/use-action";
 import { useCan } from "@/web/components/use-permissions";
-import {
-  listDeploymentsFn,
-  listRollbackCandidatesFn,
-  rollbackDeploymentFn,
-} from "@/web/functions/deployments.functions";
+import { listDeploymentsFn, listRollbackCandidatesFn } from "@/web/functions/deployments.functions";
 
 const PAGE_SIZE = 25;
 const ACTIVE_REFRESH_INTERVAL_IN_MS = 5000;
@@ -42,41 +31,6 @@ export const Route = createFileRoute("/_app/projects/$projectId/deployments/")({
   head: () => ({ meta: [{ title: "Deploys · Nelcota Deploy" }] }),
   component: ProjectDeploymentsPage,
 });
-
-function RollbackButton({ deployment }: { readonly deployment: Deployment }) {
-  const rollback = useAction({
-    action: () =>
-      rollbackDeploymentFn({
-        data: { projectId: deployment.projectId, deploymentId: deployment.id },
-      }),
-    successMessage: "Rollback colocado na fila",
-    invalidate: [
-      ["deployments", deployment.projectId],
-      ["project", deployment.projectId],
-    ],
-  });
-  return (
-    <ConfirmDialog
-      trigger={
-        <Button variant="ghost" size="sm" disabled={rollback.isPending}>
-          <RotateCcwIcon aria-hidden />
-          Rollback
-        </Button>
-      }
-      title="Voltar para este deploy?"
-      description={
-        <p>
-          Um novo contêiner será criado a partir da imagem{" "}
-          <span className="font-mono">{deployment.imageTag ?? "—"}</span>, com as variáveis e
-          domínios atuais. O contêiner atual só é removido depois que o novo passar na verificação
-          de saúde.
-        </p>
-      }
-      confirmLabel="Fazer rollback"
-      onConfirm={() => rollback.mutate()}
-    />
-  );
-}
 
 const ALL_STATUSES = "all";
 // Same filters as the global deploys page; in-progress deploys show up under "Todos".
@@ -146,7 +100,7 @@ function ProjectDeploymentsPage() {
     <TabHeader
       icon={RocketIcon}
       title="Deploys"
-      description="Histórico de builds e publicações. Abra um deploy para ver as etapas e os logs."
+      description="Histórico de builds e publicações deste projeto."
       actions={
         <SegmentedControl
           label="Filtrar deploys por status"
@@ -178,62 +132,60 @@ function ProjectDeploymentsPage() {
   return (
     <section aria-label="Histórico de deploys" className="space-y-6">
       {header}
-      <List>
-        {rows.length === 0 ? (
-          <ListRow>
-            <p className="text-sm text-muted-foreground">
-              {statusFilter === ALL_STATUSES
-                ? "Nenhum deploy ainda. Use o botão Deploy acima para publicar a primeira versão."
-                : "Nenhum deploy com este status."}
-            </p>
-          </ListRow>
-        ) : null}
-        {groups.map(([day, items]) => (
-          <Fragment key={day}>
-            <DayHeading>{formatDayHeading(items[0]?.createdAt ?? "", now)}</DayHeading>
-            {items.map((deployment) => (
-              <DeploymentListRow
-                key={deployment.id}
-                projectId={deployment.projectId}
-                deploymentId={deployment.id}
-              >
-                <CommitCell
-                  deployment={deployment}
-                  current={deployment.id === currentDeploymentId}
-                />
-                <div className="hidden w-36 shrink-0 text-xs text-muted-foreground md:block">
-                  <p className="truncate text-muted-foreground">
-                    {DEPLOYMENT_TRIGGER_LABELS[deployment.trigger]}
-                  </p>
-                  <p className="truncate">{deployment.triggeredByLabel}</p>
-                </div>
-                <div className="hidden w-24 shrink-0 text-right text-xs sm:block">
-                  <time
-                    dateTime={deployment.createdAt}
-                    title={formatDateTime(deployment.createdAt)}
-                    className="block text-muted-foreground tabular-nums"
-                  >
-                    {formatShortTime(deployment.createdAt)}
-                  </time>
-                  <span className="text-faint tabular-nums">
-                    {formatDuration(durationBetween(deployment.startedAt, deployment.finishedAt))}
-                  </span>
-                </div>
-                <div className="flex shrink-0 justify-end sm:w-32">
-                  <DeploymentStatusBadge status={deployment.status} />
-                </div>
-                {showRollbackColumn ? (
-                  <div className="flex shrink-0 justify-end sm:w-28">
-                    {isRollbackTarget(deployment.id) ? (
-                      <RollbackButton deployment={deployment} />
-                    ) : null}
+      {rows.length === 0 && statusFilter === ALL_STATUSES ? (
+        <EmptyState
+          icon={RocketIcon}
+          title="Nenhum deploy ainda"
+          description="Use o botão Deploy acima para publicar a primeira versão."
+        />
+      ) : null}
+      {rows.length === 0 && statusFilter !== ALL_STATUSES ? (
+        <EmptyState
+          icon={FilterXIcon}
+          title="Nenhum deploy com este status"
+          action={
+            <Button variant="outline" size="sm" onClick={() => setStatusFilter(ALL_STATUSES)}>
+              Limpar filtro
+            </Button>
+          }
+        />
+      ) : null}
+      {rows.length === 0 ? null : (
+        <List>
+          {groups.map(([day, items]) => (
+            <Fragment key={day}>
+              <DayHeading>{formatDayHeading(items[0]?.createdAt ?? "", now)}</DayHeading>
+              {items.map((deployment) => (
+                <DeploymentListRow
+                  key={deployment.id}
+                  projectId={deployment.projectId}
+                  deploymentId={deployment.id}
+                >
+                  <CommitCell
+                    deployment={deployment}
+                    current={deployment.id === currentDeploymentId}
+                  />
+                  <DeploymentOriginColumn
+                    trigger={deployment.trigger}
+                    triggeredBy={deployment.triggeredByLabel}
+                  />
+                  <DeploymentTimingColumn timing={deployment} />
+                  {showRollbackColumn ? (
+                    <div className="flex shrink-0 justify-end sm:w-28">
+                      {isRollbackTarget(deployment.id) ? (
+                        <RollbackButton deployment={deployment} />
+                      ) : null}
+                    </div>
+                  ) : null}
+                  <div className="flex shrink-0 justify-end sm:w-32">
+                    <DeploymentStatusBadge status={deployment.status} />
                   </div>
-                ) : null}
-              </DeploymentListRow>
-            ))}
-          </Fragment>
-        ))}
-      </List>
+                </DeploymentListRow>
+              ))}
+            </Fragment>
+          ))}
+        </List>
+      )}
       {deployments.hasNextPage ? (
         <div className="flex justify-center">
           <Button
@@ -263,17 +215,18 @@ function CommitCell({
         <Link
           to="/projects/$projectId/deployments/$deploymentId"
           params={{ projectId: deployment.projectId, deploymentId: deployment.id }}
-          className="font-mono text-sm font-medium hover:underline focus-visible:underline focus-visible:outline-none"
+          className="shrink-0 rounded-sm font-mono text-sm font-medium hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
         >
           {sha == null
             ? `deploy ${deployment.id.slice(-SHORT_SHA_LENGTH)}`
             : sha.slice(0, SHORT_SHA_LENGTH)}
         </Link>
         <span
-          className="min-w-0 truncate font-mono text-xs text-muted-foreground"
+          className="inline-flex min-w-0 items-center gap-1 font-mono text-xs text-muted-foreground"
           title={deployment.branch}
         >
-          {deployment.branch}
+          <GitBranchIcon aria-hidden className="size-3.5 shrink-0" />
+          <span className="truncate">{deployment.branch}</span>
         </span>
         {current ? <LiveBadge /> : null}
       </div>
@@ -283,6 +236,12 @@ function CommitCell({
       >
         {deployment.commitMessage ?? "sem mensagem"}
       </p>
+      <DeploymentMobileMeta
+        shortSha={
+          sha == null ? deployment.id.slice(-SHORT_SHA_LENGTH) : sha.slice(0, SHORT_SHA_LENGTH)
+        }
+        timing={deployment}
+      />
     </div>
   );
 }

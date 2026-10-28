@@ -114,6 +114,29 @@ export function formatRelativeTime(isoDate: string | null | undefined, now: Date
 }
 
 /**
+ * Converts bytes to mebibytes, so a memory chart can place its ticks on round numbers.
+ *
+ * @param bytes - Size in bytes; null, negative or non-finite values give null.
+ * @returns The size in MiB, or null when it is not a usable number.
+ */
+export function bytesToMebibytes(bytes: number | null | undefined): number | null {
+  if (bytes == null || Number.isFinite(bytes) === false || bytes < 0) {
+    return null;
+  }
+  return bytes / (BYTES_PER_KIBIBYTE * BYTES_PER_KIBIBYTE);
+}
+
+/**
+ * Formats a size given in mebibytes, such as "240 MB".
+ *
+ * @param mebibytes - Size in MiB.
+ * @returns Human-readable size, or "—" for a value that is not a usable number.
+ */
+export function formatMebibytes(mebibytes: number): string {
+  return formatBytes(mebibytes * BYTES_PER_KIBIBYTE * BYTES_PER_KIBIBYTE);
+}
+
+/**
  * Formats a duration such as "1 min 05 s" or "850 ms".
  *
  * @param durationInMs - Duration in milliseconds; negative or non-finite values show "—".

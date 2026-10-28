@@ -17,7 +17,14 @@ import {
 } from "lucide-react";
 import { type ReactNode, useState } from "react";
 
-import { formatBytes, formatPercent, formatRelativeTime, formatShortTime } from "@/shared/format";
+import {
+  bytesToMebibytes,
+  formatBytes,
+  formatMebibytes,
+  formatPercent,
+  formatRelativeTime,
+  formatShortTime,
+} from "@/shared/format";
 import {
   ACTIVE_DEPLOYMENT_STATUSES,
   CONTAINER_HEALTH_LABELS,
@@ -251,10 +258,12 @@ function ResourcesCard({ projectId }: { readonly projectId: string }) {
           label={selected.label}
           colorVariable={selected.color}
           {...(series === "cpu" ? { maxValue: 100 } : {})}
-          formatValue={(value) => (series === "cpu" ? `${Math.round(value)}%` : formatBytes(value))}
+          formatValue={(value) =>
+            series === "cpu" ? `${Math.round(value)}%` : formatMebibytes(value)
+          }
           points={samples.map((sample) => ({
             createdAt: sample.createdAt,
-            value: series === "cpu" ? sample.cpuPercent : sample.memoryUsedBytes,
+            value: series === "cpu" ? sample.cpuPercent : bytesToMebibytes(sample.memoryUsedBytes),
           }))}
         />
       )}
