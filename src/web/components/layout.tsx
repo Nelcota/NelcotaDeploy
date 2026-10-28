@@ -72,7 +72,13 @@ export function StatRow({
     >
       {title == null || icon == null ? null : <CardTitleRow icon={icon} title={title} />}
       <dl
-        className="grid grid-cols-2 gap-3 lg:grid-cols-[repeat(var(--stats),minmax(0,1fr))]"
+        className={cn(
+          "grid gap-3 lg:grid-cols-[repeat(var(--stats),minmax(0,1fr))]",
+          // An odd count cannot fill two columns: stack on phones, then one row from sm.
+          stats.length % 2 === 0
+            ? "grid-cols-2"
+            : "grid-cols-1 sm:grid-cols-[repeat(var(--stats),minmax(0,1fr))]",
+        )}
         style={{ "--stats": stats.length } as React.CSSProperties}
       >
         {stats.map((stat) => (

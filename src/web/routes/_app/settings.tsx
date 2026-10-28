@@ -1,7 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, useRouteContext } from "@tanstack/react-router";
 import {
-  Building2Icon,
   KeyRoundIcon,
   LoaderCircleIcon,
   PlusIcon,
@@ -28,13 +27,7 @@ import { PageHeader } from "@/web/components/page-header";
 import { EmptyState, ErrorState, ListSkeleton } from "@/web/components/states";
 import { StatusPill } from "@/web/components/status-badge";
 import { Button } from "@/web/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/web/components/ui/card";
+import { Card } from "@/web/components/ui/card";
 import { Checkbox } from "@/web/components/ui/checkbox";
 import {
   Dialog,
@@ -244,6 +237,11 @@ function OrganizationForm({
     invalidate: [["settings"], ["project"]],
   });
 
+  const changed =
+    organizationName !== initial.organizationName ||
+    baseDomain !== (initial.baseDomain ?? "") ||
+    httpsByDefault !== initial.httpsByDefault;
+
   const submit = (event: FormEvent) => {
     event.preventDefault();
     const parsed = systemSettingsSchema.safeParse({ organizationName, baseDomain, httpsByDefault });
@@ -256,15 +254,8 @@ function OrganizationForm({
   };
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>
-          <Building2Icon aria-hidden />
-          Organização
-        </CardTitle>
-        <CardDescription>Preferências que valem para todos os projetos.</CardDescription>
-      </CardHeader>
-      <CardContent>
+    <Section title="Organização" description="Preferências que valem para todos os projetos.">
+      <Card className="p-5">
         <form className="max-w-lg space-y-4" onSubmit={submit}>
           <FormField
             id="organization-name"
@@ -314,17 +305,23 @@ function OrganizationForm({
             </div>
           </div>
           {canEdit ? (
-            <Button type="submit" disabled={save.isPending}>
-              Salvar
-            </Button>
+            <div className="flex items-center gap-3">
+              <Button type="submit" disabled={save.isPending || changed === false}>
+                {save.isPending ? <LoaderCircleIcon aria-hidden className="animate-spin" /> : null}
+                Salvar
+              </Button>
+              {changed ? (
+                <span className="text-sm text-muted-foreground">Alterações não salvas</span>
+              ) : null}
+            </div>
           ) : (
             <p className="text-sm text-muted-foreground">
               Somente administradores podem alterar estas configurações.
             </p>
           )}
         </form>
-      </CardContent>
-    </Card>
+      </Card>
+    </Section>
   );
 }
 
@@ -755,7 +752,7 @@ function ServerTab() {
         />
       </Section>
       <Section title="Worker e Docker">
-        <dl className="divide-y divide-border rounded-xl bg-card ring-1 ring-border/70">
+        <dl className="divide-y divide-border overflow-hidden rounded-2xl bg-card ring-1 ring-border/70">
           <InfoRow label="Worker">
             {server.worker == null ? (
               <StatusPill tone="danger" label="Nunca conectou" />
@@ -957,17 +954,11 @@ function CreateTokenCard({ onCreated }: { readonly onCreated: (token: string) =>
     create.mutate({ name: name.trim(), scopes: [...scopes], expiresInDays: days });
   };
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>
-          <ShieldIcon aria-hidden />
-          Novo token de API
-        </CardTitle>
-        <CardDescription>
-          Dê a cada cliente o menor escopo possível. O token é exibido uma única vez.
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
+    <Section
+      title="Novo token de API"
+      description="Dê a cada cliente o menor escopo possível. O token é exibido uma única vez."
+    >
+      <Card className="p-5">
         <form className="max-w-lg space-y-4" onSubmit={submit}>
           <FormField id="token-name" label="Nome" errors={errors.name == null ? [] : [errors.name]}>
             {(props) => (
@@ -1023,8 +1014,8 @@ function CreateTokenCard({ onCreated }: { readonly onCreated: (token: string) =>
             Criar token
           </Button>
         </form>
-      </CardContent>
-    </Card>
+      </Card>
+    </Section>
   );
 }
 

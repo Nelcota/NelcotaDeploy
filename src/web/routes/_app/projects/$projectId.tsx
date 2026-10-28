@@ -98,8 +98,8 @@ function ProjectBanners({ details }: { readonly details: ProjectDetails }) {
           className="flex items-start gap-2 rounded-xl bg-destructive/8 px-5 py-4 text-sm ring-1 ring-destructive/25"
         >
           <AlertTriangleIcon aria-hidden className="mt-0.5 size-4 shrink-0 text-destructive" />
-          Worker offline: deploys, ações de contêiner e tasks ficam na fila até o worker voltar.
-          Verifique se o processo worker está em execução.
+          O worker, serviço que executa deploys e tasks, está fora do ar. Deploys, ações de
+          contêiner e tasks ficam na fila até ele voltar; verifique se o processo está em execução.
         </p>
       ) : null}
     </div>
