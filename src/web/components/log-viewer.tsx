@@ -4,12 +4,13 @@ import {
   DownloadIcon,
   OctagonAlertIcon,
   RadioIcon,
+  RotateCwIcon,
   SearchIcon,
 } from "lucide-react";
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
-import { formatTime } from "@/shared/format";
+import { formatTime, pluralize } from "@/shared/format";
 import type { LogLevel } from "@/shared/log-level";
 
 import { countLogLevels, filterLogLines, levelOf, type LogLevelFilter } from "./log-filter";
@@ -48,7 +49,7 @@ const LEVEL_FILTERS = [
  * Subscribes to a server-sent log stream. EventSource reconnects by itself and sends the
  * last received id, so the server resumes exactly where the stream stopped.
  */
-function useLogStream(url: string) {
+function useLogStream(url: string, attempt: number) {
   const [lines, setLines] = useState<LogLine[]>([]);
   const [state, setState] = useState<ConnectionState>("connecting");
   const [endSummary, setEndSummary] = useState<unknown>(null);
@@ -76,7 +77,7 @@ function useLogStream(url: string) {
       setState(source.readyState === EventSource.CLOSED ? "error" : "reconnecting");
     });
     return () => source.close();
-  }, [url]);
+  }, [url, attempt]);
 
   return { lines, state, endSummary };
 }
@@ -135,8 +136,8 @@ function ToolbarButton({
       type="button"
       disabled={disabled}
       onClick={onClick}
-      title={title}
-      className="inline-flex h-8 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium text-console-foreground/70 transition-colors hover:bg-white/8 hover:text-console-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none disabled:pointer-events-none disabled:opacity-40 [&_svg]:size-3.5"
+      title={title ?? label}
+      className="inline-flex h-9 items-center sm:h-8 gap-1.5 rounded-md px-2.5 text-xs font-medium text-console-foreground/70 transition-colors hover:bg-white/8 hover:text-console-foreground focus-visible:ring-2 focus-visible:ring-console-ring focus-visible:outline-none disabled:pointer-events-none disabled:opacity-40 [&_svg]:size-3.5"
     >
       {children}
       <span className="hidden sm:inline">{label}</span>
@@ -160,7 +161,8 @@ export function LogViewer({
   readonly onEnd?: (summary: unknown) => void;
   readonly heightClass?: string;
 }) {
-  const { lines, state, endSummary } = useLogStream(url);
+  const [attempt, setAttempt] = useState(0);
+  const { lines, state, endSummary } = useLogStream(url, attempt);
   const [filter, setFilter] = useState("");
   const [following, setFollowing] = useState(true);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -189,6 +191,11 @@ export function LogViewer({
     [searched, levelFilter],
   );
   const firstError = visible.find((line) => levelOf(line) === "error");
+  const filtering = filter.trim() !== "" || levelFilter !== "all";
+  const clearFilters = () => {
+    setFilter("");
+    setLevelFilter("all");
+  };
 
   const jumpToError = () => {
     if (firstError == null) {
@@ -212,9 +219,22 @@ export function LogViewer({
   return (
     <div className="overflow-hidden rounded-xl bg-console ring-1 ring-border/70">
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-white/8 px-4 py-2.5">
-        <StatusPill tone={pill.tone} label={pill.label} className="text-xs" />
-        <span className="text-xs text-console-foreground/50 tabular-nums">
-          {visible.length} linhas
+        <span role="status">
+          <StatusPill tone={pill.tone} label={pill.label} className="text-xs" />
+        </span>
+        {state === "error" ? (
+          <ToolbarButton
+            label="Reconectar"
+            disabled={false}
+            onClick={() => setAttempt((n) => n + 1)}
+          >
+            <RotateCwIcon aria-hidden />
+          </ToolbarButton>
+        ) : null}
+        <span className="text-xs text-console-foreground/65 tabular-nums">
+          {filtering
+            ? `${visible.length} de ${pluralize(lines.length, "linha", "linhas")}`
+            : pluralize(visible.length, "linha", "linhas")}
         </span>
         <div
           role="group"
@@ -231,7 +251,7 @@ export function LogViewer({
                 aria-pressed={levelFilter === option.value}
                 onClick={() => setLevelFilter(option.value)}
                 className={cn(
-                  "inline-flex h-7 items-center gap-1.5 rounded px-2 text-xs font-medium text-console-foreground/60 transition-colors hover:text-console-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
+                  "inline-flex h-7 items-center gap-1.5 rounded px-2 text-xs font-medium text-console-foreground/60 transition-colors hover:text-console-foreground focus-visible:ring-2 focus-visible:ring-console-ring focus-visible:outline-none",
                   levelFilter === option.value ? "bg-white/10 text-console-foreground" : "",
                 )}
               >
@@ -247,18 +267,18 @@ export function LogViewer({
             );
           })}
         </div>
-        <div className="ml-auto flex items-center gap-1">
-          <div className="relative mr-1">
+        <div className="flex w-full flex-wrap items-center gap-1 sm:ml-auto sm:w-auto">
+          <div className="relative order-last basis-full sm:order-none sm:mr-1 sm:basis-auto">
             <SearchIcon
               aria-hidden
-              className="pointer-events-none absolute top-2 left-2.5 size-3.5 text-console-foreground/40"
+              className="pointer-events-none absolute top-2 left-2.5 size-3.5 text-console-foreground/65"
             />
             <input
               aria-label="Filtrar logs"
               placeholder="Filtrar"
               value={filter}
               onChange={(event) => setFilter(event.target.value)}
-              className="h-8 w-36 rounded-md bg-white/5 pr-2 pl-8 text-xs text-console-foreground placeholder:text-console-foreground/40 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none sm:w-48"
+              className="h-9 w-full rounded-md bg-white/5 pr-2 pl-8 text-base sm:h-8 sm:w-48 sm:text-xs text-console-foreground placeholder:text-console-foreground/65 focus-visible:ring-2 focus-visible:ring-console-ring focus-visible:outline-none"
             />
           </div>
           <ToolbarButton
@@ -299,50 +319,63 @@ export function LogViewer({
           );
         }}
         className={cn(
-          "overflow-auto px-4 py-3 font-mono text-xs leading-[1.7] text-console-foreground",
+          "overflow-auto px-4 py-3 font-mono text-xs leading-[1.7] text-console-foreground focus-visible:ring-2 focus-visible:ring-console-ring focus-visible:outline-none focus-visible:ring-inset",
           heightClass,
         )}
       >
-        {visible.length === 0 ? (
-          <p className="flex items-center gap-2 text-console-foreground/60">
+        {visible.length === 0 && lines.length > 0 && filtering ? (
+          <p className="flex flex-wrap items-center gap-3 text-console-foreground/80">
+            Nenhuma linha corresponde aos filtros.
+            <button
+              type="button"
+              onClick={clearFilters}
+              className="rounded-md px-2 py-1 font-sans font-medium text-console-foreground underline-offset-4 hover:underline focus-visible:ring-2 focus-visible:ring-console-ring focus-visible:outline-none"
+            >
+              Limpar filtros
+            </button>
+          </p>
+        ) : null}
+        {visible.length === 0 && (lines.length === 0 || filtering === false) ? (
+          <p className="flex items-center gap-2 text-console-foreground/80">
             <RadioIcon aria-hidden className="size-3.5" />
             {emptyMessage}
           </p>
-        ) : (
-          visible.map((line) => {
-            const level = levelOf(line);
-            return (
-              <div
-                key={line.id}
-                data-line-id={line.id}
-                className={cn(
-                  "flex gap-3 whitespace-pre-wrap break-all",
-                  line.id === highlightedId ? "-mx-2 rounded bg-destructive/20 px-2" : "",
-                  LEVEL_CLASSES[level],
-                  line.stream === "system" ? "font-semibold" : "",
-                )}
-              >
-                <time
-                  className="shrink-0 text-console-foreground/40 tabular-nums select-none"
-                  dateTime={line.createdAt}
+        ) : null}
+        {visible.length === 0
+          ? null
+          : visible.map((line) => {
+              const level = levelOf(line);
+              return (
+                <div
+                  key={line.id}
+                  data-line-id={line.id}
+                  className={cn(
+                    "flex gap-3 whitespace-pre-wrap break-all",
+                    line.id === highlightedId ? "-mx-2 rounded bg-destructive/20 px-2" : "",
+                    LEVEL_CLASSES[level],
+                    line.stream === "system" ? "font-semibold" : "",
+                  )}
                 >
-                  {formatTime(line.createdAt)}
-                </time>
-                {LEVEL_PREFIX[level] === "" ? null : (
-                  <span className="shrink-0">[{LEVEL_PREFIX[level]}]</span>
-                )}
-                <span>{line.message}</span>
-              </div>
-            );
-          })
-        )}
+                  <time
+                    className="shrink-0 text-console-foreground/65 tabular-nums select-none"
+                    dateTime={line.createdAt}
+                  >
+                    {formatTime(line.createdAt)}
+                  </time>
+                  {LEVEL_PREFIX[level] === "" ? null : (
+                    <span className="shrink-0">[{LEVEL_PREFIX[level]}]</span>
+                  )}
+                  <span>{line.message}</span>
+                </div>
+              );
+            })}
       </div>
       {following ? null : (
         <div className="flex justify-end border-t border-white/8 px-4 py-2">
           <button
             type="button"
             onClick={() => setFollowing(true)}
-            className="inline-flex h-8 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium text-console-foreground/80 transition-colors hover:bg-white/8 hover:text-console-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none [&_svg]:size-3.5"
+            className="inline-flex h-8 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium text-console-foreground/80 transition-colors hover:bg-white/8 hover:text-console-foreground focus-visible:ring-2 focus-visible:ring-console-ring focus-visible:outline-none [&_svg]:size-3.5"
           >
             <ArrowDownIcon aria-hidden />
             Acompanhar novas linhas

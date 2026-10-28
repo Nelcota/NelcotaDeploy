@@ -35,7 +35,7 @@ export function DeploymentListRow({
   };
   return (
     // The commit link inside the row is the keyboard path; the click target is a convenience.
-    <div onClick={open} className="cursor-pointer">
+    <div onClick={open} className="cursor-pointer has-[a:focus-visible]:bg-well/50">
       <ListRow accent={deploymentAccent(status)}>{children}</ListRow>
     </div>
   );

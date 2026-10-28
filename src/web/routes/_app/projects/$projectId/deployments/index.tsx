@@ -190,7 +190,7 @@ function ProjectDeploymentsPage() {
         ) : null}
         {groups.map(([day, items]) => (
           <Fragment key={day}>
-            <h3 className="bg-well/40 px-5 py-2 text-xs font-medium tracking-wide text-faint uppercase">
+            <h3 className="bg-well/40 px-5 py-2 text-xs font-medium tracking-wide text-muted-foreground uppercase">
               {formatDayHeading(items[0]?.createdAt ?? "", now)}
             </h3>
             {items.map((deployment) => (
@@ -204,7 +204,7 @@ function ProjectDeploymentsPage() {
                   deployment={deployment}
                   current={deployment.id === currentDeploymentId}
                 />
-                <div className="hidden w-40 shrink-0 text-xs text-faint md:block">
+                <div className="hidden w-36 shrink-0 text-xs text-muted-foreground md:block">
                   <p className="truncate text-muted-foreground">
                     {DEPLOYMENT_TRIGGER_LABELS[deployment.trigger]}
                   </p>
@@ -222,11 +222,11 @@ function ProjectDeploymentsPage() {
                     {formatDuration(durationBetween(deployment.startedAt, deployment.finishedAt))}
                   </span>
                 </div>
-                <div className="flex w-32 shrink-0 justify-end">
+                <div className="flex shrink-0 justify-end sm:w-32">
                   <DeploymentStatusBadge status={deployment.status} />
                 </div>
                 {showRollbackColumn ? (
-                  <div className="flex w-28 shrink-0 justify-end">
+                  <div className="flex shrink-0 justify-end sm:w-28">
                     {isRollbackTarget(deployment.id) ? (
                       <RollbackButton deployment={deployment} />
                     ) : null}
@@ -262,7 +262,7 @@ function CommitCell({
   const sha = deployment.commitSha ?? deployment.requestedCommitSha;
   return (
     <div className="min-w-0 flex-1 space-y-1">
-      <div className="flex items-center gap-2.5">
+      <div className="flex min-w-0 items-center gap-2.5">
         <Link
           to="/projects/$projectId/deployments/$deploymentId"
           params={{ projectId: deployment.projectId, deploymentId: deployment.id }}
@@ -272,9 +272,14 @@ function CommitCell({
             ? `deploy ${deployment.id.slice(-SHORT_SHA_LENGTH)}`
             : sha.slice(0, SHORT_SHA_LENGTH)}
         </Link>
-        <span className="font-mono text-xs text-faint">{deployment.branch}</span>
+        <span
+          className="min-w-0 truncate font-mono text-xs text-muted-foreground"
+          title={deployment.branch}
+        >
+          {deployment.branch}
+        </span>
         {current ? (
-          <span className="rounded-full bg-secondary px-2 py-0.5 text-xs font-medium text-muted-foreground">
+          <span className="shrink-0 rounded-full bg-secondary px-2 py-0.5 text-xs font-medium text-muted-foreground">
             No ar
           </span>
         ) : null}

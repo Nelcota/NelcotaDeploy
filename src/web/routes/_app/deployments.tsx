@@ -185,7 +185,7 @@ function History() {
   const now = new Date();
 
   return (
-    <section aria-labelledby="history-title" className="space-y-4">
+    <section aria-labelledby="history-title" className="space-y-6">
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
         <h2 id="history-title" className="flex items-center gap-3 text-base font-semibold">
           <ListIcon aria-hidden className="size-[1.15rem] text-muted-foreground" />
@@ -230,7 +230,7 @@ function History() {
           ) : null}
           {groups.map(([day, items]) => (
             <Fragment key={day}>
-              <h3 className="bg-well/40 px-5 py-2 text-xs font-medium tracking-wide text-faint uppercase">
+              <h3 className="bg-well/40 px-5 py-2 text-xs font-medium tracking-wide text-muted-foreground uppercase">
                 {formatDayHeading(items[0]?.createdAt ?? "", now)}
               </h3>
               {items.map((deployment) => (
@@ -258,6 +258,10 @@ function History() {
 function HistoryRow({ deployment }: { readonly deployment: DeploymentItem }) {
   const sha = deployment.commitSha ?? deployment.requestedCommitSha;
   const params = { projectId: deployment.projectId, deploymentId: deployment.id };
+  const shortSha =
+    sha == null
+      ? `deploy ${deployment.id.slice(-SHORT_SHA_LENGTH)}`
+      : sha.slice(0, SHORT_SHA_LENGTH);
   return (
     <DeploymentListRow
       projectId={deployment.projectId}
@@ -275,15 +279,12 @@ function HistoryRow({ deployment }: { readonly deployment: DeploymentItem }) {
           <Link
             to="/projects/$projectId/deployments/$deploymentId"
             params={params}
-            className="truncate text-sm font-medium hover:underline focus-visible:underline focus-visible:outline-none"
+            aria-label={`Deploy ${shortSha} de ${deployment.projectName}`}
+            className="truncate rounded-sm text-sm font-medium hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
           >
             {deployment.projectName}
           </Link>
-          <span className="shrink-0 font-mono text-xs text-muted-foreground">
-            {sha == null
-              ? `deploy ${deployment.id.slice(-SHORT_SHA_LENGTH)}`
-              : sha.slice(0, SHORT_SHA_LENGTH)}
-          </span>
+          <span className="shrink-0 font-mono text-xs text-muted-foreground">{shortSha}</span>
         </p>
         <p
           className="truncate text-sm text-muted-foreground"
@@ -300,9 +301,9 @@ function HistoryRow({ deployment }: { readonly deployment: DeploymentItem }) {
         <p className="truncate text-muted-foreground">
           {DEPLOYMENT_TRIGGER_LABELS[deployment.trigger]}
         </p>
-        <p className="truncate text-faint">{deployment.triggeredByLabel}</p>
+        <p className="truncate text-muted-foreground">{deployment.triggeredByLabel}</p>
       </div>
-      <div className="hidden w-20 shrink-0 text-right text-xs sm:block">
+      <div className="hidden w-24 shrink-0 text-right text-xs sm:block">
         <time
           dateTime={deployment.createdAt}
           title={formatDateTime(deployment.createdAt)}

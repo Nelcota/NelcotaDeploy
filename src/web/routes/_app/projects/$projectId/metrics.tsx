@@ -134,22 +134,30 @@ function ProjectMetrics({
 }) {
   return (
     <>
-      <StatRow title="Agora" icon={ActivityIcon} stats={stats} />
       {metrics.isError ? (
         <ErrorState error={metrics.error} onRetry={() => void metrics.refetch()} />
       ) : null}
-      {metrics.isPending ? <Skeleton className="h-80 rounded-xl" /> : null}
+      {metrics.isPending ? (
+        <>
+          <Skeleton className="h-44 rounded-2xl" />
+          <Skeleton className="h-80 rounded-xl" />
+        </>
+      ) : null}
+      {metrics.isSuccess ? <StatRow title="Agora" icon={ActivityIcon} stats={stats} /> : null}
       {metrics.isSuccess && samples.length === 0 ? (
-        <p className="rounded-2xl bg-card px-5 py-6 text-sm text-muted-foreground ring-1 ring-border/70">
-          Nenhuma amostra neste período. Elas aparecem enquanto o contêiner roda e o worker está
-          online.
-        </p>
+        <EmptyState
+          icon={ActivityIcon}
+          title="Nenhuma amostra neste período"
+          description="Elas aparecem enquanto o contêiner roda e o worker está online."
+        />
       ) : null}
       {samples.length > 0 ? (
         <div className="grid gap-6 lg:grid-cols-2">
           <Card className="gap-5 p-5">
             <CardTitleRow icon={CpuIcon} title="CPU">
-              <span className="text-xs text-faint">{cpuIdle ? "ociosa no período" : "%"}</span>
+              <span className="text-xs text-muted-foreground">
+                {cpuIdle ? "ociosa no período" : "uso em %"}
+              </span>
             </CardTitleRow>
             <MetricChart
               label="CPU"
@@ -164,7 +172,7 @@ function ProjectMetrics({
           </Card>
           <Card className="gap-5 p-5">
             <CardTitleRow icon={MemoryStickIcon} title="Memória">
-              <span className="text-xs text-faint">em uso</span>
+              <span className="text-xs text-muted-foreground">em uso</span>
             </CardTitleRow>
             <MetricChart
               label="Memória"

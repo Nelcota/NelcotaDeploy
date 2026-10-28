@@ -57,7 +57,7 @@ function RuntimeLogsPage() {
       actions={
         currentDeploymentId == null ? null : (
           <Select value={selected} onValueChange={setChosen}>
-            <SelectTrigger aria-label="Logs de qual deploy" className="w-full sm:w-72">
+            <SelectTrigger aria-label="Deploy exibido" className="w-full sm:w-72">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -70,7 +70,10 @@ function RuntimeLogsPage() {
                 <SelectItem key={deployment.id} value={deployment.id}>
                   {deployment.id === currentDeploymentId ? "Deploy no ar" : "Deploy"}
                   <span className="font-mono">
-                    {deployment.commitSha?.slice(0, SHORT_SHA_LENGTH) ?? "—"}
+                    {(deployment.commitSha ?? deployment.requestedCommitSha)?.slice(
+                      0,
+                      SHORT_SHA_LENGTH,
+                    ) ?? deployment.id.slice(-SHORT_SHA_LENGTH)}
                   </span>
                   <span className="text-muted-foreground">
                     {formatRelativeTime(deployment.createdAt, now)}
@@ -120,7 +123,15 @@ function RuntimeLogsPage() {
   return (
     <section aria-label="Logs de execução" className="space-y-4">
       {header}
-      <ContainerStrip details={details} now={now} />
+      {selected === currentDeploymentId ? (
+        <ContainerStrip details={details} now={now} />
+      ) : (
+        <p className="text-sm text-muted-foreground">
+          {selected === ALL_DEPLOYMENTS
+            ? "Mostrando as linhas de todos os deploys recentes, do mais antigo ao mais novo."
+            : "Mostrando os logs de um deploy anterior. O contêiner dele pode já ter sido removido."}
+        </p>
+      )}
       <LogViewer
         url={url}
         heightClass="h-[min(70dvh,44rem)]"

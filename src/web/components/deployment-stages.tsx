@@ -38,7 +38,7 @@ const STATE_STYLES: Record<StageState, { dot: string; line: string; text: string
   {
     done: { dot: "bg-success", line: "bg-success/60", text: "text-foreground", label: "concluído" },
     current: {
-      dot: "bg-brand ring-4 ring-brand/20 animate-pulse",
+      dot: "bg-brand ring-4 ring-brand/20 motion-safe:animate-pulse",
       line: "bg-border",
       text: "text-foreground",
       label: "em andamento",
@@ -146,7 +146,14 @@ export function DeploymentStages({ deployment }: { readonly deployment: StageSou
             </div>
             <p className={cn("pr-2 text-xs font-medium sm:truncate sm:text-sm", style.text)}>
               {stage.label}
-              <span className="sr-only">: {style.label}</span>
+              {/* Done and pending stages read clearly from the line; the others say their state. */}
+              {state === "done" || state === "pending" ? (
+                <span className="sr-only">: {style.label}</span>
+              ) : (
+                <span className="block text-xs font-normal text-muted-foreground">
+                  {style.label}
+                </span>
+              )}
             </p>
           </li>
         );

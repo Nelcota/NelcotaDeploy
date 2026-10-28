@@ -52,6 +52,8 @@
   --sidebar-border: #e4e4e0;
   --console: #121214;
   --console-foreground: #e4e4e7;
+  /* The console is dark in both themes, so its focus ring needs a lighter blue to show. */
+  --console-ring: #5b84ff;
 }
 
 .dark {
@@ -152,6 +154,7 @@
   --color-sidebar-border: var(--sidebar-border);
   --color-console: var(--console);
   --color-console-foreground: var(--console-foreground);
+  --color-console-ring: var(--console-ring);
 }
 
 @layer base {

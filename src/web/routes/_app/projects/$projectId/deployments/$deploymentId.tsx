@@ -11,10 +11,12 @@ import { ACTIVE_DEPLOYMENT_STATUSES, DEPLOYMENT_TRIGGER_LABELS } from "@/web/com
 import { CardTitleRow } from "@/web/components/layout";
 import { LogViewer } from "@/web/components/log-viewer";
 import { TabHeader } from "@/web/components/project-header";
-import { ErrorState, ListSkeleton } from "@/web/components/states";
+import { projectQueryOptions } from "@/web/components/project-query";
+import { ErrorState } from "@/web/components/states";
 import { DeploymentStatusBadge } from "@/web/components/status-badge";
 import { Button } from "@/web/components/ui/button";
 import { Card } from "@/web/components/ui/card";
+import { Skeleton } from "@/web/components/ui/skeleton";
 import { useAction } from "@/web/components/use-action";
 import { useCan } from "@/web/components/use-permissions";
 import { cancelDeploymentFn, getDeploymentFn } from "@/web/functions/deployments.functions";
@@ -55,6 +57,7 @@ function DeploymentDetailPage() {
   const { projectId, deploymentId } = Route.useParams();
   const can = useCan();
   const queryClient = useQueryClient();
+  const project = useQuery(projectQueryOptions(projectId));
   const deployment = useQuery({
     queryKey: ["deployment", deploymentId],
     queryFn: () => getDeploymentFn({ data: { deploymentId } }),
@@ -96,11 +99,33 @@ function DeploymentDetailPage() {
     void queryClient.invalidateQueries({ queryKey: ["deployments", projectId] });
   };
 
+  const backLink = (
+    <Link
+      to="/projects/$projectId/deployments"
+      params={{ projectId }}
+      className="inline-flex items-center gap-1 rounded-sm text-sm font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+    >
+      <ChevronLeftIcon aria-hidden className="size-4" />
+      Deploys
+    </Link>
+  );
   if (deployment.isError) {
-    return <ErrorState error={deployment.error} onRetry={() => void deployment.refetch()} />;
+    return (
+      <section aria-label="Detalhes do deploy" className="space-y-6">
+        {backLink}
+        <ErrorState error={deployment.error} onRetry={() => void deployment.refetch()} />
+      </section>
+    );
   }
   if (deployment.data == null) {
-    return <ListSkeleton rows={4} />;
+    return (
+      <section aria-label="Carregando deploy" aria-busy="true" className="space-y-6">
+        {backLink}
+        <Skeleton className="h-16 rounded-2xl" />
+        <Skeleton className="h-28 rounded-2xl" />
+        <Skeleton className="h-[28rem] rounded-xl" />
+      </section>
+    );
   }
   const data = deployment.data;
   const sha = data.commitSha ?? data.requestedCommitSha;
@@ -123,6 +148,7 @@ function DeploymentDetailPage() {
         title="Cancelar este deploy?"
         description="A versão atual continua no ar. Se o deploy já estiver em andamento, ele para no próximo passo e o contêiner novo é removido."
         confirmLabel="Cancelar deploy"
+        cancelLabel="Continuar deploy"
         destructive
         onConfirm={() => cancel.mutate()}
       />
@@ -131,14 +157,7 @@ function DeploymentDetailPage() {
   return (
     <section aria-label="Detalhes do deploy" className="space-y-6">
       <div className="space-y-3">
-        <Link
-          to="/projects/$projectId/deployments"
-          params={{ projectId }}
-          className="inline-flex items-center gap-1 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:underline focus-visible:outline-none"
-        >
-          <ChevronLeftIcon aria-hidden className="size-4" />
-          Deploys
-        </Link>
+        {backLink}
         <TabHeader
           icon={RocketIcon}
           title={
@@ -163,12 +182,11 @@ function DeploymentDetailPage() {
       </Card>
 
       {data.status === "failed" && data.errorMessage != null ? (
-        <div
-          role="alert"
-          className="space-y-1.5 rounded-xl bg-destructive/8 px-5 py-4 ring-1 ring-destructive/25"
-        >
+        <div className="space-y-1.5 rounded-xl bg-destructive/8 px-5 py-4 ring-1 ring-destructive/25">
           <p className="text-sm font-medium text-destructive">
-            O deploy falhou. A versão anterior continua no ar.
+            {project.data?.project.currentDeploymentId == null
+              ? "O deploy falhou e a aplicação ainda não está no ar."
+              : "O deploy falhou. A versão anterior continua no ar."}
           </p>
           <pre className="font-mono text-xs break-all whitespace-pre-wrap text-muted-foreground">
             {data.errorMessage}

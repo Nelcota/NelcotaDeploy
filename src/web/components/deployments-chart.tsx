@@ -32,13 +32,41 @@ export type DeploymentChartDay = {
 const SERIES = [
   { key: "succeeded", label: "Concluídos", color: "var(--success)" },
   { key: "failed", label: "Falharam", color: "var(--destructive)" },
-  { key: "other", label: "Outros", color: "var(--faint)" },
+  { key: "other", label: "Cancelados ou em andamento", color: "var(--muted-foreground)" },
 ] as const;
+
+/**
+ * Adds up the deploys of every day, for a text summary of the chart.
+ *
+ * @param days - Per-day counts.
+ * @returns Totals by outcome.
+ */
+export function totalDeploymentDays(days: readonly DeploymentChartDay[]): {
+  readonly succeeded: number;
+  readonly failed: number;
+  readonly other: number;
+} {
+  let succeeded = 0;
+  let failed = 0;
+  let other = 0;
+  for (const day of days) {
+    succeeded += day.succeeded;
+    failed += day.failed;
+    other += day.other;
+  }
+  return { succeeded, failed, other };
+}
+
+function captionFor(days: readonly DeploymentChartDay[]): string {
+  const totals = totalDeploymentDays(days);
+  return `Últimos ${days.length} dias: ${totals.succeeded} concluídos, ${totals.failed} falharam, ${totals.other} cancelados ou em andamento.`;
+}
 
 /** Stacked bars with the deploys of each day, succeeded at the base. */
 export function DeploymentsChart({ days }: { readonly days: readonly DeploymentChartDay[] }) {
   return (
     <figure aria-label="Deploys por dia" className="h-56 w-full">
+      <figcaption className="sr-only">{captionFor(days)}</figcaption>
       <ResponsiveContainer width="100%" height="100%">
         <BarChart data={[...days]} margin={{ top: 6, right: 4, bottom: 0, left: 0 }}>
           <CartesianGrid stroke="var(--border)" vertical={false} />

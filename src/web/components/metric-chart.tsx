@@ -36,6 +36,37 @@ export type MetricPoint = { readonly createdAt: string; readonly value: number |
  * Area chart for a percentage or byte series. Missing samples are drawn as gaps, never as
  * zeros.
  */
+function captionFor(
+  label: string,
+  points: readonly MetricPoint[],
+  formatValue: (value: number) => string,
+): string {
+  const summary = summarizeMetricPoints(points);
+  if (summary == null) {
+    return `${label}: sem amostras no período.`;
+  }
+  return `${label}: atual ${formatValue(summary.latest)}, máximo ${formatValue(summary.max)} no período.`;
+}
+
+/**
+ * Reads the latest and the highest measured value of a series, for a text summary of the chart.
+ *
+ * @param points - Samples, oldest first; missing or non-finite values are ignored.
+ * @returns The last and the largest finite values, or null when there is none.
+ */
+export function summarizeMetricPoints(
+  points: readonly MetricPoint[],
+): { readonly latest: number; readonly max: number } | null {
+  const values = points
+    .map((point) => point.value)
+    .filter((value): value is number => value != null && Number.isFinite(value));
+  const latest = values.at(-1);
+  if (latest == null) {
+    return null;
+  }
+  return { latest, max: Math.max(...values) };
+}
+
 export function MetricChart({
   label,
   points,
@@ -57,6 +88,7 @@ export function MetricChart({
   const gradientId = `gradient-${colorVariable.replaceAll(/[^a-z0-9]/gi, "")}`;
   return (
     <figure aria-label={label} className={compact ? "h-28 w-full" : "h-64 w-full"}>
+      <figcaption className="sr-only">{captionFor(label, points, formatValue)}</figcaption>
       <ResponsiveContainer width="100%" height="100%">
         <AreaChart
           data={[...points]}
