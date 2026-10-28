@@ -6,16 +6,14 @@ import {
   RadioIcon,
   SearchIcon,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { formatTime } from "@/shared/format";
 import { classifyLogLevel, type LogLevel } from "@/shared/log-level";
 
 import { StatusPill } from "./status-badge";
-import { Button } from "./ui/button";
 import { cn } from "./ui/class-names";
-import { Input } from "./ui/input";
 
 /** One line received from a log stream. */
 type LogLine = {
@@ -111,6 +109,35 @@ function downloadLines(lines: readonly LogLine[], fileName: string): void {
   URL.revokeObjectURL(url);
 }
 
+/** Small text button of the console toolbar, styled for the always-dark console surface. */
+function ToolbarButton({
+  label,
+  title,
+  disabled,
+  onClick,
+  children,
+}: {
+  readonly label: string;
+  readonly title?: string | undefined;
+  readonly disabled: boolean;
+  readonly onClick: () => void;
+  readonly children: ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={onClick}
+      title={title}
+      className="inline-flex h-8 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium text-console-foreground/70 transition-colors hover:bg-white/8 hover:text-console-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none disabled:pointer-events-none disabled:opacity-40 [&_svg]:size-3.5"
+    >
+      {children}
+      <span className="hidden sm:inline">{label}</span>
+      <span className="sr-only sm:hidden">{label}</span>
+    </button>
+  );
+}
+
 /** Scrollable, filterable log output that follows new lines until the user scrolls up. */
 export function LogViewer({
   url,
@@ -174,52 +201,48 @@ export function LogViewer({
 
   const pill = STATE_PILLS[state];
   return (
-    <div className="overflow-hidden rounded-xl border bg-card">
-      <div className="flex flex-wrap items-center gap-3 border-b px-4 py-3">
-        <StatusPill tone={pill.tone} label={pill.label} />
-        <span className="text-sm text-muted-foreground">{visible.length} linhas</span>
-        <div className="ml-auto flex flex-wrap items-center gap-2">
-          <Button
-            size="sm"
-            variant="outline"
+    <div className="overflow-hidden rounded-xl bg-console ring-1 ring-border/70">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-white/8 px-4 py-2.5">
+        <StatusPill tone={pill.tone} label={pill.label} className="text-xs" />
+        <span className="text-xs text-console-foreground/50 tabular-nums">
+          {visible.length} linhas
+        </span>
+        <div className="ml-auto flex items-center gap-1">
+          <div className="relative mr-1">
+            <SearchIcon
+              aria-hidden
+              className="pointer-events-none absolute top-2 left-2.5 size-3.5 text-console-foreground/40"
+            />
+            <input
+              aria-label="Filtrar logs"
+              placeholder="Filtrar"
+              value={filter}
+              onChange={(event) => setFilter(event.target.value)}
+              className="h-8 w-36 rounded-md bg-white/5 pr-2 pl-8 text-xs text-console-foreground placeholder:text-console-foreground/40 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none sm:w-48"
+            />
+          </div>
+          <ToolbarButton
+            label="Ir para o erro"
             disabled={firstError == null}
             onClick={jumpToError}
             title={firstError == null ? "Nenhum erro nas linhas exibidas" : undefined}
           >
             <OctagonAlertIcon aria-hidden />
-            Ir para o erro
-          </Button>
-          <Button
-            size="sm"
-            variant="outline"
+          </ToolbarButton>
+          <ToolbarButton
+            label="Copiar"
             disabled={visible.length === 0}
             onClick={() => void copyLines(visible)}
           >
             <CopyIcon aria-hidden />
-            Copiar
-          </Button>
-          <Button
-            size="sm"
-            variant="outline"
+          </ToolbarButton>
+          <ToolbarButton
+            label="Baixar"
             disabled={visible.length === 0}
             onClick={() => downloadLines(visible, downloadName)}
           >
             <DownloadIcon aria-hidden />
-            Baixar
-          </Button>
-        </div>
-        <div className="relative w-full sm:w-64">
-          <SearchIcon
-            aria-hidden
-            className="absolute top-2.5 left-2.5 size-4 text-muted-foreground"
-          />
-          <Input
-            aria-label="Filtrar logs"
-            placeholder="Filtrar"
-            value={filter}
-            onChange={(event) => setFilter(event.target.value)}
-            className="h-10 pl-9"
-          />
+          </ToolbarButton>
         </div>
       </div>
       <div
@@ -236,7 +259,7 @@ export function LogViewer({
           );
         }}
         className={cn(
-          "overflow-auto bg-console px-4 py-3 font-mono text-xs leading-[1.7] text-console-foreground",
+          "overflow-auto px-4 py-3 font-mono text-xs leading-[1.7] text-console-foreground",
           heightClass,
         )}
       >
@@ -275,11 +298,15 @@ export function LogViewer({
         )}
       </div>
       {following ? null : (
-        <div className="flex justify-end border-t px-4 py-3">
-          <Button size="sm" variant="secondary" onClick={() => setFollowing(true)}>
+        <div className="flex justify-end border-t border-white/8 px-4 py-2">
+          <button
+            type="button"
+            onClick={() => setFollowing(true)}
+            className="inline-flex h-8 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium text-console-foreground/80 transition-colors hover:bg-white/8 hover:text-console-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none [&_svg]:size-3.5"
+          >
             <ArrowDownIcon aria-hidden />
             Acompanhar novas linhas
-          </Button>
+          </button>
         </div>
       )}
     </div>

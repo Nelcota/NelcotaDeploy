@@ -18,10 +18,10 @@ import { type SystemSettings, systemSettingsSchema } from "@/shared/settings.sch
 import { ConfirmDialog } from "@/web/components/confirm-dialog";
 import { FormField } from "@/web/components/form-field";
 import { ROLE_LABELS } from "@/web/components/labels";
+import { List, ListRow, Section, StatRow } from "@/web/components/layout";
 import { PageHeader } from "@/web/components/page-header";
 import { EmptyState, ErrorState, ListSkeleton } from "@/web/components/states";
 import { StatusPill } from "@/web/components/status-badge";
-import { Badge } from "@/web/components/ui/badge";
 import { Button } from "@/web/components/ui/button";
 import {
   Card,
@@ -49,16 +49,8 @@ import {
   SelectValue,
 } from "@/web/components/ui/select";
 import { Switch } from "@/web/components/ui/switch";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/web/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/web/components/ui/tabs";
-import { UsageMeter, usagePercent } from "@/web/components/usage-meter";
+import { usagePercent } from "@/web/components/usage-meter";
 import { useAction } from "@/web/components/use-action";
 import { useCan } from "@/web/components/use-permissions";
 import {
@@ -92,6 +84,33 @@ const SETTINGS_TITLES: Record<(typeof SETTINGS_SECTIONS)[number], string> = {
   tokens: "Tokens de API",
   audit: "Auditoria",
 };
+
+/** Permission each section needs; sections without one are visible to everyone here. */
+const SECTION_PERMISSIONS: Record<
+  (typeof SETTINGS_SECTIONS)[number],
+  "user:manage" | "token:manage" | "audit:read" | null
+> = {
+  organization: null,
+  users: "user:manage",
+  server: null,
+  tokens: "token:manage",
+  audit: "audit:read",
+};
+
+/** Usage at or above these percentages is shown as a warning or a problem. */
+const USAGE_WARNING_PERCENT = 75;
+const USAGE_DANGER_PERCENT = 90;
+
+function usageTone(percent: number | null): "default" | "warning" | "danger" {
+  if (percent == null || percent < USAGE_WARNING_PERCENT) {
+    return "default";
+  }
+  return percent >= USAGE_DANGER_PERCENT ? "danger" : "warning";
+}
+
+function formatPercent(percent: number | null): string {
+  return percent == null ? "—" : `${Math.round(percent)}%`;
+}
 
 const SETTINGS_DESCRIPTIONS: Record<(typeof SETTINGS_SECTIONS)[number], string> = {
   organization: "Nome da organização e domínio base dos projetos.",
@@ -138,23 +157,27 @@ function SettingsPage() {
   const can = useCan();
   const navigate = Route.useNavigate();
   const { tab = "organization" } = Route.useSearch();
+  const canSee = (section: (typeof SETTINGS_SECTIONS)[number]): boolean => {
+    const permission = SECTION_PERMISSIONS[section];
+    return permission == null || can(permission);
+  };
   return (
     <>
-      <PageHeader title={SETTINGS_TITLES[tab]} description={SETTINGS_DESCRIPTIONS[tab]} />
+      <PageHeader title="Administração" description={SETTINGS_DESCRIPTIONS[tab]} />
       <Tabs
         value={tab}
         onValueChange={(value) => {
           const section = SETTINGS_SECTIONS.find((candidate) => candidate === value);
           void navigate({ search: { tab: section } });
         }}
-        className="space-y-6"
+        className="gap-8"
       >
-        <TabsList className="flex h-auto flex-wrap lg:hidden">
-          <TabsTrigger value="organization">Organização</TabsTrigger>
-          {can("user:manage") ? <TabsTrigger value="users">Usuários</TabsTrigger> : null}
-          <TabsTrigger value="server">Servidor</TabsTrigger>
-          {can("token:manage") ? <TabsTrigger value="tokens">Tokens de API</TabsTrigger> : null}
-          {can("audit:read") ? <TabsTrigger value="audit">Auditoria</TabsTrigger> : null}
+        <TabsList className="w-full justify-start overflow-x-auto">
+          {SETTINGS_SECTIONS.filter((section) => canSee(section)).map((section) => (
+            <TabsTrigger key={section} value={section}>
+              {SETTINGS_TITLES[section]}
+            </TabsTrigger>
+          ))}
         </TabsList>
         <TabsContent value="organization">
           <OrganizationTab canEdit={can("settings:write")} />
@@ -319,100 +342,78 @@ function UsersTab() {
   });
 
   return (
-    <Card>
-      <CardHeader className="flex flex-row items-start justify-between gap-4">
-        <div className="space-y-1.5">
-          <CardTitle className="text-base">Usuários</CardTitle>
-          <CardDescription>
-            Administradores têm acesso total; desenvolvedores fazem deploys e gerenciam projetos;
-            leitores só visualizam.
-          </CardDescription>
-        </div>
+    <Section
+      title="Usuários"
+      description="Administradores têm acesso total; desenvolvedores fazem deploys e gerenciam projetos; leitores só visualizam."
+      action={
         <Button onClick={() => setCreateOpen(true)}>
           <PlusIcon aria-hidden />
           Novo usuário
         </Button>
-      </CardHeader>
-      <CardContent>
-        {users.isError ? (
-          <ErrorState error={users.error} onRetry={() => void users.refetch()} />
-        ) : null}
-        {users.data == null && users.isError === false ? <ListSkeleton /> : null}
-        {users.data?.length === 0 ? <EmptyState icon={UsersIcon} title="Nenhum usuário" /> : null}
-        {users.data != null && users.data.length > 0 ? (
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Nome</TableHead>
-                  <TableHead>E-mail</TableHead>
-                  <TableHead>Papel</TableHead>
-                  <TableHead>Ativo</TableHead>
-                  <TableHead>Criado em</TableHead>
-                  <TableHead className="text-right">Senha</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {users.data.map((user) => (
-                  <TableRow key={user.id}>
-                    <TableCell className="font-medium">{user.name}</TableCell>
-                    <TableCell>{user.email}</TableCell>
-                    <TableCell>
-                      <Select
-                        value={user.role}
-                        onValueChange={(value) => {
-                          const role = ROLES.find((candidate) => candidate === value);
-                          if (role != null) {
-                            updateRole.mutate({ userId: user.id, role });
-                          }
-                        }}
-                      >
-                        <SelectTrigger aria-label={`Papel de ${user.name}`} className="w-44">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {ROLES.map((role) => (
-                            <SelectItem key={role} value={role}>
-                              {ROLE_LABELS[role]}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </TableCell>
-                    <TableCell>
-                      <Switch
-                        aria-label={`Usuário ${user.name} ativo`}
-                        checked={user.disabled === false}
-                        disabled={user.id === currentUser.id}
-                        title={
-                          user.id === currentUser.id
-                            ? "Você não pode desativar a própria conta"
-                            : undefined
-                        }
-                        onCheckedChange={(active) =>
-                          setDisabled.mutate({ userId: user.id, disabled: active === false })
-                        }
-                      />
-                    </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">
-                      {formatDateTime(user.createdAt)}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setResetUser({ id: user.id, name: user.name })}
-                      >
-                        Redefinir senha
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-        ) : null}
-      </CardContent>
+      }
+    >
+      {users.isError ? (
+        <ErrorState error={users.error} onRetry={() => void users.refetch()} />
+      ) : null}
+      {users.data == null && users.isError === false ? <ListSkeleton /> : null}
+      {users.data?.length === 0 ? <EmptyState icon={UsersIcon} title="Nenhum usuário" /> : null}
+      {users.data != null && users.data.length > 0 ? (
+        <List>
+          {users.data.map((user) => (
+            <ListRow
+              key={user.id}
+              accent={user.disabled ? "neutral" : "none"}
+              className="flex-wrap md:flex-nowrap"
+            >
+              <div className="min-w-0 flex-1 space-y-0.5">
+                <p className="truncate text-sm font-medium">{user.name}</p>
+                <p className="truncate text-sm text-muted-foreground">{user.email}</p>
+              </div>
+              <span className="hidden shrink-0 text-xs text-faint lg:block">
+                desde {formatDateTime(user.createdAt)}
+              </span>
+              <Select
+                value={user.role}
+                onValueChange={(value) => {
+                  const role = ROLES.find((candidate) => candidate === value);
+                  if (role != null) {
+                    updateRole.mutate({ userId: user.id, role });
+                  }
+                }}
+              >
+                <SelectTrigger aria-label={`Papel de ${user.name}`} className="w-40" size="sm">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {ROLES.map((role) => (
+                    <SelectItem key={role} value={role}>
+                      {ROLE_LABELS[role]}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Switch
+                aria-label={`Usuário ${user.name} ativo`}
+                checked={user.disabled === false}
+                disabled={user.id === currentUser.id}
+                title={
+                  user.id === currentUser.id ? "Você não pode desativar a própria conta" : undefined
+                }
+                onCheckedChange={(active) =>
+                  setDisabled.mutate({ userId: user.id, disabled: active === false })
+                }
+              />
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setResetUser({ id: user.id, name: user.name })}
+              >
+                Redefinir senha
+              </Button>
+            </ListRow>
+          ))}
+        </List>
+      ) : null}
       <CreateUserDialog open={createOpen} onOpenChange={setCreateOpen} />
       {resetUser == null ? null : (
         <ResetPasswordDialog
@@ -421,7 +422,7 @@ function UsersTab() {
           onClose={() => setResetUser(null)}
         />
       )}
-    </Card>
+    </Section>
   );
 }
 
@@ -608,7 +609,7 @@ function ResetPasswordDialog({
 
 function InfoRow({ label, children }: { readonly label: string; readonly children: ReactNode }) {
   return (
-    <div className="flex flex-col gap-1 py-2 sm:flex-row sm:items-center sm:justify-between">
+    <div className="flex flex-col gap-1 px-5 py-3 sm:flex-row sm:items-center sm:justify-between">
       <dt className="text-sm text-muted-foreground">{label}</dt>
       <dd className="text-sm font-medium">{children}</dd>
     </div>
@@ -626,111 +627,104 @@ function ServerTab() {
   const { server } = settings.data;
   const host = server.hostSample;
   const now = new Date();
+  const cpuPercent = host?.cpuPercent ?? null;
+  const memoryPercent = usagePercent(host?.memoryUsedBytes, host?.memoryTotalBytes);
+  const diskPercent = usagePercent(host?.diskUsedBytes, host?.diskTotalBytes);
   return (
-    <div className="grid gap-4 lg:grid-cols-2">
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Servidor (VPS)</CardTitle>
-          <CardDescription>
-            {host == null
-              ? "Nenhuma amostra coletada ainda."
-              : `Última amostra ${formatRelativeTime(host.createdAt, now)}`}
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <UsageMeter label="CPU" percent={host?.cpuPercent ?? null} />
-          <UsageMeter
-            label="Memória"
-            percent={usagePercent(host?.memoryUsedBytes, host?.memoryTotalBytes)}
-            detail={
-              host == null
-                ? undefined
-                : `${formatBytes(host.memoryUsedBytes)} de ${formatBytes(host.memoryTotalBytes)}`
-            }
-          />
-          <UsageMeter
-            label="Disco"
-            percent={usagePercent(host?.diskUsedBytes, host?.diskTotalBytes)}
-            detail={
-              host == null
-                ? undefined
-                : `${formatBytes(host.diskUsedBytes)} de ${formatBytes(host.diskTotalBytes)}`
-            }
-          />
-        </CardContent>
-      </Card>
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Worker e Docker</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <dl className="divide-y">
-            <InfoRow label="Worker">
-              {server.worker == null ? (
-                <StatusPill tone="danger" label="Nunca conectou" />
-              ) : (
-                <StatusPill
-                  tone={server.worker.online ? "success" : "danger"}
-                  label={server.worker.online ? "Online" : "Offline"}
-                />
-              )}
-            </InfoRow>
-            <InfoRow label="Último sinal do worker">
-              {formatRelativeTime(server.worker?.lastSeenAt, now)}
-            </InfoRow>
-            <InfoRow label="Docker">
-              {server.worker?.dockerAvailable === true
-                ? (server.worker.dockerVersion ?? "Disponível")
-                : "Indisponível"}
-            </InfoRow>
-            <InfoRow label="Rede Docker">
-              <span className="font-mono">{server.dockerNetwork}</span>
-            </InfoRow>
-            <InfoRow label="Traefik">{server.traefikEnabled ? "Ativado" : "Desativado"}</InfoRow>
-            <InfoRow label="Jobs simultâneos">{server.workerConcurrency}</InfoRow>
-            <InfoRow label="Coleta de métricas">
-              a cada {server.metricsIntervalInSeconds} s, retenção de{" "}
-              {server.metricsRetentionInHours} h
-            </InfoRow>
-            <InfoRow label="Fuso dos agendamentos">{server.scheduleTimeZone}</InfoRow>
-            <InfoRow label="Chave de criptografia">
+    <div className="space-y-10">
+      <Section
+        title="Servidor (VPS)"
+        description={
+          host == null
+            ? "Nenhuma amostra coletada ainda."
+            : `Última amostra ${formatRelativeTime(host.createdAt, now)}.`
+        }
+      >
+        <StatRow
+          stats={[
+            { label: "CPU", value: formatPercent(cpuPercent), tone: usageTone(cpuPercent) },
+            {
+              label: "Memória",
+              value: formatPercent(memoryPercent),
+              tone: usageTone(memoryPercent),
+              detail:
+                host == null
+                  ? undefined
+                  : `${formatBytes(host.memoryUsedBytes)} de ${formatBytes(host.memoryTotalBytes)}`,
+            },
+            {
+              label: "Disco",
+              value: formatPercent(diskPercent),
+              tone: usageTone(diskPercent),
+              detail:
+                host == null
+                  ? undefined
+                  : `${formatBytes(host.diskUsedBytes)} de ${formatBytes(host.diskTotalBytes)}`,
+            },
+          ]}
+        />
+      </Section>
+      <Section title="Worker e Docker">
+        <dl className="divide-y divide-border rounded-xl bg-card ring-1 ring-border/70">
+          <InfoRow label="Worker">
+            {server.worker == null ? (
+              <StatusPill tone="danger" label="Nunca conectou" />
+            ) : (
               <StatusPill
-                tone={server.encryptionConfigured ? "success" : "danger"}
-                label={server.encryptionConfigured ? "Configurada" : "Ausente"}
+                tone={server.worker.online ? "success" : "danger"}
+                label={server.worker.online ? "Online" : "Offline"}
               />
-            </InfoRow>
-          </dl>
-        </CardContent>
-      </Card>
-      <Card className="lg:col-span-2">
-        <CardHeader>
-          <CardTitle className="text-base">Webhook do GitHub</CardTitle>
-          <CardDescription>
-            Deploy automático a cada push na branch configurada de projetos com deploy automático
-            ativo.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex flex-wrap items-center gap-2">
-            <code className="rounded bg-muted px-2 py-1 font-mono text-sm break-all">
-              {server.webhookUrl}
-            </code>
-            <CopyButton text={server.webhookUrl} label="Copiar URL" />
+            )}
+          </InfoRow>
+          <InfoRow label="Último sinal do worker">
+            {formatRelativeTime(server.worker?.lastSeenAt, now)}
+          </InfoRow>
+          <InfoRow label="Docker">
+            {server.worker?.dockerAvailable === true
+              ? (server.worker.dockerVersion ?? "Disponível")
+              : "Indisponível"}
+          </InfoRow>
+          <InfoRow label="Rede Docker">
+            <span className="font-mono">{server.dockerNetwork}</span>
+          </InfoRow>
+          <InfoRow label="Traefik">{server.traefikEnabled ? "Ativado" : "Desativado"}</InfoRow>
+          <InfoRow label="Jobs simultâneos">{server.workerConcurrency}</InfoRow>
+          <InfoRow label="Coleta de métricas">
+            a cada {server.metricsIntervalInSeconds} s, retenção de {server.metricsRetentionInHours}{" "}
+            h
+          </InfoRow>
+          <InfoRow label="Fuso dos agendamentos">{server.scheduleTimeZone}</InfoRow>
+          <InfoRow label="Chave de criptografia">
             <StatusPill
-              tone={server.webhookConfigured ? "success" : "warning"}
-              label={
-                server.webhookConfigured ? "Segredo configurado" : "GITHUB_WEBHOOK_SECRET ausente"
-              }
+              tone={server.encryptionConfigured ? "success" : "danger"}
+              label={server.encryptionConfigured ? "Configurada" : "Ausente"}
             />
-          </div>
-          <ol className="list-decimal space-y-1 pl-5 text-sm text-muted-foreground">
-            <li>No repositório, abra Settings → Webhooks → Add webhook.</li>
-            <li>Payload URL: a URL acima. Content type: application/json.</li>
-            <li>Secret: o mesmo valor de GITHUB_WEBHOOK_SECRET do servidor.</li>
-            <li>Eventos: “Just the push event”.</li>
-          </ol>
-        </CardContent>
-      </Card>
+          </InfoRow>
+        </dl>
+      </Section>
+      <Section
+        title="Webhook do GitHub"
+        description="Deploy automático a cada push na branch configurada de projetos com deploy automático ativo."
+      >
+        <div className="flex flex-wrap items-center gap-2">
+          <code className="rounded-md bg-secondary px-2 py-1 font-mono text-sm break-all ring-1 ring-border ring-inset">
+            {server.webhookUrl}
+          </code>
+          <CopyButton text={server.webhookUrl} label="Copiar URL" />
+          <StatusPill
+            tone={server.webhookConfigured ? "success" : "warning"}
+            label={
+              server.webhookConfigured ? "Segredo configurado" : "GITHUB_WEBHOOK_SECRET ausente"
+            }
+          />
+        </div>
+        <ol className="list-decimal space-y-1 pl-5 text-sm text-muted-foreground">
+          <li>No repositório, abra Settings → Webhooks → Add webhook.</li>
+          <li>Payload URL: a URL acima. Content type: application/json.</li>
+          <li>Secret: o mesmo valor de GITHUB_WEBHOOK_SECRET do servidor.</li>
+          <li>Eventos: “Just the push event”.</li>
+        </ol>
+      </Section>
     </div>
   );
 }
@@ -756,83 +750,72 @@ function TokensTab() {
   });
   const now = new Date();
   return (
-    <div className="space-y-4">
+    <div className="space-y-10">
       <CreateTokenCard onCreated={setCreatedToken} />
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Tokens existentes</CardTitle>
-          <CardDescription>
-            Usados pelo servidor MCP. Apenas o hash do token é armazenado.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {tokens.isError ? (
-            <ErrorState error={tokens.error} onRetry={() => void tokens.refetch()} />
-          ) : null}
-          {tokens.data == null && tokens.isError === false ? <ListSkeleton rows={2} /> : null}
-          {tokens.data?.length === 0 ? (
-            <EmptyState icon={KeyRoundIcon} title="Nenhum token criado" />
-          ) : null}
-          {tokens.data != null && tokens.data.length > 0 ? (
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Nome</TableHead>
-                    <TableHead>Escopos</TableHead>
-                    <TableHead>Último uso</TableHead>
-                    <TableHead>Expira em</TableHead>
-                    <TableHead>Situação</TableHead>
-                    <TableHead className="text-right">Ações</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {tokens.data.map((token) => (
-                    <TableRow key={token.id}>
-                      <TableCell className="font-medium">{token.name}</TableCell>
-                      <TableCell className="space-x-1">
-                        {token.scopes.map((scope) => (
-                          <Badge key={scope} variant="secondary">
-                            {scope === "deploy" ? "Deploy" : "Leitura"}
-                          </Badge>
-                        ))}
-                      </TableCell>
-                      <TableCell className="text-sm text-muted-foreground">
-                        {formatRelativeTime(token.lastUsedAt, now)}
-                      </TableCell>
-                      <TableCell className="text-sm text-muted-foreground">
-                        {token.expiresAt == null ? "Nunca" : formatDateTime(token.expiresAt)}
-                      </TableCell>
-                      <TableCell>
-                        <StatusPill
-                          tone={token.revokedAt == null ? "success" : "neutral"}
-                          label={token.revokedAt == null ? "Ativo" : "Revogado"}
-                        />
-                      </TableCell>
-                      <TableCell className="text-right">
-                        {token.revokedAt == null ? (
-                          <ConfirmDialog
-                            trigger={
-                              <Button variant="outline" size="sm">
-                                Revogar
-                              </Button>
-                            }
-                            title={`Revogar o token ${token.name}?`}
-                            description="Clientes MCP que usam este token perdem o acesso imediatamente."
-                            confirmLabel="Revogar"
-                            destructive
-                            onConfirm={() => revoke.mutate(token.id)}
-                          />
-                        ) : null}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          ) : null}
-        </CardContent>
-      </Card>
+      <Section
+        title="Tokens existentes"
+        description="Usados pelo servidor MCP. Apenas o hash do token é armazenado."
+      >
+        {tokens.isError ? (
+          <ErrorState error={tokens.error} onRetry={() => void tokens.refetch()} />
+        ) : null}
+        {tokens.data == null && tokens.isError === false ? <ListSkeleton rows={2} /> : null}
+        {tokens.data?.length === 0 ? (
+          <EmptyState icon={KeyRoundIcon} title="Nenhum token criado" />
+        ) : null}
+        {tokens.data != null && tokens.data.length > 0 ? (
+          <List>
+            {tokens.data.map((token) => (
+              <ListRow
+                key={token.id}
+                accent={token.revokedAt == null ? "success" : "neutral"}
+                className="flex-wrap md:flex-nowrap"
+              >
+                <div className="min-w-0 flex-1 space-y-0.5">
+                  <p className="truncate text-sm font-medium">{token.name}</p>
+                  <p className="text-xs text-faint">
+                    {token.scopes
+                      .map((scope) => (scope === "deploy" ? "Deploy" : "Leitura"))
+                      .join(" · ")}
+                  </p>
+                </div>
+                <dl className="hidden shrink-0 gap-6 text-xs md:flex">
+                  <div>
+                    <dt className="text-faint">Último uso</dt>
+                    <dd className="text-muted-foreground">
+                      {formatRelativeTime(token.lastUsedAt, now)}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-faint">Expira em</dt>
+                    <dd className="text-muted-foreground">
+                      {token.expiresAt == null ? "Nunca" : formatDateTime(token.expiresAt)}
+                    </dd>
+                  </div>
+                </dl>
+                <StatusPill
+                  tone={token.revokedAt == null ? "success" : "neutral"}
+                  label={token.revokedAt == null ? "Ativo" : "Revogado"}
+                />
+                {token.revokedAt == null ? (
+                  <ConfirmDialog
+                    trigger={
+                      <Button variant="ghost" size="sm">
+                        Revogar
+                      </Button>
+                    }
+                    title={`Revogar o token ${token.name}?`}
+                    description="Clientes MCP que usam este token perdem o acesso imediatamente."
+                    confirmLabel="Revogar"
+                    destructive
+                    onConfirm={() => revoke.mutate(token.id)}
+                  />
+                ) : null}
+              </ListRow>
+            ))}
+          </List>
+        ) : null}
+      </Section>
       <CreatedTokenDialog token={createdToken} onClose={() => setCreatedToken(null)} />
     </div>
   );
@@ -871,7 +854,7 @@ function CreateTokenCard({ onCreated }: { readonly onCreated: (token: string) =>
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-base">
-          <ShieldIcon aria-hidden className="size-4" />
+          <ShieldIcon aria-hidden className="size-4 text-muted-foreground" />
           Novo token de API
         </CardTitle>
         <CardDescription>
@@ -963,7 +946,7 @@ function CreatedTokenDialog({
           </div>
           <div className="space-y-2">
             <p className="text-sm font-medium">Exemplo para o Claude Code</p>
-            <pre className="overflow-x-auto rounded-md bg-muted p-3 font-mono text-xs whitespace-pre-wrap break-all">
+            <pre className="overflow-x-auto rounded-lg bg-console p-3 font-mono text-xs break-all whitespace-pre-wrap text-console-foreground">
               {command}
             </pre>
             <CopyButton text={command} label="Copiar comando" />
@@ -1020,70 +1003,56 @@ function AuditTab() {
   };
 
   return (
-    <div className="space-y-4">
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Eventos de auditoria</CardTitle>
-          <CardDescription>
-            Ações administrativas e operacionais. Valores de secrets nunca são registrados.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          {firstPage.isError ? (
-            <ErrorState error={firstPage.error} onRetry={() => void firstPage.refetch()} />
-          ) : null}
-          {firstPage.data == null && firstPage.isError === false ? <ListSkeleton /> : null}
-          {firstPage.data?.length === 0 ? (
-            <EmptyState icon={ShieldIcon} title="Nenhum evento registrado" />
-          ) : null}
-          {events.length > 0 ? (
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Data</TableHead>
-                    <TableHead>Autor</TableHead>
-                    <TableHead>Ação</TableHead>
-                    <TableHead>Alvo</TableHead>
-                    <TableHead>Detalhes</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {events.map((event) => (
-                    <TableRow key={event.id}>
-                      <TableCell className="text-sm whitespace-nowrap">
-                        {formatDateTime(event.createdAt)}
-                      </TableCell>
-                      <TableCell className="text-sm">
-                        <span className="text-muted-foreground">
-                          {ACTOR_TYPE_LABELS[event.actorType] ?? event.actorType}:
-                        </span>{" "}
-                        {event.actorLabel}
-                      </TableCell>
-                      <TableCell className="font-mono text-xs">{event.action}</TableCell>
-                      <TableCell className="font-mono text-xs">
-                        {event.targetType}
-                        {event.targetId == null ? "" : ` ${event.targetId.slice(-SHORT_ID_LENGTH)}`}
-                      </TableCell>
-                      <TableCell
-                        className="max-w-sm truncate font-mono text-xs"
-                        title={event.details}
-                      >
-                        {event.details}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          ) : null}
-          {events.length > 0 && exhausted === false ? (
-            <Button variant="outline" disabled={loadingMore} onClick={() => void loadMore()}>
-              Carregar mais
-            </Button>
-          ) : null}
-        </CardContent>
-      </Card>
+    <div className="space-y-10">
+      <Section
+        title="Eventos de auditoria"
+        description="Ações administrativas e operacionais. Valores de secrets nunca são registrados."
+      >
+        {firstPage.isError ? (
+          <ErrorState error={firstPage.error} onRetry={() => void firstPage.refetch()} />
+        ) : null}
+        {firstPage.data == null && firstPage.isError === false ? <ListSkeleton /> : null}
+        {firstPage.data?.length === 0 ? (
+          <EmptyState icon={ShieldIcon} title="Nenhum evento registrado" />
+        ) : null}
+        {events.length > 0 ? (
+          <List>
+            {events.map((event) => (
+              <ListRow key={event.id} className="items-start py-3">
+                <div className="min-w-0 flex-1 space-y-1">
+                  <p className="flex flex-wrap items-baseline gap-x-2 text-sm">
+                    <span className="font-mono text-xs">{event.action}</span>
+                    <span className="font-mono text-xs text-faint">
+                      {event.targetType}
+                      {event.targetId == null ? "" : ` ${event.targetId.slice(-SHORT_ID_LENGTH)}`}
+                    </span>
+                  </p>
+                  <p
+                    className="truncate font-mono text-xs text-muted-foreground"
+                    title={event.details}
+                  >
+                    {event.details}
+                  </p>
+                </div>
+                <div className="shrink-0 space-y-1 text-right text-xs">
+                  <p>
+                    <span className="text-faint">
+                      {ACTOR_TYPE_LABELS[event.actorType] ?? event.actorType}:
+                    </span>{" "}
+                    {event.actorLabel}
+                  </p>
+                  <p className="whitespace-nowrap text-faint">{formatDateTime(event.createdAt)}</p>
+                </div>
+              </ListRow>
+            ))}
+          </List>
+        ) : null}
+        {events.length > 0 && exhausted === false ? (
+          <Button variant="outline" disabled={loadingMore} onClick={() => void loadMore()}>
+            Carregar mais
+          </Button>
+        ) : null}
+      </Section>
       <WebhookDeliveriesCard />
     </div>
   );
@@ -1095,67 +1064,58 @@ function WebhookDeliveriesCard() {
     queryFn: () => listWebhookDeliveriesFn(),
   });
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-base">Webhooks recebidos</CardTitle>
-        <CardDescription>
-          Entregas do GitHub com assinatura válida, deduplicadas pelo identificador de entrega.
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        {deliveries.isError ? (
-          <ErrorState error={deliveries.error} onRetry={() => void deliveries.refetch()} />
-        ) : null}
-        {deliveries.data == null && deliveries.isError === false ? <ListSkeleton rows={2} /> : null}
-        {deliveries.data?.length === 0 ? (
-          <EmptyState icon={KeyRoundIcon} title="Nenhum webhook recebido ainda" />
-        ) : null}
-        {deliveries.data != null && deliveries.data.length > 0 ? (
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Recebido em</TableHead>
-                  <TableHead>Evento</TableHead>
-                  <TableHead>Repositório</TableHead>
-                  <TableHead>Commit</TableHead>
-                  <TableHead>Resultado</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {deliveries.data.map((delivery) => (
-                  <TableRow key={delivery.id}>
-                    <TableCell className="text-sm whitespace-nowrap">
-                      {formatDateTime(delivery.receivedAt)}
-                    </TableCell>
-                    <TableCell className="font-mono text-xs">{delivery.event}</TableCell>
-                    <TableCell className="text-sm">
-                      {delivery.repositoryFullName ?? "—"}
-                      {delivery.ref == null ? "" : ` (${delivery.ref.replace("refs/heads/", "")})`}
-                    </TableCell>
-                    <TableCell className="font-mono text-xs">
-                      {delivery.commitSha?.slice(0, SHORT_SHA_LENGTH) ?? "—"}
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex flex-col items-start gap-1">
-                        <StatusPill
-                          tone={delivery.status === "accepted" ? "success" : "neutral"}
-                          label={
-                            delivery.status === "accepted"
-                              ? `${delivery.deploymentIds.length} deploy(s)`
-                              : "Ignorado"
-                          }
-                        />
-                        <span className="text-xs text-muted-foreground">{delivery.reason}</span>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-        ) : null}
-      </CardContent>
-    </Card>
+    <Section
+      title="Webhooks recebidos"
+      description="Entregas do GitHub com assinatura válida, deduplicadas pelo identificador de entrega."
+    >
+      {deliveries.isError ? (
+        <ErrorState error={deliveries.error} onRetry={() => void deliveries.refetch()} />
+      ) : null}
+      {deliveries.data == null && deliveries.isError === false ? <ListSkeleton rows={2} /> : null}
+      {deliveries.data?.length === 0 ? (
+        <EmptyState icon={KeyRoundIcon} title="Nenhum webhook recebido ainda" />
+      ) : null}
+      {deliveries.data != null && deliveries.data.length > 0 ? (
+        <List>
+          {deliveries.data.map((delivery) => (
+            <ListRow
+              key={delivery.id}
+              accent={delivery.status === "accepted" ? "success" : "neutral"}
+              className="items-start py-3"
+            >
+              <div className="min-w-0 flex-1 space-y-1">
+                <p className="truncate text-sm">
+                  {delivery.repositoryFullName ?? "—"}
+                  {delivery.ref == null ? (
+                    ""
+                  ) : (
+                    <span className="text-muted-foreground">
+                      {` (${delivery.ref.replace("refs/heads/", "")})`}
+                    </span>
+                  )}
+                </p>
+                <p className="font-mono text-xs text-faint">
+                  {delivery.event} · {delivery.commitSha?.slice(0, SHORT_SHA_LENGTH) ?? "—"}
+                </p>
+              </div>
+              <div className="flex shrink-0 flex-col items-end gap-1 text-right">
+                <StatusPill
+                  tone={delivery.status === "accepted" ? "success" : "neutral"}
+                  label={
+                    delivery.status === "accepted"
+                      ? `${delivery.deploymentIds.length} deploy(s)`
+                      : "Ignorado"
+                  }
+                />
+                <span className="text-xs text-faint">{delivery.reason}</span>
+                <span className="text-xs whitespace-nowrap text-faint">
+                  {formatDateTime(delivery.receivedAt)}
+                </span>
+              </div>
+            </ListRow>
+          ))}
+        </List>
+      ) : null}
+    </Section>
   );
 }

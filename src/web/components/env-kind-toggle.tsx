@@ -24,7 +24,7 @@ export function VariableKindToggle({
       id={id}
       role="radiogroup"
       aria-label="Tipo"
-      className="grid grid-cols-2 gap-1 rounded-lg border bg-surface-sunken p-1"
+      className="grid grid-cols-2 gap-1 rounded-lg bg-secondary p-1 ring-1 ring-border ring-inset"
     >
       {OPTIONS.map((option) => (
         <button
@@ -37,7 +37,7 @@ export function VariableKindToggle({
           className={cn(
             "flex items-center justify-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors focus-visible:ring-3 focus-visible:ring-ring/40 focus-visible:outline-none",
             value === option.value
-              ? "bg-surface-raised text-foreground shadow-sm"
+              ? "bg-card text-foreground ring-1 ring-border"
               : "text-muted-foreground hover:text-foreground",
           )}
         >

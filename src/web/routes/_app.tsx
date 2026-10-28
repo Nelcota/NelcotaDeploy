@@ -1,6 +1,6 @@
 import { createFileRoute, Outlet, redirect } from "@tanstack/react-router";
 
-import { AppShell } from "@/web/components/app-shell";
+import { AppShell, PageBody } from "@/web/components/app-shell";
 import { getSessionFn } from "@/web/functions/session.functions";
 
 export const Route = createFileRoute("/_app")({
@@ -21,7 +21,9 @@ function AppLayout() {
   const { user } = Route.useRouteContext();
   return (
     <AppShell user={user}>
-      <Outlet />
+      <PageBody>
+        <Outlet />
+      </PageBody>
     </AppShell>
   );
 }

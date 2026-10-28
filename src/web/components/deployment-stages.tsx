@@ -1,12 +1,3 @@
-import {
-  CircleCheckIcon,
-  CircleDashedIcon,
-  CircleMinusIcon,
-  CircleXIcon,
-  LoaderCircleIcon,
-  type LucideIcon,
-} from "lucide-react";
-
 import type { DeploymentStatus } from "@/deployments";
 
 import { cn } from "./ui/class-names";
@@ -39,14 +30,36 @@ const STATUS_INDEX: Readonly<Record<DeploymentStatus, number>> = {
   cancelled: -1,
 };
 
-const STATE_STYLES: Record<StageState, { icon: LucideIcon; className: string; label: string }> = {
-  done: { icon: CircleCheckIcon, className: "text-success", label: "concluído" },
-  current: { icon: LoaderCircleIcon, className: "text-brand", label: "em andamento" },
-  failed: { icon: CircleXIcon, className: "text-destructive", label: "falhou" },
-  cancelled: { icon: CircleXIcon, className: "text-muted-foreground", label: "cancelado" },
-  pending: { icon: CircleDashedIcon, className: "text-muted-foreground/60", label: "pendente" },
-  skipped: { icon: CircleMinusIcon, className: "text-muted-foreground", label: "pulado" },
-};
+/** Dot, connector and label color of each state; the label text keeps color from being the only cue. */
+const STATE_STYLES: Record<StageState, { dot: string; line: string; text: string; label: string }> =
+  {
+    done: { dot: "bg-success", line: "bg-success/60", text: "text-foreground", label: "concluído" },
+    current: {
+      dot: "bg-brand ring-4 ring-brand/20 animate-pulse",
+      line: "bg-border",
+      text: "text-foreground",
+      label: "em andamento",
+    },
+    failed: {
+      dot: "bg-destructive ring-4 ring-destructive/20",
+      line: "bg-border",
+      text: "text-destructive",
+      label: "falhou",
+    },
+    cancelled: {
+      dot: "bg-faint",
+      line: "bg-border",
+      text: "text-muted-foreground",
+      label: "cancelado",
+    },
+    pending: {
+      dot: "bg-background ring-1 ring-border",
+      line: "bg-border",
+      text: "text-faint",
+      label: "pendente",
+    },
+    skipped: { dot: "bg-faint/50", line: "bg-border", text: "text-faint", label: "pulado" },
+  };
 
 /** Fields of a deployment that tell how far it got. */
 export type StageSource = {
@@ -99,36 +112,31 @@ export function stageStates(deployment: StageSource): StageState[] {
   });
 }
 
-/** Horizontal progress of a deployment through its stages. */
+/** Horizontal progress of a deployment: connected dots with the stage names below. */
 export function DeploymentStages({ deployment }: { readonly deployment: StageSource }) {
   const states = stageStates(deployment);
   return (
-    <ol aria-label="Etapas do deploy" className="grid gap-2 sm:grid-cols-3 lg:grid-cols-6">
+    <ol aria-label="Etapas do deploy" className="grid grid-cols-6 gap-0">
       {STAGES.map((stage, index) => {
         const state = states[index] ?? "pending";
         const style = STATE_STYLES[state];
+        const last = index === STAGES.length - 1;
         return (
           <li
             key={stage.key}
             aria-current={state === "current" ? "step" : undefined}
-            className={cn(
-              "flex items-center gap-2.5 rounded-lg border px-3 py-2.5",
-              state === "current" ? "border-primary/50 bg-accent" : "bg-card",
-              state === "failed" ? "border-destructive/50 bg-destructive/10" : "",
-            )}
+            className="relative min-w-0 space-y-2.5"
           >
-            <style.icon
-              aria-hidden
-              className={cn(
-                "size-5 shrink-0",
-                style.className,
-                state === "current" ? "animate-spin" : "",
+            <div className="flex items-center">
+              <span aria-hidden className={cn("size-2.5 shrink-0 rounded-full", style.dot)} />
+              {last ? null : (
+                <span aria-hidden className={cn("mx-2 h-px flex-1 rounded-full", style.line)} />
               )}
-            />
-            <span className="min-w-0">
-              <span className="block truncate text-sm font-medium">{stage.label}</span>
-              <span className="block text-xs text-muted-foreground">{style.label}</span>
-            </span>
+            </div>
+            <p className={cn("truncate pr-2 text-xs font-medium sm:text-sm", style.text)}>
+              {stage.label}
+              <span className="sr-only">: {style.label}</span>
+            </p>
           </li>
         );
       })}

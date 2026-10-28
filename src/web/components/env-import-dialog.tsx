@@ -80,7 +80,7 @@ export function EnvImportDialog({ projectId }: { readonly projectId: string }) {
           <Textarea
             id="env-import-text"
             aria-describedby="env-import-summary"
-            className="min-h-48 font-mono text-sm"
+            className="min-h-48 bg-surface-sunken font-mono text-sm"
             spellCheck={false}
             autoComplete="off"
             placeholder={"NODE_ENV=production\nDATABASE_URL=postgres://..."}
@@ -92,7 +92,11 @@ export function EnvImportDialog({ projectId }: { readonly projectId: string }) {
           <Label htmlFor="env-import-kind">Importar como</Label>
           <VariableKindToggle id="env-import-kind" value={kind} onChange={setKind} />
         </div>
-        <div id="env-import-summary" aria-live="polite" className="space-y-1 text-sm">
+        <div
+          id="env-import-summary"
+          aria-live="polite"
+          className="space-y-1 rounded-lg bg-secondary px-3 py-2.5 text-sm ring-1 ring-border ring-inset"
+        >
           <p>
             {parsed.entries.length === 1
               ? "1 variável pronta"

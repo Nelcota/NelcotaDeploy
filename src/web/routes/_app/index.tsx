@@ -1,47 +1,38 @@
 import { useQuery } from "@tanstack/react-query";
-import { createFileRoute, Link } from "@tanstack/react-router";
-import {
-  AlertTriangleIcon,
-  BoxesIcon,
-  HeartPulseIcon,
-  PlusIcon,
-  RocketIcon,
-  ServerIcon,
-} from "lucide-react";
-import { useState } from "react";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { ArrowRightIcon, PlusIcon } from "lucide-react";
+import { type ReactNode, useState } from "react";
 
 import {
-  durationBetween,
   formatBytes,
-  formatDuration,
+  formatLongDate,
   formatPercent,
   formatRelativeTime,
   pluralize,
 } from "@/shared/format";
+import { DEPLOYMENT_STATUS_LABELS } from "@/web/components/labels";
+import { List, ListRow, Section, type Stat, StatRow } from "@/web/components/layout";
 import { MetricChart } from "@/web/components/metric-chart";
-import {
-  MetricStrip,
-  ProgressRing,
-  SegmentedControl,
-  SummaryCard,
-  SummaryGrid,
-} from "@/web/components/overview";
-import { EmptyState, ErrorState, ListSkeleton } from "@/web/components/states";
-import { DeploymentStatusBadge } from "@/web/components/status-badge";
+import { SegmentedControl } from "@/web/components/overview";
+import { containerAccent } from "@/web/components/project-accent";
+import { ErrorState } from "@/web/components/states";
+import { ContainerStateBadge } from "@/web/components/status-badge";
 import { Button } from "@/web/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/web/components/ui/card";
+import { Card, CardContent } from "@/web/components/ui/card";
 import { cn } from "@/web/components/ui/class-names";
 import { Skeleton } from "@/web/components/ui/skeleton";
 import { usagePercent } from "@/web/components/usage-meter";
 import { useCan } from "@/web/components/use-permissions";
 import { getDashboardFn, getHostMetricsFn } from "@/web/functions/dashboard.functions";
+import { listProjectsFn } from "@/web/functions/projects.functions";
 
 const REFRESH_INTERVAL_IN_MS = 10_000;
 const SHORT_SHA_LENGTH = 7;
 const HOURS_PER_DAY = 24;
+const MILLISECONDS_PER_DAY = 86_400_000;
 const WINDOWS = [
-  { value: 1, label: "1 hora" },
-  { value: HOURS_PER_DAY, label: "24 horas" },
+  { value: 1, label: "1 h" },
+  { value: HOURS_PER_DAY, label: "24 h" },
 ] as const;
 const SERIES = [
   { value: "cpu", label: "CPU", color: "--chart-1" },
@@ -53,49 +44,101 @@ export const Route = createFileRoute("/_app/")({
   component: DashboardPage,
 });
 
-const HEALTH_LABELS = {
-  healthy: { value: "Saudável", detail: "worker e Docker online", tone: "success" },
-  degraded: { value: "Com alertas", detail: "há aplicações offline", tone: "warning" },
-  unavailable: { value: "Indisponível", detail: "worker ou Docker fora do ar", tone: "danger" },
-} as const;
-
 type DashboardSummary = NonNullable<Awaited<ReturnType<typeof getDashboardFn>>>;
+type RecentDeployment = DashboardSummary["recentDeployments"][number];
 
-/** One sentence that says how things are, so the page reads at a glance. */
-function summaryLine(data: DashboardSummary): string {
-  const applications = pluralize(data.projectCount, "aplicação", "aplicações");
-  if (data.projectCount === 0) {
-    return "Nenhuma aplicação ainda. Crie o primeiro projeto para fazer deploy.";
+/** The headline: one sentence that says how things are, with the key words in status color. */
+function Headline({ data }: { readonly data: DashboardSummary }): ReactNode {
+  if (data.worker == null || data.worker.online === false) {
+    return (
+      <>
+        O <span className="text-destructive">worker está parado</span>.
+      </>
+    );
   }
-  if (data.health === "unavailable") {
-    return `${applications} · o worker ou o Docker está fora do ar, deploys ficam na fila.`;
+  if (data.worker.dockerAvailable === false) {
+    return (
+      <>
+        O <span className="text-destructive">Docker está indisponível</span>.
+      </>
+    );
+  }
+  if (data.projectCount === 0) {
+    return "Nenhuma aplicação ainda.";
   }
   if (data.offlineCount > 0) {
-    const offline =
-      data.offlineCount === 1
-        ? "1 está offline e precisa de atenção"
-        : `${data.offlineCount} estão offline e precisam de atenção`;
-    return `${applications} · ${offline}.`;
+    const verb = data.offlineCount === 1 ? "precisa" : "precisam";
+    return (
+      <>
+        <span className="text-warning">
+          {pluralize(data.offlineCount, "aplicação", "aplicações")}
+        </span>{" "}
+        {verb} de atenção.
+      </>
+    );
   }
-  return `${applications} · tudo funcionando normalmente.`;
+  return (
+    <>
+      Tudo <span className="text-success">no ar</span>.
+    </>
+  );
 }
 
-function percentOf(part: number, total: number): number | null {
-  return total > 0 ? (part / total) * 100 : null;
+function subline(data: DashboardSummary): string {
+  if (data.worker == null || data.worker.online === false) {
+    return "Deploys e tasks ficam na fila até o worker voltar.";
+  }
+  if (data.projectCount === 0) {
+    return "Crie o primeiro projeto para fazer deploy a partir de um repositório GitHub.";
+  }
+  const deployed = data.projectCount - data.neverDeployedCount;
+  return `${pluralize(data.onlineCount, "aplicação online", "aplicações online")} de ${deployed} com deploy.`;
+}
+
+function deploymentsInLastDay(deployments: readonly RecentDeployment[], now: Date): number {
+  const since = now.getTime() - MILLISECONDS_PER_DAY;
+  return deployments.filter((deployment) => new Date(deployment.createdAt).getTime() >= since)
+    .length;
+}
+
+function dashboardStats(data: DashboardSummary, now: Date): Stat[] {
+  const host = data.hostSample;
+  const failures = data.recentFailures.length;
+  return [
+    {
+      label: "Aplicações online",
+      value: `${data.onlineCount} de ${data.projectCount - data.neverDeployedCount}`,
+      tone: data.offlineCount > 0 ? "warning" : "default",
+      detail: data.offlineCount === 0 ? "nenhuma offline" : `${data.offlineCount} offline`,
+    },
+    {
+      label: "Deploys em 24 h",
+      value: deploymentsInLastDay(data.recentDeployments, now),
+      detail: "entre os mais recentes",
+    },
+    {
+      label: "Falhas em 24 h",
+      value: failures,
+      tone: failures > 0 ? "danger" : "default",
+      detail: failures > 0 ? "veja a atividade" : "nenhuma falha",
+    },
+    { label: "CPU", value: formatPercent(host?.cpuPercent ?? null), detail: "do servidor" },
+    {
+      label: "Memória",
+      value: formatPercent(usagePercent(host?.memoryUsedBytes, host?.memoryTotalBytes)),
+      detail:
+        host?.memoryTotalBytes == null
+          ? "indisponível"
+          : `${formatBytes(host.memoryUsedBytes)} de ${formatBytes(host.memoryTotalBytes)}`,
+    },
+  ];
 }
 
 function DashboardPage() {
   const can = useCan();
-  const [hours, setHours] = useState<number>(1);
-  const [series, setSeries] = useState<(typeof SERIES)[number]["value"]>("cpu");
   const dashboard = useQuery({
     queryKey: ["dashboard"],
     queryFn: () => getDashboardFn(),
-    refetchInterval: REFRESH_INTERVAL_IN_MS,
-  });
-  const hostMetrics = useQuery({
-    queryKey: ["host-metrics", hours],
-    queryFn: () => getHostMetricsFn({ data: { hours } }),
     refetchInterval: REFRESH_INTERVAL_IN_MS,
   });
 
@@ -104,154 +147,227 @@ function DashboardPage() {
   }
   const data = dashboard.data;
   const now = new Date();
-  const host = data?.hostSample ?? null;
-  const finished = (data?.recentDeployments ?? []).filter(
-    (deployment) => deployment.status === "succeeded" || deployment.status === "failed",
-  );
-  const succeeded = finished.filter((deployment) => deployment.status === "succeeded").length;
-  const memoryPercent = usagePercent(host?.memoryUsedBytes, host?.memoryTotalBytes);
-  const selectedSeries = SERIES.find((item) => item.value === series) ?? SERIES[0];
 
   return (
     <>
-      <section className="flex flex-col gap-6 2xl:flex-row 2xl:items-center 2xl:justify-between">
-        <div className="min-w-0 flex-1 space-y-5">
-          <div className="space-y-1.5">
-            <h1 className="text-3xl leading-tight font-medium tracking-tight">Painel</h1>
-            <p className="text-base text-muted-foreground">
-              {data == null ? "Carregando a situação do servidor…" : summaryLine(data)}
-            </p>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {can("project:write") ? (
-              <Button size="sm" asChild>
-                <Link to="/projects/new">
-                  <PlusIcon aria-hidden />
-                  Novo projeto
-                </Link>
-              </Button>
-            ) : null}
-            <Button size="sm" variant="outline" asChild>
-              <Link to="/deployments">
-                <RocketIcon aria-hidden />
-                Ver deploys
+      <section className="flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
+        <div className="min-w-0 space-y-3">
+          <p className="text-sm font-medium text-muted-foreground first-letter:uppercase">
+            {formatLongDate(now)}
+          </p>
+          <h1 className="text-3xl leading-tight font-semibold tracking-tight md:text-4xl">
+            {data == null ? "Carregando…" : <Headline data={data} />}
+          </h1>
+          <p className="text-base text-muted-foreground">
+            {data == null ? "Lendo o estado do servidor." : subline(data)}
+          </p>
+        </div>
+        <div className="flex shrink-0 flex-wrap gap-2">
+          <Button variant="outline" asChild>
+            <Link to="/deployments">Ver deploys</Link>
+          </Button>
+          {can("project:write") ? (
+            <Button asChild>
+              <Link to="/projects/new">
+                <PlusIcon aria-hidden />
+                Novo projeto
               </Link>
             </Button>
-          </div>
+          ) : null}
         </div>
-        {data == null ? (
-          <Skeleton className="h-[5.5rem] w-full rounded-xl 2xl:w-[44rem]" />
-        ) : (
-          <MetricStrip
-            className="2xl:w-[44rem] 2xl:shrink-0"
-            metrics={[
-              {
-                label: "Ambiente",
-                icon: HeartPulseIcon,
-                tone: HEALTH_LABELS[data.health].tone,
-                value: HEALTH_LABELS[data.health].value,
-                detail: HEALTH_LABELS[data.health].detail,
-              },
-              {
-                label: "Aplicações online",
-                icon: BoxesIcon,
-                tone: data.offlineCount > 0 ? "warning" : "neutral",
-                value: `${data.onlineCount} de ${data.projectCount - data.neverDeployedCount}`,
-                detail:
-                  data.offlineCount === 0
-                    ? "nenhuma offline"
-                    : pluralize(data.offlineCount, "offline", "offline"),
-              },
-              {
-                label: "Falhas em 24 h",
-                icon: AlertTriangleIcon,
-                tone: data.recentFailures.length > 0 ? "danger" : "neutral",
-                value: data.recentFailures.length,
-                detail:
-                  data.recentDeployments.length === 0
-                    ? "nenhum deploy recente"
-                    : `em ${pluralize(data.recentDeployments.length, "deploy recente", "deploys recentes")}`,
-              },
-            ]}
-          />
-        )}
       </section>
 
       {data == null ? (
-        <Skeleton className="h-72 rounded-xl" />
+        <Skeleton className="h-28 rounded-xl" />
       ) : (
-        <SummaryGrid>
-          <SummaryCard
-            icon={BoxesIcon}
-            iconClassName="text-brand"
-            title="Aplicações"
-            link={{ to: "/projects" }}
-            metricLabel="Online agora"
-            value={data.onlineCount}
-            caption={`de ${data.projectCount - data.neverDeployedCount} com deploy`}
-            aside={
-              <ProgressRing
-                label="Aplicações online"
-                percent={percentOf(data.onlineCount, data.projectCount - data.neverDeployedCount)}
-              />
-            }
-            links={[
-              { label: "Ver projetos", to: "/projects" },
-              { label: "Novo projeto", to: "/projects/new" },
-            ]}
-          />
-          <SummaryCard
-            icon={RocketIcon}
-            iconClassName="text-success"
-            title="Deploys"
-            link={{ to: "/deployments" }}
-            metricLabel="Concluídos com sucesso"
-            value={succeeded}
-            caption={
-              data.recentDeployments[0] == null
-                ? "Nenhum deploy ainda"
-                : `Último ${formatRelativeTime(data.recentDeployments[0].createdAt, now)}`
-            }
-            aside={
-              <ProgressRing
-                label="Taxa de sucesso"
-                percent={percentOf(succeeded, finished.length)}
-              />
-            }
-            links={[
-              { label: "Histórico", to: "/deployments" },
-              { label: "Webhook", to: "/settings", search: { tab: "server" } },
-            ]}
-          />
-          <SummaryCard
-            icon={ServerIcon}
-            iconClassName="text-warning"
-            title="Servidor"
-            link={{ to: "/settings", search: { tab: "server" } }}
-            metricLabel="CPU"
-            value={formatPercent(host?.cpuPercent ?? null)}
-            caption={
-              host?.memoryTotalBytes == null
-                ? "Memória indisponível"
-                : `Memória ${formatBytes(host.memoryUsedBytes)} de ${formatBytes(host.memoryTotalBytes)}`
-            }
-            aside={<ProgressRing label="Memória em uso" percent={memoryPercent} />}
-            links={[
-              { label: "Recursos", to: "/settings", search: { tab: "server" } },
-              { label: "Auditoria", to: "/settings", search: { tab: "audit" } },
-            ]}
-          />
-        </SummaryGrid>
+        <StatRow stats={dashboardStats(data, now)} />
       )}
 
-      <section className="space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <h2 className="text-base font-medium">
-            Uso do servidor{" "}
-            <span className="text-muted-foreground">
-              · {hours === 1 ? "última hora" : "últimas 24 horas"}
+      <div className="grid gap-10 lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
+        <ApplicationsSection canCreate={can("project:write")} />
+        <ActivitySection deployments={data?.recentDeployments ?? null} now={now} />
+      </div>
+
+      <ServerSection />
+    </>
+  );
+}
+
+function ApplicationsSection({ canCreate }: { readonly canCreate: boolean }) {
+  const navigate = useNavigate();
+  const projects = useQuery({
+    queryKey: ["projects", ""],
+    queryFn: () => listProjectsFn({ data: { search: "" } }),
+    refetchInterval: REFRESH_INTERVAL_IN_MS,
+  });
+  const now = new Date();
+  const list = projects.data ?? [];
+  return (
+    <Section
+      title="Aplicações"
+      description="Estado do contêiner atual de cada projeto."
+      action={
+        <Link
+          to="/projects"
+          className="inline-flex items-center gap-1 text-sm text-muted-foreground transition-colors hover:text-foreground"
+        >
+          Todos os projetos
+          <ArrowRightIcon aria-hidden className="size-3.5" />
+        </Link>
+      }
+    >
+      {projects.isPending ? <Skeleton className="h-40 rounded-xl" /> : null}
+      {projects.isError ? (
+        <ErrorState error={projects.error} onRetry={() => void projects.refetch()} />
+      ) : null}
+      {projects.isSuccess ? (
+        <List>
+          {list.length === 0 ? (
+            <ListRow>
+              <p className="flex-1 text-sm text-muted-foreground">Nenhuma aplicação ainda.</p>
+              {canCreate ? (
+                <Button size="sm" variant="outline" asChild>
+                  <Link to="/projects/new">Criar projeto</Link>
+                </Button>
+              ) : null}
+            </ListRow>
+          ) : null}
+          {list.map((project) => (
+            <ListRow
+              key={project.id}
+              accent={containerAccent(project.containerState, project.containerHealth)}
+            >
+              <button
+                type="button"
+                aria-label={`Abrir ${project.name}`}
+                onClick={() =>
+                  void navigate({ to: "/projects/$projectId", params: { projectId: project.id } })
+                }
+                className="absolute inset-0 cursor-pointer focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none focus-visible:ring-inset"
+              />
+              <div className="min-w-0 flex-1">
+                <p className="truncate font-medium">{project.name}</p>
+                <p className="truncate font-mono text-xs text-faint">
+                  {project.repositoryFullName}
+                </p>
+              </div>
+              <p className="hidden shrink-0 text-xs text-faint sm:block">
+                {project.latestDeployment == null
+                  ? "sem deploy"
+                  : `deploy ${formatRelativeTime(project.latestDeployment.createdAt, now)}`}
+              </p>
+              <div className="w-36 shrink-0 text-right">
+                <ContainerStateBadge
+                  state={project.containerState}
+                  health={project.containerHealth}
+                />
+              </div>
+            </ListRow>
+          ))}
+        </List>
+      ) : null}
+    </Section>
+  );
+}
+
+const FEED_DOT: Readonly<Record<string, string>> = {
+  succeeded: "bg-success",
+  failed: "bg-destructive",
+  cancelled: "bg-faint",
+};
+
+function ActivityItem({
+  deployment,
+  now,
+}: {
+  readonly deployment: RecentDeployment;
+  readonly now: Date;
+}) {
+  const failed = deployment.status === "failed";
+  const sha = deployment.commitSha?.slice(0, SHORT_SHA_LENGTH) ?? "—";
+  return (
+    <li>
+      <Link
+        to="/projects/$projectId/deployments/$deploymentId"
+        params={{ projectId: deployment.projectId, deploymentId: deployment.id }}
+        className="relative flex gap-4 rounded-lg py-2 pr-2 transition-colors hover:bg-surface-raised/60 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+      >
+        <span
+          aria-hidden
+          className={cn(
+            "relative mt-1.5 size-2.5 shrink-0 rounded-full ring-4 ring-background",
+            FEED_DOT[deployment.status] ?? "animate-pulse bg-brand",
+          )}
+        />
+        <span className="min-w-0 flex-1">
+          <span className="flex items-baseline justify-between gap-3">
+            <span className="truncate text-sm font-medium">{deployment.projectName}</span>
+            <time dateTime={deployment.createdAt} className="shrink-0 text-xs text-faint">
+              {formatRelativeTime(deployment.createdAt, now)}
+            </time>
+          </span>
+          <span className="block truncate text-xs text-muted-foreground">
+            <span className="font-mono">{sha}</span>
+            {" · "}
+            {deployment.commitMessage ?? "sem mensagem"}
+          </span>
+          {failed ? (
+            <span className="block truncate text-xs text-destructive">
+              {DEPLOYMENT_STATUS_LABELS.failed}
+              {deployment.errorMessage == null ? "" : ` · ${deployment.errorMessage}`}
             </span>
-          </h2>
+          ) : null}
+        </span>
+      </Link>
+    </li>
+  );
+}
+
+function ActivitySection({
+  deployments,
+  now,
+}: {
+  readonly deployments: readonly RecentDeployment[] | null;
+  readonly now: Date;
+}) {
+  return (
+    <Section title="Atividade" description="Deploys mais recentes.">
+      {deployments == null ? <Skeleton className="h-40 rounded-xl" /> : null}
+      {deployments?.length === 0 ? (
+        <p className="text-sm text-muted-foreground">Nenhum deploy ainda.</p>
+      ) : null}
+      {deployments == null || deployments.length === 0 ? null : (
+        <ol className="relative space-y-1 before:absolute before:top-3 before:bottom-3 before:left-1 before:w-px before:bg-border">
+          {deployments.map((deployment) => (
+            <ActivityItem key={deployment.id} deployment={deployment} now={now} />
+          ))}
+        </ol>
+      )}
+    </Section>
+  );
+}
+
+function ServerSection() {
+  const [hours, setHours] = useState<number>(1);
+  const [series, setSeries] = useState<(typeof SERIES)[number]["value"]>("cpu");
+  const hostMetrics = useQuery({
+    queryKey: ["host-metrics", hours],
+    queryFn: () => getHostMetricsFn({ data: { hours } }),
+    refetchInterval: REFRESH_INTERVAL_IN_MS,
+  });
+  const selected = SERIES.find((item) => item.value === series) ?? SERIES[0];
+  return (
+    <Section
+      title="Servidor"
+      description={hours === 1 ? "Uso na última hora." : "Uso nas últimas 24 horas."}
+      action={
+        <div className="flex flex-wrap items-center gap-3">
+          <SegmentedControl
+            label="Série"
+            options={SERIES.map((item) => ({ value: item.value, label: item.label }))}
+            value={series}
+            onChange={setSeries}
+          />
           <SegmentedControl
             label="Janela de tempo"
             options={WINDOWS}
@@ -259,145 +375,29 @@ function DashboardPage() {
             onChange={setHours}
           />
         </div>
-        <Card className="gap-4">
-          <CardHeader className="flex flex-row items-center justify-between">
-            <div
-              role="radiogroup"
-              aria-label="Série"
-              className="inline-flex rounded-lg border bg-surface-sunken/70 p-1"
-            >
-              {SERIES.map((item) => (
-                <button
-                  key={item.value}
-                  type="button"
-                  role="radio"
-                  aria-checked={series === item.value}
-                  onClick={() => setSeries(item.value)}
-                  className={cn(
-                    "flex h-9 items-center gap-2 rounded-lg px-3.5 text-sm font-semibold transition-colors focus-visible:ring-4 focus-visible:ring-ring/30 focus-visible:outline-none",
-                    series === item.value
-                      ? "bg-surface-raised text-foreground"
-                      : "text-muted-foreground hover:text-foreground",
-                  )}
-                >
-                  <span
-                    aria-hidden
-                    className="size-2 rounded-full"
-                    style={{ background: `var(${item.color})` }}
-                  />
-                  {item.label}
-                </button>
-              ))}
-            </div>
-            <span className="text-sm text-muted-foreground">
-              Atual{" "}
-              <strong className="text-foreground tabular-nums">
-                {formatPercent(series === "cpu" ? (host?.cpuPercent ?? null) : memoryPercent)}
-              </strong>
-            </span>
-          </CardHeader>
-          <CardContent>
-            {hostMetrics.data == null ? (
-              <Skeleton className="h-64 rounded-lg" />
-            ) : (
-              <MetricChart
-                label={selectedSeries.label}
-                colorVariable={selectedSeries.color}
-                maxValue={100}
-                formatValue={(value) => `${Math.round(value)}%`}
-                points={hostMetrics.data.map((sample) => ({
-                  createdAt: sample.createdAt,
-                  value:
-                    series === "cpu"
-                      ? sample.cpuPercent
-                      : usagePercent(sample.memoryUsedBytes, sample.memoryTotalBytes),
-                }))}
-              />
-            )}
-          </CardContent>
-        </Card>
-      </section>
-
-      <section className="grid gap-4 lg:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle>Deploys recentes</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {data == null ? (
-              <ListSkeleton />
-            ) : (
-              <DeploymentList
-                deployments={data.recentDeployments}
-                now={now}
-                empty="Nenhum deploy ainda."
-              />
-            )}
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle>Falhas recentes</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {data == null ? (
-              <ListSkeleton />
-            ) : (
-              <DeploymentList
-                deployments={data.recentFailures}
-                now={now}
-                empty="Nenhuma falha nas últimas 24 horas."
-              />
-            )}
-          </CardContent>
-        </Card>
-      </section>
-    </>
-  );
-}
-
-type DashboardDeployment = NonNullable<
-  Awaited<ReturnType<typeof getDashboardFn>>
->["recentDeployments"][number];
-
-function DeploymentList({
-  deployments,
-  now,
-  empty,
-}: {
-  readonly deployments: readonly DashboardDeployment[];
-  readonly now: Date;
-  readonly empty: string;
-}) {
-  if (deployments.length === 0) {
-    return <EmptyState icon={RocketIcon} title={empty} />;
-  }
-  return (
-    <ul className="divide-y">
-      {deployments.map((deployment) => (
-        <li key={deployment.id}>
-          <Link
-            to="/projects/$projectId/deployments/$deploymentId"
-            params={{ projectId: deployment.projectId, deploymentId: deployment.id }}
-            className="flex items-center justify-between gap-3 rounded-lg px-3 py-3 transition-colors hover:bg-surface-raised focus-visible:ring-4 focus-visible:ring-ring/30 focus-visible:outline-none"
-          >
-            <div className="min-w-0">
-              <p className="truncate text-sm font-medium">{deployment.projectName}</p>
-              <p className="truncate text-xs text-muted-foreground">
-                {deployment.commitSha?.slice(0, SHORT_SHA_LENGTH) ?? "—"} ·{" "}
-                {deployment.commitMessage ?? deployment.errorMessage ?? "sem mensagem"}
-              </p>
-            </div>
-            <div className="flex shrink-0 flex-col items-end gap-1">
-              <DeploymentStatusBadge status={deployment.status} />
-              <span className="text-xs text-muted-foreground">
-                {formatRelativeTime(deployment.createdAt, now)} ·{" "}
-                {formatDuration(durationBetween(deployment.startedAt, deployment.finishedAt))}
-              </span>
-            </div>
-          </Link>
-        </li>
-      ))}
-    </ul>
+      }
+    >
+      <Card className="py-5">
+        <CardContent className="px-5">
+          {hostMetrics.data == null ? (
+            <Skeleton className="h-64 rounded-lg" />
+          ) : (
+            <MetricChart
+              label={selected.label}
+              colorVariable={selected.color}
+              maxValue={100}
+              formatValue={(value) => `${Math.round(value)}%`}
+              points={hostMetrics.data.map((sample) => ({
+                createdAt: sample.createdAt,
+                value:
+                  series === "cpu"
+                    ? sample.cpuPercent
+                    : usagePercent(sample.memoryUsedBytes, sample.memoryTotalBytes),
+              }))}
+            />
+          )}
+        </CardContent>
+      </Card>
+    </Section>
   );
 }

@@ -6,80 +6,83 @@
 @custom-variant dark (&:is(.dark *));
 
 /*
- * Nelcota Deploy design tokens.
- * Dark (default) is graphite, never pure black; the accent is the Nelcota brand blue.
+ * Nelcota Deploy — "quiet control room".
+ * Near-black canvas, surfaces separated by tone instead of borders, Nelcota blue only for
+ * actions and focus, and green/amber/red reserved for status.
  */
 :root {
-  --radius: 0.5rem;
-  --brand: #003fda;
-  --background: #f3f5f8;
-  --foreground: #141922;
+  --radius: 0.625rem;
+  --brand: #1f55f0;
+  --background: #f6f6f4;
+  --foreground: #131315;
   --surface: #ffffff;
   --surface-raised: #ffffff;
-  --surface-sunken: #e9edf2;
+  --surface-sunken: #eeeeeb;
   --card: #ffffff;
-  --card-foreground: #141922;
+  --card-foreground: #131315;
   --popover: #ffffff;
-  --popover-foreground: #141922;
+  --popover-foreground: #131315;
   --primary: #1f55f0;
   --primary-foreground: #ffffff;
-  --secondary: #e9edf2;
-  --secondary-foreground: #1d2430;
-  --muted: #e9edf2;
-  --muted-foreground: #556070;
-  --accent: #e6ecfb;
-  --accent-foreground: #0f2f9a;
-  --destructive: #d6283c;
-  --border: #dde2ea;
-  --input: #d3d9e2;
-  --ring: #2f6bff;
-  --success: #138a4f;
-  --warning: #b26b00;
-  --chart-1: #2f6bff;
-  --chart-2: #0e9f6e;
-  --chart-3: #d97706;
+  --secondary: #ecece8;
+  --secondary-foreground: #1b1b1e;
+  --muted: #ecece8;
+  --muted-foreground: #66666d;
+  --faint: #9a9aa0;
+  --accent: #e9efff;
+  --accent-foreground: #1a3fb8;
+  --destructive: #d92d3f;
+  --border: #e4e4e0;
+  --input: #d9d9d4;
+  --ring: #1f55f0;
+  --success: #12875a;
+  --warning: #b36a00;
+  --chart-1: #1f55f0;
+  --chart-2: #12a06a;
+  --chart-3: #d48806;
   --sidebar: #ffffff;
-  --sidebar-foreground: #141922;
-  --sidebar-accent: #eef2fb;
-  --sidebar-border: #e3e7ee;
-  --console: #1c2027;
-  --console-foreground: #e4e8ee;
+  --sidebar-foreground: #131315;
+  --sidebar-accent: #f0f0ed;
+  --sidebar-border: #e4e4e0;
+  --console: #121214;
+  --console-foreground: #e4e4e7;
 }
 
 .dark {
-  --brand: #4a7dff;
-  --background: #262626;
-  --foreground: #ededed;
-  --surface: #2b2b2b;
-  --surface-raised: #323232;
-  --surface-sunken: #212121;
-  --card: #2a2a2a;
-  --card-foreground: #ededed;
-  --popover: #2e2e2e;
-  --popover-foreground: #ededed;
-  --primary: #1f55f0;
+  --brand: #5b84ff;
+  --background: #0d0d0e;
+  --foreground: #f1f1f3;
+  --surface: #151517;
+  --surface-raised: #1c1c1f;
+  --surface-sunken: #0a0a0b;
+  --card: #141416;
+  --card-foreground: #f1f1f3;
+  --popover: #18181b;
+  --popover-foreground: #f1f1f3;
+  --primary: #3c68ff;
   --primary-foreground: #ffffff;
-  --secondary: #333333;
-  --secondary-foreground: #ededed;
-  --muted: #333333;
-  --muted-foreground: #a3a3a3;
-  --accent: #1d2a4d;
-  --accent-foreground: #c9d7ff;
-  --destructive: #ff5b6b;
-  --border: #363636;
-  --input: #3d3d3d;
-  --ring: #4a7dff;
-  --success: #3ccf8e;
-  --warning: #f2b544;
-  --chart-1: #4a7dff;
-  --chart-2: #3ccf8e;
-  --chart-3: #f2b544;
-  --sidebar: #101010;
-  --sidebar-foreground: #ededed;
-  --sidebar-accent: #222222;
-  --sidebar-border: #262626;
-  --console: #1c1c1c;
-  --console-foreground: #e6e6e6;
+  --secondary: #1d1d20;
+  --secondary-foreground: #f1f1f3;
+  --muted: #1d1d20;
+  --muted-foreground: #96969e;
+  --faint: #66666e;
+  --accent: #161f3d;
+  --accent-foreground: #bccbff;
+  --destructive: #ff6b78;
+  --border: #222226;
+  --input: #2b2b30;
+  --ring: #5b84ff;
+  --success: #3fd49a;
+  --warning: #f7bf4f;
+  --chart-1: #5b84ff;
+  --chart-2: #3fd49a;
+  --chart-3: #f7bf4f;
+  --sidebar: #0d0d0e;
+  --sidebar-foreground: #f1f1f3;
+  --sidebar-accent: #1a1a1d;
+  --sidebar-border: #1e1e22;
+  --console: #08080a;
+  --console-foreground: #e4e4e7;
 }
 
 @theme inline {
@@ -115,6 +118,7 @@
   --color-secondary-foreground: var(--secondary-foreground);
   --color-muted: var(--muted);
   --color-muted-foreground: var(--muted-foreground);
+  --color-faint: var(--faint);
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
   --color-destructive: var(--destructive);

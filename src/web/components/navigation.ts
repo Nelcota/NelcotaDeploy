@@ -27,21 +27,16 @@ export const MAIN_AREAS = [
   { to: "/settings", label: "Administração", icon: ShieldCheckIcon, exact: false },
 ] as const;
 
-/** Pages of one project, listed in the sidebar while a project is open. */
+/** Pages of one project, shown as tabs under the project header. */
 export const PROJECT_SECTIONS = [
   { to: "/projects/$projectId", label: "Visão geral", icon: HomeIcon, exact: true },
   { to: "/projects/$projectId/deployments", label: "Deploys", icon: RocketIcon, exact: false },
   { to: "/projects/$projectId/logs", label: "Logs", icon: ScrollTextIcon, exact: false },
+  { to: "/projects/$projectId/metrics", label: "Métricas", icon: ActivityIcon, exact: false },
   { to: "/projects/$projectId/environment", label: "Variáveis", icon: VariableIcon, exact: false },
   { to: "/projects/$projectId/domains", label: "Domínios", icon: GlobeIcon, exact: false },
   { to: "/projects/$projectId/tasks", label: "Tasks", icon: ClockIcon, exact: false },
-  { to: "/projects/$projectId/metrics", label: "Métricas", icon: ActivityIcon, exact: false },
-  {
-    to: "/projects/$projectId/settings",
-    label: "Ajustes do projeto",
-    icon: SettingsIcon,
-    exact: false,
-  },
+  { to: "/projects/$projectId/settings", label: "Ajustes", icon: SettingsIcon, exact: false },
 ] as const;
 
 /** Sections of the settings page; each is a `?tab=` value. */

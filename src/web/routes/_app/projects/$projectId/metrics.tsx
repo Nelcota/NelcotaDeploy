@@ -1,24 +1,15 @@
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
-import { ActivityIcon } from "lucide-react";
 import { useState } from "react";
 
-import { formatBytes, formatDateTime, formatRelativeTime } from "@/shared/format";
+import { formatBytes, formatPercent, formatRelativeTime, formatShortTime } from "@/shared/format";
+import { type Stat, StatRow } from "@/web/components/layout";
 import { MetricChart } from "@/web/components/metric-chart";
 import { SegmentedControl } from "@/web/components/overview";
-import { PageHeader } from "@/web/components/page-header";
+import { currentContainer, TabHeader } from "@/web/components/project-header";
 import { projectQueryOptions } from "@/web/components/project-query";
-import { EmptyState, ErrorState } from "@/web/components/states";
-import { ContainerStateBadge } from "@/web/components/status-badge";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/web/components/ui/card";
+import { ErrorState } from "@/web/components/states";
 import { Skeleton } from "@/web/components/ui/skeleton";
-import { UsageMeter } from "@/web/components/usage-meter";
 import { getProjectMetricsFn } from "@/web/functions/monitoring.functions";
 
 const WINDOWS = [
@@ -44,18 +35,43 @@ function ProjectMetricsPage() {
     refetchInterval: REFRESH_INTERVAL_IN_MS,
   });
 
-  const currentDeploymentId = project.data?.project.currentDeploymentId ?? null;
-  const container =
-    project.data?.containers.find((candidate) => candidate.deploymentId === currentDeploymentId) ??
-    null;
+  const container = project.data == null ? null : currentContainer(project.data);
   const samples = metrics.data ?? [];
   const latest = samples.at(-1) ?? null;
   const now = new Date();
   const cpuIdle = samples.length > 0 && samples.every((sample) => (sample.cpuPercent ?? 0) === 0);
 
+  const stats: Stat[] = [
+    {
+      label: "CPU agora",
+      value: formatPercent(latest?.cpuPercent ?? null),
+      detail: latest == null ? "sem amostras" : formatRelativeTime(latest.createdAt, now),
+    },
+    {
+      label: "Memória em uso",
+      value: formatBytes(latest?.memoryUsedBytes ?? null),
+      // Docker reports the host memory as the limit when the container has none.
+      detail:
+        latest?.memoryTotalBytes == null
+          ? "limite indisponível"
+          : `limite visto: ${formatBytes(latest.memoryTotalBytes)}`,
+    },
+    {
+      label: "Reinícios",
+      value: container == null ? "—" : container.restartCount,
+      tone: (container?.restartCount ?? 0) > 0 ? "warning" : "default",
+    },
+    {
+      label: "Em execução desde",
+      value: container?.startedAt == null ? "—" : formatShortTime(container.startedAt),
+      detail:
+        container?.startedAt == null ? undefined : formatRelativeTime(container.startedAt, now),
+    },
+  ];
+
   return (
-    <section aria-label="Métricas" className="space-y-6">
-      <PageHeader
+    <section aria-label="Métricas" className="space-y-8">
+      <TabHeader
         title="Métricas"
         description="CPU e memória do contêiner atual, coletadas pelo worker."
         actions={
@@ -63,120 +79,51 @@ function ProjectMetricsPage() {
         }
       />
 
-      <div className="grid gap-4 lg:grid-cols-3">
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Agora</CardTitle>
-            <CardDescription>
-              {latest == null
-                ? "Sem amostras recentes"
-                : `Última amostra ${formatRelativeTime(latest.createdAt, now)}`}
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <UsageMeter label="CPU" percent={latest?.cpuPercent ?? null} />
-            <div className="space-y-1">
-              <p className="text-sm font-semibold">Memória em uso</p>
-              <p className="text-2xl font-semibold tracking-tight tabular-nums">
-                {formatBytes(latest?.memoryUsedBytes ?? null)}
-              </p>
-              <p className="text-xs text-muted-foreground">
-                {/* Docker reports the host memory as the limit when the container has none. */}
-                {latest?.memoryTotalBytes == null
-                  ? "Limite indisponível"
-                  : `Limite visto pelo contêiner: ${formatBytes(latest.memoryTotalBytes)}`}
-              </p>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="lg:col-span-2">
-          <CardHeader>
-            <CardTitle className="text-base">Contêiner</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {container == null ? (
-              <p className="text-sm text-muted-foreground">
-                Nenhum contêiner do deploy atual foi observado pelo worker.
-              </p>
-            ) : (
-              <dl className="grid gap-4 sm:grid-cols-2">
-                <div className="space-y-1">
-                  <dt className="text-xs text-muted-foreground">Estado</dt>
-                  <dd>
-                    <ContainerStateBadge state={container.state} health={container.health} />
-                  </dd>
-                </div>
-                <div className="space-y-1">
-                  <dt className="text-xs text-muted-foreground">Nome</dt>
-                  <dd className="truncate font-mono text-xs">{container.name}</dd>
-                </div>
-                <div className="space-y-1">
-                  <dt className="text-xs text-muted-foreground">Em execução desde</dt>
-                  <dd className="text-sm">
-                    {container.startedAt == null
-                      ? "—"
-                      : `${formatDateTime(container.startedAt)} (${formatRelativeTime(container.startedAt, now)})`}
-                  </dd>
-                </div>
-                <div className="space-y-1">
-                  <dt className="text-xs text-muted-foreground">Reinicializações</dt>
-                  <dd className="text-sm tabular-nums">{container.restartCount}</dd>
-                </div>
-              </dl>
-            )}
-          </CardContent>
-        </Card>
-      </div>
+      <StatRow stats={stats} />
 
       {metrics.isError ? (
         <ErrorState error={metrics.error} onRetry={() => void metrics.refetch()} />
       ) : null}
-      {metrics.isPending ? <Skeleton className="h-64" /> : null}
+      {metrics.isPending ? <Skeleton className="h-80 rounded-xl" /> : null}
       {metrics.isSuccess && samples.length === 0 ? (
-        <EmptyState
-          icon={ActivityIcon}
-          title="Sem amostras"
-          description="Nenhuma métrica foi coletada neste período. As amostras aparecem quando o contêiner está em execução e o worker está online."
-        />
+        <p className="rounded-xl bg-card px-5 py-6 text-sm text-muted-foreground ring-1 ring-border/70">
+          Nenhuma amostra neste período. Elas aparecem enquanto o contêiner roda e o worker está
+          online.
+        </p>
       ) : null}
       {samples.length > 0 ? (
-        <div className="grid gap-4 lg:grid-cols-2">
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">CPU</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {cpuIdle ? (
-                <p className="mb-2 text-xs text-muted-foreground">CPU ociosa no período.</p>
-              ) : null}
-              <MetricChart
-                label="CPU"
-                colorVariable="--chart-1"
-                maxValue={MAX_CPU_PERCENT}
-                formatValue={(value) => `${Math.round(value)}%`}
-                points={samples.map((sample) => ({
-                  createdAt: sample.createdAt,
-                  value: sample.cpuPercent,
-                }))}
-              />
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Memória</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <MetricChart
-                label="Memória"
-                colorVariable="--chart-2"
-                formatValue={formatBytes}
-                points={samples.map((sample) => ({
-                  createdAt: sample.createdAt,
-                  value: sample.memoryUsedBytes,
-                }))}
-              />
-            </CardContent>
-          </Card>
+        <div className="grid divide-y divide-border rounded-xl bg-card ring-1 ring-border/70 lg:grid-cols-2 lg:divide-x lg:divide-y-0">
+          <div className="space-y-4 p-5">
+            <div className="flex items-baseline justify-between gap-3">
+              <h3 className="text-sm font-semibold">CPU</h3>
+              <span className="text-xs text-faint">{cpuIdle ? "ociosa no período" : "%"}</span>
+            </div>
+            <MetricChart
+              label="CPU"
+              colorVariable="--chart-1"
+              maxValue={MAX_CPU_PERCENT}
+              formatValue={(value) => `${Math.round(value)}%`}
+              points={samples.map((sample) => ({
+                createdAt: sample.createdAt,
+                value: sample.cpuPercent,
+              }))}
+            />
+          </div>
+          <div className="space-y-4 p-5">
+            <div className="flex items-baseline justify-between gap-3">
+              <h3 className="text-sm font-semibold">Memória</h3>
+              <span className="text-xs text-faint">em uso</span>
+            </div>
+            <MetricChart
+              label="Memória"
+              colorVariable="--chart-2"
+              formatValue={formatBytes}
+              points={samples.map((sample) => ({
+                createdAt: sample.createdAt,
+                value: sample.memoryUsedBytes,
+              }))}
+            />
+          </div>
         </div>
       ) : null}
     </section>

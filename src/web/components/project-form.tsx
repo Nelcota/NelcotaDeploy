@@ -1,5 +1,5 @@
 import { useForm } from "@tanstack/react-form";
-import { LoaderCircleIcon } from "lucide-react";
+import { ChevronRightIcon, LoaderCircleIcon } from "lucide-react";
 import { useState } from "react";
 import type { z } from "zod";
 
@@ -115,13 +115,13 @@ export function ProjectForm({
   return (
     <form
       noValidate
-      className="space-y-6"
+      className="space-y-8"
       onSubmit={(event) => {
         event.preventDefault();
         void form.handleSubmit();
       }}
     >
-      <fieldset disabled={disabled} className="grid gap-4 sm:grid-cols-2">
+      <fieldset disabled={disabled} className="grid gap-x-6 gap-y-5 md:grid-cols-2">
         <form.Field name="name">
           {(field) => (
             <FormField id="project-name" label="Nome" errors={field.state.meta.errors}>
@@ -222,7 +222,7 @@ export function ProjectForm({
         </form.Field>
         <form.Field name="autoDeploy">
           {(field) => (
-            <div className="flex items-start gap-3 rounded-md border p-3 sm:self-end">
+            <div className="flex items-start gap-3 rounded-lg bg-secondary/60 p-3.5 ring-1 ring-border/70 ring-inset md:self-end">
               <Switch
                 id="project-auto-deploy"
                 checked={field.state.value}
@@ -240,11 +240,16 @@ export function ProjectForm({
             </div>
           )}
         </form.Field>
-        <details className="group rounded-md border p-3 sm:col-span-2">
-          <summary className="cursor-pointer text-sm font-medium focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none">
+        <details className="group border-t border-border/70 pt-5 md:col-span-2">
+          <summary className="flex w-fit cursor-pointer list-none items-center gap-1.5 rounded-md text-sm font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none [&::-webkit-details-marker]:hidden">
+            <ChevronRightIcon
+              aria-hidden
+              className="size-4 transition-transform group-open:rotate-90"
+            />
             Avançado
+            <span className="font-normal text-faint">Dockerfile, diretório e health check</span>
           </summary>
-          <div className="mt-4 grid gap-4 sm:grid-cols-2">
+          <div className="mt-5 grid gap-x-6 gap-y-5 md:grid-cols-2">
             <form.Field name="dockerfilePath">
               {(field) => (
                 <FormField
@@ -308,14 +313,16 @@ export function ProjectForm({
           </div>
         </details>
       </fieldset>
-      <form.Subscribe selector={(state) => [state.canSubmit, state.isSubmitting] as const}>
-        {([canSubmit, isSubmitting]) => (
-          <Button type="submit" disabled={disabled || canSubmit === false || isSubmitting}>
-            {isSubmitting ? <LoaderCircleIcon aria-hidden className="animate-spin" /> : null}
-            {submitLabel}
-          </Button>
-        )}
-      </form.Subscribe>
+      <div className="flex justify-end border-t border-border/70 pt-5">
+        <form.Subscribe selector={(state) => [state.canSubmit, state.isSubmitting] as const}>
+          {([canSubmit, isSubmitting]) => (
+            <Button type="submit" disabled={disabled || canSubmit === false || isSubmitting}>
+              {isSubmitting ? <LoaderCircleIcon aria-hidden className="animate-spin" /> : null}
+              {submitLabel}
+            </Button>
+          )}
+        </form.Subscribe>
+      </div>
     </form>
   );
 }

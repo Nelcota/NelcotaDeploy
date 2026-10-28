@@ -1,24 +1,23 @@
 import { useInfiniteQuery } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { createColumnHelper, tableFeatures, useTable } from "@tanstack/react-table";
-import { RocketIcon } from "lucide-react";
 import { useMemo, useState } from "react";
 
-import type { Deployment, DeploymentStatus } from "@/deployments";
+import type { DeploymentStatus } from "@/deployments";
 import {
   durationBetween,
   formatDateTime,
   formatDuration,
   formatRelativeTime,
 } from "@/shared/format";
-import { DeploymentRow } from "@/web/components/deployment-row";
+import { DeploymentListRow } from "@/web/components/deployment-row";
 import {
   ACTIVE_DEPLOYMENT_STATUSES,
   DEPLOYMENT_STATUS_LABELS,
   DEPLOYMENT_TRIGGER_LABELS,
 } from "@/web/components/labels";
+import { List, ListRow } from "@/web/components/layout";
 import { PageHeader } from "@/web/components/page-header";
-import { EmptyState, ErrorState, ListSkeleton } from "@/web/components/states";
+import { ErrorState } from "@/web/components/states";
 import { DeploymentStatusBadge } from "@/web/components/status-badge";
 import { Button } from "@/web/components/ui/button";
 import { Label } from "@/web/components/ui/label";
@@ -29,14 +28,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/web/components/ui/select";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/web/components/ui/table";
+import { Skeleton } from "@/web/components/ui/skeleton";
 import { listDeploymentsFn } from "@/web/functions/deployments.functions";
 
 const PAGE_SIZE = 25;
@@ -51,9 +43,6 @@ export const Route = createFileRoute("/_app/deployments")({
   head: () => ({ meta: [{ title: "Deploys · Nelcota Deploy" }] }),
   component: DeploymentsPage,
 });
-
-const features = tableFeatures({});
-const helper = createColumnHelper<typeof features, Deployment>();
 
 function isDeploymentStatus(value: string): value is DeploymentStatus {
   return STATUS_OPTIONS.some((status) => status === value);
@@ -83,92 +72,7 @@ function DeploymentsPage() {
     },
   });
   const rows = useMemo(() => deployments.data?.pages.flat() ?? [], [deployments.data]);
-
-  const columns = useMemo(() => {
-    const now = new Date();
-    return helper.columns([
-      helper.accessor("status", {
-        header: "Status",
-        cell: (info) => <DeploymentStatusBadge status={info.getValue()} />,
-      }),
-      helper.display({
-        id: "project",
-        header: "Projeto",
-        cell: (info) => (
-          <Link
-            to="/projects/$projectId"
-            params={{ projectId: info.row.original.projectId }}
-            className="font-medium underline-offset-4 hover:underline"
-          >
-            {info.row.original.projectName}
-          </Link>
-        ),
-      }),
-      helper.display({
-        id: "commit",
-        header: "Commit",
-        cell: (info) => {
-          const deployment = info.row.original;
-          const sha = deployment.commitSha ?? deployment.requestedCommitSha;
-          return (
-            <div className="max-w-64 min-w-0 text-xs">
-              <Link
-                to="/projects/$projectId/deployments/$deploymentId"
-                params={{ projectId: deployment.projectId, deploymentId: deployment.id }}
-                className="font-mono hover:underline focus-visible:underline focus-visible:outline-none"
-              >
-                {sha == null
-                  ? `deploy ${deployment.id.slice(-SHORT_SHA_LENGTH)}`
-                  : sha.slice(0, SHORT_SHA_LENGTH)}
-              </Link>
-              <p className="truncate text-muted-foreground">
-                {deployment.commitMessage ?? "sem mensagem"}
-              </p>
-            </div>
-          );
-        },
-      }),
-      helper.accessor("branch", {
-        header: "Branch",
-        cell: (info) => <span className="font-mono text-xs">{info.getValue()}</span>,
-      }),
-      helper.display({
-        id: "trigger",
-        header: "Origem",
-        cell: (info) => (
-          <div className="text-xs">
-            <p>{DEPLOYMENT_TRIGGER_LABELS[info.row.original.trigger]}</p>
-            <p className="text-muted-foreground">{info.row.original.triggeredByLabel}</p>
-          </div>
-        ),
-      }),
-      helper.accessor("createdAt", {
-        header: "Criado",
-        cell: (info) => (
-          <time
-            dateTime={info.getValue()}
-            title={formatDateTime(info.getValue())}
-            className="text-xs"
-          >
-            {formatRelativeTime(info.getValue(), now)}
-          </time>
-        ),
-      }),
-      helper.display({
-        id: "duration",
-        header: "Duração",
-        cell: (info) => (
-          <span className="text-xs tabular-nums">
-            {formatDuration(
-              durationBetween(info.row.original.startedAt, info.row.original.finishedAt),
-            )}
-          </span>
-        ),
-      }),
-    ]);
-  }, []);
-
-  const table = useTable({ features, columns, data: rows });
+  const now = new Date();
 
   return (
     <>
@@ -176,12 +80,12 @@ function DeploymentsPage() {
         title="Deploys"
         description="Histórico de deploys de todos os projetos."
         actions={
-          <div className="flex items-center gap-2">
+          <>
             <Label htmlFor="status-filter" className="sr-only">
               Filtrar por status
             </Label>
             <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger id="status-filter" className="w-48">
+              <SelectTrigger id="status-filter" size="sm" className="w-44">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -193,56 +97,83 @@ function DeploymentsPage() {
                 ))}
               </SelectContent>
             </Select>
-          </div>
+          </>
         }
       />
       {deployments.isError ? (
         <ErrorState error={deployments.error} onRetry={() => void deployments.refetch()} />
       ) : null}
-      {deployments.isPending ? <ListSkeleton rows={8} /> : null}
-      {deployments.isSuccess && rows.length === 0 ? (
-        <EmptyState
-          icon={RocketIcon}
-          title="Nenhum deploy encontrado"
-          description={
-            status == null
-              ? "Os deploys aparecem aqui assim que forem solicitados."
-              : "Nenhum deploy com este status."
-          }
-        />
-      ) : null}
-      {rows.length > 0 ? (
+      {deployments.isPending ? <Skeleton className="h-96 rounded-xl" /> : null}
+      {deployments.isSuccess ? (
         <section aria-label="Histórico de deploys" className="space-y-4">
-          <div className="overflow-x-auto rounded-lg border">
-            <Table>
-              <TableHeader>
-                {table.getHeaderGroups().map((group) => (
-                  <TableRow key={group.id}>
-                    {group.headers.map((header) => (
-                      <TableHead key={header.id}>
-                        {header.isPlaceholder ? null : <table.FlexRender header={header} />}
-                      </TableHead>
-                    ))}
-                  </TableRow>
-                ))}
-              </TableHeader>
-              <TableBody>
-                {table.getRowModel().rows.map((row) => (
-                  <DeploymentRow
-                    key={row.id}
-                    projectId={row.original.projectId}
-                    deploymentId={row.original.id}
-                  >
-                    {row.getAllCells().map((cell) => (
-                      <TableCell key={cell.id}>
-                        <table.FlexRender cell={cell} />
-                      </TableCell>
-                    ))}
-                  </DeploymentRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
+          <List>
+            {rows.length === 0 ? (
+              <ListRow>
+                <p className="text-sm text-muted-foreground">
+                  {status == null
+                    ? "Nenhum deploy ainda. Eles aparecem aqui assim que forem solicitados."
+                    : "Nenhum deploy com este status."}
+                </p>
+              </ListRow>
+            ) : null}
+            {rows.map((deployment) => {
+              const sha = deployment.commitSha ?? deployment.requestedCommitSha;
+              return (
+                <DeploymentListRow
+                  key={deployment.id}
+                  projectId={deployment.projectId}
+                  deploymentId={deployment.id}
+                  status={deployment.status}
+                >
+                  <div className="w-36 shrink-0">
+                    <DeploymentStatusBadge status={deployment.status} />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="flex min-w-0 items-baseline gap-2">
+                      <Link
+                        to="/projects/$projectId"
+                        params={{ projectId: deployment.projectId }}
+                        className="truncate font-medium underline-offset-4 hover:underline"
+                      >
+                        {deployment.projectName}
+                      </Link>
+                      <Link
+                        to="/projects/$projectId/deployments/$deploymentId"
+                        params={{ projectId: deployment.projectId, deploymentId: deployment.id }}
+                        className="shrink-0 font-mono text-xs text-muted-foreground hover:text-foreground hover:underline"
+                      >
+                        {sha == null
+                          ? `deploy ${deployment.id.slice(-SHORT_SHA_LENGTH)}`
+                          : sha.slice(0, SHORT_SHA_LENGTH)}
+                      </Link>
+                    </p>
+                    <p className="truncate text-sm text-muted-foreground">
+                      {deployment.commitMessage ?? "sem mensagem"}
+                    </p>
+                  </div>
+                  <div className="hidden w-40 shrink-0 text-xs md:block">
+                    <p className="font-mono text-muted-foreground">{deployment.branch}</p>
+                    <p className="truncate text-faint">
+                      {DEPLOYMENT_TRIGGER_LABELS[deployment.trigger]} ·{" "}
+                      {deployment.triggeredByLabel}
+                    </p>
+                  </div>
+                  <div className="w-28 shrink-0 text-right text-xs">
+                    <time
+                      dateTime={deployment.createdAt}
+                      title={formatDateTime(deployment.createdAt)}
+                      className="block text-muted-foreground"
+                    >
+                      {formatRelativeTime(deployment.createdAt, now)}
+                    </time>
+                    <span className="text-faint tabular-nums">
+                      {formatDuration(durationBetween(deployment.startedAt, deployment.finishedAt))}
+                    </span>
+                  </div>
+                </DeploymentListRow>
+              );
+            })}
+          </List>
           {deployments.hasNextPage ? (
             <div className="flex justify-center">
               <Button

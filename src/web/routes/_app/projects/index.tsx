@@ -1,21 +1,15 @@
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { createColumnHelper, tableFeatures, useTable } from "@tanstack/react-table";
-import {
-  ArrowDownIcon,
-  ArrowUpDownIcon,
-  ArrowUpIcon,
-  BoxesIcon,
-  PlusIcon,
-  SearchIcon,
-} from "lucide-react";
+import { PlusIcon, SearchIcon } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 import type { DeploymentStatus } from "@/deployments";
 import { formatRelativeTime } from "@/shared/format";
 import { DEPLOYMENT_STATUS_LABELS } from "@/web/components/labels";
+import { List, ListRow } from "@/web/components/layout";
 import { PageHeader } from "@/web/components/page-header";
-import { EmptyState, ErrorState, ListSkeleton } from "@/web/components/states";
+import { containerAccent } from "@/web/components/project-accent";
+import { ErrorState } from "@/web/components/states";
 import {
   ContainerStateBadge,
   DeploymentStatusBadge,
@@ -31,14 +25,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/web/components/ui/select";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/web/components/ui/table";
+import { Skeleton } from "@/web/components/ui/skeleton";
 import { useCan } from "@/web/components/use-permissions";
 import { listProjectsFn } from "@/web/functions/projects.functions";
 
@@ -85,79 +72,6 @@ function matchesFilter(project: ProjectRow, filter: StatusFilter): boolean {
   }
 }
 
-const features = tableFeatures({});
-const helper = createColumnHelper<typeof features, ProjectRow>();
-
-function useColumns(now: Date) {
-  return useMemo(
-    () =>
-      helper.columns([
-        helper.display({
-          id: "name",
-          header: "Projeto",
-          cell: ({ row }) => (
-            <div className="min-w-0">
-              <p className="font-medium">{row.original.name}</p>
-              <p className="font-mono text-xs text-muted-foreground">{row.original.slug}</p>
-            </div>
-          ),
-        }),
-        helper.display({
-          id: "repository",
-          header: "Repositório",
-          cell: ({ row }) => (
-            <div className="min-w-0 text-sm">
-              <p className="truncate">{row.original.repositoryFullName}</p>
-              <p className="font-mono text-xs text-muted-foreground">{row.original.branch}</p>
-            </div>
-          ),
-        }),
-        helper.display({
-          id: "container",
-          header: "Contêiner",
-          cell: ({ row }) =>
-            row.original.deploymentsApproved ? (
-              <ContainerStateBadge
-                state={row.original.containerState}
-                health={row.original.containerHealth}
-              />
-            ) : (
-              <StatusPill tone="warning" label="Aguardando aprovação" />
-            ),
-        }),
-        helper.display({
-          id: "latestDeployment",
-          header: "Último deploy",
-          cell: ({ row }) => {
-            const latest = row.original.latestDeployment;
-            if (latest == null || isDeploymentStatus(latest.status) === false) {
-              return <span className="text-sm text-muted-foreground">Nenhum</span>;
-            }
-            return (
-              <div className="flex flex-col items-start gap-1">
-                <DeploymentStatusBadge status={latest.status} />
-                <span className="text-xs text-muted-foreground">
-                  {formatRelativeTime(latest.createdAt, now)}
-                </span>
-              </div>
-            );
-          },
-        }),
-        helper.display({
-          id: "autoDeploy",
-          header: "Deploy",
-          cell: ({ row }) =>
-            row.original.autoDeploy ? (
-              <StatusPill tone="success" label="Automático" />
-            ) : (
-              <StatusPill tone="neutral" label="Manual" />
-            ),
-        }),
-      ]),
-    [now],
-  );
-}
-
 function useDebouncedValue(value: string, delayInMs: number): string {
   const [debounced, setDebounced] = useState(value);
   useEffect(() => {
@@ -172,10 +86,25 @@ const NO_PROJECTS: ProjectRow[] = [];
 type SortKey = "name" | "latestDeployment";
 type SortState = { readonly key: SortKey; readonly direction: "ascending" | "descending" };
 
-const SORT_LABELS: Record<SortKey, string> = { name: "Projeto", latestDeployment: "Último deploy" };
+const SORT_OPTIONS = {
+  "name-ascending": { label: "Nome (A–Z)", key: "name", direction: "ascending" },
+  "name-descending": { label: "Nome (Z–A)", key: "name", direction: "descending" },
+  "latestDeployment-descending": {
+    label: "Deploy mais recente",
+    key: "latestDeployment",
+    direction: "descending",
+  },
+  "latestDeployment-ascending": {
+    label: "Deploy mais antigo",
+    key: "latestDeployment",
+    direction: "ascending",
+  },
+} as const satisfies Record<string, SortState & { readonly label: string }>;
 
-function isSortKey(id: string): id is SortKey {
-  return Object.hasOwn(SORT_LABELS, id);
+type SortOption = keyof typeof SORT_OPTIONS;
+
+function isSortOption(value: string): value is SortOption {
+  return Object.hasOwn(SORT_OPTIONS, value);
 }
 
 /**
@@ -197,29 +126,56 @@ function sortProjects(projects: readonly ProjectRow[], sort: SortState): Project
   });
 }
 
-function SortButton({
-  sortKey,
-  sort,
-  onSort,
-}: {
-  readonly sortKey: SortKey;
-  readonly sort: SortState;
-  readonly onSort: (key: SortKey) => void;
-}) {
-  const active = sort.key === sortKey;
-  let Icon = ArrowUpDownIcon;
-  if (active) {
-    Icon = sort.direction === "ascending" ? ArrowUpIcon : ArrowDownIcon;
+function LatestDeployment({ project, now }: { readonly project: ProjectRow; readonly now: Date }) {
+  const latest = project.latestDeployment;
+  if (latest == null || isDeploymentStatus(latest.status) === false) {
+    return <p className="text-xs text-faint">sem deploy</p>;
   }
   return (
-    <button
-      type="button"
-      onClick={() => onSort(sortKey)}
-      className="-ml-1 inline-flex items-center gap-1.5 rounded-md px-1 py-0.5 hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/40 focus-visible:outline-none"
-    >
-      {SORT_LABELS[sortKey]}
-      <Icon aria-hidden className={active ? "size-3.5 text-foreground" : "size-3.5 opacity-60"} />
-    </button>
+    <div className="space-y-0.5">
+      <DeploymentStatusBadge status={latest.status} />
+      <p className="text-xs text-faint">{formatRelativeTime(latest.createdAt, now)}</p>
+    </div>
+  );
+}
+
+function ProjectListRow({ project, now }: { readonly project: ProjectRow; readonly now: Date }) {
+  const navigate = useNavigate();
+  const accent = project.deploymentsApproved
+    ? containerAccent(project.containerState, project.containerHealth)
+    : "warning";
+  return (
+    <ListRow accent={accent}>
+      <button
+        type="button"
+        aria-label={`Abrir ${project.name}`}
+        onClick={() =>
+          void navigate({ to: "/projects/$projectId", params: { projectId: project.id } })
+        }
+        className="absolute inset-0 cursor-pointer focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none focus-visible:ring-inset"
+      />
+      <div className="min-w-0 flex-1">
+        <p className="truncate font-medium">{project.name}</p>
+        <p className="truncate font-mono text-xs text-faint">{project.slug}</p>
+      </div>
+      <div className="hidden w-56 min-w-0 shrink-0 text-sm md:block">
+        <p className="truncate text-muted-foreground">{project.repositoryFullName}</p>
+        <p className="truncate font-mono text-xs text-faint">{project.branch}</p>
+      </div>
+      <div className="hidden w-36 shrink-0 lg:block">
+        <LatestDeployment project={project} now={now} />
+      </div>
+      <p className="hidden w-20 shrink-0 text-xs text-muted-foreground lg:block">
+        {project.autoDeploy ? "Automático" : "Manual"}
+      </p>
+      <div className="flex w-40 shrink-0 justify-end">
+        {project.deploymentsApproved ? (
+          <ContainerStateBadge state={project.containerState} health={project.containerHealth} />
+        ) : (
+          <StatusPill tone="warning" label="Aguardando aprovação" />
+        )}
+      </div>
+    </ListRow>
   );
 }
 
@@ -227,6 +183,7 @@ function ProjectsPage() {
   const can = useCan();
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<StatusFilter>("all");
+  const [sortOption, setSortOption] = useState<SortOption>("name-ascending");
   const debouncedSearch = useDebouncedValue(search.trim(), SEARCH_DEBOUNCE_IN_MS);
   const projects = useQuery({
     queryKey: ["projects", debouncedSearch],
@@ -234,27 +191,18 @@ function ProjectsPage() {
     placeholderData: keepPreviousData,
     refetchInterval: REFRESH_INTERVAL_IN_MS,
   });
-  const navigate = useNavigate();
-  const [sort, setSort] = useState<SortState>({ key: "name", direction: "ascending" });
-  const toggleSort = (key: SortKey) =>
-    setSort((current) => ({
-      key,
-      direction:
-        current.key === key && current.direction === "ascending" ? "descending" : "ascending",
-    }));
   const [now] = useState(() => new Date());
-  const columns = useColumns(now);
   const rows = useMemo(
     () =>
       sortProjects(
         (projects.data ?? NO_PROJECTS).filter((project) => matchesFilter(project, filter)),
-        sort,
+        SORT_OPTIONS[sortOption],
       ),
-    [projects.data, filter, sort],
+    [projects.data, filter, sortOption],
   );
-  const openProject = (projectId: string) =>
-    void navigate({ to: "/projects/$projectId", params: { projectId } });
-  const table = useTable({ features, columns, data: rows });
+  const canCreate = can("project:write");
+  const hasProjects = (projects.data ?? NO_PROJECTS).length > 0;
+  const filtering = filter !== "all" || debouncedSearch !== "";
 
   return (
     <>
@@ -262,146 +210,6 @@ function ProjectsPage() {
         title="Projetos"
         description="Aplicações implantadas a partir de repositórios GitHub."
         actions={
-          can("project:write") ? (
-            <Button asChild>
-              <Link to="/projects/new">
-                <PlusIcon aria-hidden />
-                Novo projeto
-              </Link>
-            </Button>
-          ) : null
-        }
-      />
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-        <div className="relative flex-1">
-          <Label htmlFor="project-search" className="sr-only">
-            Buscar projetos
-          </Label>
-          <SearchIcon
-            aria-hidden
-            className="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground"
-          />
-          <Input
-            id="project-search"
-            placeholder="Buscar por nome, identificador ou repositório"
-            className="pl-9"
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-          />
-        </div>
-        <div className="sm:w-56">
-          <Label htmlFor="project-filter" className="sr-only">
-            Filtrar por situação
-          </Label>
-          <Select
-            value={filter}
-            onValueChange={(value) => setFilter(isStatusFilter(value) ? value : "all")}
-          >
-            <SelectTrigger id="project-filter" className="w-full">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {Object.entries(STATUS_FILTERS).map(([value, label]) => (
-                <SelectItem key={value} value={value}>
-                  {label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
-      <ProjectsTableBody
-        isPending={projects.isPending}
-        error={projects.isError ? projects.error : null}
-        onRetry={() => void projects.refetch()}
-        hasProjects={(projects.data ?? NO_PROJECTS).length > 0}
-        filtered={rows.length === 0}
-        canCreate={can("project:write")}
-      >
-        <div className="overflow-x-auto rounded-lg border">
-          <Table>
-            <TableHeader>
-              {table.getHeaderGroups().map((group) => (
-                <TableRow key={group.id}>
-                  {group.headers.map((header) => {
-                    const sortKey = isSortKey(header.column.id) ? header.column.id : null;
-                    let ariaSort: "ascending" | "descending" | "none" | undefined;
-                    if (sortKey != null) {
-                      ariaSort = sort.key === sortKey ? sort.direction : "none";
-                    }
-                    return (
-                      <TableHead key={header.id} aria-sort={ariaSort}>
-                        {sortKey == null ? (
-                          <table.FlexRender header={header} />
-                        ) : (
-                          <SortButton sortKey={sortKey} sort={sort} onSort={toggleSort} />
-                        )}
-                      </TableHead>
-                    );
-                  })}
-                </TableRow>
-              ))}
-            </TableHeader>
-            <TableBody>
-              {table.getRowModel().rows.map((row) => (
-                <TableRow
-                  key={row.id}
-                  tabIndex={0}
-                  aria-label={`Abrir ${row.original.name}`}
-                  className="cursor-pointer focus-visible:ring-3 focus-visible:ring-ring/40 focus-visible:outline-none"
-                  onClick={() => openProject(row.original.id)}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter" || event.key === " ") {
-                      event.preventDefault();
-                      openProject(row.original.id);
-                    }
-                  }}
-                >
-                  {row.getAllCells().map((cell) => (
-                    <TableCell key={cell.id}>
-                      <table.FlexRender cell={cell} />
-                    </TableCell>
-                  ))}
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
-      </ProjectsTableBody>
-    </>
-  );
-}
-
-function ProjectsTableBody({
-  isPending,
-  error,
-  onRetry,
-  hasProjects,
-  filtered,
-  canCreate,
-  children,
-}: {
-  readonly isPending: boolean;
-  readonly error: unknown;
-  readonly onRetry: () => void;
-  readonly hasProjects: boolean;
-  readonly filtered: boolean;
-  readonly canCreate: boolean;
-  readonly children: React.ReactNode;
-}) {
-  if (error != null) {
-    return <ErrorState error={error} onRetry={onRetry} />;
-  }
-  if (isPending) {
-    return <ListSkeleton rows={5} />;
-  }
-  if (hasProjects === false) {
-    return (
-      <EmptyState
-        icon={BoxesIcon}
-        title="Nenhum projeto encontrado"
-        description="Cadastre uma aplicação apontando para um repositório GitHub com Dockerfile."
-        action={
           canCreate ? (
             <Button asChild>
               <Link to="/projects/new">
@@ -412,10 +220,90 @@ function ProjectsTableBody({
           ) : null
         }
       />
-    );
-  }
-  if (filtered) {
-    return <EmptyState icon={BoxesIcon} title="Nenhum projeto nesta situação" />;
-  }
-  return children;
+      <div className="space-y-4">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+          <div className="relative flex-1">
+            <Label htmlFor="project-search" className="sr-only">
+              Buscar projetos
+            </Label>
+            <SearchIcon
+              aria-hidden
+              className="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-faint"
+            />
+            <Input
+              id="project-search"
+              placeholder="Buscar por nome, identificador ou repositório"
+              className="pl-9"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+            />
+          </div>
+          <Label htmlFor="project-filter" className="sr-only">
+            Filtrar por situação
+          </Label>
+          <Select
+            value={filter}
+            onValueChange={(value) => setFilter(isStatusFilter(value) ? value : "all")}
+          >
+            <SelectTrigger id="project-filter" className="w-full sm:w-48">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {Object.entries(STATUS_FILTERS).map(([value, label]) => (
+                <SelectItem key={value} value={value}>
+                  {label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Label htmlFor="project-sort" className="sr-only">
+            Ordenar por
+          </Label>
+          <Select
+            value={sortOption}
+            onValueChange={(value) => setSortOption(isSortOption(value) ? value : "name-ascending")}
+          >
+            <SelectTrigger id="project-sort" className="w-full sm:w-64">
+              <span className="text-faint">Ordenar por</span>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {Object.entries(SORT_OPTIONS).map(([value, option]) => (
+                <SelectItem key={value} value={value}>
+                  {option.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        {projects.isError ? (
+          <ErrorState error={projects.error} onRetry={() => void projects.refetch()} />
+        ) : null}
+        {projects.isPending ? <Skeleton className="h-80 rounded-xl" /> : null}
+        {projects.isSuccess ? (
+          <section aria-label="Lista de projetos">
+            <List>
+              {rows.length === 0 ? (
+                <ListRow>
+                  <p className="flex-1 text-sm text-muted-foreground">
+                    {hasProjects || filtering
+                      ? "Nenhum projeto corresponde à busca ou ao filtro."
+                      : "Nenhum projeto ainda. Cadastre uma aplicação apontando para um repositório GitHub com Dockerfile."}
+                  </p>
+                  {canCreate && hasProjects === false && filtering === false ? (
+                    <Button size="sm" variant="outline" asChild>
+                      <Link to="/projects/new">Criar projeto</Link>
+                    </Button>
+                  ) : null}
+                </ListRow>
+              ) : null}
+              {rows.map((project) => (
+                <ProjectListRow key={project.id} project={project} now={now} />
+              ))}
+            </List>
+          </section>
+        ) : null}
+      </div>
+    </>
+  );
 }

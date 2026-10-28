@@ -18,18 +18,11 @@ import { DEFAULT_TASK_TIMEOUT_IN_SECONDS, taskInputSchema } from "@/shared/task.
 import type { Task } from "@/tasks";
 import { ConfirmDialog } from "@/web/components/confirm-dialog";
 import { FormField } from "@/web/components/form-field";
-import { PageHeader } from "@/web/components/page-header";
-import { InfoNote } from "@/web/components/project-overview-info";
+import { List, ListRow } from "@/web/components/layout";
+import { TabHeader } from "@/web/components/project-header";
 import { EmptyState, ErrorState, ListSkeleton } from "@/web/components/states";
 import { TaskStatusBadge } from "@/web/components/status-badge";
 import { Button } from "@/web/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/web/components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -40,15 +33,14 @@ import {
 } from "@/web/components/ui/dialog";
 import { Input } from "@/web/components/ui/input";
 import { Label } from "@/web/components/ui/label";
-import { Switch } from "@/web/components/ui/switch";
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/web/components/ui/table";
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from "@/web/components/ui/sheet";
+import { Switch } from "@/web/components/ui/switch";
 import { useAction } from "@/web/components/use-action";
 import { useCan } from "@/web/components/use-permissions";
 import {
@@ -170,9 +162,9 @@ function TasksPage() {
 
   return (
     <>
-      <PageHeader
+      <TabHeader
         title="Tasks"
-        description="Comandos executados sob demanda ou por agendamento cron."
+        description="Comandos que rodam dentro do contêiner da aplicação, sob demanda ou agendados."
         actions={
           canWrite ? (
             <Button onClick={() => openDialog(null)}>
@@ -182,9 +174,6 @@ function TasksPage() {
           ) : null
         }
       />
-      <InfoNote details="Cada comando roda com docker exec no contêiner atual, como lista de argumentos: não passa por um shell e nunca executa no servidor host.">
-        Os comandos rodam dentro do contêiner da aplicação. Clique em uma task para ver o histórico.
-      </InfoNote>
       {tasksQuery.isError ? (
         <ErrorState error={tasksQuery.error} onRetry={() => void tasksQuery.refetch()} />
       ) : null}
@@ -192,96 +181,124 @@ function TasksPage() {
       {tasksQuery.data != null && tasks.length === 0 ? (
         <EmptyState
           icon={ListChecksIcon}
-          title="Nenhuma task cadastrada"
-          description="Crie tasks para migrações, limpezas de cache ou rotinas agendadas."
+          title="Nenhuma task ainda"
+          description="Use tasks para migrações, limpezas de cache ou rotinas agendadas."
+          action={
+            canWrite ? (
+              <Button variant="outline" size="sm" onClick={() => openDialog(null)}>
+                <PlusIcon aria-hidden />
+                Nova task
+              </Button>
+            ) : null
+          }
         />
       ) : null}
       {tasks.length > 0 ? (
-        <div className="overflow-x-auto rounded-lg border">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Nome</TableHead>
-                <TableHead>Comando</TableHead>
-                <TableHead>Agendamento</TableHead>
-                <TableHead>Próxima execução</TableHead>
-                <TableHead>Ativa</TableHead>
-                <TableHead>Última execução</TableHead>
-                <TableHead className="text-right">Ações</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {tasks.map((task) => (
-                <TableRow
-                  key={task.id}
-                  tabIndex={0}
-                  aria-label={`${task.name}: abrir histórico de execuções`}
-                  data-state={historyTaskId === task.id ? "selected" : undefined}
-                  className="cursor-pointer focus-visible:ring-3 focus-visible:ring-ring/40 focus-visible:outline-none"
-                  onClick={() => setHistoryTaskId(task.id)}
-                  onKeyDown={(event) => {
-                    if (
-                      event.target === event.currentTarget &&
-                      (event.key === "Enter" || event.key === " ")
-                    ) {
-                      event.preventDefault();
-                      setHistoryTaskId(task.id);
-                    }
-                  }}
-                >
-                  <TableCell className="font-medium">{task.name}</TableCell>
-                  <TableCell
-                    className="max-w-xs truncate font-mono text-xs"
+        <List>
+          {tasks.map((task) => (
+            <div
+              key={task.id}
+              role="button"
+              tabIndex={0}
+              aria-label={`${task.name}: abrir histórico de execuções`}
+              className="cursor-pointer focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none focus-visible:ring-inset"
+              onClick={() => setHistoryTaskId(task.id)}
+              onKeyDown={(event) => {
+                if (
+                  event.target === event.currentTarget &&
+                  (event.key === "Enter" || event.key === " ")
+                ) {
+                  event.preventDefault();
+                  setHistoryTaskId(task.id);
+                }
+              }}
+            >
+              <ListRow
+                accent={executionAccent(task.latestExecution?.status ?? null)}
+                className="flex-wrap md:flex-nowrap"
+              >
+                <div className="min-w-0 flex-1 space-y-1">
+                  <p className="truncate text-sm font-medium">{task.name}</p>
+                  <p
+                    className="truncate font-mono text-xs text-faint"
                     title={formatCommandLine(task.command)}
                   >
                     {formatCommandLine(task.command)}
-                  </TableCell>
-                  <TableCell className="font-mono text-xs">{task.schedule ?? "Manual"}</TableCell>
-                  <TableCell className="text-sm text-muted-foreground">
-                    {formatDateTime(task.nextRunAt)}
-                  </TableCell>
-                  <TableCell onClick={stopRowClick} onKeyDown={stopRowClick}>
-                    <Switch
-                      aria-label={`Ativar ${task.name}`}
-                      checked={task.enabled}
-                      disabled={canWrite === false || toggle.isPending}
-                      onCheckedChange={(enabled) => toggle.mutate({ task, enabled })}
-                    />
-                  </TableCell>
-                  <TableCell>
-                    {task.latestExecution == null ? (
-                      <span className="text-sm text-muted-foreground">Nunca executada</span>
-                    ) : (
-                      <div className="flex flex-col items-start gap-1">
-                        <TaskStatusBadge status={task.latestExecution.status} />
-                        <span className="text-xs text-muted-foreground">
-                          {formatDuration(
-                            durationBetween(
-                              task.latestExecution.startedAt,
-                              task.latestExecution.finishedAt,
-                            ),
-                          )}
-                        </span>
-                      </div>
-                    )}
-                  </TableCell>
-                  <TableCell className="text-right" onClick={stopRowClick} onKeyDown={stopRowClick}>
-                    <TaskActions
-                      task={task}
-                      canRun={canRun}
-                      canWrite={canWrite}
-                      onRun={() => run.mutate(task.id)}
-                      onEdit={() => openDialog(task)}
-                      onDelete={() => remove.mutate(task.id)}
-                    />
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
+                  </p>
+                </div>
+                <div className="hidden min-w-0 shrink-0 space-y-1 text-right text-xs md:block">
+                  <p className="font-mono text-muted-foreground">{task.schedule ?? "manual"}</p>
+                  <p className="text-faint">
+                    {task.nextRunAt == null
+                      ? "sem agendamento"
+                      : `próxima ${formatDateTime(task.nextRunAt)}`}
+                  </p>
+                </div>
+                <div className="w-36 shrink-0">
+                  {task.latestExecution == null ? (
+                    <span className="text-xs text-faint">nunca executada</span>
+                  ) : (
+                    <div className="space-y-0.5">
+                      <TaskStatusBadge status={task.latestExecution.status} />
+                      <p className="text-xs text-faint">
+                        {formatDuration(
+                          durationBetween(
+                            task.latestExecution.startedAt,
+                            task.latestExecution.finishedAt,
+                          ),
+                        )}
+                      </p>
+                    </div>
+                  )}
+                </div>
+                <div
+                  className="flex shrink-0 items-center gap-2"
+                  onClick={stopRowClick}
+                  onKeyDown={stopRowClick}
+                >
+                  <Switch
+                    aria-label={`Ativar ${task.name}`}
+                    checked={task.enabled}
+                    disabled={canWrite === false || toggle.isPending}
+                    onCheckedChange={(enabled) => toggle.mutate({ task, enabled })}
+                  />
+                  <TaskActions
+                    task={task}
+                    canRun={canRun}
+                    canWrite={canWrite}
+                    onRun={() => run.mutate(task.id)}
+                    onEdit={() => openDialog(task)}
+                    onDelete={() => remove.mutate(task.id)}
+                  />
+                </div>
+              </ListRow>
+            </div>
+          ))}
+        </List>
       ) : null}
-      {historyTask == null ? null : <ExecutionHistory projectId={projectId} task={historyTask} />}
+      <details className="text-sm text-muted-foreground">
+        <summary className="w-fit cursor-pointer text-xs font-medium text-faint hover:text-foreground focus-visible:text-foreground focus-visible:outline-none">
+          Como os comandos são executados
+        </summary>
+        <p className="mt-2 max-w-2xl text-xs leading-relaxed">
+          Cada comando roda com docker exec no contêiner atual, como lista de argumentos: não passa
+          por um shell e nunca executa no servidor host. Agendamentos usam o fuso {timeZone}.
+        </p>
+      </details>
+      <Sheet
+        open={historyTask != null}
+        onOpenChange={(open) => {
+          if (open === false) {
+            setHistoryTaskId(null);
+          }
+        }}
+      >
+        <SheetContent side="right" className="w-full gap-0 overflow-y-auto sm:max-w-xl">
+          {historyTask == null ? null : (
+            <ExecutionHistory projectId={projectId} task={historyTask} />
+          )}
+        </SheetContent>
+      </Sheet>
       <TaskDialog
         key={dialogTask?.id ?? "new"}
         projectId={projectId}
@@ -292,6 +309,16 @@ function TasksPage() {
       />
     </>
   );
+}
+
+function executionAccent(status: string | null): "success" | "danger" | "progress" | "neutral" {
+  if (status === "succeeded") {
+    return "success";
+  }
+  if (status === "failed") {
+    return "danger";
+  }
+  return status == null ? "neutral" : "progress";
 }
 
 /** Keeps clicks on controls inside a row from also opening the row. */
@@ -317,19 +344,24 @@ function TaskActions({
   return (
     <div className="flex justify-end gap-1">
       {canRun ? (
-        <Button variant="outline" size="sm" onClick={onRun}>
+        <Button variant="ghost" size="sm" onClick={onRun}>
           <PlayIcon aria-hidden />
           Executar
         </Button>
       ) : null}
       {canWrite ? (
         <>
-          <Button variant="ghost" size="icon" aria-label={`Editar ${task.name}`} onClick={onEdit}>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label={`Editar ${task.name}`}
+            onClick={onEdit}
+          >
             <PencilIcon aria-hidden />
           </Button>
           <ConfirmDialog
             trigger={
-              <Button variant="ghost" size="icon" aria-label={`Excluir ${task.name}`}>
+              <Button variant="ghost" size="icon-sm" aria-label={`Excluir ${task.name}`}>
                 <Trash2Icon aria-hidden />
               </Button>
             }
@@ -363,14 +395,14 @@ function ExecutionHistory({
     },
   });
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-base">Execuções de {task.name}</CardTitle>
-        <CardDescription className="font-mono text-xs">
+    <>
+      <SheetHeader className="border-b border-border px-6 py-5">
+        <SheetTitle>Execuções de {task.name}</SheetTitle>
+        <SheetDescription className="font-mono text-xs">
           {formatCommandLine(task.command)}
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-3">
+        </SheetDescription>
+      </SheetHeader>
+      <div className="space-y-4 px-6 py-5">
         {executions.isError ? (
           <ErrorState error={executions.error} onRetry={() => void executions.refetch()} />
         ) : null}
@@ -379,36 +411,44 @@ function ExecutionHistory({
           <EmptyState icon={HistoryIcon} title="Nenhuma execução ainda" />
         ) : null}
         {(executions.data ?? []).map((execution) => (
-          <article key={execution.id} className="space-y-2 rounded-lg border p-3">
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
+          <article
+            key={execution.id}
+            className="space-y-3 border-b border-border pb-4 last:border-b-0"
+          >
+            <div className="flex flex-wrap items-center justify-between gap-2">
               <TaskStatusBadge status={execution.status} />
-              <span>{TRIGGER_LABELS[execution.trigger] ?? execution.trigger}</span>
-              <span className="text-muted-foreground">
-                Início: {formatDateTime(execution.startedAt ?? execution.createdAt)}
-              </span>
-              <span className="text-muted-foreground">
-                Fim: {formatDateTime(execution.finishedAt)}
-              </span>
-              <span className="text-muted-foreground">
-                Duração:{" "}
-                {formatDuration(durationBetween(execution.startedAt, execution.finishedAt))}
-              </span>
-              <span className="text-muted-foreground">
-                Código de saída: {execution.exitCode ?? "—"}
+              <span className="text-xs text-faint">
+                {formatDateTime(execution.startedAt ?? execution.createdAt)}
               </span>
             </div>
+            <dl className="grid grid-cols-3 gap-3 text-xs">
+              <div>
+                <dt className="text-faint">Origem</dt>
+                <dd>{TRIGGER_LABELS[execution.trigger] ?? execution.trigger}</dd>
+              </div>
+              <div>
+                <dt className="text-faint">Duração</dt>
+                <dd className="tabular-nums">
+                  {formatDuration(durationBetween(execution.startedAt, execution.finishedAt))}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-faint">Código de saída</dt>
+                <dd className="font-mono">{execution.exitCode ?? "—"}</dd>
+              </div>
+            </dl>
             {execution.errorMessage == null ? null : (
               <p className="text-sm text-destructive">{execution.errorMessage}</p>
             )}
             {execution.output === "" ? null : (
-              <pre className="max-h-64 overflow-auto rounded-lg bg-console p-3 font-mono text-xs text-console-foreground whitespace-pre-wrap text-zinc-100 dark:bg-black/40">
+              <pre className="max-h-64 overflow-auto rounded-lg bg-console p-3 font-mono text-xs whitespace-pre-wrap text-console-foreground">
                 {execution.output}
               </pre>
             )}
           </article>
         ))}
-      </CardContent>
-    </Card>
+      </div>
+    </>
   );
 }
 

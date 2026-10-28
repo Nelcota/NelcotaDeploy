@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { ArrowLeftIcon, OctagonXIcon } from "lucide-react";
+import { OctagonXIcon } from "lucide-react";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
@@ -9,11 +9,9 @@ import { ConfirmDialog } from "@/web/components/confirm-dialog";
 import { DeploymentStages } from "@/web/components/deployment-stages";
 import { ACTIVE_DEPLOYMENT_STATUSES, DEPLOYMENT_TRIGGER_LABELS } from "@/web/components/labels";
 import { LogViewer } from "@/web/components/log-viewer";
-import { PageHeader } from "@/web/components/page-header";
 import { ErrorState, ListSkeleton } from "@/web/components/states";
 import { DeploymentStatusBadge } from "@/web/components/status-badge";
 import { Button } from "@/web/components/ui/button";
-import { Card, CardContent } from "@/web/components/ui/card";
 import { useAction } from "@/web/components/use-action";
 import { useCan } from "@/web/components/use-permissions";
 import { cancelDeploymentFn, getDeploymentFn } from "@/web/functions/deployments.functions";
@@ -43,9 +41,9 @@ function useNow(enabled: boolean): Date {
 
 function Detail({ label, children }: { readonly label: string; readonly children: ReactNode }) {
   return (
-    <div className="min-w-0 space-y-1">
-      <dt className="text-xs text-muted-foreground">{label}</dt>
-      <dd className="truncate text-sm">{children}</dd>
+    <div className="flex min-w-0 items-baseline gap-4">
+      <dt className="w-28 shrink-0 text-sm text-muted-foreground">{label}</dt>
+      <dd className="min-w-0 truncate text-sm">{children}</dd>
     </div>
   );
 }
@@ -128,98 +126,94 @@ function DeploymentDetailPage() {
     ) : null;
 
   return (
-    <section aria-label="Detalhes do deploy" className="space-y-6">
-      <div className="space-y-3">
-        <Link
-          to="/projects/$projectId/deployments"
-          params={{ projectId }}
-          className="inline-flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground focus-visible:underline focus-visible:outline-none"
-        >
-          <ArrowLeftIcon aria-hidden className="size-4" />
-          Todos os deploys
-        </Link>
-        <PageHeader
-          title={
-            <span className="flex flex-wrap items-center gap-3">
+    <section aria-label="Detalhes do deploy" className="space-y-8">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+        <div className="min-w-0 space-y-1.5">
+          <Link
+            to="/projects/$projectId/deployments"
+            params={{ projectId }}
+            className="text-sm font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:underline focus-visible:outline-none"
+          >
+            Deploys
+          </Link>
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+            <h2 className="text-xl font-semibold tracking-tight">
               Deploy{" "}
-              {sha == null ? data.id.slice(-SHORT_ID_LENGTH) : sha.slice(0, SHORT_SHA_LENGTH)}
-              <DeploymentStatusBadge status={data.status} />
-            </span>
-          }
-          description={data.commitMessage ?? "sem mensagem de commit"}
-          actions={cancelButton}
-        />
+              <span className="font-mono">
+                {sha == null ? data.id.slice(-SHORT_ID_LENGTH) : sha.slice(0, SHORT_SHA_LENGTH)}
+              </span>
+            </h2>
+            <DeploymentStatusBadge status={data.status} />
+          </div>
+          <p className="truncate text-sm text-muted-foreground">
+            {data.commitMessage ?? "sem mensagem de commit"}
+          </p>
+        </div>
+        {cancelButton}
       </div>
 
       <DeploymentStages deployment={data} />
 
-      <Card className="py-5">
-        <CardContent className="space-y-4 px-5">
-          <dl className="grid gap-x-6 gap-y-3 sm:grid-cols-2 lg:grid-cols-4">
-            <Detail label="Branch">
-              <span className="font-mono">{data.branch}</span>
-            </Detail>
-            <Detail label="Origem">
-              {DEPLOYMENT_TRIGGER_LABELS[data.trigger]} · {data.triggeredByLabel}
-            </Detail>
-            <Detail label="Início">{formatDateTime(data.startedAt ?? data.createdAt)}</Detail>
-            <Detail label="Duração">
-              <span className="tabular-nums">
-                {formatDuration(durationBetween(data.startedAt, finishedAt))}
-              </span>
-            </Detail>
-            <Detail label="Imagem">
-              <span className="font-mono text-xs" title={data.imageTag ?? undefined}>
-                {data.imageTag ?? "—"}
-              </span>
-            </Detail>
-            <Detail label="Contêiner">
-              <span className="font-mono text-xs" title={data.containerName ?? undefined}>
-                {data.containerName ?? "—"}
-              </span>
-            </Detail>
-            {data.sourceDeploymentId == null ? null : (
-              <Detail label="Imagem reaproveitada de">
-                <Link
-                  to="/projects/$projectId/deployments/$deploymentId"
-                  params={{ projectId, deploymentId: data.sourceDeploymentId }}
-                  className="underline underline-offset-4"
-                >
-                  deploy anterior
-                </Link>
-              </Detail>
-            )}
-          </dl>
-          {data.status === "failed" && data.errorMessage != null ? (
-            <div
-              role="alert"
-              className="space-y-1 rounded-lg border border-destructive/40 bg-destructive/5 p-3"
-            >
-              <p className="text-sm font-medium text-destructive">
-                O deploy falhou. A versão anterior continua no ar.
-              </p>
-              <p className="text-xs text-muted-foreground">Detalhe técnico</p>
-              <pre className="font-mono text-xs break-all whitespace-pre-wrap">
-                {data.errorMessage}
-              </pre>
-            </div>
-          ) : null}
-        </CardContent>
-      </Card>
+      {data.status === "failed" && data.errorMessage != null ? (
+        <div
+          role="alert"
+          className="space-y-1.5 rounded-xl bg-destructive/8 px-5 py-4 ring-1 ring-destructive/25"
+        >
+          <p className="text-sm font-medium text-destructive">
+            O deploy falhou. A versão anterior continua no ar.
+          </p>
+          <pre className="font-mono text-xs break-all whitespace-pre-wrap text-muted-foreground">
+            {data.errorMessage}
+          </pre>
+        </div>
+      ) : null}
 
-      <div className="space-y-2">
-        <h2 className="text-base font-semibold">Logs do build</h2>
-        <LogViewer
-          url={`/api/deployments/${deploymentId}/logs`}
-          downloadName={`deploy-${deploymentId}.log`}
-          emptyMessage={
-            data.status === "queued"
-              ? "Aguardando o worker iniciar o deploy…"
-              : "Nenhuma linha registrada."
-          }
-          onEnd={handleEnd}
-        />
-      </div>
+      <dl className="grid gap-x-10 gap-y-2.5 border-y border-border py-5 md:grid-cols-2">
+        <Detail label="Branch">
+          <span className="font-mono">{data.branch}</span>
+        </Detail>
+        <Detail label="Origem">
+          {DEPLOYMENT_TRIGGER_LABELS[data.trigger]} · {data.triggeredByLabel}
+        </Detail>
+        <Detail label="Início">{formatDateTime(data.startedAt ?? data.createdAt)}</Detail>
+        <Detail label="Duração">
+          <span className="tabular-nums">
+            {formatDuration(durationBetween(data.startedAt, finishedAt))}
+          </span>
+        </Detail>
+        <Detail label="Imagem">
+          <span className="font-mono" title={data.imageTag ?? undefined}>
+            {data.imageTag ?? "—"}
+          </span>
+        </Detail>
+        <Detail label="Contêiner">
+          <span className="font-mono" title={data.containerName ?? undefined}>
+            {data.containerName ?? "—"}
+          </span>
+        </Detail>
+        {data.sourceDeploymentId == null ? null : (
+          <Detail label="Imagem de">
+            <Link
+              to="/projects/$projectId/deployments/$deploymentId"
+              params={{ projectId, deploymentId: data.sourceDeploymentId }}
+              className="underline underline-offset-4"
+            >
+              deploy anterior
+            </Link>
+          </Detail>
+        )}
+      </dl>
+
+      <LogViewer
+        url={`/api/deployments/${deploymentId}/logs`}
+        downloadName={`deploy-${deploymentId}.log`}
+        emptyMessage={
+          data.status === "queued"
+            ? "Aguardando o worker iniciar o deploy…"
+            : "Nenhuma linha registrada."
+        }
+        onEnd={handleEnd}
+      />
     </section>
   );
 }

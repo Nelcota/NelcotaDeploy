@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, Link, Outlet } from "@tanstack/react-router";
 import { AlertTriangleIcon, ShieldCheckIcon } from "lucide-react";
 
+import { ProjectBand } from "@/web/components/project-header";
 import { type ProjectDetails, projectQueryOptions } from "@/web/components/project-query";
 import { ErrorState } from "@/web/components/states";
 import { Button } from "@/web/components/ui/button";
@@ -30,15 +31,18 @@ function ProjectLayout() {
   }
   if (query.data == null) {
     return (
-      <div className="space-y-4" aria-busy="true" aria-label="Carregando projeto">
-        <Skeleton className="h-10 w-72" />
-        <Skeleton className="h-9 w-full" />
+      <div className="space-y-6" aria-busy="true" aria-label="Carregando projeto">
+        <Skeleton className="h-4 w-20" />
+        <Skeleton className="h-9 w-72" />
+        <Skeleton className="h-4 w-56" />
+        <Skeleton className="h-8 w-full" />
         <Skeleton className="h-64 w-full" />
       </div>
     );
   }
   return (
     <>
+      <ProjectBand details={query.data} />
       <ProjectBanners details={query.data} />
       <Outlet />
     </>
@@ -62,7 +66,7 @@ function ProjectBanners({ details }: { readonly details: ProjectDetails }) {
       {project.deploymentsApproved ? null : (
         <div
           role="status"
-          className="flex flex-col gap-3 rounded-xl border border-warning/35 bg-warning/10 p-5 sm:flex-row sm:items-center sm:justify-between"
+          className="flex flex-col gap-3 rounded-xl bg-warning/8 px-5 py-4 ring-1 ring-warning/25 sm:flex-row sm:items-center sm:justify-between"
         >
           <p className="flex items-start gap-2 text-sm">
             <ShieldCheckIcon aria-hidden className="mt-0.5 size-4 shrink-0 text-warning" />
@@ -79,7 +83,7 @@ function ProjectBanners({ details }: { readonly details: ProjectDetails }) {
       {workerOffline ? (
         <p
           role="alert"
-          className="flex items-start gap-2 rounded-xl border border-destructive/35 bg-destructive/10 p-5 text-sm"
+          className="flex items-start gap-2 rounded-xl bg-destructive/8 px-5 py-4 text-sm ring-1 ring-destructive/25"
         >
           <AlertTriangleIcon aria-hidden className="mt-0.5 size-4 shrink-0 text-destructive" />
           Worker offline: deploys, ações de contêiner e tasks ficam na fila até o worker voltar.

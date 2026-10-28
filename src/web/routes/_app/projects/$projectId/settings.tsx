@@ -5,8 +5,8 @@ import { type FormEvent, useState } from "react";
 import { toast } from "sonner";
 
 import { ConfirmDialog } from "@/web/components/confirm-dialog";
-import { PageHeader } from "@/web/components/page-header";
 import { ProjectForm, projectToFormValues } from "@/web/components/project-form";
+import { TabHeader } from "@/web/components/project-header";
 import { projectQueryOptions } from "@/web/components/project-query";
 import { ListSkeleton } from "@/web/components/states";
 import { Button } from "@/web/components/ui/button";
@@ -43,8 +43,8 @@ function ProjectSettingsPage() {
   const { project } = details.data;
 
   return (
-    <div className="space-y-6">
-      <PageHeader
+    <div className="space-y-8">
+      <TabHeader
         title="Ajustes do projeto"
         description="Repositório, build e porta. As mudanças valem no próximo deploy."
       />
@@ -110,7 +110,7 @@ function RepositoryTokenCard({
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-base">
-          <KeyRoundIcon aria-hidden className="size-4" />
+          <KeyRoundIcon aria-hidden className="size-4 text-muted-foreground" />
           Repositório privado
         </CardTitle>
         <CardDescription>
@@ -164,30 +164,37 @@ function DangerZone({ projectId, slug }: { readonly projectId: string; readonly 
     },
   });
   return (
-    <Card className="border-destructive/40">
-      <CardHeader>
-        <CardTitle className="text-base text-destructive">Zona de perigo</CardTitle>
-        <CardDescription>
-          Excluir remove o projeto, seus contêineres, imagens, variáveis, tasks e histórico. Não
-          pode ser desfeito.
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        <ConfirmDialog
-          trigger={
-            <Button variant="destructive" disabled={remove.isPending}>
-              <Trash2Icon aria-hidden />
-              Excluir projeto
-            </Button>
-          }
-          title="Excluir este projeto?"
-          description="A aplicação sai do ar e todos os dados do projeto são apagados."
-          confirmLabel="Excluir definitivamente"
-          destructive
-          confirmationText={slug}
-          onConfirm={() => remove.mutate()}
-        />
-      </CardContent>
-    </Card>
+    <section
+      aria-labelledby="danger-zone-title"
+      className="flex flex-col gap-4 rounded-xl px-5 py-5 ring-1 ring-destructive/40 sm:flex-row sm:items-center sm:justify-between"
+    >
+      <div className="space-y-1">
+        <h2 id="danger-zone-title" className="text-sm font-semibold text-destructive">
+          Excluir projeto
+        </h2>
+        <p className="max-w-xl text-sm text-muted-foreground">
+          Remove o projeto, seus contêineres, imagens, variáveis, tasks e histórico. Não pode ser
+          desfeito.
+        </p>
+      </div>
+      <ConfirmDialog
+        trigger={
+          <Button
+            variant="outline"
+            className="shrink-0 text-destructive"
+            disabled={remove.isPending}
+          >
+            <Trash2Icon aria-hidden />
+            Excluir projeto
+          </Button>
+        }
+        title="Excluir este projeto?"
+        description="A aplicação sai do ar e todos os dados do projeto são apagados."
+        confirmLabel="Excluir definitivamente"
+        destructive
+        confirmationText={slug}
+        onConfirm={() => remove.mutate()}
+      />
+    </section>
   );
 }

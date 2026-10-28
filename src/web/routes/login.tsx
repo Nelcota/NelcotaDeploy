@@ -59,19 +59,17 @@ function LoginPage() {
 
   return (
     <main className="flex min-h-svh flex-col items-center justify-center bg-background px-5 py-10">
-      <div className="w-full max-w-sm space-y-8">
-        <div className="flex flex-col items-center gap-5 text-center">
-          <NelcotaMark className="h-12 w-auto" />
-          <div className="space-y-1.5">
-            <h1 className="text-2xl font-semibold tracking-tight">Entrar no Nelcota Deploy</h1>
-            <p className="text-sm text-muted-foreground">Use a conta criada pelo administrador.</p>
+      <div className="w-full max-w-sm space-y-10">
+        <div className="flex flex-col items-center gap-6 text-center">
+          <NelcotaMark className="h-10 w-auto" />
+          <div className="space-y-2">
+            <h1 className="text-3xl font-semibold tracking-tight">Entrar</h1>
+            <p className="text-base text-muted-foreground">
+              Use a conta criada pelo administrador do Nelcota Deploy.
+            </p>
           </div>
         </div>
-        <form
-          className="space-y-5 rounded-xl border bg-card p-6"
-          onSubmit={(event) => void submit(event)}
-          noValidate
-        >
+        <form className="space-y-5" onSubmit={(event) => void submit(event)} noValidate>
           <div className="space-y-2">
             <Label htmlFor="email">E-mail</Label>
             <Input
@@ -102,7 +100,8 @@ function LoginPage() {
           )}
           <Button
             type="submit"
-            className="w-full"
+            size="lg"
+            className="mt-2 w-full"
             disabled={submitting || email.trim() === "" || password === ""}
           >
             {submitting ? <LoaderCircleIcon aria-hidden className="animate-spin" /> : null}

@@ -1,30 +1,29 @@
 import { useNavigate } from "@tanstack/react-router";
 import type { MouseEvent, ReactNode } from "react";
 
-import { cn } from "./ui/class-names";
-import { TableRow } from "./ui/table";
+import { ListRow } from "./layout";
+import { deploymentAccent } from "./project-accent";
 
 /** Elements whose clicks belong to themselves, not to the row. */
 const INTERACTIVE_SELECTOR = "a, button, input, select, [role='dialog'], [role='alertdialog']";
 
 /**
- * Table row that opens a deployment when clicked anywhere. Keyboard and screen-reader users
- * use the link inside the row; buttons and dialogs (which React bubbles through portals)
- * keep their own behavior.
+ * List row ({@link ListRow}) that opens a deployment when clicked anywhere; the left bar shows
+ * its status. Links and buttons inside keep their own behavior.
  */
-export function DeploymentRow({
+export function DeploymentListRow({
   projectId,
   deploymentId,
-  className,
+  status,
   children,
 }: {
   readonly projectId: string;
   readonly deploymentId: string;
-  readonly className?: string | undefined;
+  readonly status: string;
   readonly children: ReactNode;
 }) {
   const navigate = useNavigate();
-  const open = (event: MouseEvent<HTMLTableRowElement>) => {
+  const open = (event: MouseEvent<HTMLDivElement>) => {
     const target = event.target;
     if (target instanceof Element && target.closest(INTERACTIVE_SELECTOR) != null) {
       return;
@@ -35,8 +34,9 @@ export function DeploymentRow({
     });
   };
   return (
-    <TableRow onClick={open} className={cn("cursor-pointer", className)}>
-      {children}
-    </TableRow>
+    // The commit link inside the row is the keyboard path; the click target is a convenience.
+    <div onClick={open} className="cursor-pointer">
+      <ListRow accent={deploymentAccent(status)}>{children}</ListRow>
+    </div>
   );
 }

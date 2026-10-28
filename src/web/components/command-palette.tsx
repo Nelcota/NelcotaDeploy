@@ -133,11 +133,11 @@ export function CommandPalette({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         showCloseButton={false}
-        className="top-[18%] translate-y-0 gap-0 overflow-hidden p-0 sm:max-w-xl"
+        className="top-[18%] translate-y-0 gap-0 overflow-hidden border-0 bg-popover p-0 shadow-lg ring-1 ring-border sm:max-w-xl"
       >
         <DialogTitle className="sr-only">Buscar no painel</DialogTitle>
-        <div className="flex items-center gap-3 border-b px-4">
-          <SearchIcon aria-hidden className="size-5 text-muted-foreground" />
+        <div className="flex items-center gap-3 border-b border-border px-4">
+          <SearchIcon aria-hidden className="size-4 text-faint" />
           <input
             autoFocus
             role="combobox"
@@ -151,13 +151,13 @@ export function CommandPalette({
             onKeyDown={onKeyDown}
             className="h-14 flex-1 bg-transparent text-base outline-none placeholder:text-muted-foreground"
           />
-          <kbd className="rounded-md border px-1.5 py-0.5 font-mono text-xs text-muted-foreground">
+          <kbd className="rounded border border-border px-1.5 font-mono text-xs text-faint">
             Esc
           </kbd>
         </div>
         <div id="command-results" role="listbox" className="max-h-[22rem] overflow-y-auto p-2">
           {commands.length === 0 ? (
-            <p className="px-3 py-8 text-center text-sm text-muted-foreground">Nada encontrado.</p>
+            <p className="px-3 py-8 text-center text-sm text-faint">Nada encontrado.</p>
           ) : null}
           {(["Projetos", "Páginas"] as const).map((group) => {
             const items = groups[group] ?? [];
@@ -166,7 +166,7 @@ export function CommandPalette({
             }
             return (
               <div key={group} className="pb-2">
-                <p className="px-3 pt-2 pb-1 text-xs font-medium text-muted-foreground">{group}</p>
+                <p className="px-3 pt-2 pb-1 text-xs font-medium text-faint">{group}</p>
                 {items.map((command) => {
                   const active = commands[activeIndex]?.id === command.id;
                   return (
@@ -179,13 +179,13 @@ export function CommandPalette({
                       onMouseEnter={() => setActiveIndex(commands.indexOf(command))}
                       onClick={() => choose(command)}
                       className={cn(
-                        "flex w-full cursor-pointer items-center gap-3 rounded-lg px-3 py-2.5 text-left",
-                        active ? "bg-accent text-accent-foreground" : "text-foreground",
+                        "flex w-full cursor-pointer items-center gap-3 rounded-lg px-3 py-2 text-left",
+                        active ? "bg-secondary text-foreground" : "text-muted-foreground",
                       )}
                     >
-                      <command.icon aria-hidden className="size-4 shrink-0 text-muted-foreground" />
+                      <command.icon aria-hidden className="size-4 shrink-0 text-faint" />
                       <span className="truncate text-sm font-medium">{command.label}</span>
-                      <span className="ml-auto truncate font-mono text-xs text-muted-foreground">
+                      <span className="ml-auto truncate font-mono text-xs text-faint">
                         {command.hint}
                       </span>
                       {active ? (

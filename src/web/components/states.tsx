@@ -1,9 +1,13 @@
-import { AlertTriangleIcon, type LucideIcon, RefreshCwIcon } from "lucide-react";
+import { type LucideIcon, RefreshCwIcon } from "lucide-react";
 import type { ReactNode } from "react";
 
 import { Button } from "./ui/button";
 import { Skeleton } from "./ui/skeleton";
 
+/**
+ * Calm empty state: a small muted icon, one line and an optional action. Renders on the
+ * same surface as a list, so it can stand in for one.
+ */
 export function EmptyState({
   icon: Icon,
   title,
@@ -16,19 +20,17 @@ export function EmptyState({
   readonly action?: ReactNode;
 }) {
   return (
-    <div className="flex flex-col items-center justify-center gap-4 rounded-xl border border-dashed border-border bg-surface-sunken/40 px-6 py-14 text-center">
-      <div className="rounded-xl bg-accent p-3.5">
-        <Icon aria-hidden className="size-6 text-brand" />
+    <div className="flex flex-col items-start gap-3 rounded-xl bg-card px-5 py-6 ring-1 ring-border/70 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex min-w-0 items-start gap-3">
+        <Icon aria-hidden className="mt-0.5 size-4 shrink-0 text-faint" />
+        <div className="min-w-0 space-y-0.5">
+          <p className="text-sm font-medium">{title}</p>
+          {description == null ? null : (
+            <div className="text-sm text-muted-foreground">{description}</div>
+          )}
+        </div>
       </div>
-      <div className="space-y-1">
-        <p className="text-base font-semibold">{title}</p>
-        {description == null ? null : (
-          <div className="max-w-md text-sm leading-relaxed text-muted-foreground">
-            {description}
-          </div>
-        )}
-      </div>
-      {action}
+      {action == null ? null : <div className="shrink-0">{action}</div>}
     </div>
   );
 }
@@ -44,12 +46,14 @@ export function ErrorState({
   return (
     <div
       role="alert"
-      className="flex flex-col items-center gap-3 rounded-xl border border-destructive/40 bg-destructive/8 px-6 py-10 text-center"
+      className="flex flex-col items-start gap-3 rounded-xl bg-card px-5 py-5 ring-1 ring-destructive/40 sm:flex-row sm:items-center sm:justify-between"
     >
-      <AlertTriangleIcon aria-hidden className="size-6 text-destructive" />
-      <p className="text-sm">{message}</p>
+      <div className="flex items-center gap-3">
+        <span aria-hidden className="size-2 shrink-0 rounded-full bg-destructive" />
+        <p className="text-sm">{message}</p>
+      </div>
       {onRetry == null ? null : (
-        <Button variant="outline" size="sm" onClick={onRetry}>
+        <Button variant="ghost" size="sm" onClick={onRetry}>
           <RefreshCwIcon aria-hidden />
           Tentar novamente
         </Button>
@@ -58,11 +62,21 @@ export function ErrorState({
   );
 }
 
-export function ListSkeleton({ rows = 4 }: { readonly rows?: number }) {
+const DEFAULT_SKELETON_ROWS = 4;
+
+export function ListSkeleton({ rows = DEFAULT_SKELETON_ROWS }: { readonly rows?: number }) {
   return (
-    <div className="space-y-2" aria-busy="true" aria-label="Carregando">
+    <div
+      className="divide-y divide-border overflow-hidden rounded-xl bg-card ring-1 ring-border/70"
+      aria-busy="true"
+      aria-label="Carregando"
+    >
       {Array.from({ length: rows }, (_, index) => (
-        <Skeleton key={index} className="h-14 w-full rounded-lg" />
+        <div key={index} className="flex items-center gap-4 px-5 py-4">
+          <Skeleton className="size-2 rounded-full" />
+          <Skeleton className="h-4 w-40" />
+          <Skeleton className="ml-auto h-4 w-24" />
+        </div>
       ))}
     </div>
   );

@@ -1,12 +1,3 @@
-import {
-  CircleCheckIcon,
-  CircleDashedIcon,
-  CircleOffIcon,
-  CircleXIcon,
-  type LucideIcon,
-  LoaderCircleIcon,
-} from "lucide-react";
-
 import type { DeploymentStatus } from "@/deployments";
 
 import {
@@ -19,23 +10,24 @@ import { cn } from "./ui/class-names";
 
 type Tone = "success" | "danger" | "progress" | "neutral" | "warning";
 
-const TONE_CLASSES: Record<Tone, string> = {
-  success: "border-success/25 bg-success/12 text-success",
-  danger: "border-destructive/30 bg-destructive/10 text-destructive",
-  progress: "border-primary/30 bg-primary/12 text-brand",
-  warning: "border-warning/30 bg-warning/10 text-warning",
-  neutral: "border-border bg-secondary text-muted-foreground",
+const TONE_TEXT: Record<Tone, string> = {
+  success: "text-success",
+  danger: "text-destructive",
+  progress: "text-brand",
+  warning: "text-warning",
+  neutral: "text-muted-foreground",
 };
 
-const TONE_ICONS: Record<Tone, LucideIcon> = {
-  success: CircleCheckIcon,
-  danger: CircleXIcon,
-  progress: LoaderCircleIcon,
-  warning: CircleOffIcon,
-  neutral: CircleDashedIcon,
+const TONE_DOT: Record<Tone, string> = {
+  success: "bg-success shadow-[0_0_0_3px_color-mix(in_oklab,var(--success)_18%,transparent)]",
+  danger:
+    "bg-destructive shadow-[0_0_0_3px_color-mix(in_oklab,var(--destructive)_18%,transparent)]",
+  progress: "bg-brand animate-pulse",
+  warning: "bg-warning shadow-[0_0_0_3px_color-mix(in_oklab,var(--warning)_18%,transparent)]",
+  neutral: "bg-faint",
 };
 
-/** Small pill with an icon and text, so the state never depends on color alone. */
+/** Status as a colored dot and text. The text always names the state, so color is never the only cue. */
 export function StatusPill({
   tone,
   label,
@@ -45,16 +37,15 @@ export function StatusPill({
   readonly label: string;
   readonly className?: string;
 }) {
-  const Icon = TONE_ICONS[tone];
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs leading-none font-semibold whitespace-nowrap",
-        TONE_CLASSES[tone],
+        "inline-flex items-center gap-2 text-sm font-medium whitespace-nowrap",
+        TONE_TEXT[tone],
         className,
       )}
     >
-      <Icon aria-hidden className={cn("size-3.5", tone === "progress" ? "animate-spin" : "")} />
+      <span aria-hidden className={cn("size-2 shrink-0 rounded-full", TONE_DOT[tone])} />
       {label}
     </span>
   );

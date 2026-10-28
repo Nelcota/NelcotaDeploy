@@ -52,7 +52,7 @@ export function ConfirmDialog({
       }}
     >
       {trigger == null ? null : <AlertDialogTrigger asChild>{trigger}</AlertDialogTrigger>}
-      <AlertDialogContent>
+      <AlertDialogContent className="border-0 shadow-lg ring-1 ring-border">
         <AlertDialogHeader>
           <AlertDialogTitle>{title}</AlertDialogTitle>
           <AlertDialogDescription asChild>
@@ -60,15 +60,17 @@ export function ConfirmDialog({
           </AlertDialogDescription>
         </AlertDialogHeader>
         {confirmationText == null ? null : (
-          <div className="space-y-2">
-            <Label htmlFor="confirmation-text">
-              Digite <span className="font-mono font-semibold">{confirmationText}</span> para
-              confirmar
+          <div className="space-y-1.5">
+            <Label htmlFor="confirmation-text" className="font-normal text-muted-foreground">
+              Digite{" "}
+              <span className="font-mono font-semibold text-foreground">{confirmationText}</span>{" "}
+              para confirmar
             </Label>
             <Input
               id="confirmation-text"
               value={typed}
               autoComplete="off"
+              className="font-mono"
               onChange={(event) => setTyped(event.target.value)}
             />
           </div>

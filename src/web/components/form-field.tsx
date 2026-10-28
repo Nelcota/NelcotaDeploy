@@ -47,7 +47,7 @@ export function FormField({
   const hintId = `${id}-hint`;
   const errorId = `${id}-error`;
   return (
-    <div className="space-y-2">
+    <div className="space-y-1.5">
       <Label htmlFor={id}>{label}</Label>
       {children({
         id,
@@ -55,7 +55,7 @@ export function FormField({
         "aria-invalid": messages.length > 0,
       })}
       {hint == null ? null : (
-        <p id={hintId} className="text-xs leading-relaxed text-muted-foreground">
+        <p id={hintId} className="text-xs leading-relaxed text-faint">
           {hint}
         </p>
       )}

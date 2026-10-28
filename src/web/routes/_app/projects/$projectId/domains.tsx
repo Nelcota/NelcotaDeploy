@@ -1,26 +1,24 @@
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
-import { ExternalLinkIcon, GlobeIcon, PlusIcon, RefreshCwIcon, Trash2Icon } from "lucide-react";
+import {
+  ExternalLinkIcon,
+  GlobeIcon,
+  LockIcon,
+  LockOpenIcon,
+  PlusIcon,
+  Trash2Icon,
+} from "lucide-react";
 import { type FormEvent, useState } from "react";
 import { z } from "zod";
 
 import { domainInputSchema } from "@/shared/domain.schema";
 import { ConfirmDialog } from "@/web/components/confirm-dialog";
 import { FormField } from "@/web/components/form-field";
-import { PageHeader } from "@/web/components/page-header";
-import { InfoNote } from "@/web/components/project-overview-info";
+import { List, ListRow } from "@/web/components/layout";
+import { TabHeader } from "@/web/components/project-header";
 import { projectQueryOptions } from "@/web/components/project-query";
-import { EmptyState, ErrorState, ListSkeleton } from "@/web/components/states";
-import { StatusPill } from "@/web/components/status-badge";
-import { Badge } from "@/web/components/ui/badge";
+import { ErrorState, ListSkeleton } from "@/web/components/states";
 import { Button } from "@/web/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/web/components/ui/card";
 import { Input } from "@/web/components/ui/input";
 import { Label } from "@/web/components/ui/label";
 import { Switch } from "@/web/components/ui/switch";
@@ -60,52 +58,51 @@ function DomainsPage() {
 
   return (
     <>
-      <PageHeader
+      <TabHeader
         title="Domínios"
-        description="Endereços públicos que levam até a sua aplicação."
-      />
-      <InfoNote
-        details="Crie um registro DNS do tipo A apontando o domínio para o IP deste servidor. Com DNS e ACME configurados, o Traefik emite o certificado HTTPS (Let's Encrypt) sozinho. O roteamento muda quando o contêiner é recriado."
-        action={
-          canRedeploy ? (
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={redeploy.isPending}
-              onClick={() => redeploy.mutate()}
-            >
-              <RefreshCwIcon aria-hidden />
-              Aplicar agora
-            </Button>
-          ) : null
+        description={
+          <span>
+            Endereços públicos da aplicação
+            {details == null ? "" : `, encaminhados à porta ${details.project.internalPort}`}. O
+            roteamento muda quando o contêiner é recriado
+            {canRedeploy ? (
+              <>
+                {" — "}
+                <button
+                  type="button"
+                  disabled={redeploy.isPending}
+                  onClick={() => redeploy.mutate()}
+                  className="font-medium text-foreground underline-offset-4 hover:underline focus-visible:underline focus-visible:outline-none disabled:opacity-50"
+                >
+                  aplicar agora
+                </button>
+              </>
+            ) : null}
+            .
+          </span>
         }
-      >
-        Depois de alterar domínios, clique em Aplicar agora.
-      </InfoNote>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Domínios do projeto</CardTitle>
-          {details == null ? null : (
-            <CardDescription>
-              Porta interna de destino: {details.project.internalPort}
-            </CardDescription>
-          )}
-        </CardHeader>
-        <CardContent>
-          {details == null ? (
-            <ListSkeleton rows={2} />
-          ) : (
-            <DomainList
-              domains={details.domains}
-              canEdit={canEdit}
-              onRemove={(domainId) => remove.mutate(domainId)}
-            />
-          )}
-        </CardContent>
-      </Card>
-
-      {canEdit ? <AddDomainForm projectId={projectId} /> : null}
+      />
+      {details == null ? (
+        <ListSkeleton rows={2} />
+      ) : (
+        <List>
+          <DomainRows
+            domains={details.domains}
+            canEdit={canEdit}
+            onRemove={(domainId) => remove.mutate(domainId)}
+          />
+          {canEdit ? <AddDomainForm projectId={projectId} /> : null}
+        </List>
+      )}
+      <details className="text-sm text-muted-foreground">
+        <summary className="w-fit cursor-pointer text-xs font-medium text-faint hover:text-foreground focus-visible:text-foreground focus-visible:outline-none">
+          Como configurar DNS e HTTPS
+        </summary>
+        <p className="mt-2 max-w-2xl text-xs leading-relaxed">
+          Crie um registro DNS do tipo A apontando o domínio para o IP deste servidor. Com DNS e
+          ACME configurados, o Traefik emite o certificado HTTPS (Let&apos;s Encrypt) sozinho.
+        </p>
+      </details>
     </>
   );
 }
@@ -117,7 +114,7 @@ type DomainItem = {
   readonly automatic: boolean;
 };
 
-function DomainList({
+function DomainRows({
   domains,
   canEdit,
   onRemove,
@@ -128,47 +125,46 @@ function DomainList({
 }) {
   if (domains.length === 0) {
     return (
-      <EmptyState
-        icon={GlobeIcon}
-        title="Nenhum domínio configurado"
-        description="Adicione um domínio ou defina um domínio base nas configurações para gerar endereços automáticos."
-      />
+      <ListRow>
+        <GlobeIcon aria-hidden className="size-4 shrink-0 text-faint" />
+        <p className="text-sm text-muted-foreground">
+          Nenhum domínio ainda. Adicione um abaixo ou defina um domínio base em Administração.
+        </p>
+      </ListRow>
     );
   }
-  return (
-    <ul className="divide-y">
-      {domains.map((domain) => (
-        <li
-          key={domain.hostname}
-          className="flex flex-wrap items-center justify-between gap-3 py-3"
-        >
-          <div className="flex min-w-0 flex-wrap items-center gap-2">
-            <a
-              href={`${domain.httpsEnabled ? "https" : "http"}://${domain.hostname}`}
-              target="_blank"
-              rel="noreferrer noopener"
-              className="inline-flex items-center gap-1 truncate font-mono text-sm hover:underline"
-            >
-              {domain.hostname}
-              <ExternalLinkIcon aria-hidden className="size-3.5" />
-            </a>
-            <StatusPill
-              tone={domain.httpsEnabled ? "success" : "neutral"}
-              label={domain.httpsEnabled ? "HTTPS" : "Somente HTTP"}
-            />
-            {domain.automatic ? <Badge variant="secondary">Automático</Badge> : null}
-          </div>
-          {canEdit && domain.id != null ? (
-            <RemoveDomainButton
-              domainId={domain.id}
-              hostname={domain.hostname}
-              onRemove={onRemove}
-            />
-          ) : null}
-        </li>
-      ))}
-    </ul>
-  );
+  return domains.map((domain) => (
+    <ListRow key={domain.hostname} accent={domain.httpsEnabled ? "success" : "neutral"}>
+      {domain.httpsEnabled ? (
+        <LockIcon aria-label="HTTPS" className="size-4 shrink-0 text-success" />
+      ) : (
+        <LockOpenIcon aria-label="Somente HTTP" className="size-4 shrink-0 text-faint" />
+      )}
+      <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1">
+        <span className="truncate font-mono text-sm">{domain.hostname}</span>
+        <span className="text-xs text-faint">
+          {domain.httpsEnabled ? "HTTPS" : "somente HTTP"}
+          {domain.automatic ? " · automático" : ""}
+        </span>
+      </div>
+      <div className="flex shrink-0 items-center gap-1">
+        <Button variant="ghost" size="sm" asChild>
+          <a
+            href={`${domain.httpsEnabled ? "https" : "http"}://${domain.hostname}`}
+            target="_blank"
+            rel="noreferrer noopener"
+          >
+            <ExternalLinkIcon aria-hidden />
+            Abrir
+            <span className="sr-only">(abre em nova aba)</span>
+          </a>
+        </Button>
+        {canEdit && domain.id != null ? (
+          <RemoveDomainButton domainId={domain.id} hostname={domain.hostname} onRemove={onRemove} />
+        ) : null}
+      </div>
+    </ListRow>
+  ));
 }
 
 function RemoveDomainButton({
@@ -221,36 +217,33 @@ function AddDomainForm({ projectId }: { readonly projectId: string }) {
   };
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-base">Adicionar domínio</CardTitle>
-      </CardHeader>
-      <CardContent>
-        <form className="flex flex-col gap-4 sm:flex-row sm:items-start" onSubmit={submit}>
-          <div className="flex-1">
-            <FormField id="domain-hostname" label="Domínio" errors={errors}>
-              {(props) => (
-                <Input
-                  {...props}
-                  placeholder="app.exemplo.com"
-                  autoComplete="off"
-                  className="font-mono"
-                  value={hostname}
-                  onChange={(event) => setHostname(event.target.value)}
-                />
-              )}
-            </FormField>
-          </div>
-          <div className="flex items-center gap-2 sm:pt-8">
-            <Switch id="domain-https" checked={httpsEnabled} onCheckedChange={setHttpsEnabled} />
-            <Label htmlFor="domain-https">HTTPS automático</Label>
-          </div>
-          <Button type="submit" className="sm:mt-6" disabled={add.isPending}>
-            <PlusIcon aria-hidden />
-            Adicionar
-          </Button>
-        </form>
-      </CardContent>
-    </Card>
+    <form
+      className="flex flex-col gap-3 bg-surface-sunken/40 px-5 py-4 sm:flex-row sm:items-start"
+      onSubmit={submit}
+      aria-label="Adicionar domínio"
+    >
+      <div className="flex-1">
+        <FormField id="domain-hostname" label="Novo domínio" errors={errors}>
+          {(props) => (
+            <Input
+              {...props}
+              placeholder="app.exemplo.com"
+              autoComplete="off"
+              className="font-mono"
+              value={hostname}
+              onChange={(event) => setHostname(event.target.value)}
+            />
+          )}
+        </FormField>
+      </div>
+      <div className="flex items-center gap-2 sm:pt-8">
+        <Switch id="domain-https" checked={httpsEnabled} onCheckedChange={setHttpsEnabled} />
+        <Label htmlFor="domain-https">HTTPS</Label>
+      </div>
+      <Button type="submit" variant="outline" className="sm:mt-6" disabled={add.isPending}>
+        <PlusIcon aria-hidden />
+        Adicionar
+      </Button>
+    </form>
   );
 }

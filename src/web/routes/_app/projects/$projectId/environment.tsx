@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
-import { KeyRoundIcon, PencilIcon, PlusIcon, RefreshCwIcon, Trash2Icon } from "lucide-react";
+import { EyeIcon, KeyRoundIcon, LockIcon, PencilIcon, PlusIcon, Trash2Icon } from "lucide-react";
 import { useState } from "react";
 import { z } from "zod";
 
@@ -12,11 +12,10 @@ import { ConfirmDialog } from "@/web/components/confirm-dialog";
 import { EnvImportDialog } from "@/web/components/env-import-dialog";
 import { type VariableKind, VariableKindToggle } from "@/web/components/env-kind-toggle";
 import { FormField } from "@/web/components/form-field";
-import { PageHeader } from "@/web/components/page-header";
-import { InfoNote } from "@/web/components/project-overview-info";
+import { List, ListRow } from "@/web/components/layout";
+import { TabHeader } from "@/web/components/project-header";
 import { projectQueryOptions } from "@/web/components/project-query";
 import { EmptyState, ErrorState, ListSkeleton } from "@/web/components/states";
-import { Badge } from "@/web/components/ui/badge";
 import { Button } from "@/web/components/ui/button";
 import {
   Dialog,
@@ -29,14 +28,6 @@ import {
 import { Input } from "@/web/components/ui/input";
 import { Label } from "@/web/components/ui/label";
 import { Switch } from "@/web/components/ui/switch";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/web/components/ui/table";
 import { Textarea } from "@/web/components/ui/textarea";
 import { useAction } from "@/web/components/use-action";
 import { useCan } from "@/web/components/use-permissions";
@@ -100,9 +91,27 @@ function EnvironmentPage() {
 
   return (
     <>
-      <PageHeader
-        title="Variáveis de ambiente"
-        description="Configurações e secrets entregues ao contêiner."
+      <TabHeader
+        title="Variáveis"
+        description={
+          <span>
+            Configurações e secrets entregues ao contêiner. As mudanças valem no próximo deploy
+            {canRedeploy ? (
+              <>
+                {" — "}
+                <button
+                  type="button"
+                  disabled={redeploy.isPending}
+                  onClick={() => redeploy.mutate()}
+                  className="font-medium text-foreground underline-offset-4 hover:underline focus-visible:underline focus-visible:outline-none disabled:opacity-50"
+                >
+                  redeploy agora
+                </button>
+              </>
+            ) : null}
+            .
+          </span>
+        }
         actions={
           canEdit ? (
             <>
@@ -115,31 +124,22 @@ function EnvironmentPage() {
           ) : null
         }
       />
-      <InfoNote
-        details="O redeploy recria o contêiner com a imagem atual e as variáveis salvas, sem novo build. Secrets são criptografados com AES-256-GCM e nunca voltam para o navegador."
-        action={
-          canRedeploy ? (
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={redeploy.isPending}
-              onClick={() => redeploy.mutate()}
-            >
-              <RefreshCwIcon aria-hidden />
-              Redeploy agora
-            </Button>
-          ) : null
-        }
-      >
-        As alterações valem no próximo deploy.
-      </InfoNote>
-      <VariablesTable
+      <VariablesList
         query={variables}
         canEdit={canEdit}
         onEdit={openEdit}
         onDelete={(variableId) => remove.mutate(variableId)}
         onCreate={openCreate}
       />
+      <details className="group text-sm text-muted-foreground">
+        <summary className="w-fit cursor-pointer text-xs font-medium text-faint hover:text-foreground focus-visible:text-foreground focus-visible:outline-none">
+          Saiba mais sobre secrets e redeploy
+        </summary>
+        <p className="mt-2 max-w-2xl text-xs leading-relaxed">
+          Secrets são criptografados com AES-256-GCM e nunca voltam para o navegador. O redeploy
+          recria o contêiner com a imagem atual e as variáveis salvas, sem novo build.
+        </p>
+      </details>
       <VariableDialog
         key={editing?.id ?? "new"}
         projectId={projectId}
@@ -151,7 +151,7 @@ function EnvironmentPage() {
   );
 }
 
-function VariablesTable({
+function VariablesList({
   query,
   canEdit,
   onEdit,
@@ -174,11 +174,11 @@ function VariablesTable({
     return (
       <EmptyState
         icon={KeyRoundIcon}
-        title="Nenhuma variável cadastrada"
+        title="Nenhuma variável ainda"
         description="Adicione configurações como NODE_ENV ou secrets como DATABASE_URL."
         action={
           canEdit ? (
-            <Button variant="outline" onClick={onCreate}>
+            <Button variant="outline" size="sm" onClick={onCreate}>
               <PlusIcon aria-hidden />
               Nova variável
             </Button>
@@ -188,74 +188,61 @@ function VariablesTable({
     );
   }
   return (
-    <div className="overflow-x-auto rounded-lg border">
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>Nome</TableHead>
-            <TableHead>Tipo</TableHead>
-            <TableHead>Valor</TableHead>
-            <TableHead>Build</TableHead>
-            <TableHead>Atualizada em</TableHead>
-            {canEdit ? <TableHead className="text-right">Ações</TableHead> : null}
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {query.data.map((variable) => (
-            <TableRow key={variable.id}>
-              <TableCell className="font-mono text-sm">{variable.key}</TableCell>
-              <TableCell>
-                <Badge variant={variable.kind === "secret" ? "default" : "secondary"}>
-                  {variable.kind === "secret" ? "Secret" : "Configuração"}
-                </Badge>
-              </TableCell>
-              <TableCell
-                className="max-w-xs truncate font-mono text-xs"
-                title={variable.value ?? undefined}
+    <List>
+      {query.data.map((variable) => (
+        <ListRow key={variable.id} className="flex-wrap sm:flex-nowrap">
+          <div className="min-w-0 flex-1 space-y-1">
+            <p className="truncate font-mono text-sm font-medium">{variable.key}</p>
+            <p
+              className="truncate font-mono text-xs text-muted-foreground"
+              title={variable.value ?? undefined}
+            >
+              {variable.kind === "secret" ? (
+                <span aria-label="Valor oculto">{MASKED_VALUE}</span>
+              ) : (
+                <PlainValue value={variable.value} />
+              )}
+            </p>
+          </div>
+          <div className="flex shrink-0 items-center gap-4 text-xs text-faint">
+            <span className="inline-flex items-center gap-1.5">
+              {variable.kind === "secret" ? (
+                <LockIcon aria-hidden className="size-3.5" />
+              ) : (
+                <EyeIcon aria-hidden className="size-3.5" />
+              )}
+              {variable.kind === "secret" ? "Secret" : "Configuração"}
+            </span>
+            {variable.availableAtBuild ? <span>no build</span> : null}
+            <span className="hidden md:inline">{formatDateTime(variable.updatedAt)}</span>
+          </div>
+          {canEdit ? (
+            <div className="flex shrink-0 gap-1">
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                aria-label={`Editar ${variable.key}`}
+                onClick={() => onEdit(variable)}
               >
-                {variable.kind === "secret" ? (
-                  <span aria-label="Valor oculto">{MASKED_VALUE}</span>
-                ) : (
-                  (variable.value ?? "")
-                )}
-              </TableCell>
-              <TableCell className="text-sm">
-                {variable.availableAtBuild ? "Disponível no build" : "—"}
-              </TableCell>
-              <TableCell className="text-sm text-muted-foreground">
-                {formatDateTime(variable.updatedAt)}
-              </TableCell>
-              {canEdit ? (
-                <TableCell className="text-right">
-                  <div className="flex justify-end gap-1">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      aria-label={`Editar ${variable.key}`}
-                      onClick={() => onEdit(variable)}
-                    >
-                      <PencilIcon aria-hidden />
-                    </Button>
-                    <ConfirmDialog
-                      trigger={
-                        <Button variant="ghost" size="icon" aria-label={`Excluir ${variable.key}`}>
-                          <Trash2Icon aria-hidden />
-                        </Button>
-                      }
-                      title={`Excluir ${variable.key}?`}
-                      description="A variável deixa de ser enviada ao contêiner a partir do próximo deploy."
-                      confirmLabel="Excluir"
-                      destructive
-                      onConfirm={() => onDelete(variable.id)}
-                    />
-                  </div>
-                </TableCell>
-              ) : null}
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
-    </div>
+                <PencilIcon aria-hidden />
+              </Button>
+              <ConfirmDialog
+                trigger={
+                  <Button variant="ghost" size="icon-sm" aria-label={`Excluir ${variable.key}`}>
+                    <Trash2Icon aria-hidden />
+                  </Button>
+                }
+                title={`Excluir ${variable.key}?`}
+                description="A variável deixa de ser enviada ao contêiner a partir do próximo deploy."
+                confirmLabel="Excluir"
+                destructive
+                onConfirm={() => onDelete(variable.id)}
+              />
+            </div>
+          ) : null}
+        </ListRow>
+      ))}
+    </List>
   );
 }
 
@@ -362,10 +349,10 @@ function VariableDialog({
               />
             )}
           </FormField>
-          <div className="flex items-start justify-between gap-4 rounded-lg border p-3">
+          <div className="flex items-start justify-between gap-4 rounded-lg bg-secondary p-3 ring-1 ring-border ring-inset">
             <div className="space-y-1">
               <Label htmlFor="variable-build">Disponível no build</Label>
-              <p id="variable-build-hint" className="text-xs text-muted-foreground">
+              <p id="variable-build-hint" className="text-xs text-faint">
                 Também entregue ao build da imagem (ARG no Dockerfile).
               </p>
             </div>
@@ -388,4 +375,11 @@ function VariableDialog({
       </DialogContent>
     </Dialog>
   );
+}
+
+function PlainValue({ value }: { readonly value: string | null }) {
+  if (value == null || value === "") {
+    return <span className="text-faint">vazio</span>;
+  }
+  return <>{value}</>;
 }

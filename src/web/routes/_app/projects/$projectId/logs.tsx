@@ -4,8 +4,8 @@ import { useState } from "react";
 
 import { formatDateTime } from "@/shared/format";
 import { LogViewer } from "@/web/components/log-viewer";
+import { TabHeader } from "@/web/components/project-header";
 import { projectQueryOptions } from "@/web/components/project-query";
-import { Label } from "@/web/components/ui/label";
 import {
   Select,
   SelectContent,
@@ -41,19 +41,13 @@ function RuntimeLogsPage() {
       : `/api/projects/${projectId}/runtime-logs?deploymentId=${encodeURIComponent(selected)}`;
 
   return (
-    <section aria-label="Logs de execução" className="space-y-4">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-        <div className="space-y-1 text-sm text-muted-foreground">
-          <p>Saída stdout e stderr dos contêineres do projeto, atualizada em tempo real.</p>
-          <p>
-            As linhas aparecem quando o worker detecta o contêiner em execução. Apenas as linhas
-            mais recentes de cada projeto são mantidas; valores de secrets são ocultados.
-          </p>
-        </div>
-        <div className="w-full space-y-2 sm:w-72">
-          <Label htmlFor="log-deployment">Deploy</Label>
+    <section aria-label="Logs de execução" className="space-y-6">
+      <TabHeader
+        title="Logs"
+        description="Saída dos contêineres em tempo real. Valores de secrets são ocultados."
+        actions={
           <Select value={selected} onValueChange={setSelected}>
-            <SelectTrigger id="log-deployment" className="w-full">
+            <SelectTrigger aria-label="Deploy" className="w-64">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -67,10 +61,11 @@ function RuntimeLogsPage() {
               ))}
             </SelectContent>
           </Select>
-        </div>
-      </div>
+        }
+      />
       <LogViewer
         url={url}
+        heightClass="h-[36rem]"
         emptyMessage={
           currentDeploymentId == null
             ? "O projeto ainda não tem um contêiner implantado."
