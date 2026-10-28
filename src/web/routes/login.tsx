@@ -4,7 +4,6 @@ import { type FormEvent, useState } from "react";
 import { z } from "zod";
 
 import { authClient } from "@/web/components/auth-client";
-import { NelcotaMark } from "@/web/components/brand-logo";
 import { Button } from "@/web/components/ui/button";
 import { Input } from "@/web/components/ui/input";
 import { Label } from "@/web/components/ui/label";
@@ -62,57 +61,74 @@ function LoginPage() {
   };
 
   return (
-    <main className="flex min-h-svh flex-col items-center justify-center bg-background px-5 py-10">
-      <div className="w-full max-w-sm space-y-8">
-        <div className="flex items-center justify-center gap-3">
-          <NelcotaMark aria-hidden className="h-9 w-auto" />
-          <span className="text-xl font-semibold tracking-tight">Nelcota Deploy</span>
-        </div>
-        <form
-          className="space-y-5 rounded-2xl bg-panel p-6 ring-1 ring-border/70 sm:p-8"
-          onSubmit={(event) => void submit(event)}
-          noValidate
-        >
-          <div className="space-y-1">
-            <h1 className="text-2xl font-semibold tracking-tight">Entrar</h1>
-            <p className="text-sm text-muted-foreground">
+    <div className="flex min-h-svh bg-background p-0 sm:p-6">
+      <main className="flex flex-1 flex-col items-center bg-panel bg-gradient-to-b from-well/40 to-transparent px-5 py-12 ring-1 ring-border/60 sm:rounded-3xl">
+        <div className="flex w-full max-w-sm flex-1 flex-col justify-center gap-8">
+          {/* The wordmark exists in white and black; each theme shows the one with contrast. */}
+          <img
+            src="/nelcota-logo-white.svg"
+            alt="Nelcota"
+            width={192}
+            height={72}
+            className="mx-auto hidden h-18 w-auto dark:block"
+          />
+          <img
+            src="/nelcota-logo-black.svg"
+            alt="Nelcota"
+            width={192}
+            height={72}
+            className="mx-auto h-18 w-auto dark:hidden"
+          />
+          <div className="space-y-2 text-center">
+            <h1 className="text-3xl font-semibold tracking-tight">Entrar no Deploy</h1>
+            <p className="text-base text-muted-foreground">
               Use a conta criada pelo administrador do painel.
             </p>
           </div>
-          <div className="space-y-2">
-            <Label htmlFor="email">E-mail</Label>
-            <Input
-              id="email"
-              type="email"
-              autoComplete="username"
-              placeholder="voce@empresa.com"
-              required
-              value={email}
-              onChange={(event) => setEmail(event.target.value)}
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="password">Senha</Label>
-            <Input
-              id="password"
-              type="password"
-              autoComplete="current-password"
-              required
-              value={password}
-              onChange={(event) => setPassword(event.target.value)}
-            />
-          </div>
-          {error == null ? null : (
-            <p role="alert" className="text-sm text-destructive">
-              {error}
-            </p>
-          )}
-          <Button type="submit" size="lg" className="mt-2 w-full" disabled={submitting}>
-            {submitting ? <LoaderCircleIcon aria-hidden className="animate-spin" /> : null}
-            Entrar
-          </Button>
-        </form>
-      </div>
-    </main>
+          <form className="space-y-4" onSubmit={(event) => void submit(event)} noValidate>
+            <div className="space-y-2">
+              <Label htmlFor="email">Seu e-mail</Label>
+              <Input
+                id="email"
+                type="email"
+                autoComplete="username"
+                placeholder="voce@empresa.com"
+                required
+                aria-describedby={error == null ? undefined : "login-error"}
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="password">Senha</Label>
+              <Input
+                id="password"
+                type="password"
+                autoComplete="current-password"
+                required
+                aria-describedby={error == null ? undefined : "login-error"}
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+              />
+            </div>
+            {error == null ? null : (
+              <p id="login-error" role="alert" className="text-sm text-destructive">
+                {error}
+              </p>
+            )}
+            <Button type="submit" size="lg" className="w-full rounded-lg" disabled={submitting}>
+              {submitting ? <LoaderCircleIcon aria-hidden className="animate-spin" /> : null}
+              Entrar
+            </Button>
+          </form>
+          <p className="text-center text-sm text-faint">
+            Esqueceu a senha? Peça a um administrador para redefini-la.
+          </p>
+        </div>
+        <footer className="pt-10 text-xs text-faint">
+          © {new Date().getUTCFullYear()} Nelcota
+        </footer>
+      </main>
+    </div>
   );
 }
