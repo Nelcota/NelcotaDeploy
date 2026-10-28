@@ -4,6 +4,7 @@ export {
   isContainerAction,
   requestContainerAction,
 } from "./container-action.service";
+export { summarizeDeployments } from "./deployment-stats.service";
 export {
   DeploymentNotFoundError,
   NoActiveContainerError,

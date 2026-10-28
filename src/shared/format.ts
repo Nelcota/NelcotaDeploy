@@ -40,6 +40,13 @@ const dayKeyFormat = new Intl.DateTimeFormat("en-CA", {
   month: "2-digit",
   day: "2-digit",
 });
+// Calendar days are formatted at noon UTC so no time zone can move them to another date.
+const shortDayFormat = new Intl.DateTimeFormat(LOCALE, {
+  timeZone: "UTC",
+  weekday: "short",
+  day: "numeric",
+});
+const CALENDAR_DAY = /^\d{4}-\d{2}-\d{2}$/;
 const numberFormat = new Intl.NumberFormat(LOCALE, { maximumFractionDigits: 1 });
 const percentFormat = new Intl.NumberFormat(LOCALE, {
   style: "percent",
@@ -228,4 +235,18 @@ export function formatDayHeading(isoDate: string, now: Date): string {
     return "Ontem";
   }
   return longDateFormat.format(date);
+}
+
+/**
+ * Formats a calendar day key as a short label for a chart axis, such as "seg., 26".
+ *
+ * @param day - Day as "YYYY-MM-DD", like the keys from {@link dayKey}.
+ * @returns Short weekday and day of month, or "—" when the key is not a valid date.
+ */
+export function formatShortDay(day: string): string {
+  if (CALENDAR_DAY.test(day) === false) {
+    return UNAVAILABLE;
+  }
+  const date = new Date(`${day}T12:00:00Z`);
+  return Number.isNaN(date.getTime()) ? UNAVAILABLE : shortDayFormat.format(date);
 }

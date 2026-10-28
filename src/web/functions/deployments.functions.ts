@@ -12,6 +12,7 @@ import {
   listRollbackCandidates,
   requestContainerAction,
   requestDeployment,
+  summarizeDeployments,
 } from "@/deployments";
 import { getProject } from "@/projects";
 import { authorize } from "@/web/server/authorization";
@@ -20,6 +21,7 @@ import { PublicError } from "@/web/server/public-error";
 import { idSchema, projectIdInput } from "./ids";
 
 const MAX_PAGE_SIZE = 100;
+const MAX_STATS_DAYS = 30;
 
 export const listDeploymentsFn = createServerFn({ method: "GET" })
   .validator(
@@ -33,6 +35,14 @@ export const listDeploymentsFn = createServerFn({ method: "GET" })
   .handler(async ({ data }) => {
     await authorize("project:read");
     return listDeployments(getDatabase(), data);
+  });
+
+/** Totals, success rate, average duration and per-day counts of the last `days` days. */
+export const getDeploymentStatsFn = createServerFn({ method: "GET" })
+  .validator(z.object({ days: z.number().int().min(1).max(MAX_STATS_DAYS) }))
+  .handler(async ({ data }) => {
+    await authorize("project:read");
+    return summarizeDeployments(getDatabase(), { days: data.days });
   });
 
 export const getDeploymentFn = createServerFn({ method: "GET" })

@@ -3,6 +3,7 @@ import { describe, expect, test } from "bun:test";
 import {
   dayKey,
   formatDayHeading,
+  formatShortDay,
   formatBytes,
   formatDateTime,
   formatDuration,
@@ -88,5 +89,25 @@ describe("formatDayHeading", () => {
     const heading = formatDayHeading("", now);
 
     expect(heading).toBe("—");
+  });
+});
+
+describe("formatShortDay", () => {
+  test("names the weekday and the day of month", () => {
+    const label = formatShortDay("2026-10-26");
+
+    expect(label).toBe("seg., 26");
+  });
+
+  test("returns a dash for a malformed key", () => {
+    const label = formatShortDay("26/10/2026");
+
+    expect(label).toBe("—");
+  });
+
+  test("returns a dash for an impossible date", () => {
+    const label = formatShortDay("2026-13-40");
+
+    expect(label).toBe("—");
   });
 });
