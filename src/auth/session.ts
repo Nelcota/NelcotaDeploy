@@ -10,6 +10,8 @@ export type CurrentUser = {
   readonly name: string;
   readonly email: string;
   readonly role: Role;
+  /** Address of the profile photo, or null to show the initials. */
+  readonly image: string | null;
 };
 
 /**
@@ -27,7 +29,13 @@ export async function getCurrentUser(headers: Headers): Promise<CurrentUser | nu
   if (user.disabled === true || isRole(user.role) === false) {
     return null;
   }
-  return { id: user.id, name: user.name, email: user.email, role: user.role };
+  return {
+    id: user.id,
+    name: user.name,
+    email: user.email,
+    role: user.role,
+    image: user.image ?? null,
+  };
 }
 
 /**

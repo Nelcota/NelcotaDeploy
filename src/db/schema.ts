@@ -1,6 +1,7 @@
 import { sql } from "drizzle-orm";
 import {
   type AnySQLiteColumn,
+  blob,
   index,
   integer,
   real,
@@ -31,6 +32,16 @@ export const users = sqliteTable("user", {
   disabled: integer("disabled", { mode: "boolean" }).notNull().default(false),
   createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
   updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+});
+
+/** Profile photo of a user, already resized by the browser; one row per user. */
+export const userAvatars = sqliteTable("user_avatar", {
+  userId: text("user_id")
+    .primaryKey()
+    .references(() => users.id, { onDelete: "cascade" }),
+  contentType: text("content_type").notNull(),
+  content: blob("content", { mode: "buffer" }).notNull(),
+  updatedAt: updatedAt(),
 });
 
 export const sessions = sqliteTable(

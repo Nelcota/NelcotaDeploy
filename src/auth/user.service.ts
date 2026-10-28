@@ -31,6 +31,7 @@ export function listUsers(database: Database) {
       email: tables.users.email,
       role: tables.users.role,
       disabled: tables.users.disabled,
+      image: tables.users.image,
       createdAt: tables.users.createdAt,
     })
     .from(tables.users)
@@ -42,6 +43,7 @@ export function listUsers(database: Database) {
       email: user.email,
       role: user.role,
       disabled: user.disabled,
+      image: user.image,
       createdAt: user.createdAt.toISOString(),
     }));
 }

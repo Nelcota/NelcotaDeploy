@@ -1,4 +1,9 @@
-import { ForbiddenError, UnauthenticatedError, UserOperationError } from "@/auth";
+import {
+  ForbiddenError,
+  InvalidAvatarError,
+  UnauthenticatedError,
+  UserOperationError,
+} from "@/auth";
 import { InvalidConfigError } from "@/config";
 import {
   DeploymentNotFoundError,
@@ -19,6 +24,7 @@ type ErrorClass = abstract new (...args: never[]) => Error;
 const MESSAGES: readonly (readonly [ErrorClass, string])[] = [
   [UnauthenticatedError, "Sua sessão expirou. Entre novamente."],
   [ForbiddenError, "Você não tem permissão para esta ação."],
+  [InvalidAvatarError, "Imagem inválida. Use uma foto PNG, JPEG ou WebP de até 512 KB."],
   [ProjectNotFoundError, "Projeto não encontrado."],
   [ProjectSlugTakenError, "Já existe um projeto com este identificador."],
   [

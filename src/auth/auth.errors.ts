@@ -26,3 +26,11 @@ export class UserOperationError extends Error {
     this.name = "UserOperationError";
   }
 }
+
+/** Thrown when a profile photo is empty, too large or not a PNG, JPEG or WebP image. */
+export class InvalidAvatarError extends Error {
+  constructor(reason: string) {
+    super(`Invalid avatar: ${reason}`);
+    this.name = "InvalidAvatarError";
+  }
+}
