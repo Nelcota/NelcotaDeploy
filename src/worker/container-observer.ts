@@ -20,22 +20,24 @@ type Follower = { readonly controller: AbortController; readonly projectId: stri
 /**
  * Splits a `docker logs --timestamps` line into its time and message.
  *
+ * @remarks
+ * Docker prefixes every line the container wrote with its timestamp. Lines without one come
+ * from the `docker` command itself, such as "read unix @->/run/docker.sock: use of closed
+ * network connection" when the stream closes, and are not application output.
+ *
  * @param line - Raw line.
- * @param fallback - Time used when the line has no valid timestamp.
- * @returns UTC ISO time (millisecond precision) and message.
+ * @returns UTC ISO time (millisecond precision) and message, or null when the line has no
+ * valid timestamp.
  */
-export function parseTimestampedLine(
-  line: string,
-  fallback: Date,
-): { createdAt: string; message: string } {
+export function parseTimestampedLine(line: string): { createdAt: string; message: string } | null {
   const match = TIMESTAMPED_LINE.exec(line);
   const timestamp = match?.[1];
   if (timestamp == null) {
-    return { createdAt: fallback.toISOString(), message: line };
+    return null;
   }
   const date = new Date(timestamp);
   if (Number.isNaN(date.getTime())) {
-    return { createdAt: fallback.toISOString(), message: line };
+    return null;
   }
   return { createdAt: date.toISOString(), message: match?.[2] ?? "" };
 }
@@ -157,7 +159,15 @@ export class ContainerObserver implements Disposable {
         container.id,
         since,
         (line, stream) => {
-          const parsed = parseTimestampedLine(line, new Date());
+          const parsed = parseTimestampedLine(line);
+          if (parsed == null) {
+            // A message from the docker CLI, not the application: keep it out of its logs.
+            this.#logger.debug(
+              { container: container.name, line: line.replaceAll(/[\r\n]/g, " ") },
+              "docker logs reported",
+            );
+            return;
+          }
           if (lastStored != null && parsed.createdAt <= lastStored) {
             return;
           }
