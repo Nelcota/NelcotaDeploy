@@ -16,7 +16,9 @@
         "better-auth": "1.7.7",
         "class-variance-authority": "0.7.1",
         "clsx": "2.1.1",
+        "cronstrue": "3.32.0",
         "drizzle-orm": "0.45.4",
+        "ipaddr.js": "2.5.0",
         "lucide-react": "1.57.0",
         "pino": "10.4.0",
         "radix-ui": "1.8.1",
@@ -731,6 +733,8 @@
 
     "cookie-es": ["cookie-es@3.1.1", "", {}, "sha512-UaXxwISYJPTr9hwQxMFYZ7kNhSXboMXP+Z3TRX6f1/NyaGPfuNUZOWP1pUEb75B2HjfklIYLVRfWiFZJyC6Npg=="],
 
+    "cronstrue": ["cronstrue@3.32.0", "", { "bin": { "cronstrue": "bin/cli.js" } }, "sha512-OHTec7+5nosN4UsitwgBDQ0bofGZF3H4pLqgqa93NR3nExNlhtVHcO2JY3jRognrFH8Bl9oAooT0hyCjSyOU+Q=="],
+
     "csstype": ["csstype@3.2.3", "", {}, "sha512-z1HGKcYy2xA8AGQfwrn0PAy+PB7X/GSj3UVJW9qKyn43xWa+gl5nXmU4qqLMRzWVLFC8KusUX8T/0kCiOYpAIQ=="],
 
     "d3-array": ["d3-array@3.2.4", "", { "dependencies": { "internmap": "1 - 2" } }, "sha512-tdQAmyA18i4J7wprpYq8ClcxZy3SC31QMeByyCFyRt7BVHdREQZ5lpzoe5mFEYZUWe+oq8HBvk9JjpibyEV4Jg=="],
@@ -806,6 +810,8 @@
     "immer": ["immer@11.1.21", "", {}, "sha512-bZSadeCPGdaY5/qRLgr6mDSH1ra21rD3rqpiWk7+QTr4ayYPTE9qZYdLh/NdPhMe0wSrTvHD/Lk8q5EwhUs0aw=="],
 
     "internmap": ["internmap@2.0.3", "", {}, "sha512-5Hh7Y1wQbvY5ooGgPbDaL5iYLAPzMTUrjMulskHLH6wnv/A+1q5rgEaiuqEjB+oxGXIVZs1FF+R/KPN3ZSQYYg=="],
+
+    "ipaddr.js": ["ipaddr.js@2.5.0", "", {}, "sha512-aq+t5NAc+cS6rZQQVWC2x98CPqGtKKTMDd4Gaodv0wShnItdKg/51djkGJ1hqH+Oy0ivDftCbSLCQob8zso01w=="],
 
     "isbot": ["isbot@5.2.2", "", {}, "sha512-iQcBXcd+Rv/pkubRyGh2utW2j1oPG5hZY6TUhVPpqK4G+o3IbxpJNx04hgksjc/N7GK5pEorUxDeg31cFgEk/w=="],
 
