@@ -43,9 +43,9 @@ function useNow(enabled: boolean): Date {
 
 function Detail({ label, children }: { readonly label: string; readonly children: ReactNode }) {
   return (
-    <div className="flex min-w-0 items-baseline gap-4">
-      <dt className="w-28 shrink-0 text-sm text-muted-foreground">{label}</dt>
-      <dd className="min-w-0 truncate text-sm">{children}</dd>
+    <div className="flex min-w-0 flex-col gap-0.5 sm:flex-row sm:items-baseline sm:gap-4">
+      <dt className="shrink-0 text-sm text-muted-foreground sm:w-28">{label}</dt>
+      <dd className="min-w-0 text-sm break-all sm:truncate">{children}</dd>
     </div>
   );
 }

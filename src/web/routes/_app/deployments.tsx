@@ -125,7 +125,7 @@ function DeploymentsPage() {
                   deploymentId={deployment.id}
                   status={deployment.status}
                 >
-                  <div className="w-36 shrink-0">
+                  <div className="hidden w-36 shrink-0 sm:block">
                     <DeploymentStatusBadge status={deployment.status} />
                   </div>
                   <div className="min-w-0 flex-1">
@@ -150,6 +150,10 @@ function DeploymentsPage() {
                     <p className="truncate text-sm text-muted-foreground">
                       {deployment.commitMessage ?? "sem mensagem"}
                     </p>
+                    {/* Small screens drop the status column; the status moves under the commit. */}
+                    <div className="pt-1.5 sm:hidden">
+                      <DeploymentStatusBadge status={deployment.status} />
+                    </div>
                   </div>
                   <div className="hidden w-40 shrink-0 text-xs md:block">
                     <p className="font-mono text-muted-foreground">{deployment.branch}</p>
@@ -158,7 +162,7 @@ function DeploymentsPage() {
                       {deployment.triggeredByLabel}
                     </p>
                   </div>
-                  <div className="w-28 shrink-0 text-right text-xs">
+                  <div className="w-20 shrink-0 text-right text-xs sm:w-28">
                     <time
                       dateTime={deployment.createdAt}
                       title={formatDateTime(deployment.createdAt)}

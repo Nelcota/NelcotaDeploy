@@ -103,6 +103,10 @@ function ProjectDeploymentsPage() {
   const currentDeploymentId = project.data?.project.currentDeploymentId ?? null;
   const canRollback = can("deployment:create");
   const rows = useMemo(() => deployments.data?.pages.flat() ?? [], [deployments.data]);
+  const isRollbackTarget = (deploymentId: string) =>
+    canRollback && rollbackIds.has(deploymentId) && deploymentId !== currentDeploymentId;
+  // The rollback column only takes space when at least one listed deploy can be restored.
+  const showRollbackColumn = rows.some((row) => isRollbackTarget(row.id));
 
   const header = (
     <TabHeader
@@ -165,16 +169,16 @@ function ProjectDeploymentsPage() {
                 {formatDuration(durationBetween(deployment.startedAt, deployment.finishedAt))}
               </span>
             </div>
-            <div className="w-32 shrink-0">
+            <div className="flex w-32 shrink-0 justify-end">
               <DeploymentStatusBadge status={deployment.status} />
             </div>
-            <div className="flex w-28 shrink-0 justify-end">
-              {canRollback &&
-              rollbackIds.has(deployment.id) &&
-              deployment.id !== currentDeploymentId ? (
-                <RollbackButton deployment={deployment} />
-              ) : null}
-            </div>
+            {showRollbackColumn ? (
+              <div className="flex w-28 shrink-0 justify-end">
+                {isRollbackTarget(deployment.id) ? (
+                  <RollbackButton deployment={deployment} />
+                ) : null}
+              </div>
+            ) : null}
           </DeploymentListRow>
         ))}
       </List>

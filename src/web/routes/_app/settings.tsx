@@ -377,7 +377,7 @@ function UsersTab() {
               accent={user.disabled ? "neutral" : "none"}
               className="flex-wrap md:flex-nowrap"
             >
-              <div className="min-w-0 flex-1 space-y-0.5">
+              <div className="min-w-0 flex-1 basis-full space-y-0.5 md:basis-auto">
                 <p className="truncate text-sm font-medium">{user.name}</p>
                 <p className="text-sm break-all text-muted-foreground">{user.email}</p>
               </div>

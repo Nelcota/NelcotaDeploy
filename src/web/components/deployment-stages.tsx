@@ -2,6 +2,9 @@ import type { DeploymentStatus } from "@/deployments";
 
 import { cn } from "./ui/class-names";
 
+/** Stages per row on small screens, where the six do not fit side by side. */
+const STAGES_PER_MOBILE_ROW = 3;
+
 type StageState = "done" | "current" | "failed" | "cancelled" | "pending" | "skipped";
 
 const STAGES = [
@@ -116,7 +119,7 @@ export function stageStates(deployment: StageSource): StageState[] {
 export function DeploymentStages({ deployment }: { readonly deployment: StageSource }) {
   const states = stageStates(deployment);
   return (
-    <ol aria-label="Etapas do deploy" className="grid grid-cols-6 gap-0">
+    <ol aria-label="Etapas do deploy" className="grid grid-cols-3 gap-y-5 sm:grid-cols-6">
       {STAGES.map((stage, index) => {
         const state = states[index] ?? "pending";
         const style = STATE_STYLES[state];
@@ -130,10 +133,18 @@ export function DeploymentStages({ deployment }: { readonly deployment: StageSou
             <div className="flex items-center">
               <span aria-hidden className={cn("size-2.5 shrink-0 rounded-full", style.dot)} />
               {last ? null : (
-                <span aria-hidden className={cn("mx-2 h-px flex-1 rounded-full", style.line)} />
+                <span
+                  aria-hidden
+                  className={cn(
+                    "mx-2 h-px flex-1 rounded-full",
+                    style.line,
+                    // On three-column screens the third stage ends its row: no line to nowhere.
+                    index === STAGES_PER_MOBILE_ROW - 1 ? "max-sm:invisible" : "",
+                  )}
+                />
               )}
             </div>
-            <p className={cn("truncate pr-2 text-xs font-medium sm:text-sm", style.text)}>
+            <p className={cn("pr-2 text-xs font-medium sm:truncate sm:text-sm", style.text)}>
               {stage.label}
               <span className="sr-only">: {style.label}</span>
             </p>
