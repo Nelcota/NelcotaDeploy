@@ -1,6 +1,13 @@
 import { useQuery } from "@tanstack/react-query";
-import { createFileRoute } from "@tanstack/react-router";
-import { ActivityIcon, ClockIcon, CpuIcon, MemoryStickIcon, RotateCwIcon } from "lucide-react";
+import { createFileRoute, Link } from "@tanstack/react-router";
+import {
+  ActivityIcon,
+  ClockIcon,
+  ContainerIcon,
+  CpuIcon,
+  MemoryStickIcon,
+  RotateCwIcon,
+} from "lucide-react";
 import { useState } from "react";
 
 import { formatBytes, formatPercent, formatRelativeTime, formatShortTime } from "@/shared/format";
@@ -9,7 +16,8 @@ import { MetricChart } from "@/web/components/metric-chart";
 import { SegmentedControl } from "@/web/components/overview";
 import { currentContainer, TabHeader } from "@/web/components/project-header";
 import { projectQueryOptions } from "@/web/components/project-query";
-import { ErrorState } from "@/web/components/states";
+import { EmptyState, ErrorState } from "@/web/components/states";
+import { Button } from "@/web/components/ui/button";
 import { Card } from "@/web/components/ui/card";
 import { Skeleton } from "@/web/components/ui/skeleton";
 import { getProjectMetricsFn } from "@/web/functions/monitoring.functions";
@@ -27,17 +35,24 @@ export const Route = createFileRoute("/_app/projects/$projectId/metrics")({
   component: ProjectMetricsPage,
 });
 
-function ProjectMetricsPage() {
-  const { projectId } = Route.useParams();
-  const [hours, setHours] = useState<number>(1);
-  const project = useQuery(projectQueryOptions(projectId));
-  const metrics = useQuery({
+function useProjectMetrics(projectId: string, hours: number) {
+  return useQuery({
     queryKey: ["project-metrics", projectId, hours],
     queryFn: () => getProjectMetricsFn({ data: { projectId, hours } }),
     refetchInterval: REFRESH_INTERVAL_IN_MS,
   });
+}
+
+type MetricSample = Awaited<ReturnType<typeof getProjectMetricsFn>>[number];
+
+function ProjectMetricsPage() {
+  const { projectId } = Route.useParams();
+  const [hours, setHours] = useState<number>(1);
+  const project = useQuery(projectQueryOptions(projectId));
+  const metrics = useProjectMetrics(projectId, hours);
 
   const container = project.data == null ? null : currentContainer(project.data);
+  const neverDeployed = project.data != null && project.data.project.currentDeploymentId == null;
   const samples = metrics.data ?? [];
   const latest = samples.at(-1) ?? null;
   const now = new Date();
@@ -86,8 +101,40 @@ function ProjectMetricsPage() {
         }
       />
 
-      <StatRow title="Agora" icon={ActivityIcon} stats={stats} />
+      {neverDeployed ? (
+        <EmptyState
+          icon={ContainerIcon}
+          title="Nenhum contêiner implantado"
+          description="CPU e memória passam a ser coletadas assim que o primeiro deploy colocar a aplicação no ar."
+          action={
+            <Button variant="outline" asChild>
+              <Link to="/projects/$projectId/deployments" params={{ projectId }}>
+                Ver deploys
+              </Link>
+            </Button>
+          }
+        />
+      ) : (
+        <ProjectMetrics stats={stats} metrics={metrics} samples={samples} cpuIdle={cpuIdle} />
+      )}
+    </section>
+  );
+}
 
+function ProjectMetrics({
+  stats,
+  metrics,
+  samples,
+  cpuIdle,
+}: {
+  readonly stats: readonly Stat[];
+  readonly metrics: ReturnType<typeof useProjectMetrics>;
+  readonly samples: readonly MetricSample[];
+  readonly cpuIdle: boolean;
+}) {
+  return (
+    <>
+      <StatRow title="Agora" icon={ActivityIcon} stats={stats} />
       {metrics.isError ? (
         <ErrorState error={metrics.error} onRetry={() => void metrics.refetch()} />
       ) : null}
@@ -131,6 +178,6 @@ function ProjectMetricsPage() {
           </Card>
         </div>
       ) : null}
-    </section>
+    </>
   );
 }
