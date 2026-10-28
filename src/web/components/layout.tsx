@@ -43,12 +43,7 @@ export type Stat = {
   readonly icon?: LucideIcon;
   /** Compact chart shown next to the value, such as {@link MiniBars}. */
   readonly visual?: ReactNode;
-  /** CSS variable that tints the icon, such as `--chart-1`; neutral when absent. */
-  readonly colorVariable?: string;
 };
-
-/** Gap between the entrance of each stat card, so the row fills left to right. */
-const STAT_STAGGER_IN_MS = 70;
 
 const STAT_TONES = {
   default: "text-foreground",
@@ -56,28 +51,6 @@ const STAT_TONES = {
   warning: "text-warning",
   danger: "text-destructive",
 } as const;
-
-function StatIcon({
-  icon: Icon,
-  colorVariable,
-}: {
-  readonly icon: LucideIcon;
-  readonly colorVariable: string | undefined;
-}) {
-  const color = colorVariable == null ? "var(--muted-foreground)" : `var(${colorVariable})`;
-  return (
-    <span
-      className="flex size-9 shrink-0 items-center justify-center rounded-xl transition-transform duration-300 group-hover:scale-110 group-hover:-rotate-6"
-      style={{
-        color,
-        background: `color-mix(in oklab, ${color} 14%, transparent)`,
-        boxShadow: `inset 0 0 0 1px color-mix(in oklab, ${color} 28%, transparent)`,
-      }}
-    >
-      <Icon aria-hidden className="size-[1.15rem]" />
-    </span>
-  );
-}
 
 /** Key figures as a row of cards: label on top, the value in a recessed well, detail below. */
 export function StatRow({
@@ -95,15 +68,16 @@ export function StatRow({
       )}
       style={{ "--stats": stats.length } as React.CSSProperties}
     >
-      {stats.map((stat, index) => (
+      {stats.map((stat) => (
         <div
           key={stat.label}
-          className="group flex min-w-0 flex-col gap-2.5 rounded-2xl bg-card p-2.5 ring-1 ring-border/70 transition-[transform,box-shadow] duration-300 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-black/20 motion-safe:animate-rise-in"
-          style={{ animationDelay: `${index * STAT_STAGGER_IN_MS}ms` }}
+          className="flex min-w-0 flex-col gap-2.5 rounded-2xl bg-card p-2.5 ring-1 ring-border/70"
         >
           <dt className="flex items-center gap-3 px-2 pt-1.5 text-sm font-medium">
             {stat.icon == null ? null : (
-              <StatIcon icon={stat.icon} colorVariable={stat.colorVariable} />
+              <span className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-well ring-1 ring-border/60">
+                <stat.icon aria-hidden className="size-3.5 text-muted-foreground" />
+              </span>
             )}
             <span className="truncate">{stat.label}</span>
           </dt>
