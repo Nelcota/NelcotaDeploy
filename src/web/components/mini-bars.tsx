@@ -5,6 +5,8 @@ const MIN_BAR_PERCENT = 6;
 const FULL_BAR_PERCENT = 100;
 /** Empty buckets are dimmed so they read as "nothing here" rather than as a small value. */
 const EMPTY_BAR_OPACITY = 0.35;
+/** Gap between the start of each bar's grow animation, so the chart fills left to right. */
+const BAR_STAGGER_IN_MS = 45;
 
 function assertBuckets(windowInMs: number, bucketCount: number): void {
   if (Number.isFinite(windowInMs) === false || windowInMs <= 0) {
@@ -128,13 +130,14 @@ export function MiniBars({
 }) {
   const heights = barHeights(values);
   return (
-    <span aria-hidden className={cn("flex h-10 w-24 items-end gap-0.5", className)}>
+    <span aria-hidden className={cn("flex h-14 w-32 items-end gap-1", className)}>
       {heights.map((height, index) => (
         <span
           key={index}
-          className="flex-1 rounded-t-[3px]"
+          className="flex-1 origin-bottom rounded-t-[4px] transition-[height] duration-700 ease-out motion-safe:animate-bar-grow"
           style={{
             height: `${height}%`,
+            animationDelay: `${index * BAR_STAGGER_IN_MS}ms`,
             background: `linear-gradient(to bottom, var(${colorVariable}), color-mix(in oklab, var(${colorVariable}) 55%, transparent))`,
             opacity: values[index] == null || values[index] === 0 ? EMPTY_BAR_OPACITY : 1,
           }}
@@ -191,12 +194,18 @@ export function RatioBlocks({
 }) {
   const blocks = blockCounts(filled, total, MAX_BLOCKS);
   return (
-    <span aria-hidden className="flex h-10 items-end gap-0.5">
+    <span aria-hidden className="flex h-14 items-end gap-1">
       {Array.from({ length: blocks.total }, (_, index) => (
         <span
           key={index}
-          className={cn("h-full w-2 rounded-[3px]", index < blocks.filled ? "" : "bg-well-hover")}
-          style={index < blocks.filled ? { background: `var(${colorVariable})` } : undefined}
+          className={cn(
+            "h-full w-2.5 origin-bottom rounded-[4px] motion-safe:animate-bar-grow",
+            index < blocks.filled ? "" : "bg-well-hover",
+          )}
+          style={{
+            animationDelay: `${index * BAR_STAGGER_IN_MS}ms`,
+            background: index < blocks.filled ? `var(${colorVariable})` : undefined,
+          }}
         />
       ))}
     </span>

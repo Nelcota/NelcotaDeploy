@@ -165,6 +165,7 @@ function dashboardStats(
     {
       label: "Aplicações online",
       icon: BoxesIcon,
+      colorVariable: "--success",
       value: `${data.onlineCount} de ${deployed}`,
       tone: data.offlineCount > 0 ? "warning" : "default",
       detail: data.offlineCount === 0 ? "nenhuma offline" : `${data.offlineCount} offline`,
@@ -176,6 +177,7 @@ function dashboardStats(
     {
       label: "Deploys em 24 h",
       icon: RocketIcon,
+      colorVariable: "--chart-4",
       value: deploymentsInLastDay(data.recentDeployments, now),
       detail: "entre os mais recentes",
       visual: (
@@ -193,6 +195,7 @@ function dashboardStats(
     {
       label: "Falhas em 24 h",
       icon: TriangleAlertIcon,
+      colorVariable: "--chart-5",
       value: failures,
       tone: failures > 0 ? "danger" : "default",
       detail: failures > 0 ? "veja a atividade" : "nenhuma falha",
@@ -211,6 +214,7 @@ function dashboardStats(
     {
       label: "CPU do servidor",
       icon: CpuIcon,
+      colorVariable: "--chart-3",
       value: formatPercent(host?.cpuPercent ?? null),
       detail:
         host?.memoryTotalBytes == null
@@ -287,7 +291,7 @@ function DashboardPage() {
       />
 
       {data == null ? (
-        <Skeleton className="h-36 rounded-2xl" />
+        <Skeleton className="h-48 rounded-2xl" />
       ) : (
         <StatRow stats={dashboardStats(data, hostMetrics.data ?? [], hours, now)} />
       )}
