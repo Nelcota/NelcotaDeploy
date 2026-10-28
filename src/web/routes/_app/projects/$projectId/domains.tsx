@@ -3,9 +3,11 @@ import { createFileRoute } from "@tanstack/react-router";
 import {
   ExternalLinkIcon,
   GlobeIcon,
+  InfoIcon,
   LockIcon,
   LockOpenIcon,
   PlusIcon,
+  RefreshCwIcon,
   Trash2Icon,
 } from "lucide-react";
 import { type FormEvent, useState } from "react";
@@ -63,48 +65,51 @@ function DomainsPage() {
         title="Domínios"
         count={details?.domains.length ?? null}
         description={
-          <span>
-            Endereços públicos da aplicação
-            {details == null ? "" : `, encaminhados à porta ${details.project.internalPort}`}. O
-            roteamento muda quando o contêiner é recriado
-            {canRedeploy ? (
-              <>
-                {" — "}
-                <button
-                  type="button"
-                  disabled={redeploy.isPending}
-                  onClick={() => redeploy.mutate()}
-                  className="font-medium text-foreground underline-offset-4 hover:underline focus-visible:underline focus-visible:outline-none disabled:opacity-50"
-                >
-                  aplicar agora
-                </button>
-              </>
-            ) : null}
-            .
-          </span>
+          details == null
+            ? "Endereços públicos da aplicação."
+            : `Endereços públicos da aplicação, encaminhados à porta ${details.project.internalPort}. O roteamento muda quando o contêiner é recriado.`
+        }
+        actions={
+          canRedeploy ? (
+            <Button
+              variant="outline"
+              disabled={redeploy.isPending}
+              onClick={() => redeploy.mutate()}
+              title="Recria o contêiner com a imagem atual para aplicar os domínios salvos"
+            >
+              <RefreshCwIcon aria-hidden />
+              Aplicar com redeploy
+            </Button>
+          ) : null
         }
       />
-      {details == null ? (
-        <ListSkeleton rows={2} />
-      ) : (
-        <List>
-          <DomainRows
-            domains={details.domains}
-            canEdit={canEdit}
-            onRemove={(domainId) => remove.mutate(domainId)}
-          />
-          {canEdit ? <AddDomainForm projectId={projectId} /> : null}
-        </List>
-      )}
-      <details className="text-sm text-muted-foreground">
-        <summary className="w-fit cursor-pointer text-xs font-medium text-faint hover:text-foreground focus-visible:text-foreground focus-visible:outline-none">
-          Como configurar DNS e HTTPS
-        </summary>
-        <p className="mt-2 max-w-2xl text-xs leading-relaxed">
-          Crie um registro DNS do tipo A apontando o domínio para o IP deste servidor. Com DNS e
-          ACME configurados, o Traefik emite o certificado HTTPS (Let&apos;s Encrypt) sozinho.
-        </p>
-      </details>
+      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_18rem]">
+        {details == null ? (
+          <ListSkeleton rows={2} />
+        ) : (
+          <List className="self-start">
+            {canEdit ? <AddDomainForm projectId={projectId} /> : null}
+            <DomainRows
+              domains={details.domains}
+              canEdit={canEdit}
+              onRemove={(domainId) => remove.mutate(domainId)}
+            />
+          </List>
+        )}
+        <aside
+          aria-labelledby="dns-help-title"
+          className="space-y-2 self-start rounded-2xl bg-card p-5 text-sm ring-1 ring-border/70"
+        >
+          <h3 id="dns-help-title" className="flex items-center gap-2 font-medium">
+            <InfoIcon aria-hidden className="size-4 text-muted-foreground" />
+            DNS e HTTPS
+          </h3>
+          <p className="text-xs leading-relaxed text-muted-foreground">
+            Crie um registro DNS do tipo A apontando o domínio para o IP deste servidor. Com DNS e
+            ACME configurados, o Traefik emite o certificado HTTPS (Let&apos;s Encrypt) sozinho.
+          </p>
+        </aside>
+      </div>
     </>
   );
 }
@@ -130,7 +135,7 @@ function DomainRows({
       <ListRow>
         <GlobeIcon aria-hidden className="size-4 shrink-0 text-faint" />
         <p className="text-sm text-muted-foreground">
-          Nenhum domínio ainda. Adicione um abaixo ou defina um domínio base em Administração.
+          Nenhum domínio ainda. Adicione um acima ou defina um domínio base em Administração.
         </p>
       </ListRow>
     );
