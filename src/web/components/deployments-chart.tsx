@@ -68,7 +68,12 @@ export function DeploymentsChart({ days }: { readonly days: readonly DeploymentC
     <figure aria-label="Deploys por dia" className="h-56 w-full">
       <figcaption className="sr-only">{captionFor(days)}</figcaption>
       <ResponsiveContainer width="100%" height="100%">
-        <BarChart data={[...days]} margin={{ top: 6, right: 4, bottom: 0, left: 0 }}>
+        {/* Not focusable: a click would draw a focus box, and the caption already reads it out. */}
+        <BarChart
+          data={[...days]}
+          margin={{ top: 6, right: 4, bottom: 0, left: 0 }}
+          accessibilityLayer={false}
+        >
           <CartesianGrid stroke="var(--border)" vertical={false} />
           <XAxis
             dataKey="day"

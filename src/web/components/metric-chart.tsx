@@ -104,7 +104,9 @@ export function MetricChart({
     <figure aria-label={label} className={compact ? "h-28 w-full" : "h-64 w-full"}>
       <figcaption className="sr-only">{captionFor(label, points, formatValue)}</figcaption>
       <ResponsiveContainer width="100%" height="100%">
+        {/* Not focusable: a click would draw a focus box, and the caption already reads it out. */}
         <AreaChart
+          accessibilityLayer={false}
           data={[...points]}
           margin={{ top: 6, right: 4, bottom: 0, left: compact ? COMPACT_INSET_IN_PX : 0 }}
         >
