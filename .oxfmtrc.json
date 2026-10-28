@@ -4,6 +4,13 @@
   "semi": true,
   "singleQuote": false,
   "trailingComma": "all",
-  "ignorePatterns": ["node_modules", "dist", "coverage", "bun.lock"],
+  "ignorePatterns": [
+    "node_modules",
+    "dist",
+    "coverage",
+    "bun.lock",
+    "drizzle/meta",
+    "src/web/routeTree.gen.ts"
+  ],
   "sortImports": true
 }

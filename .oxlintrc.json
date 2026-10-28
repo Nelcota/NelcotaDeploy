@@ -5,7 +5,13 @@
   "categories": {
     "correctness": "error"
   },
-  "ignorePatterns": ["node_modules", "dist", "coverage"],
+  "ignorePatterns": [
+    "node_modules",
+    "dist",
+    "coverage",
+    "src/web/routeTree.gen.ts",
+    "src/web/components/ui/**"
+  ],
   "rules": {
     "local/no-negation": "error",
     "typescript/strict-boolean-expressions": [
@@ -39,7 +45,18 @@
     "typescript/no-explicit-any": "error",
     "typescript/switch-exhaustiveness-check": "error",
     "typescript/consistent-type-imports": "error",
-    "typescript/only-throw-error": "error",
+    "typescript/only-throw-error": [
+      "error",
+      {
+        "allow": [
+          {
+            "from": "package",
+            "package": "@tanstack/router-core",
+            "name": ["Redirect", "NotFoundError"]
+          }
+        ]
+      }
+    ],
     "use-isnan": "error",
     "no-magic-numbers": [
       "warn",
@@ -76,6 +93,10 @@
           {
             "group": ["../*/*", "../../*/*", "!../shared/*", "!../../shared/*"],
             "message": "Import other packages only through their index.ts (e.g. '../orders'), never internal files."
+          },
+          {
+            "group": ["@/*/*", "!@/shared/*", "!@/web/**"],
+            "message": "Import other packages only through their index.ts (e.g. '@/projects'), never internal files. Client-safe code lives in '@/shared/*'; the web app may import its own files via '@/web/...'."
           }
         ]
       }

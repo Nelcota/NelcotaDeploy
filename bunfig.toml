@@ -3,3 +3,6 @@
 exact = true
 # Refuse versions published less than 14 days ago (in seconds).
 minimumReleaseAge = 1209600
+
+[test]
+preload = ["./src/testing/preload.ts"]
