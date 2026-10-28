@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { InfoIcon, ListChecksIcon, OctagonXIcon } from "lucide-react";
+import { ChevronLeftIcon, InfoIcon, ListChecksIcon, OctagonXIcon, RocketIcon } from "lucide-react";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
@@ -10,6 +10,7 @@ import { DeploymentStages } from "@/web/components/deployment-stages";
 import { ACTIVE_DEPLOYMENT_STATUSES, DEPLOYMENT_TRIGGER_LABELS } from "@/web/components/labels";
 import { CardTitleRow } from "@/web/components/layout";
 import { LogViewer } from "@/web/components/log-viewer";
+import { TabHeader } from "@/web/components/project-header";
 import { ErrorState, ListSkeleton } from "@/web/components/states";
 import { DeploymentStatusBadge } from "@/web/components/status-badge";
 import { Button } from "@/web/components/ui/button";
@@ -129,29 +130,31 @@ function DeploymentDetailPage() {
 
   return (
     <section aria-label="Detalhes do deploy" className="space-y-6">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-        <div className="min-w-0 space-y-1.5">
-          <Link
-            to="/projects/$projectId/deployments"
-            params={{ projectId }}
-            className="text-sm font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:underline focus-visible:outline-none"
-          >
-            Deploys
-          </Link>
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
-            <h2 className="text-xl font-semibold tracking-tight">
-              Deploy{" "}
-              <span className="font-mono">
-                {sha == null ? data.id.slice(-SHORT_ID_LENGTH) : sha.slice(0, SHORT_SHA_LENGTH)}
+      <div className="space-y-3">
+        <Link
+          to="/projects/$projectId/deployments"
+          params={{ projectId }}
+          className="inline-flex items-center gap-1 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:underline focus-visible:outline-none"
+        >
+          <ChevronLeftIcon aria-hidden className="size-4" />
+          Deploys
+        </Link>
+        <TabHeader
+          icon={RocketIcon}
+          title={
+            <>
+              <span>
+                Deploy{" "}
+                <span className="font-mono">
+                  {sha == null ? data.id.slice(-SHORT_ID_LENGTH) : sha.slice(0, SHORT_SHA_LENGTH)}
+                </span>
               </span>
-            </h2>
-            <DeploymentStatusBadge status={data.status} />
-          </div>
-          <p className="truncate text-sm text-muted-foreground">
-            {data.commitMessage ?? "sem mensagem de commit"}
-          </p>
-        </div>
-        {cancelButton}
+              <DeploymentStatusBadge status={data.status} />
+            </>
+          }
+          description={data.commitMessage ?? "sem mensagem de commit"}
+          actions={cancelButton}
+        />
       </div>
 
       <Card className="gap-5 p-5">
