@@ -3,8 +3,9 @@ import { and, asc, eq, ne } from "drizzle-orm";
 import { type Actor, recordAuditEvent } from "@/audit";
 import { type Database, tables } from "@/db";
 import type { Role } from "@/shared/roles";
+import { PASSWORD_MIN_LENGTH } from "@/shared/user.schema";
 
-import { type Auth, PASSWORD_MIN_LENGTH } from "./auth";
+import type { Auth } from "./auth";
 import { UserOperationError } from "./auth.errors";
 
 const CREDENTIAL_PROVIDER_ID = "credential";

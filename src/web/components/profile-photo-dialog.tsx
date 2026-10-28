@@ -11,6 +11,7 @@ import {
   centerSquareCrop,
   MAX_SOURCE_IMAGE_BYTES,
 } from "./avatar-image";
+import { ConfirmDialog } from "./confirm-dialog";
 import { Button } from "./ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "./ui/dialog";
 import { useAction } from "./use-action";
@@ -73,6 +74,13 @@ async function toAvatarBytes(file: File): Promise<Uint8Array> {
   } finally {
     bitmap.close();
   }
+}
+
+function uploadLabel(uploading: boolean, hasPhoto: boolean): string {
+  if (uploading) {
+    return "Enviando…";
+  }
+  return hasPhoto ? "Trocar imagem" : "Escolher imagem";
 }
 
 /** Dialog where the signed-in user picks or removes their profile photo. */
@@ -138,7 +146,12 @@ export function ProfilePhotoDialog({
           </DialogDescription>
         </DialogHeader>
         <div className="flex flex-col items-center gap-5 py-2">
-          <UserAvatar name={user.name} image={user.image} className="size-28 text-2xl" />
+          <UserAvatar
+            name={user.name}
+            image={user.image}
+            className="size-28"
+            fallbackClassName="text-2xl"
+          />
           <input
             ref={inputRef}
             type="file"
@@ -155,15 +168,29 @@ export function ProfilePhotoDialog({
               ) : (
                 <ImageUpIcon aria-hidden />
               )}
-              {user.image == null ? "Escolher imagem" : "Trocar imagem"}
+              {uploadLabel(upload.isPending, user.image != null)}
             </Button>
             {user.image == null ? null : (
-              <Button variant="outline" disabled={busy} onClick={() => remove.mutate()}>
-                <Trash2Icon aria-hidden />
-                Remover foto
-              </Button>
+              <ConfirmDialog
+                trigger={
+                  <Button variant="outline" disabled={busy}>
+                    {remove.isPending ? (
+                      <LoaderCircleIcon aria-hidden className="animate-spin" />
+                    ) : (
+                      <Trash2Icon aria-hidden />
+                    )}
+                    Remover foto
+                  </Button>
+                }
+                title="Remover a foto de perfil?"
+                description="No lugar dela aparecem as iniciais do seu nome."
+                confirmLabel="Remover"
+                destructive
+                onConfirm={() => remove.mutate()}
+              />
             )}
           </div>
+          <p className="text-xs text-muted-foreground">JPG, PNG ou WebP de até 20 MB.</p>
         </div>
       </DialogContent>
     </Dialog>

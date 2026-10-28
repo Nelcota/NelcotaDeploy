@@ -3,22 +3,25 @@ import { createFileRoute, useRouteContext } from "@tanstack/react-router";
 import {
   Building2Icon,
   KeyRoundIcon,
+  LoaderCircleIcon,
   PlusIcon,
   ShieldIcon,
   UsersIcon,
   WandSparklesIcon,
+  WebhookIcon,
 } from "lucide-react";
 import { type FormEvent, type ReactNode, useState } from "react";
 import { toast } from "sonner";
 import { z } from "zod";
 
-import { formatBytes, formatDateTime, formatRelativeTime } from "@/shared/format";
+import { formatBytes, formatDateTime, formatRelativeTime, pluralize } from "@/shared/format";
 import { type Role, ROLES } from "@/shared/roles";
 import { type SystemSettings, systemSettingsSchema } from "@/shared/settings.schema";
+import { newUserSchema, PASSWORD_MIN_LENGTH, passwordSchema } from "@/shared/user.schema";
 import { ConfirmDialog } from "@/web/components/confirm-dialog";
 import { CopyButton } from "@/web/components/copy-button";
 import { FormField } from "@/web/components/form-field";
-import { ROLE_LABELS } from "@/web/components/labels";
+import { AUDIT_ACTION_LABELS, ROLE_LABELS, WEBHOOK_REASON_LABELS } from "@/web/components/labels";
 import { List, ListRow, Section, StatRow } from "@/web/components/layout";
 import { SETTINGS_SECTIONS as SETTINGS_NAVIGATION } from "@/web/components/navigation";
 import { PageHeader } from "@/web/components/page-header";
@@ -76,7 +79,7 @@ const SETTINGS_SECTIONS = ["organization", "users", "server", "tokens", "audit"]
 
 export const Route = createFileRoute("/_app/settings")({
   validateSearch: z.object({ tab: z.enum(SETTINGS_SECTIONS).optional() }),
-  head: () => ({ meta: [{ title: "Configurações · Nelcota Deploy" }] }),
+  head: () => ({ meta: [{ title: "Administração · Nelcota Deploy" }] }),
   component: SettingsPage,
 });
 
@@ -133,6 +136,8 @@ const GENERATED_PASSWORD_BYTES = 18;
 const SERVER_REFRESH_INTERVAL_IN_MS = 15_000;
 /** Characters of ids and SHAs shown in tables; the full value is in the audit details. */
 const SHORT_ID_LENGTH = 12;
+// Same limit the server applies to token validity.
+const MAX_TOKEN_DAYS = 365;
 const SHORT_SHA_LENGTH = 7;
 
 /** Builds a strong random password in the browser with the Web Crypto API. */
@@ -152,18 +157,20 @@ function SettingsPage() {
     const permission = SECTION_PERMISSIONS[section];
     return permission == null || can(permission);
   };
+  // A link to a section this user cannot open falls back to the first one instead of a blank page.
+  const activeTab = canSee(tab) ? tab : "organization";
   return (
     <>
-      <PageHeader title="Administração" description={SETTINGS_DESCRIPTIONS[tab]} />
+      <PageHeader title="Administração" description={SETTINGS_DESCRIPTIONS[activeTab]} />
       <Tabs
-        value={tab}
+        value={activeTab}
         onValueChange={(value) => {
           const section = SETTINGS_SECTIONS.find((candidate) => candidate === value);
           void navigate({ search: { tab: section } });
         }}
         className="gap-8"
       >
-        <TabsList>
+        <TabsList aria-label="Seções da administração">
           {SETTINGS_SECTIONS.filter((section) => canSee(section)).map((section) => (
             <TabsTrigger key={section} value={section}>
               <SettingsTabIcon tab={section} />
@@ -290,14 +297,21 @@ function OrganizationForm({
               />
             )}
           </FormField>
-          <div className="flex items-center gap-2">
+          <div className="flex items-start gap-3">
             <Switch
               id="https-default"
               disabled={canEdit === false}
               checked={httpsByDefault}
               onCheckedChange={setHttpsByDefault}
+              aria-describedby="https-default-hint"
             />
-            <Label htmlFor="https-default">HTTPS nos domínios automáticos</Label>
+            <div className="space-y-1">
+              <Label htmlFor="https-default">HTTPS nos domínios automáticos</Label>
+              <p id="https-default-hint" className="text-xs text-muted-foreground">
+                O Traefik emite um certificado Let&apos;s Encrypt para cada domínio
+                &lt;identificador&gt;.&lt;domínio base&gt;.
+              </p>
+            </div>
           </div>
           {canEdit ? (
             <Button type="submit" disabled={save.isPending}>
@@ -323,6 +337,7 @@ function UsersTab() {
   const users = useQuery({ queryKey: ["users"], queryFn: () => listUsersFn() });
   const [createOpen, setCreateOpen] = useState(false);
   const [resetUser, setResetUser] = useState<{ id: string; name: string } | null>(null);
+  const [disablingUser, setDisablingUser] = useState<{ id: string; name: string } | null>(null);
   const updateRole = useAction({
     action: (input: { readonly userId: string; readonly role: Role }) =>
       updateUserRoleFn({ data: input }),
@@ -362,14 +377,21 @@ function UsersTab() {
             >
               <UserAvatar name={user.name} image={user.image} />
               <div className="min-w-0 flex-1 space-y-0.5 md:basis-auto">
-                <p className="truncate text-sm font-medium">{user.name}</p>
+                <p className="flex min-w-0 items-center gap-2 text-sm font-medium">
+                  <span className="truncate">{user.name}</span>
+                  {user.id === currentUser.id ? (
+                    <span className="shrink-0 font-normal text-muted-foreground">(você)</span>
+                  ) : null}
+                  {user.disabled ? <StatusPill tone="neutral" label="Desativado" /> : null}
+                </p>
                 <p className="text-sm break-all text-muted-foreground">{user.email}</p>
               </div>
-              <span className="hidden shrink-0 text-xs text-faint lg:block">
+              <span className="hidden shrink-0 text-xs text-muted-foreground lg:block">
                 desde {formatDateTime(user.createdAt)}
               </span>
               <Select
                 value={user.role}
+                disabled={user.id === currentUser.id}
                 onValueChange={(value) => {
                   const role = ROLES.find((candidate) => candidate === value);
                   if (role != null) {
@@ -377,7 +399,14 @@ function UsersTab() {
                   }
                 }}
               >
-                <SelectTrigger aria-label={`Papel de ${user.name}`} className="w-40" size="sm">
+                <SelectTrigger
+                  aria-label={`Papel de ${user.name}`}
+                  className="w-40"
+                  size="sm"
+                  title={
+                    user.id === currentUser.id ? "Você não pode alterar o próprio papel" : undefined
+                  }
+                >
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -388,17 +417,33 @@ function UsersTab() {
                   ))}
                 </SelectContent>
               </Select>
-              <Switch
-                aria-label={`Usuário ${user.name} ativo`}
-                checked={user.disabled === false}
-                disabled={user.id === currentUser.id}
-                title={
-                  user.id === currentUser.id ? "Você não pode desativar a própria conta" : undefined
-                }
-                onCheckedChange={(active) =>
-                  setDisabled.mutate({ userId: user.id, disabled: active === false })
-                }
-              />
+              <div className="flex items-center gap-2">
+                <Switch
+                  id={`user-active-${user.id}`}
+                  aria-label={`${user.name} ativo`}
+                  checked={user.disabled === false}
+                  disabled={user.id === currentUser.id}
+                  title={
+                    user.id === currentUser.id
+                      ? "Você não pode desativar a própria conta"
+                      : undefined
+                  }
+                  onCheckedChange={(active) => {
+                    if (active) {
+                      setDisabled.mutate({ userId: user.id, disabled: false });
+                      return;
+                    }
+                    setDisablingUser({ id: user.id, name: user.name });
+                  }}
+                />
+                <Label
+                  htmlFor={`user-active-${user.id}`}
+                  aria-hidden
+                  className="text-sm font-normal"
+                >
+                  Ativo
+                </Label>
+              </div>
               <Button
                 variant="ghost"
                 size="sm"
@@ -410,7 +455,25 @@ function UsersTab() {
           ))}
         </List>
       ) : null}
-      <CreateUserDialog open={createOpen} onOpenChange={setCreateOpen} />
+      {/* Mounted only while open, so a cancelled draft and its password are not kept. */}
+      {createOpen ? <CreateUserDialog open onOpenChange={setCreateOpen} /> : null}
+      <ConfirmDialog
+        open={disablingUser != null}
+        onOpenChange={(open) => {
+          if (open === false) {
+            setDisablingUser(null);
+          }
+        }}
+        title={`Desativar ${disablingUser?.name ?? "usuário"}?`}
+        description="A pessoa perde o acesso e as sessões abertas são encerradas. Dá para reativar depois."
+        confirmLabel="Desativar"
+        destructive
+        onConfirm={() => {
+          if (disablingUser != null) {
+            setDisabled.mutate({ userId: disablingUser.id, disabled: true });
+          }
+        }}
+      />
       {resetUser == null ? null : (
         <ResetPasswordDialog
           key={resetUser.id}
@@ -432,19 +495,21 @@ function PasswordInput({
   readonly onChange: (value: string) => void;
 }) {
   return (
-    <div className="flex gap-2">
+    <div className="flex flex-col gap-2 sm:flex-row">
       <Input
         {...props}
-        className="font-mono"
+        className="font-mono sm:flex-1"
         autoComplete="new-password"
         value={value}
         onChange={(event) => onChange(event.target.value)}
       />
-      <Button type="button" variant="outline" onClick={() => onChange(generatePassword())}>
-        <WandSparklesIcon aria-hidden />
-        Gerar senha
-      </Button>
-      {value === "" ? null : <CopyButton text={value} label="Copiar" />}
+      <div className="flex gap-2">
+        <Button type="button" variant="outline" onClick={() => onChange(generatePassword())}>
+          <WandSparklesIcon aria-hidden />
+          Gerar senha
+        </Button>
+        {value === "" ? null : <CopyButton text={value} label="Copiar" />}
+      </div>
     </div>
   );
 }
@@ -473,7 +538,17 @@ function CreateUserDialog({
       onOpenChange(false);
     },
   });
+  const [errors, setErrors] = useState<Partial<Record<keyof NewUserForm, string[]>>>({});
   const update = (patch: Partial<NewUserForm>) => setForm((current) => ({ ...current, ...patch }));
+  const submit = () => {
+    const parsed = newUserSchema.safeParse(form);
+    if (parsed.success === false) {
+      setErrors(z.flattenError(parsed.error).fieldErrors);
+      return;
+    }
+    setErrors({});
+    create.mutate(parsed.data);
+  };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -486,12 +561,13 @@ function CreateUserDialog({
         </DialogHeader>
         <form
           className="space-y-4"
+          noValidate
           onSubmit={(event) => {
             event.preventDefault();
-            create.mutate(form);
+            submit();
           }}
         >
-          <FormField id="user-name" label="Nome">
+          <FormField id="user-name" label="Nome" errors={errors.name ?? []}>
             {(props) => (
               <Input
                 {...props}
@@ -500,7 +576,7 @@ function CreateUserDialog({
               />
             )}
           </FormField>
-          <FormField id="user-email" label="E-mail">
+          <FormField id="user-email" label="E-mail" errors={errors.email ?? []}>
             {(props) => (
               <Input
                 {...props}
@@ -532,7 +608,12 @@ function CreateUserDialog({
               </Select>
             )}
           </FormField>
-          <FormField id="user-password" label="Senha inicial" hint="Mínimo de 12 caracteres.">
+          <FormField
+            id="user-password"
+            label="Senha inicial"
+            hint={`Mínimo de ${PASSWORD_MIN_LENGTH} caracteres.`}
+            errors={errors.password ?? []}
+          >
             {(props) => (
               <PasswordInput
                 props={props}
@@ -546,6 +627,7 @@ function CreateUserDialog({
               Cancelar
             </Button>
             <Button type="submit" disabled={create.isPending}>
+              {create.isPending ? <LoaderCircleIcon aria-hidden className="animate-spin" /> : null}
               Criar usuário
             </Button>
           </DialogFooter>
@@ -563,6 +645,7 @@ function ResetPasswordDialog({
   readonly onClose: () => void;
 }) {
   const [password, setPassword] = useState("");
+  const [errors, setErrors] = useState<string[]>([]);
   const reset = useAction({
     action: () => resetUserPasswordFn({ data: { userId: user.id, password } }),
     successMessage: "Senha redefinida. As sessões do usuário foram encerradas.",
@@ -579,10 +662,21 @@ function ResetPasswordDialog({
           className="space-y-4"
           onSubmit={(event) => {
             event.preventDefault();
+            const parsed = passwordSchema.safeParse(password);
+            if (parsed.success === false) {
+              setErrors(parsed.error.issues.map((issue) => issue.message));
+              return;
+            }
+            setErrors([]);
             reset.mutate();
           }}
         >
-          <FormField id="reset-password" label="Nova senha" hint="Mínimo de 12 caracteres.">
+          <FormField
+            id="reset-password"
+            label="Nova senha"
+            hint={`Mínimo de ${PASSWORD_MIN_LENGTH} caracteres.`}
+            errors={errors}
+          >
             {(props) => <PasswordInput props={props} value={password} onChange={setPassword} />}
           </FormField>
           <DialogFooter>
@@ -769,23 +863,25 @@ function TokensTab() {
               >
                 <div className="min-w-0 flex-1 space-y-0.5">
                   <p className="truncate text-sm font-medium">{token.name}</p>
-                  <p className="text-xs text-faint">
+                  <p className="text-xs text-muted-foreground">
                     {token.scopes
                       .map((scope) => (scope === "deploy" ? "Deploy" : "Leitura"))
                       .join(" · ")}
                   </p>
                 </div>
-                <dl className="hidden shrink-0 gap-6 text-xs md:flex">
+                <dl className="flex w-full gap-6 text-xs md:w-auto md:shrink-0">
                   <div>
-                    <dt className="text-faint">Último uso</dt>
-                    <dd className="text-muted-foreground">
-                      {formatRelativeTime(token.lastUsedAt, now)}
+                    <dt className="text-muted-foreground">Último uso</dt>
+                    <dd>
+                      {token.lastUsedAt == null
+                        ? "Nunca usado"
+                        : formatRelativeTime(token.lastUsedAt, now)}
                     </dd>
                   </div>
                   <div>
-                    <dt className="text-faint">Expira em</dt>
-                    <dd className="text-muted-foreground">
-                      {token.expiresAt == null ? "Nunca" : formatDateTime(token.expiresAt)}
+                    <dt className="text-muted-foreground">Expira em</dt>
+                    <dd>
+                      {token.expiresAt == null ? "Não expira" : formatDateTime(token.expiresAt)}
                     </dd>
                   </div>
                 </dl>
@@ -821,6 +917,11 @@ function CreateTokenCard({ onCreated }: { readonly onCreated: (token: string) =>
   const [name, setName] = useState("");
   const [scopes, setScopes] = useState<ReadonlySet<TokenScope>>(new Set<TokenScope>(["read"]));
   const [expiresInDays, setExpiresInDays] = useState("");
+  const [errors, setErrors] = useState<{
+    readonly name?: string;
+    readonly scopes?: string;
+    readonly expiresInDays?: string;
+  }>({});
   const create = useAction({
     action: (data: { name: string; scopes: TokenScope[]; expiresInDays: number | null }) =>
       createApiTokenFn({ data }),
@@ -828,6 +929,8 @@ function CreateTokenCard({ onCreated }: { readonly onCreated: (token: string) =>
     invalidate: [["api-tokens"]],
     onSuccess: (result) => {
       setName("");
+      setScopes(new Set<TokenScope>(["read"]));
+      setExpiresInDays("");
       onCreated(result.token);
     },
   });
@@ -840,11 +943,18 @@ function CreateTokenCard({ onCreated }: { readonly onCreated: (token: string) =>
     event.preventDefault();
     const trimmedDays = expiresInDays.trim();
     const days = trimmedDays === "" ? null : Number(trimmedDays);
-    if (days != null && (Number.isInteger(days) === false || days < 1)) {
-      toast.error("Informe a validade em dias inteiros ou deixe em branco.");
+    const nextErrors = {
+      ...(name.trim() === "" ? { name: "Informe um nome" } : {}),
+      ...(scopes.size === 0 ? { scopes: "Escolha pelo menos um escopo" } : {}),
+      ...(days != null && (Number.isInteger(days) === false || days < 1 || days > MAX_TOKEN_DAYS)
+        ? { expiresInDays: `Informe de 1 a ${MAX_TOKEN_DAYS} dias inteiros, ou deixe em branco` }
+        : {}),
+    };
+    setErrors(nextErrors);
+    if (Object.keys(nextErrors).length > 0) {
       return;
     }
-    create.mutate({ name, scopes: [...scopes], expiresInDays: days });
+    create.mutate({ name: name.trim(), scopes: [...scopes], expiresInDays: days });
   };
   return (
     <Card>
@@ -859,7 +969,7 @@ function CreateTokenCard({ onCreated }: { readonly onCreated: (token: string) =>
       </CardHeader>
       <CardContent>
         <form className="max-w-lg space-y-4" onSubmit={submit}>
-          <FormField id="token-name" label="Nome">
+          <FormField id="token-name" label="Nome" errors={errors.name == null ? [] : [errors.name]}>
             {(props) => (
               <Input
                 {...props}
@@ -869,7 +979,7 @@ function CreateTokenCard({ onCreated }: { readonly onCreated: (token: string) =>
               />
             )}
           </FormField>
-          <fieldset className="space-y-2">
+          <fieldset className="space-y-2" aria-describedby="token-scopes-error">
             <legend className="text-sm font-medium">Escopos</legend>
             {(["read", "deploy"] as const).map((scope) => (
               <div key={scope} className="flex items-center gap-2">
@@ -883,11 +993,19 @@ function CreateTokenCard({ onCreated }: { readonly onCreated: (token: string) =>
                 </Label>
               </div>
             ))}
+            <p
+              id="token-scopes-error"
+              aria-live="polite"
+              className="text-xs font-medium text-destructive empty:hidden"
+            >
+              {errors.scopes ?? ""}
+            </p>
           </fieldset>
           <FormField
             id="token-expiry"
             label="Validade em dias"
             hint="Deixe em branco para não expirar."
+            errors={errors.expiresInDays == null ? [] : [errors.expiresInDays]}
           >
             {(props) => (
               <Input
@@ -900,10 +1018,8 @@ function CreateTokenCard({ onCreated }: { readonly onCreated: (token: string) =>
               />
             )}
           </FormField>
-          <Button
-            type="submit"
-            disabled={create.isPending || scopes.size === 0 || name.trim() === ""}
-          >
+          <Button type="submit" disabled={create.isPending}>
+            {create.isPending ? <LoaderCircleIcon aria-hidden className="animate-spin" /> : null}
             Criar token
           </Button>
         </form>
@@ -925,7 +1041,12 @@ function CreatedTokenDialog({
       : `claude mcp add nelcota --env NELCOTA_MCP_TOKEN=${token} --env DATABASE_PATH=/caminho/para/data/nelcota.db -- bun run /caminho/para/o/repositorio/src/mcp/main.ts`;
   return (
     <Dialog open={token != null} onOpenChange={(open) => (open ? undefined : onClose())}>
-      <DialogContent className="sm:max-w-2xl">
+      {/* Shown only once: a stray click or Esc must not throw the token away. */}
+      <DialogContent
+        className="sm:max-w-2xl"
+        onInteractOutside={(event) => event.preventDefault()}
+        onEscapeKeyDown={(event) => event.preventDefault()}
+      >
         <DialogHeader>
           <DialogTitle>Copie o token agora</DialogTitle>
           <DialogDescription>
@@ -945,11 +1066,13 @@ function CreatedTokenDialog({
             <pre className="overflow-x-auto rounded-lg bg-console p-3 font-mono text-xs break-all whitespace-pre-wrap text-console-foreground">
               {command}
             </pre>
-            <CopyButton text={command} label="Copiar comando" />
+            <div className="flex justify-end">
+              <CopyButton text={command} label="Copiar comando" />
+            </div>
           </div>
         </div>
         <DialogFooter>
-          <Button onClick={onClose}>Concluir</Button>
+          <Button onClick={onClose}>Já copiei o token</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -1014,39 +1137,56 @@ function AuditTab() {
         {events.length > 0 ? (
           <List>
             {events.map((event) => (
-              <ListRow key={event.id} className="items-start py-3">
+              <ListRow
+                key={event.id}
+                className="flex-col items-stretch gap-2 py-3 sm:flex-row sm:items-start"
+              >
                 <div className="min-w-0 flex-1 space-y-1">
                   <p className="flex flex-wrap items-baseline gap-x-2 text-sm">
-                    <span className="font-mono text-xs">{event.action}</span>
-                    <span className="font-mono text-xs text-faint">
+                    <span className="font-medium">
+                      {AUDIT_ACTION_LABELS[event.action] ?? event.action}
+                    </span>
+                    <span className="font-mono text-xs text-muted-foreground">
                       {event.targetType}
                       {event.targetId == null ? "" : ` ${event.targetId.slice(-SHORT_ID_LENGTH)}`}
                     </span>
                   </p>
-                  <p
-                    className="truncate font-mono text-xs text-muted-foreground"
-                    title={event.details}
-                  >
-                    {event.details}
-                  </p>
+                  {event.details === "" || event.details === "{}" ? null : (
+                    <details className="text-xs">
+                      <summary className="w-fit cursor-pointer rounded-sm text-muted-foreground hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none">
+                        Ver detalhes
+                      </summary>
+                      <pre className="mt-1 font-mono break-all whitespace-pre-wrap text-muted-foreground">
+                        {event.details}
+                      </pre>
+                    </details>
+                  )}
                 </div>
-                <div className="shrink-0 space-y-1 text-right text-xs">
-                  <p>
-                    <span className="text-faint">
+                <div className="space-y-1 text-xs sm:shrink-0 sm:text-right">
+                  <p className="break-all">
+                    <span className="text-muted-foreground">
                       {ACTOR_TYPE_LABELS[event.actorType] ?? event.actorType}:
                     </span>{" "}
                     {event.actorLabel}
                   </p>
-                  <p className="whitespace-nowrap text-faint">{formatDateTime(event.createdAt)}</p>
+                  <p className="whitespace-nowrap text-muted-foreground">
+                    {formatDateTime(event.createdAt)}
+                  </p>
                 </div>
               </ListRow>
             ))}
           </List>
         ) : null}
         {events.length > 0 && exhausted === false ? (
-          <Button variant="outline" disabled={loadingMore} onClick={() => void loadMore()}>
-            Carregar mais
-          </Button>
+          <div className="flex justify-center">
+            <Button variant="outline" disabled={loadingMore} onClick={() => void loadMore()}>
+              {loadingMore ? <LoaderCircleIcon aria-hidden className="animate-spin" /> : null}
+              {loadingMore ? "Carregando…" : "Carregar mais"}
+            </Button>
+          </div>
+        ) : null}
+        {events.length > 0 && exhausted ? (
+          <p className="text-center text-sm text-muted-foreground">Não há eventos mais antigos.</p>
         ) : null}
       </Section>
       <WebhookDeliveriesCard />
@@ -1069,7 +1209,7 @@ function WebhookDeliveriesCard() {
       ) : null}
       {deliveries.data == null && deliveries.isError === false ? <ListSkeleton rows={2} /> : null}
       {deliveries.data?.length === 0 ? (
-        <EmptyState icon={KeyRoundIcon} title="Nenhum webhook recebido ainda" />
+        <EmptyState icon={WebhookIcon} title="Nenhum webhook recebido ainda" />
       ) : null}
       {deliveries.data != null && deliveries.data.length > 0 ? (
         <List>
@@ -1099,11 +1239,13 @@ function WebhookDeliveriesCard() {
                   tone={delivery.status === "accepted" ? "success" : "neutral"}
                   label={
                     delivery.status === "accepted"
-                      ? `${delivery.deploymentIds.length} deploy(s)`
+                      ? pluralize(delivery.deploymentIds.length, "deploy", "deploys")
                       : "Ignorado"
                   }
                 />
-                <span className="text-xs text-faint">{delivery.reason}</span>
+                <span className="text-xs text-muted-foreground">
+                  {WEBHOOK_REASON_LABELS[delivery.reason] ?? delivery.reason}
+                </span>
                 <span className="text-xs whitespace-nowrap text-faint">
                   {formatDateTime(delivery.receivedAt)}
                 </span>

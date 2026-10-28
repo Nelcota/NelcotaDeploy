@@ -4,17 +4,14 @@ import { eq } from "drizzle-orm";
 
 import { getConfig, requireConfigValue } from "@/config";
 import { type Database, getDatabase, tables } from "@/db";
+import { PASSWORD_MIN_LENGTH } from "@/shared/user.schema";
 
 const SECONDS_PER_DAY = 86_400;
 const SESSION_LIFETIME_IN_SECONDS = 7 * SECONDS_PER_DAY;
 const SESSION_REFRESH_AGE_IN_SECONDS = SECONDS_PER_DAY;
-const MIN_PASSWORD_LENGTH = 12;
 const RATE_LIMIT_WINDOW_IN_SECONDS = 60;
 const RATE_LIMIT_MAX_REQUESTS = 100;
 const SIGN_IN_MAX_ATTEMPTS_PER_WINDOW = 5;
-
-/** Minimum password length enforced for every account. */
-export const PASSWORD_MIN_LENGTH = MIN_PASSWORD_LENGTH;
 
 /**
  * Creates the Better Auth instance.
@@ -47,7 +44,7 @@ function createAuth(
     emailAndPassword: {
       enabled: true,
       disableSignUp: true,
-      minPasswordLength: MIN_PASSWORD_LENGTH,
+      minPasswordLength: PASSWORD_MIN_LENGTH,
       password: {
         hash: async (password) => await Bun.password.hash(password),
         verify: async ({ hash, password }) => await Bun.password.verify(password, hash),

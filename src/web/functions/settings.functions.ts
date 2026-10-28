@@ -8,7 +8,6 @@ import {
   getAuth,
   listApiTokens,
   listUsers,
-  PASSWORD_MIN_LENGTH,
   resetUserPassword,
   revokeApiToken,
   setUserDisabled,
@@ -21,6 +20,7 @@ import { getLatestHostSample, getWorkerStatus } from "@/monitoring";
 import { getSystemSettings, saveSystemSettings } from "@/settings";
 import { ROLES } from "@/shared/roles";
 import { systemSettingsSchema } from "@/shared/settings.schema";
+import { newUserSchema, passwordSchema } from "@/shared/user.schema";
 import { authorize } from "@/web/server/authorization";
 import { PublicError } from "@/web/server/public-error";
 import { listWebhookDeliveries } from "@/webhooks";
@@ -28,16 +28,10 @@ import { listWebhookDeliveries } from "@/webhooks";
 import { idSchema } from "./ids";
 
 const MAX_NAME_LENGTH = 80;
-const MAX_PASSWORD_LENGTH = 256;
 const AUDIT_PAGE_SIZE = 50;
 const WEBHOOK_PAGE_SIZE = 30;
 const MILLISECONDS_PER_DAY = 86_400_000;
 const MAX_TOKEN_DAYS = 365;
-
-const passwordSchema = z
-  .string()
-  .min(PASSWORD_MIN_LENGTH, `A senha precisa ter pelo menos ${PASSWORD_MIN_LENGTH} caracteres`)
-  .max(MAX_PASSWORD_LENGTH);
 
 export const getSettingsFn = createServerFn({ method: "GET" }).handler(async () => {
   await authorize("project:read");
@@ -75,14 +69,7 @@ export const listUsersFn = createServerFn({ method: "GET" }).handler(async () =>
 });
 
 export const createUserFn = createServerFn({ method: "POST" })
-  .validator(
-    z.object({
-      name: z.string().trim().min(1, "Campo obrigatório").max(MAX_NAME_LENGTH),
-      email: z.email("E-mail inválido").trim().toLowerCase(),
-      role: z.enum(ROLES),
-      password: passwordSchema,
-    }),
-  )
+  .validator(newUserSchema)
   .handler(async ({ data }) => {
     const user = await authorize("user:manage");
     return await createUser(getAuth(), getDatabase(), data, userActor(user));
@@ -92,6 +79,9 @@ export const updateUserRoleFn = createServerFn({ method: "POST" })
   .validator(z.object({ userId: idSchema, role: z.enum(ROLES) }))
   .handler(async ({ data }) => {
     const user = await authorize("user:manage");
+    if (data.userId === user.id) {
+      throw new PublicError("Você não pode alterar o próprio papel.");
+    }
     updateUserRole(getDatabase(), data.userId, data.role, userActor(user));
   });
 
