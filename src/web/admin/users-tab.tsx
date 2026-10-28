@@ -93,11 +93,7 @@ export function UsersTab() {
       {users.data != null && users.data.length > 0 ? (
         <List>
           {users.data.map((user) => (
-            <ListRow
-              key={user.id}
-              accent={user.disabled ? "neutral" : "none"}
-              className="flex-wrap md:flex-nowrap"
-            >
+            <ListRow key={user.id} className="flex-wrap md:flex-nowrap">
               <UserAvatar name={user.name} image={user.image} />
               {/* On phones the person fills the first line and the controls wrap below. */}
               <div className="min-w-0 flex-1 basis-[calc(100%-3.25rem)] space-y-0.5 md:basis-auto">

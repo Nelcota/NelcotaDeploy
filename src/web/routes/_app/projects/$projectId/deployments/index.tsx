@@ -196,7 +196,6 @@ function ProjectDeploymentsPage() {
                 key={deployment.id}
                 projectId={deployment.projectId}
                 deploymentId={deployment.id}
-                status={deployment.status}
               >
                 <CommitCell
                   deployment={deployment}

@@ -6,7 +6,6 @@ import type { listProjectsFn } from "@/web/functions/projects.functions";
 
 import { DEPLOYMENT_STATUS_LABELS } from "./labels";
 import { ListRow } from "./layout";
-import { containerAccent } from "./project-accent";
 import { ContainerStateBadge, DeploymentStatusBadge, StatusPill } from "./status-badge";
 
 type ProjectRow = Awaited<ReturnType<typeof listProjectsFn>>[number];
@@ -36,11 +35,8 @@ export function ProjectListRow({
   readonly project: ProjectRow;
   readonly now: Date;
 }) {
-  const accent = project.deploymentsApproved
-    ? containerAccent(project.containerState, project.containerHealth)
-    : "warning";
   return (
-    <ListRow accent={accent}>
+    <ListRow>
       <div className="min-w-0 flex-1">
         {/* The link covers the whole row, so the row opens the project and stays a real link. */}
         <Link

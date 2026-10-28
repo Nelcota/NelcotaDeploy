@@ -146,11 +146,7 @@ function WebhookDeliveriesCard() {
       {deliveries.data != null && deliveries.data.length > 0 ? (
         <List>
           {deliveries.data.map((delivery) => (
-            <ListRow
-              key={delivery.id}
-              accent={delivery.status === "accepted" ? "success" : "neutral"}
-              className="items-start py-3"
-            >
+            <ListRow key={delivery.id} className="items-start py-3">
               <div className="min-w-0 flex-1 space-y-1">
                 <p className="truncate text-sm">
                   {delivery.repositoryFullName ?? "—"}

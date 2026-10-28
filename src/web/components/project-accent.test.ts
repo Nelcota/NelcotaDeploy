@@ -1,11 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import {
-  containerAccent,
-  deploymentAccent,
-  matchesApplicationFilter,
-  type RowAccent,
-} from "./project-accent";
+import { containerAccent, matchesApplicationFilter } from "./project-accent";
 
 describe("containerAccent", () => {
   test("is neutral for a project never deployed", () => {
@@ -23,17 +18,6 @@ describe("containerAccent", () => {
   test("is amber while restarting and red when stopped", () => {
     expect(containerAccent("restarting", null)).toBe("warning");
     expect(containerAccent("exited", null)).toBe("danger");
-  });
-});
-
-describe("deploymentAccent", () => {
-  test.each<[string, RowAccent]>([
-    ["succeeded", "success"],
-    ["failed", "danger"],
-    ["cancelled", "neutral"],
-    ["building", "progress"],
-  ])("maps %p to %p", (status, accent) => {
-    expect(deploymentAccent(status)).toBe(accent);
   });
 });
 

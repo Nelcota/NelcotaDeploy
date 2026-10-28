@@ -30,16 +30,6 @@ export type TaskRow = Task & {
   } | null;
 };
 
-function executionAccent(status: string | null): "success" | "danger" | "progress" | "neutral" {
-  if (status === "succeeded") {
-    return "success";
-  }
-  if (status === "failed") {
-    return "danger";
-  }
-  return status == null ? "neutral" : "progress";
-}
-
 export function TaskListRow({
   task,
   now,
@@ -69,10 +59,7 @@ export function TaskListRow({
   const command = formatCommandLine(task.command);
   const ScheduleIcon = task.schedule == null ? HandIcon : CalendarClockIcon;
   return (
-    <ListRow
-      accent={task.enabled ? executionAccent(task.latestExecution?.status ?? null) : "neutral"}
-      className="flex-wrap lg:flex-nowrap"
-    >
+    <ListRow className="flex-wrap lg:flex-nowrap">
       <span
         aria-hidden
         className="hidden size-9 shrink-0 items-center justify-center rounded-lg bg-well text-muted-foreground ring-1 ring-border/70 sm:flex"

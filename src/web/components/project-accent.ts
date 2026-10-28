@@ -22,25 +22,6 @@ export function containerAccent(state: string | null, health: string | null): Ro
   return "danger";
 }
 
-/**
- * Picks the row accent for a deployment status.
- *
- * @param status - Deployment status.
- * @returns Green when succeeded, red when failed, grey when cancelled, blue while running.
- */
-export function deploymentAccent(status: string): RowAccent {
-  if (status === "succeeded") {
-    return "success";
-  }
-  if (status === "failed") {
-    return "danger";
-  }
-  if (status === "cancelled") {
-    return "neutral";
-  }
-  return "progress";
-}
-
 /** Filters of the dashboard's application list. */
 export type ApplicationFilter = "all" | "online" | "attention" | "never-deployed";
 

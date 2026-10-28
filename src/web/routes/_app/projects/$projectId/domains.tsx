@@ -138,7 +138,7 @@ function DomainRows({
     );
   }
   return domains.map((domain, index) => (
-    <ListRow key={domain.hostname} accent={domain.httpsEnabled ? "success" : "neutral"}>
+    <ListRow key={domain.hostname}>
       <span
         aria-hidden
         className="hidden size-9 shrink-0 items-center justify-center rounded-lg bg-well ring-1 ring-border/70 sm:flex"

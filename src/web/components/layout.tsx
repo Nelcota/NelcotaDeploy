@@ -130,30 +130,18 @@ export function List({
   );
 }
 
-const ROW_ACCENTS = {
-  none: "before:bg-transparent",
-  success: "before:bg-success",
-  warning: "before:bg-warning",
-  danger: "before:bg-destructive",
-  progress: "before:bg-brand",
-  neutral: "before:bg-faint/60",
-} as const;
-
-/** A row of a {@link List}; the thin bar on the left carries the row's status. */
+/** A row of a {@link List}. */
 export function ListRow({
-  accent = "none",
   children,
   className,
 }: {
-  readonly accent?: keyof typeof ROW_ACCENTS;
   readonly children: ReactNode;
   readonly className?: string;
 }) {
   return (
     <div
       className={cn(
-        "relative flex items-center gap-4 px-5 py-4 transition-colors before:absolute before:inset-y-3 before:left-0 before:w-[3px] before:rounded-r-full hover:bg-well/50",
-        ROW_ACCENTS[accent],
+        "relative flex items-center gap-4 px-5 py-4 transition-colors hover:bg-well/50",
         className,
       )}
     >

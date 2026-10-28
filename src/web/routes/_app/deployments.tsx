@@ -269,11 +269,7 @@ function HistoryRow({ deployment }: { readonly deployment: DeploymentItem }) {
       ? `deploy ${deployment.id.slice(-SHORT_SHA_LENGTH)}`
       : sha.slice(0, SHORT_SHA_LENGTH);
   return (
-    <DeploymentListRow
-      projectId={deployment.projectId}
-      deploymentId={deployment.id}
-      status={deployment.status}
-    >
+    <DeploymentListRow projectId={deployment.projectId} deploymentId={deployment.id}>
       <span
         aria-hidden
         className="hidden size-9 shrink-0 items-center justify-center rounded-lg bg-well text-sm font-semibold uppercase ring-1 ring-border/70 sm:flex"

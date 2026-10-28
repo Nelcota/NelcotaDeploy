@@ -66,11 +66,7 @@ export function TokensTab() {
         {tokens.data != null && tokens.data.length > 0 ? (
           <List>
             {tokens.data.map((token) => (
-              <ListRow
-                key={token.id}
-                accent={token.revokedAt == null ? "success" : "neutral"}
-                className="flex-wrap md:flex-nowrap"
-              >
+              <ListRow key={token.id} className="flex-wrap md:flex-nowrap">
                 <div className="min-w-0 flex-1 space-y-0.5">
                   <p className="truncate text-sm font-medium">{token.name}</p>
                   <p className="text-xs text-muted-foreground">
