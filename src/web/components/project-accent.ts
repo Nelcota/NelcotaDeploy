@@ -40,3 +40,32 @@ export function deploymentAccent(status: string): RowAccent {
   }
   return "progress";
 }
+
+/** Filters of the dashboard's application list. */
+export type ApplicationFilter = "all" | "online" | "attention" | "never-deployed";
+
+/**
+ * Tells whether a project's current container belongs in a list filter.
+ *
+ * @param filter - Selected filter.
+ * @param state - Docker state of the current container, or null when there is none.
+ * @param health - Docker health status, when the image defines a HEALTHCHECK.
+ * @returns True when the project should be listed.
+ */
+export function matchesApplicationFilter(
+  filter: ApplicationFilter,
+  state: string | null,
+  health: string | null,
+): boolean {
+  const accent = containerAccent(state, health);
+  if (filter === "online") {
+    return accent === "success";
+  }
+  if (filter === "never-deployed") {
+    return accent === "neutral";
+  }
+  if (filter === "attention") {
+    return accent === "warning" || accent === "danger";
+  }
+  return true;
+}

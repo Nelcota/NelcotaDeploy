@@ -1,6 +1,17 @@
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { ArrowRightIcon, PlusIcon } from "lucide-react";
+import {
+  ArrowRightIcon,
+  BoxesIcon,
+  CpuIcon,
+  GaugeIcon,
+  GitBranchIcon,
+  HistoryIcon,
+  PlusIcon,
+  RocketIcon,
+  ServerIcon,
+  TriangleAlertIcon,
+} from "lucide-react";
 import { type ReactNode, useState } from "react";
 
 import {
@@ -11,15 +22,35 @@ import {
   pluralize,
 } from "@/shared/format";
 import { DEPLOYMENT_STATUS_LABELS } from "@/web/components/labels";
-import { List, ListRow, Section, type Stat, StatRow } from "@/web/components/layout";
+import { ListRow, type Stat, StatRow } from "@/web/components/layout";
 import { MetricChart } from "@/web/components/metric-chart";
+import { bucketAverages, bucketCounts, MiniBars, RatioBlocks } from "@/web/components/mini-bars";
 import { SegmentedControl } from "@/web/components/overview";
-import { containerAccent } from "@/web/components/project-accent";
+import { PageHeader } from "@/web/components/page-header";
+import {
+  type ApplicationFilter,
+  containerAccent,
+  matchesApplicationFilter,
+} from "@/web/components/project-accent";
 import { ErrorState } from "@/web/components/states";
 import { ContainerStateBadge } from "@/web/components/status-badge";
 import { Button } from "@/web/components/ui/button";
-import { Card, CardContent } from "@/web/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+  CardWell,
+} from "@/web/components/ui/card";
 import { cn } from "@/web/components/ui/class-names";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/web/components/ui/select";
 import { Skeleton } from "@/web/components/ui/skeleton";
 import { usagePercent } from "@/web/components/usage-meter";
 import { useCan } from "@/web/components/use-permissions";
@@ -29,15 +60,27 @@ import { listProjectsFn } from "@/web/functions/projects.functions";
 const REFRESH_INTERVAL_IN_MS = 10_000;
 const SHORT_SHA_LENGTH = 7;
 const HOURS_PER_DAY = 24;
+const MILLISECONDS_PER_HOUR = 3_600_000;
 const MILLISECONDS_PER_DAY = 86_400_000;
+/** Bars of the small charts in the stat cards. */
+const STAT_BUCKETS = 8;
 const WINDOWS = [
-  { value: 1, label: "1 h" },
-  { value: HOURS_PER_DAY, label: "24 h" },
+  { value: "1", hours: 1, label: "Última hora" },
+  { value: "24", hours: HOURS_PER_DAY, label: "Últimas 24 h" },
 ] as const;
 const SERIES = [
   { value: "cpu", label: "CPU", color: "--chart-1" },
   { value: "memory", label: "Memória", color: "--chart-2" },
 ] as const;
+const APPLICATION_FILTERS: readonly {
+  readonly value: ApplicationFilter;
+  readonly label: string;
+}[] = [
+  { value: "all", label: "Todas" },
+  { value: "online", label: "Online" },
+  { value: "attention", label: "Atenção" },
+  { value: "never-deployed", label: "Sem deploy" },
+];
 
 export const Route = createFileRoute("/_app/")({
   head: () => ({ meta: [{ title: "Painel · Nelcota Deploy" }] }),
@@ -46,6 +89,7 @@ export const Route = createFileRoute("/_app/")({
 
 type DashboardSummary = NonNullable<Awaited<ReturnType<typeof getDashboardFn>>>;
 type RecentDeployment = DashboardSummary["recentDeployments"][number];
+type HostSample = Awaited<ReturnType<typeof getHostMetricsFn>>[number];
 
 /** The headline: one sentence that says how things are, with the key words in status color. */
 function Headline({ data }: { readonly data: DashboardSummary }): ReactNode {
@@ -101,44 +145,95 @@ function deploymentsInLastDay(deployments: readonly RecentDeployment[], now: Dat
     .length;
 }
 
-function dashboardStats(data: DashboardSummary, now: Date): Stat[] {
+function dashboardStats(
+  data: DashboardSummary,
+  hostSamples: readonly HostSample[],
+  hours: number,
+  now: Date,
+): Stat[] {
   const host = data.hostSample;
   const failures = data.recentFailures.length;
+  const deployed = data.projectCount - data.neverDeployedCount;
+  const cpuBars = bucketAverages(
+    hostSamples.map((sample) => ({ createdAt: sample.createdAt, value: sample.cpuPercent })),
+    now,
+    hours * MILLISECONDS_PER_HOUR,
+    STAT_BUCKETS,
+  );
+  const memoryPercent = formatPercent(usagePercent(host?.memoryUsedBytes, host?.memoryTotalBytes));
   return [
     {
       label: "Aplicações online",
-      value: `${data.onlineCount} de ${data.projectCount - data.neverDeployedCount}`,
+      icon: BoxesIcon,
+      value: `${data.onlineCount} de ${deployed}`,
       tone: data.offlineCount > 0 ? "warning" : "default",
       detail: data.offlineCount === 0 ? "nenhuma offline" : `${data.offlineCount} offline`,
+      visual:
+        deployed === 0 ? null : (
+          <RatioBlocks filled={data.onlineCount} total={deployed} colorVariable="--success" />
+        ),
     },
     {
       label: "Deploys em 24 h",
+      icon: RocketIcon,
       value: deploymentsInLastDay(data.recentDeployments, now),
       detail: "entre os mais recentes",
+      visual: (
+        <MiniBars
+          values={bucketCounts(
+            data.recentDeployments.map((deployment) => deployment.createdAt),
+            now,
+            MILLISECONDS_PER_DAY,
+            STAT_BUCKETS,
+          )}
+          colorVariable="--chart-4"
+        />
+      ),
     },
     {
       label: "Falhas em 24 h",
+      icon: TriangleAlertIcon,
       value: failures,
       tone: failures > 0 ? "danger" : "default",
       detail: failures > 0 ? "veja a atividade" : "nenhuma falha",
+      visual: (
+        <MiniBars
+          values={bucketCounts(
+            data.recentFailures.map((deployment) => deployment.createdAt),
+            now,
+            MILLISECONDS_PER_DAY,
+            STAT_BUCKETS,
+          )}
+          colorVariable="--chart-5"
+        />
+      ),
     },
-    { label: "CPU", value: formatPercent(host?.cpuPercent ?? null), detail: "do servidor" },
     {
-      label: "Memória",
-      value: formatPercent(usagePercent(host?.memoryUsedBytes, host?.memoryTotalBytes)),
+      label: "CPU do servidor",
+      icon: CpuIcon,
+      value: formatPercent(host?.cpuPercent ?? null),
       detail:
         host?.memoryTotalBytes == null
-          ? "indisponível"
-          : `${formatBytes(host.memoryUsedBytes)} de ${formatBytes(host.memoryTotalBytes)}`,
+          ? "memória indisponível"
+          : `memória ${memoryPercent} · ${formatBytes(host.memoryUsedBytes)} de ${formatBytes(host.memoryTotalBytes)}`,
+      visual: <MiniBars values={cpuBars} colorVariable="--chart-3" />,
     },
   ];
 }
 
 function DashboardPage() {
   const can = useCan();
+  const [windowValue, setWindowValue] = useState<(typeof WINDOWS)[number]["value"]>("1");
+  const selectedWindow = WINDOWS.find((item) => item.value === windowValue) ?? WINDOWS[0];
+  const hours = selectedWindow.hours;
   const dashboard = useQuery({
     queryKey: ["dashboard"],
     queryFn: () => getDashboardFn(),
+    refetchInterval: REFRESH_INTERVAL_IN_MS,
+  });
+  const hostMetrics = useQuery({
+    queryKey: ["host-metrics", hours],
+    queryFn: () => getHostMetricsFn({ data: { hours } }),
     refetchInterval: REFRESH_INTERVAL_IN_MS,
   });
 
@@ -150,123 +245,200 @@ function DashboardPage() {
 
   return (
     <>
-      <section className="flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
-        <div className="min-w-0 space-y-3">
-          <p className="text-sm font-medium text-muted-foreground first-letter:uppercase">
-            {formatLongDate(now)}
-          </p>
-          <h1 className="text-3xl leading-tight font-semibold tracking-tight md:text-4xl">
-            {data == null ? "Carregando…" : <Headline data={data} />}
-          </h1>
-          <p className="text-base text-muted-foreground">
-            {data == null ? "Lendo o estado do servidor." : subline(data)}
-          </p>
-        </div>
-        <div className="flex shrink-0 flex-wrap gap-2">
-          <Button variant="outline" asChild>
-            <Link to="/deployments">Ver deploys</Link>
-          </Button>
-          {can("project:write") ? (
-            <Button asChild>
-              <Link to="/projects/new">
-                <PlusIcon aria-hidden />
-                Novo projeto
-              </Link>
-            </Button>
-          ) : null}
-        </div>
-      </section>
+      <PageHeader
+        title="Painel"
+        description={<span className="first-letter:uppercase">{formatLongDate(now)}</span>}
+        actions={
+          <>
+            <Select
+              value={windowValue}
+              onValueChange={(value) => {
+                const next = WINDOWS.find((item) => item.value === value);
+                if (next != null) {
+                  setWindowValue(next.value);
+                }
+              }}
+            >
+              <SelectTrigger
+                size="sm"
+                aria-label="Janela de tempo do servidor"
+                className="rounded-xl bg-foreground font-medium text-background ring-0 hover:bg-foreground/90 [&_svg:not([class*='text-'])]:text-background"
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent align="end">
+                {WINDOWS.map((item) => (
+                  <SelectItem key={item.value} value={item.value}>
+                    {item.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {can("project:write") ? (
+              <Button size="sm" asChild>
+                <Link to="/projects/new">
+                  <PlusIcon aria-hidden />
+                  Novo projeto
+                </Link>
+              </Button>
+            ) : null}
+          </>
+        }
+      />
 
       {data == null ? (
-        <Skeleton className="h-28 rounded-xl" />
+        <Skeleton className="h-36 rounded-2xl" />
       ) : (
-        <StatRow stats={dashboardStats(data, now)} />
+        <StatRow stats={dashboardStats(data, hostMetrics.data ?? [], hours, now)} />
       )}
 
-      <div className="grid gap-10 lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
-        <ApplicationsSection canCreate={can("project:write")} />
-        <ActivitySection deployments={data?.recentDeployments ?? null} now={now} />
+      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
+        <div className="flex min-w-0 flex-col gap-6">
+          <SummaryCard data={data ?? null} />
+          <ActivityCard deployments={data?.recentDeployments ?? null} now={now} />
+        </div>
+        <ApplicationsCard canCreate={can("project:write")} />
       </div>
 
-      <ServerSection />
+      <ServerCard samples={hostMetrics.data ?? null} hours={hours} />
     </>
   );
 }
 
-function ApplicationsSection({ canCreate }: { readonly canCreate: boolean }) {
+/** Small square holding a card's icon, as in the reference panels. */
+function CardIcon({ children }: { readonly children: ReactNode }) {
+  return (
+    <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-well text-muted-foreground ring-1 ring-border/60 [&_svg]:size-4">
+      {children}
+    </span>
+  );
+}
+
+function SummaryCard({ data }: { readonly data: DashboardSummary | null }) {
+  return (
+    <Card className="gap-4 pb-2">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-3 text-base font-semibold">
+          <CardIcon>
+            <GaugeIcon aria-hidden />
+          </CardIcon>
+          Resumo
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="px-2">
+        <CardWell className="relative flex min-h-64 flex-col gap-3 overflow-hidden rounded-2xl bg-gradient-to-br from-well-hover to-well p-6">
+          <span
+            aria-hidden
+            className="pointer-events-none absolute -top-24 -right-24 size-72 rounded-full border-[2.5rem] border-foreground/[0.03]"
+          />
+          <h2 className="relative text-2xl leading-tight font-semibold tracking-tight">
+            {data == null ? "Carregando…" : <Headline data={data} />}
+          </h2>
+          <p className="relative max-w-sm text-sm text-muted-foreground">
+            {data == null ? "Lendo o estado do servidor." : subline(data)}
+          </p>
+          <Button asChild className="relative mt-auto w-fit rounded-xl">
+            <Link to="/deployments">
+              Ver deploys
+              <ArrowRightIcon aria-hidden />
+            </Link>
+          </Button>
+        </CardWell>
+      </CardContent>
+    </Card>
+  );
+}
+
+function ApplicationsCard({ canCreate }: { readonly canCreate: boolean }) {
   const navigate = useNavigate();
+  const [filter, setFilter] = useState<ApplicationFilter>("all");
   const projects = useQuery({
     queryKey: ["projects", ""],
     queryFn: () => listProjectsFn({ data: { search: "" } }),
     refetchInterval: REFRESH_INTERVAL_IN_MS,
   });
   const now = new Date();
-  const list = projects.data ?? [];
+  const list = (projects.data ?? []).filter((project) =>
+    matchesApplicationFilter(filter, project.containerState, project.containerHealth),
+  );
   return (
-    <Section
-      title="Aplicações"
-      description="Estado do contêiner atual de cada projeto."
-      action={
-        <Link
-          to="/projects"
-          className="inline-flex items-center gap-1 text-sm text-muted-foreground transition-colors hover:text-foreground"
-        >
-          Todos os projetos
-          <ArrowRightIcon aria-hidden className="size-3.5" />
-        </Link>
-      }
-    >
-      {projects.isPending ? <Skeleton className="h-40 rounded-xl" /> : null}
-      {projects.isError ? (
-        <ErrorState error={projects.error} onRetry={() => void projects.refetch()} />
-      ) : null}
-      {projects.isSuccess ? (
-        <List>
-          {list.length === 0 ? (
-            <ListRow>
-              <p className="flex-1 text-sm text-muted-foreground">Nenhuma aplicação ainda.</p>
-              {canCreate ? (
-                <Button size="sm" variant="outline" asChild>
-                  <Link to="/projects/new">Criar projeto</Link>
-                </Button>
-              ) : null}
-            </ListRow>
-          ) : null}
-          {list.map((project) => (
-            <ListRow
-              key={project.id}
-              accent={containerAccent(project.containerState, project.containerHealth)}
+    <Card className="min-w-0 gap-4 pt-4 pb-2">
+      <div className="flex flex-wrap items-center justify-between gap-3 px-4">
+        <h2 className="sr-only">Aplicações</h2>
+        <SegmentedControl
+          label="Filtrar aplicações"
+          options={APPLICATION_FILTERS}
+          value={filter}
+          onChange={setFilter}
+        />
+        <Button variant="outline" size="sm" asChild className="rounded-xl">
+          <Link to="/projects">
+            Todos os projetos
+            <ArrowRightIcon aria-hidden />
+          </Link>
+        </Button>
+      </div>
+      <CardContent className="flex flex-col gap-1.5 px-2">
+        {projects.isPending ? <Skeleton className="h-64 rounded-xl" /> : null}
+        {projects.isError ? (
+          <ErrorState error={projects.error} onRetry={() => void projects.refetch()} />
+        ) : null}
+        {projects.isSuccess && list.length === 0 ? (
+          <ListRow>
+            <p className="flex-1 text-sm text-muted-foreground">
+              {filter === "all" ? "Nenhuma aplicação ainda." : "Nenhuma aplicação neste filtro."}
+            </p>
+            {canCreate && filter === "all" ? (
+              <Button size="sm" variant="outline" asChild>
+                <Link to="/projects/new">Criar projeto</Link>
+              </Button>
+            ) : null}
+          </ListRow>
+        ) : null}
+        {list.map((project) => (
+          <ListRow
+            key={project.id}
+            accent={containerAccent(project.containerState, project.containerHealth)}
+          >
+            <button
+              type="button"
+              aria-label={`Abrir ${project.name}`}
+              onClick={() =>
+                void navigate({ to: "/projects/$projectId", params: { projectId: project.id } })
+              }
+              className="absolute inset-0 cursor-pointer rounded-xl focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none focus-visible:ring-inset"
+            />
+            <span
+              aria-hidden
+              className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-card text-sm font-semibold uppercase ring-1 ring-border/70"
             >
-              <button
-                type="button"
-                aria-label={`Abrir ${project.name}`}
-                onClick={() =>
-                  void navigate({ to: "/projects/$projectId", params: { projectId: project.id } })
-                }
-                className="absolute inset-0 cursor-pointer focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none focus-visible:ring-inset"
+              {project.name.charAt(0)}
+            </span>
+            <div className="min-w-0 flex-1">
+              <p className="truncate font-medium">{project.name}</p>
+              <p className="truncate font-mono text-xs text-faint">{project.repositoryFullName}</p>
+            </div>
+            <p className="hidden w-32 shrink-0 text-sm text-muted-foreground md:block">
+              {project.latestDeployment == null
+                ? "sem deploy"
+                : formatRelativeTime(project.latestDeployment.createdAt, now)}
+            </p>
+            <span className="hidden w-36 shrink-0 xl:block">
+              <span className="inline-flex max-w-full items-center gap-1.5 rounded-lg bg-card px-2.5 py-1 font-mono text-xs text-muted-foreground ring-1 ring-border/70">
+                <GitBranchIcon aria-hidden className="size-3.5 shrink-0" />
+                <span className="truncate">{project.branch}</span>
+              </span>
+            </span>
+            <div className="w-36 shrink-0 text-right">
+              <ContainerStateBadge
+                state={project.containerState}
+                health={project.containerHealth}
               />
-              <div className="min-w-0 flex-1">
-                <p className="truncate font-medium">{project.name}</p>
-                <p className="truncate font-mono text-xs text-faint">
-                  {project.repositoryFullName}
-                </p>
-              </div>
-              <p className="hidden shrink-0 text-xs text-faint sm:block">
-                {project.latestDeployment == null
-                  ? "sem deploy"
-                  : `deploy ${formatRelativeTime(project.latestDeployment.createdAt, now)}`}
-              </p>
-              <div className="w-36 shrink-0 text-right">
-                <ContainerStateBadge
-                  state={project.containerState}
-                  health={project.containerHealth}
-                />
-              </div>
-            </ListRow>
-          ))}
-        </List>
-      ) : null}
-    </Section>
+            </div>
+          </ListRow>
+        ))}
+      </CardContent>
+    </Card>
   );
 }
 
@@ -323,7 +495,7 @@ function ActivityItem({
   );
 }
 
-function ActivitySection({
+function ActivityCard({
   deployments,
   now,
 }: {
@@ -331,55 +503,66 @@ function ActivitySection({
   readonly now: Date;
 }) {
   return (
-    <Section title="Atividade" description="Deploys mais recentes.">
-      {deployments == null ? <Skeleton className="h-40 rounded-xl" /> : null}
-      {deployments?.length === 0 ? (
-        <p className="text-sm text-muted-foreground">Nenhum deploy ainda.</p>
-      ) : null}
-      {deployments == null || deployments.length === 0 ? null : (
-        <ol className="relative space-y-1 before:absolute before:top-3 before:bottom-3 before:left-1 before:w-px before:bg-border">
-          {deployments.map((deployment) => (
-            <ActivityItem key={deployment.id} deployment={deployment} now={now} />
-          ))}
-        </ol>
-      )}
-    </Section>
+    <Card className="gap-4">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-3 text-base font-semibold">
+          <CardIcon>
+            <HistoryIcon aria-hidden />
+          </CardIcon>
+          Atividade
+        </CardTitle>
+        <CardDescription className="sr-only">Deploys mais recentes.</CardDescription>
+      </CardHeader>
+      <CardContent>
+        {deployments == null ? <Skeleton className="h-40 rounded-xl" /> : null}
+        {deployments?.length === 0 ? (
+          <p className="text-sm text-muted-foreground">Nenhum deploy ainda.</p>
+        ) : null}
+        {deployments == null || deployments.length === 0 ? null : (
+          <ol className="relative space-y-1 before:absolute before:top-3 before:bottom-3 before:left-1 before:w-px before:bg-border">
+            {deployments.map((deployment) => (
+              <ActivityItem key={deployment.id} deployment={deployment} now={now} />
+            ))}
+          </ol>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 
-function ServerSection() {
-  const [hours, setHours] = useState<number>(1);
+function ServerCard({
+  samples,
+  hours,
+}: {
+  readonly samples: readonly HostSample[] | null;
+  readonly hours: number;
+}) {
   const [series, setSeries] = useState<(typeof SERIES)[number]["value"]>("cpu");
-  const hostMetrics = useQuery({
-    queryKey: ["host-metrics", hours],
-    queryFn: () => getHostMetricsFn({ data: { hours } }),
-    refetchInterval: REFRESH_INTERVAL_IN_MS,
-  });
   const selected = SERIES.find((item) => item.value === series) ?? SERIES[0];
   return (
-    <Section
-      title="Servidor"
-      description={hours === 1 ? "Uso na última hora." : "Uso nas últimas 24 horas."}
-      action={
-        <div className="flex flex-wrap items-center gap-3">
-          <SegmentedControl
-            label="Série"
-            options={SERIES.map((item) => ({ value: item.value, label: item.label }))}
-            value={series}
-            onChange={setSeries}
-          />
-          <SegmentedControl
-            label="Janela de tempo"
-            options={WINDOWS}
-            value={hours}
-            onChange={setHours}
-          />
+    <Card className="gap-4">
+      <div className="flex flex-wrap items-center justify-between gap-3 px-5">
+        <div className="flex items-center gap-3">
+          <CardIcon>
+            <ServerIcon aria-hidden />
+          </CardIcon>
+          <div>
+            <h2 className="text-base leading-tight font-semibold">Servidor</h2>
+            <p className="text-sm text-muted-foreground">
+              {hours === 1 ? "Uso na última hora." : "Uso nas últimas 24 horas."}
+            </p>
+          </div>
         </div>
-      }
-    >
-      <Card className="py-5">
-        <CardContent className="px-5">
-          {hostMetrics.data == null ? (
+        <SegmentedControl
+          label="Série"
+          options={SERIES.map((item) => ({ value: item.value, label: item.label }))}
+          value={series}
+          onChange={setSeries}
+        />
+      </div>
+      <CardContent className="px-2">
+        <CardWell className="p-4">
+          {samples == null ? (
             <Skeleton className="h-64 rounded-lg" />
           ) : (
             <MetricChart
@@ -387,7 +570,7 @@ function ServerSection() {
               colorVariable={selected.color}
               maxValue={100}
               formatValue={(value) => `${Math.round(value)}%`}
-              points={hostMetrics.data.map((sample) => ({
+              points={samples.map((sample) => ({
                 createdAt: sample.createdAt,
                 value:
                   series === "cpu"
@@ -396,8 +579,8 @@ function ServerSection() {
               }))}
             />
           )}
-        </CardContent>
-      </Card>
-    </Section>
+        </CardWell>
+      </CardContent>
+    </Card>
   );
 }

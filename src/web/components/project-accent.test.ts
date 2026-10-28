@@ -1,6 +1,11 @@
 import { describe, expect, test } from "bun:test";
 
-import { containerAccent, deploymentAccent, type RowAccent } from "./project-accent";
+import {
+  containerAccent,
+  deploymentAccent,
+  matchesApplicationFilter,
+  type RowAccent,
+} from "./project-accent";
 
 describe("containerAccent", () => {
   test("is neutral for a project never deployed", () => {
@@ -29,5 +34,35 @@ describe("deploymentAccent", () => {
     ["building", "progress"],
   ])("maps %p to %p", (status, accent) => {
     expect(deploymentAccent(status)).toBe(accent);
+  });
+});
+
+describe("matchesApplicationFilter", () => {
+  test("lists every project under all", () => {
+    expect(matchesApplicationFilter("all", null, null)).toBe(true);
+  });
+
+  test("lists a healthy running container as online", () => {
+    expect(matchesApplicationFilter("online", "running", "healthy")).toBe(true);
+  });
+
+  test("does not list an unhealthy container as online", () => {
+    expect(matchesApplicationFilter("online", "running", "unhealthy")).toBe(false);
+  });
+
+  test("lists a stopped container under attention", () => {
+    expect(matchesApplicationFilter("attention", "exited", null)).toBe(true);
+  });
+
+  test("lists a restarting container under attention", () => {
+    expect(matchesApplicationFilter("attention", "restarting", null)).toBe(true);
+  });
+
+  test("does not list a project never deployed under attention", () => {
+    expect(matchesApplicationFilter("attention", null, null)).toBe(false);
+  });
+
+  test("lists a project without container as never deployed", () => {
+    expect(matchesApplicationFilter("never-deployed", null, null)).toBe(true);
   });
 });
