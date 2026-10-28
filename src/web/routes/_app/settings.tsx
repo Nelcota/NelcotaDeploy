@@ -172,7 +172,7 @@ function SettingsPage() {
         }}
         className="gap-8"
       >
-        <TabsList className="w-full justify-start overflow-x-auto">
+        <TabsList>
           {SETTINGS_SECTIONS.filter((section) => canSee(section)).map((section) => (
             <TabsTrigger key={section} value={section}>
               {SETTINGS_TITLES[section]}

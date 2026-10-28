@@ -16,14 +16,14 @@ export function PageHeader({
   readonly actions?: ReactNode;
 }) {
   return (
-    <header className="flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
-      <div className="min-w-0 space-y-2">
+    <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+      <div className="min-w-0 space-y-1">
         {eyebrow == null ? null : (
           <div className="text-sm font-medium text-muted-foreground">{eyebrow}</div>
         )}
-        <h1 className="truncate text-3xl leading-tight font-semibold tracking-tight">{title}</h1>
+        <h1 className="truncate text-2xl leading-tight font-semibold tracking-tight">{title}</h1>
         {description == null ? null : (
-          <div className="max-w-2xl text-base leading-relaxed text-muted-foreground">
+          <div className="max-w-2xl text-sm leading-relaxed text-muted-foreground">
             {description}
           </div>
         )}

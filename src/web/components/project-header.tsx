@@ -58,17 +58,11 @@ export function ProjectBand({ details }: { readonly details: ProjectDetails }) {
   const container = currentContainer(details);
   const url = publicUrl(details);
   return (
-    <div className="space-y-6">
-      <header className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
-        <div className="min-w-0 space-y-2">
-          <Link
-            to="/projects"
-            className="text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
-          >
-            Projetos
-          </Link>
+    <div className="space-y-5">
+      <header className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+        <div className="min-w-0 space-y-1.5">
           <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-            <h1 className="truncate text-3xl leading-tight font-semibold tracking-tight">
+            <h1 className="truncate text-2xl leading-tight font-semibold tracking-tight">
               {project.name}
             </h1>
             <ContainerStateBadge
@@ -114,14 +108,14 @@ export function ProjectBand({ details }: { readonly details: ProjectDetails }) {
 function ProjectTabs({ projectId }: { readonly projectId: string }) {
   return (
     <nav aria-label="Seções do projeto" className="-mx-1 overflow-x-auto px-1">
-      <ul className="flex min-w-max gap-6 border-b border-border">
+      <ul className="flex w-fit min-w-max gap-1 rounded-full bg-well p-1 ring-1 ring-border/40">
         {PROJECT_SECTIONS.map((section) => (
           <li key={section.to}>
             <Link
               to={section.to}
               params={{ projectId }}
               activeOptions={{ exact: section.exact }}
-              className="-mb-px inline-flex border-b-2 border-transparent pt-1 pb-3 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:text-foreground focus-visible:outline-none data-[status=active]:border-primary data-[status=active]:text-foreground"
+              className="inline-flex h-8 items-center rounded-full px-4 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none data-[status=active]:bg-foreground data-[status=active]:text-background"
             >
               {section.label}
             </Link>

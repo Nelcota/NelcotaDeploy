@@ -6,9 +6,9 @@
 @custom-variant dark (&:is(.dark *));
 
 /*
- * Nelcota Deploy — "quiet control room".
- * Near-black canvas, surfaces separated by tone instead of borders, Nelcota blue only for
- * actions and focus, and green/amber/red reserved for status.
+ * Nelcota Deploy — "control room".
+ * Near-black canvas with a soft glow, rounded panels holding recessed wells, Nelcota blue
+ * for actions and focus, green/amber/red reserved for status and four chart hues.
  */
 :root {
   --radius: 0.625rem;
@@ -18,6 +18,9 @@
   --surface: #ffffff;
   --surface-raised: #ffffff;
   --surface-sunken: #eeeeeb;
+  --well: #f4f4f1;
+  --well-hover: #ecece8;
+  --glow: #e3e3de;
   --card: #ffffff;
   --card-foreground: #131315;
   --popover: #ffffff;
@@ -40,6 +43,8 @@
   --chart-1: #1f55f0;
   --chart-2: #12a06a;
   --chart-3: #d48806;
+  --chart-4: #7c4dff;
+  --chart-5: #e5484d;
   --sidebar: #ffffff;
   --sidebar-foreground: #131315;
   --sidebar-accent: #f0f0ed;
@@ -50,12 +55,15 @@
 
 .dark {
   --brand: #5b84ff;
-  --background: #0d0d0e;
+  --background: #0a0a0b;
   --foreground: #f1f1f3;
   --surface: #151517;
   --surface-raised: #1c1c1f;
   --surface-sunken: #0a0a0b;
-  --card: #141416;
+  --well: #1a1a1d;
+  --well-hover: #222226;
+  --glow: #2a2622;
+  --card: #121214;
   --card-foreground: #f1f1f3;
   --popover: #18181b;
   --popover-foreground: #f1f1f3;
@@ -77,7 +85,9 @@
   --chart-1: #5b84ff;
   --chart-2: #3fd49a;
   --chart-3: #f7bf4f;
-  --sidebar: #0d0d0e;
+  --chart-4: #9b6bff;
+  --chart-5: #ff5a5f;
+  --sidebar: #0a0a0b;
   --sidebar-foreground: #f1f1f3;
   --sidebar-accent: #1a1a1d;
   --sidebar-border: #1e1e22;
@@ -108,6 +118,8 @@
   --color-surface: var(--surface);
   --color-surface-raised: var(--surface-raised);
   --color-surface-sunken: var(--surface-sunken);
+  --color-well: var(--well);
+  --color-well-hover: var(--well-hover);
   --color-card: var(--card);
   --color-card-foreground: var(--card-foreground);
   --color-popover: var(--popover);
@@ -130,6 +142,8 @@
   --color-chart-1: var(--chart-1);
   --color-chart-2: var(--chart-2);
   --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
   --color-sidebar: var(--sidebar);
   --color-sidebar-foreground: var(--sidebar-foreground);
   --color-sidebar-accent: var(--sidebar-accent);
@@ -148,6 +162,13 @@
   }
   body {
     @apply bg-background font-sans text-foreground;
+    /* The soft light in the top-right corner of the reference "control room" look. */
+    background-image: radial-gradient(
+      60rem 32rem at 85% -10%,
+      color-mix(in oklab, var(--glow) 90%, transparent),
+      transparent 70%
+    );
+    background-attachment: fixed;
   }
   ::selection {
     background: color-mix(in oklab, var(--primary) 35%, transparent);

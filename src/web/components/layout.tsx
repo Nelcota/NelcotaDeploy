@@ -1,8 +1,9 @@
+import type { LucideIcon } from "lucide-react";
 import type { ReactNode } from "react";
 
 import { cn } from "./ui/class-names";
 
-/** A titled block of a page. Sections are separated by space, not by boxes. */
+/** A titled block of a page. Sections are separated by space; their content brings its own panel. */
 export function Section({
   title,
   description,
@@ -38,6 +39,10 @@ export type Stat = {
   readonly value: ReactNode;
   readonly detail?: ReactNode;
   readonly tone?: "default" | "success" | "warning" | "danger";
+  /** Small icon beside the label. */
+  readonly icon?: LucideIcon;
+  /** Compact chart shown next to the value, such as {@link MiniBars}. */
+  readonly visual?: ReactNode;
 };
 
 const STAT_TONES = {
@@ -47,7 +52,7 @@ const STAT_TONES = {
   danger: "text-destructive",
 } as const;
 
-/** Key figures side by side, divided by hairlines, without frames. */
+/** Key figures as a row of cards: label on top, the value in a recessed well, detail below. */
 export function StatRow({
   stats,
   className,
@@ -58,30 +63,37 @@ export function StatRow({
   return (
     <dl
       className={cn(
-        "grid grid-cols-2 gap-x-6 gap-y-6 border-y md:gap-x-0 border-border py-6 md:grid-cols-[repeat(var(--stats),minmax(0,1fr))]",
+        "grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-[repeat(var(--stats),minmax(0,1fr))]",
         className,
       )}
       style={{ "--stats": stats.length } as React.CSSProperties}
     >
-      {stats.map((stat, index) => (
+      {stats.map((stat) => (
         <div
           key={stat.label}
-          className={cn(
-            "min-w-0 space-y-1 md:px-5 md:first:pl-0",
-            index > 0 ? "md:border-l md:border-border" : "",
-          )}
+          className="flex min-w-0 flex-col gap-2 rounded-2xl bg-card p-2 ring-1 ring-border/70"
         >
-          <dt className="text-sm text-muted-foreground">{stat.label}</dt>
-          <dd
-            className={cn(
-              "truncate text-2xl leading-tight font-semibold tracking-tight tabular-nums",
-              STAT_TONES[stat.tone ?? "default"],
+          <dt className="flex items-center gap-2.5 px-2 pt-1.5 text-sm font-medium">
+            {stat.icon == null ? null : (
+              <span className="flex size-6 shrink-0 items-center justify-center rounded-md bg-well ring-1 ring-border/60">
+                <stat.icon aria-hidden className="size-3.5 text-muted-foreground" />
+              </span>
             )}
-          >
-            {stat.value}
+            <span className="truncate">{stat.label}</span>
+          </dt>
+          <dd className="flex h-[4.5rem] items-center justify-between gap-3 rounded-xl bg-well px-4 ring-1 ring-border/40">
+            <span
+              className={cn(
+                "truncate text-2xl leading-tight font-semibold tracking-tight tabular-nums",
+                STAT_TONES[stat.tone ?? "default"],
+              )}
+            >
+              {stat.value}
+            </span>
+            {stat.visual == null ? null : <span className="shrink-0">{stat.visual}</span>}
           </dd>
           {stat.detail == null ? null : (
-            <dd className="truncate text-xs text-faint">{stat.detail}</dd>
+            <dd className="truncate px-2 pb-1 text-xs text-faint">{stat.detail}</dd>
           )}
         </div>
       ))}
@@ -89,7 +101,7 @@ export function StatRow({
   );
 }
 
-/** Rows separated by hairlines on a single surface. */
+/** Rows as separate rounded blocks on one panel. */
 export function List({
   children,
   className,
@@ -100,7 +112,7 @@ export function List({
   return (
     <div
       className={cn(
-        "divide-y divide-border overflow-hidden rounded-xl bg-card ring-1 ring-border/70",
+        "flex flex-col gap-1.5 overflow-hidden rounded-2xl bg-card p-1.5 ring-1 ring-border/70",
         className,
       )}
     >
@@ -131,7 +143,7 @@ export function ListRow({
   return (
     <div
       className={cn(
-        "relative flex items-center gap-4 px-5 py-4 transition-colors before:absolute before:inset-y-3 before:left-0 before:w-[3px] before:rounded-r-full hover:bg-surface-raised/60",
+        "relative flex items-center gap-4 rounded-xl bg-well px-4 py-3.5 transition-colors before:absolute before:inset-y-3 before:left-0 before:w-[3px] before:rounded-r-full hover:bg-well-hover",
         ROW_ACCENTS[accent],
         className,
       )}

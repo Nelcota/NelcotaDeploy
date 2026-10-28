@@ -1,6 +1,6 @@
 import { cn } from "./ui/class-names";
 
-/** Small text toggle between two or three options, such as "1 h / 24 h". */
+/** Pill toggle between a few options, such as "1 h / 24 h" or list filters. */
 export function SegmentedControl<TValue extends string | number>({
   label,
   options,
@@ -16,7 +16,7 @@ export function SegmentedControl<TValue extends string | number>({
     <div
       role="radiogroup"
       aria-label={label}
-      className="inline-flex items-center gap-0.5 rounded-lg bg-secondary p-0.5 ring-1 ring-border ring-inset"
+      className="inline-flex max-w-full items-center gap-1 overflow-x-auto rounded-full bg-well p-1 ring-1 ring-border/40"
     >
       {options.map((option) => (
         <button
@@ -26,9 +26,9 @@ export function SegmentedControl<TValue extends string | number>({
           aria-checked={option.value === value}
           onClick={() => onChange(option.value)}
           className={cn(
-            "h-7 rounded-md px-2.5 text-xs font-medium transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
+            "h-7 shrink-0 rounded-full px-3.5 text-xs font-medium whitespace-nowrap transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
             option.value === value
-              ? "bg-surface-raised text-foreground"
+              ? "bg-foreground text-background"
               : "text-muted-foreground hover:text-foreground",
           )}
         >
