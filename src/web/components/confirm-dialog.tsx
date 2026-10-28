@@ -24,6 +24,7 @@ export function ConfirmDialog({
   title,
   description,
   confirmLabel,
+  cancelLabel = "Cancelar",
   destructive = false,
   confirmationText,
   onConfirm,
@@ -37,6 +38,8 @@ export function ConfirmDialog({
   readonly title: string;
   readonly description: ReactNode;
   readonly confirmLabel: string;
+  /** Label of the button that closes without acting; rename it when "Cancelar" is ambiguous. */
+  readonly cancelLabel?: string;
   readonly destructive?: boolean;
   readonly confirmationText?: string;
   readonly onConfirm: () => void | Promise<void>;
@@ -76,7 +79,7 @@ export function ConfirmDialog({
           </div>
         )}
         <AlertDialogFooter>
-          <AlertDialogCancel>Cancelar</AlertDialogCancel>
+          <AlertDialogCancel>{cancelLabel}</AlertDialogCancel>
           <AlertDialogAction
             disabled={blocked}
             className={destructive ? buttonVariants({ variant: "destructive" }) : undefined}

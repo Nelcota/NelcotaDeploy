@@ -204,6 +204,7 @@ export function StatusTile({
   iconClassName,
   tone = "default",
   detail,
+  className,
 }: {
   readonly value: ReactNode;
   readonly label: string;
@@ -212,20 +213,27 @@ export function StatusTile({
   readonly tone?: keyof typeof TILE_TONES;
   /** Small line under the value, such as a relative time. */
   readonly detail?: ReactNode;
+  readonly className?: string;
 }) {
   return (
     <div
       className={cn(
         "flex min-h-28 min-w-0 flex-col justify-between gap-4 rounded-xl p-4 ring-1",
         TILE_TONES[tone],
+        className,
       )}
     >
       <dd className="min-w-0 space-y-1">
-        <span className="block truncate text-2xl leading-none font-semibold tabular-nums">
+        <span className="block truncate text-xl leading-none font-semibold tabular-nums sm:text-2xl">
           {value}
         </span>
         {detail == null ? null : (
-          <span className="block truncate text-xs text-faint">{detail}</span>
+          <span
+            className="block truncate text-xs text-faint"
+            title={typeof detail === "string" ? detail : undefined}
+          >
+            {detail}
+          </span>
         )}
       </dd>
       <dt className="flex min-w-0 items-center gap-2 text-sm leading-tight text-muted-foreground">

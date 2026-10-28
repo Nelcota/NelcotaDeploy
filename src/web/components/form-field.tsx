@@ -51,7 +51,7 @@ export function FormField({
       <Label htmlFor={id}>{label}</Label>
       {children({
         id,
-        "aria-describedby": `${hintId} ${errorId}`,
+        "aria-describedby": hint == null ? errorId : `${hintId} ${errorId}`,
         "aria-invalid": messages.length > 0,
       })}
       {hint == null ? null : (

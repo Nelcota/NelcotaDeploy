@@ -35,6 +35,23 @@ export function EmptyState({
   );
 }
 
+const LOAD_FAILED_MESSAGE = "Não foi possível carregar os dados.";
+
+/**
+ * Picks the text shown for a failed request. Server functions already send safe Portuguese
+ * messages; a TypeError means the browser could not reach the server at all, and its
+ * English text must not reach the user.
+ */
+function errorMessageFor(error: unknown): string {
+  if (error instanceof TypeError) {
+    return "Sem conexão com o servidor. Verifique a rede e tente novamente.";
+  }
+  if (error instanceof Error && error.message.trim() !== "") {
+    return error.message;
+  }
+  return LOAD_FAILED_MESSAGE;
+}
+
 export function ErrorState({
   error,
   onRetry,
@@ -42,7 +59,7 @@ export function ErrorState({
   readonly error: unknown;
   readonly onRetry?: () => void;
 }) {
-  const message = error instanceof Error ? error.message : "Não foi possível carregar os dados.";
+  const message = errorMessageFor(error);
   return (
     <div
       role="alert"

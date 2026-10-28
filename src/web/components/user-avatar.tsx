@@ -18,15 +18,20 @@ export function UserAvatar({
   name,
   image,
   className,
+  fallbackClassName,
 }: {
   readonly name: string;
   readonly image: string | null;
   readonly className?: string;
+  /** Classes for the initials, such as a larger text size on a large avatar. */
+  readonly fallbackClassName?: string;
 }) {
   return (
     <Avatar className={cn("size-9", className)}>
       {image == null ? null : <AvatarImage src={image} alt="" />}
-      <AvatarFallback className="bg-primary text-xs font-bold text-primary-foreground">
+      <AvatarFallback
+        className={cn("bg-primary text-xs font-bold text-primary-foreground", fallbackClassName)}
+      >
         {initialsOf(name)}
       </AvatarFallback>
     </Avatar>
