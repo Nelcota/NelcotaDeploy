@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { ContainerIcon, RotateCwIcon, ScrollTextIcon } from "lucide-react";
+import { ContainerIcon, ScrollTextIcon } from "lucide-react";
 import { useState } from "react";
 
 import { formatDateTime, formatRelativeTime, pluralize } from "@/shared/format";
@@ -8,7 +8,6 @@ import { LogViewer } from "@/web/components/log-viewer";
 import { currentContainer, TabHeader } from "@/web/components/project-header";
 import { type ProjectDetails, projectQueryOptions } from "@/web/components/project-query";
 import { EmptyState, ErrorState } from "@/web/components/states";
-import { ContainerStateBadge } from "@/web/components/status-badge";
 import { Button } from "@/web/components/ui/button";
 import {
   Select,
@@ -23,6 +22,8 @@ import { listDeploymentsFn } from "@/web/functions/deployments.functions";
 const RECENT_DEPLOYMENTS = 10;
 const ALL_DEPLOYMENTS = "all";
 const SHORT_SHA_LENGTH = 7;
+
+type DeploymentItem = Awaited<ReturnType<typeof listDeploymentsFn>>[number];
 
 export const Route = createFileRoute("/_app/projects/$projectId/logs")({
   head: () => ({ meta: [{ title: "Logs · Nelcota Deploy" }] }),
@@ -46,43 +47,17 @@ function RuntimeLogsPage() {
   const details = project.data;
   const currentDeploymentId = details?.project.currentDeploymentId ?? null;
   const selected = chosen ?? currentDeploymentId ?? ALL_DEPLOYMENTS;
-  const listedDeployments = deployments.data ?? [];
   const now = new Date();
 
   const header = (
     <TabHeader
       icon={ScrollTextIcon}
       title="Logs"
-      description="Saída do contêiner em tempo real. Valores de secrets são ocultados."
-      actions={
-        currentDeploymentId == null ? null : (
-          <Select value={selected} onValueChange={setChosen}>
-            <SelectTrigger aria-label="Deploy exibido" className="w-full sm:w-72">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {listedDeployments.some(
-                (deployment) => deployment.id === currentDeploymentId,
-              ) ? null : (
-                <SelectItem value={currentDeploymentId}>Deploy no ar</SelectItem>
-              )}
-              {listedDeployments.map((deployment) => (
-                <SelectItem key={deployment.id} value={deployment.id}>
-                  {deployment.id === currentDeploymentId ? "Deploy no ar" : "Deploy"}
-                  <span className="font-mono">
-                    {(deployment.commitSha ?? deployment.requestedCommitSha)?.slice(
-                      0,
-                      SHORT_SHA_LENGTH,
-                    ) ?? deployment.id.slice(-SHORT_SHA_LENGTH)}
-                  </span>
-                  <span className="text-muted-foreground">
-                    {formatRelativeTime(deployment.createdAt, now)}
-                  </span>
-                </SelectItem>
-              ))}
-              <SelectItem value={ALL_DEPLOYMENTS}>Todos os deploys recentes</SelectItem>
-            </SelectContent>
-          </Select>
+      description={
+        details == null || currentDeploymentId == null ? (
+          "Saída do contêiner em tempo real. Valores de secrets são ocultados."
+        ) : (
+          <SourceDescription details={details} selected={selected} now={now} />
         )
       }
     />
@@ -92,7 +67,7 @@ function RuntimeLogsPage() {
     return (
       <section aria-label="Logs de execução" className="space-y-6">
         {header}
-        <Skeleton className="h-[min(70dvh,44rem)] rounded-xl" />
+        <Skeleton className="h-[min(72dvh,46rem)] rounded-xl" />
       </section>
     );
   }
@@ -121,73 +96,111 @@ function RuntimeLogsPage() {
       ? `/api/projects/${projectId}/runtime-logs`
       : `/api/projects/${projectId}/runtime-logs?deploymentId=${encodeURIComponent(selected)}`;
   return (
-    <section aria-label="Logs de execução" className="space-y-4">
+    <section aria-label="Logs de execução" className="space-y-6">
       {header}
-      {selected === currentDeploymentId ? (
-        <ContainerStrip details={details} now={now} />
-      ) : (
-        <p className="text-sm text-muted-foreground">
-          {selected === ALL_DEPLOYMENTS
-            ? "Mostrando as linhas de todos os deploys recentes, do mais antigo ao mais novo."
-            : "Mostrando os logs de um deploy anterior. O contêiner dele pode já ter sido removido."}
-        </p>
-      )}
       <LogViewer
         url={url}
-        heightClass="h-[min(70dvh,44rem)]"
+        heightClass="h-[min(72dvh,46rem)]"
         downloadName={`${details.project.slug}.log`}
         emptyMessage="Aguardando linhas do contêiner…"
+        toolbarStart={
+          <DeploymentPicker
+            deployments={deployments.data ?? []}
+            currentDeploymentId={currentDeploymentId}
+            selected={selected}
+            now={now}
+            onChange={setChosen}
+          />
+        }
       />
     </section>
   );
 }
 
-/** Where the live lines come from: the current container, its state and restarts. */
-function ContainerStrip({
+function shortShaOf(deployment: DeploymentItem): string {
+  const sha = deployment.commitSha ?? deployment.requestedCommitSha;
+  return sha == null ? deployment.id.slice(-SHORT_SHA_LENGTH) : sha.slice(0, SHORT_SHA_LENGTH);
+}
+
+/** Which deploy the console streams: the live one by default, an older one, or all of them. */
+function DeploymentPicker({
+  deployments,
+  currentDeploymentId,
+  selected,
+  now,
+  onChange,
+}: {
+  readonly deployments: readonly DeploymentItem[];
+  readonly currentDeploymentId: string;
+  readonly selected: string;
+  readonly now: Date;
+  readonly onChange: (deploymentId: string) => void;
+}) {
+  const liveListed = deployments.some((deployment) => deployment.id === currentDeploymentId);
+  return (
+    <Select value={selected} onValueChange={onChange}>
+      <SelectTrigger
+        aria-label="Deploy exibido"
+        className="h-9 w-full border-0 bg-white/5 text-sm text-console-foreground ring-0"
+      >
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        {liveListed ? null : <SelectItem value={currentDeploymentId}>Deploy no ar</SelectItem>}
+        {deployments.map((deployment) => (
+          <SelectItem key={deployment.id} value={deployment.id}>
+            <span className="font-mono">{shortShaOf(deployment)}</span>
+            <span className="text-muted-foreground">
+              {deployment.id === currentDeploymentId
+                ? "no ar"
+                : formatRelativeTime(deployment.createdAt, now)}
+            </span>
+          </SelectItem>
+        ))}
+        <SelectItem value={ALL_DEPLOYMENTS}>Todos os deploys recentes</SelectItem>
+      </SelectContent>
+    </Select>
+  );
+}
+
+/** One line under the title saying where the lines come from. */
+function SourceDescription({
   details,
+  selected,
   now,
 }: {
   readonly details: ProjectDetails;
+  readonly selected: string;
   readonly now: Date;
 }) {
+  if (selected === ALL_DEPLOYMENTS) {
+    return "Linhas de todos os deploys recentes, do mais antigo ao mais novo.";
+  }
+  if (selected !== details.project.currentDeploymentId) {
+    return "Logs de um deploy anterior; o contêiner dele pode já ter sido removido.";
+  }
   const container = currentContainer(details);
   if (container == null) {
-    return (
-      <p className="flex items-center gap-2 text-sm text-muted-foreground">
-        <ContainerIcon aria-hidden className="size-4 text-faint" />O worker ainda não informou o
-        contêiner do deploy atual.
-      </p>
-    );
+    return "Saída do contêiner em tempo real. O worker ainda não informou o contêiner do deploy.";
   }
   const restarts = container.restartCount ?? 0;
   return (
-    <div className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-xl bg-card px-4 py-3 text-sm ring-1 ring-border/70">
-      <ContainerStateBadge state={container.state} health={container.health} />
-      <span className="flex min-w-0 items-center gap-2">
-        <ContainerIcon aria-hidden className="size-4 shrink-0 text-faint" />
-        <span className="truncate font-mono text-xs" title={container.image ?? undefined}>
-          {container.name}
-        </span>
+    <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+      <span className="font-mono text-xs" title={container.image ?? undefined}>
+        {container.name}
       </span>
       {container.state === "running" && container.startedAt != null ? (
-        <time
-          dateTime={container.startedAt}
-          title={formatDateTime(container.startedAt)}
-          className="text-xs text-muted-foreground"
-        >
-          iniciado {formatRelativeTime(container.startedAt, now)}
-        </time>
+        <>
+          <span aria-hidden>·</span>
+          <time dateTime={container.startedAt} title={formatDateTime(container.startedAt)}>
+            iniciado {formatRelativeTime(container.startedAt, now)}
+          </time>
+        </>
       ) : null}
-      <span
-        className={
-          restarts > 0
-            ? "flex items-center gap-1.5 text-xs text-warning"
-            : "flex items-center gap-1.5 text-xs text-faint"
-        }
-      >
-        <RotateCwIcon aria-hidden className="size-3.5" />
+      <span aria-hidden>·</span>
+      <span className={restarts > 0 ? "text-warning" : undefined}>
         {pluralize(restarts, "reinício", "reinícios")}
       </span>
-    </div>
+    </span>
   );
 }
