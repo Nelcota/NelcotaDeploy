@@ -157,7 +157,7 @@ export function IdentityFields({ form }: { readonly form: ProjectFormApi }) {
           <FormField
             id="project-slug"
             label="Identificador"
-            hint="Usado no nome do contêiner e no domínio automático."
+            hint="Gerado a partir do nome. Usado no nome do contêiner e no domínio automático."
             errors={visibleErrors(form, field.state.meta)}
           >
             {(props) => (
@@ -188,13 +188,14 @@ export function RepositoryFields({ form }: { readonly form: ProjectFormApi }) {
           <FormField
             id="project-repository"
             label="Repositório GitHub"
-            hint="URL HTTPS, por exemplo https://github.com/organizacao/api"
+            hint="Repositório com um Dockerfile. Use a URL HTTPS."
             errors={visibleErrors(form, field.state.meta)}
           >
             {(props) => (
               <Input
                 {...props}
                 type="url"
+                className="font-mono"
                 placeholder="https://github.com/organizacao/repositorio"
                 value={field.state.value}
                 onBlur={field.handleBlur}
@@ -279,6 +280,7 @@ export function PortField({ form }: { readonly form: ProjectFormApi }) {
             <Input
               {...props}
               inputMode="numeric"
+              className="font-mono tabular-nums"
               value={field.state.value}
               onBlur={field.handleBlur}
               onChange={(event) => field.handleChange(event.target.value)}
@@ -399,7 +401,9 @@ export function ProjectForm({
               className="size-4 transition-transform group-open:rotate-90"
             />
             Avançado
-            <span className="font-normal text-faint">Dockerfile, diretório e health check</span>
+            <span className="hidden font-normal text-faint sm:inline">
+              Dockerfile, diretório e health check
+            </span>
           </summary>
           <div className="mt-5 grid gap-x-6 gap-y-5 md:grid-cols-2">
             <BuildFields form={form} />

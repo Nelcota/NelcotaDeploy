@@ -3,11 +3,12 @@ import { createFileRoute } from "@tanstack/react-router";
 import {
   ExternalLinkIcon,
   GlobeIcon,
+  LinkIcon,
   LockIcon,
   LockOpenIcon,
   PlusIcon,
-  RefreshCwIcon,
   ServerIcon,
+  StarIcon,
   Trash2Icon,
 } from "lucide-react";
 import { type FormEvent, useState } from "react";
@@ -77,19 +78,6 @@ function DomainsPage() {
             ? "Endereços públicos da aplicação."
             : `Endereços públicos da aplicação, encaminhados à porta ${details.project.internalPort} do contêiner.`
         }
-        actions={
-          canRedeploy && showApplyBanner === false ? (
-            <Button
-              variant="outline"
-              disabled={redeploy.isPending}
-              onClick={() => redeploy.mutate()}
-              title="Recria o contêiner com a imagem atual para aplicar os domínios salvos"
-            >
-              <RefreshCwIcon aria-hidden />
-              Aplicar com redeploy
-            </Button>
-          ) : null
-        }
       />
       {showApplyBanner ? (
         <ApplyChangesBanner
@@ -139,16 +127,6 @@ function DomainRows({
   }
   return domains.map((domain, index) => (
     <ListRow key={domain.hostname}>
-      <span
-        aria-hidden
-        className="hidden size-9 shrink-0 items-center justify-center rounded-lg bg-well ring-1 ring-border/70 sm:flex"
-      >
-        {domain.httpsEnabled ? (
-          <LockIcon className="size-4 text-success" />
-        ) : (
-          <LockOpenIcon className="size-4 text-faint" />
-        )}
-      </span>
       <div className="min-w-0 flex-1 space-y-1.5">
         <a
           href={`${domain.httpsEnabled ? "https" : "http"}://${domain.hostname}`}
@@ -164,9 +142,11 @@ function DomainRows({
           <span className="sr-only">(abre em nova aba)</span>
         </a>
         <div className="flex flex-wrap gap-1.5">
-          {index === 0 ? <Tag>Principal</Tag> : null}
-          <Tag>{domain.httpsEnabled ? "HTTPS" : "Somente HTTP"}</Tag>
-          {domain.automatic ? <Tag>Automático</Tag> : null}
+          {index === 0 ? <Tag icon={StarIcon}>Principal</Tag> : null}
+          <Tag icon={domain.httpsEnabled ? LockIcon : LockOpenIcon}>
+            {domain.httpsEnabled ? "HTTPS" : "Somente HTTP"}
+          </Tag>
+          {domain.automatic ? <Tag icon={LinkIcon}>Automático</Tag> : null}
         </div>
       </div>
       {canEdit && domain.id != null ? (
@@ -260,7 +240,12 @@ function AddDomainForm({ projectId }: { readonly projectId: string }) {
           />
         </div>
         <div className="flex items-center gap-2">
-          <Switch id="domain-https" checked={httpsEnabled} onCheckedChange={setHttpsEnabled} />
+          <Switch
+            id="domain-https"
+            checked={httpsEnabled}
+            onCheckedChange={setHttpsEnabled}
+            title="Certificado Let's Encrypt emitido automaticamente"
+          />
           <label htmlFor="domain-https" className="text-sm">
             HTTPS
           </label>
@@ -290,42 +275,29 @@ function DnsCard({ automaticHostname }: { readonly automaticHostname: string | n
         No provedor do domínio, crie o registro abaixo. Com HTTPS ativo, o certificado Let&apos;s
         Encrypt é emitido sozinho assim que o DNS responder.
       </p>
-      <div className="overflow-x-auto rounded-lg ring-1 ring-border/70">
-        <table className="w-full text-sm">
-          <thead className="bg-well/50 text-left text-xs text-muted-foreground">
-            <tr>
-              <th scope="col" className="px-4 py-2 font-medium">
-                Tipo
-              </th>
-              <th scope="col" className="px-4 py-2 font-medium">
-                Nome
-              </th>
-              <th scope="col" className="px-4 py-2 font-medium">
-                Valor
-              </th>
-              <th scope="col" className="px-4 py-2">
-                <span className="sr-only">Ações</span>
-              </th>
-            </tr>
-          </thead>
-          <tbody className="font-mono">
-            <tr className="border-t border-border/70">
-              <td className="px-4 py-3">{automaticHostname == null ? "A" : "CNAME"}</td>
-              <td className="px-4 py-3 font-sans text-muted-foreground">seu domínio</td>
-              <td className="px-4 py-3 break-all">
-                {automaticHostname ?? (
-                  <span className="font-sans text-muted-foreground">IP deste servidor</span>
-                )}
-              </td>
-              <td className="px-4 py-3 text-right">
-                {automaticHostname == null ? null : (
-                  <CopyButton text={automaticHostname} label="Copiar" />
-                )}
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
+      <dl className="grid gap-x-8 gap-y-4 rounded-lg p-4 ring-1 ring-border/70 sm:grid-cols-[auto_auto_minmax(0,1fr)] sm:items-start">
+        <div className="space-y-1">
+          <dt className="text-xs text-muted-foreground">Tipo</dt>
+          <dd className="font-mono text-sm">{automaticHostname == null ? "A" : "CNAME"}</dd>
+        </div>
+        <div className="space-y-1">
+          <dt className="text-xs text-muted-foreground">Nome</dt>
+          <dd className="text-sm">o subdomínio, como app</dd>
+        </div>
+        <div className="min-w-0 space-y-1">
+          <dt className="text-xs text-muted-foreground">Valor</dt>
+          <dd className="flex flex-wrap items-center gap-2">
+            {automaticHostname == null ? (
+              <span className="text-sm">IP deste servidor</span>
+            ) : (
+              <>
+                <span className="min-w-0 font-mono text-sm break-all">{automaticHostname}</span>
+                <CopyButton text={automaticHostname} label="Copiar" />
+              </>
+            )}
+          </dd>
+        </div>
+      </dl>
       {automaticHostname == null ? null : (
         <p className="text-xs text-faint">
           O CNAME aponta para o domínio automático do projeto. Para a raiz do domínio (sem

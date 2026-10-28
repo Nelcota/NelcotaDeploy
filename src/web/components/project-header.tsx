@@ -166,7 +166,7 @@ export function TabHeader({
 }) {
   return (
     <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-      <div className="flex min-w-0 items-start gap-3.5">
+      <div className="flex min-w-0 flex-1 items-start gap-3.5">
         <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-card text-muted-foreground ring-1 ring-border/70">
           <Icon aria-hidden className="size-[1.15rem]" />
         </span>
@@ -184,7 +184,9 @@ export function TabHeader({
           )}
         </div>
       </div>
-      {actions == null ? null : <div className="flex flex-wrap items-center gap-2">{actions}</div>}
+      {actions == null ? null : (
+        <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div>
+      )}
     </div>
   );
 }

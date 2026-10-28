@@ -1,11 +1,26 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { LoaderCircleIcon, SettingsIcon, Trash2Icon, TriangleAlertIcon } from "lucide-react";
+import {
+  CircleCheckIcon,
+  CircleDashedIcon,
+  GitBranchIcon,
+  HammerIcon,
+  IdCardIcon,
+  KeyRoundIcon,
+  LoaderCircleIcon,
+  type LucideIcon,
+  SaveIcon,
+  SettingsIcon,
+  Trash2Icon,
+  TriangleAlertIcon,
+  Undo2Icon,
+} from "lucide-react";
 import { type FormEvent, type ReactNode, useState } from "react";
 import { toast } from "sonner";
 
 import { ConfirmDialog } from "@/web/components/confirm-dialog";
 import { toUserMessage } from "@/web/components/error-message";
+import { Tag } from "@/web/components/layout";
 import {
   AutoDeployField,
   BuildFields,
@@ -55,7 +70,7 @@ function ProjectSettingsPage() {
       <TabHeader
         icon={SettingsIcon}
         title="Ajustes do projeto"
-        description="Repositório, build e porta. As mudanças valem no próximo deploy."
+        description="Repositório, build e porta. Ao alterar um campo, aparece a opção de salvar; as mudanças valem no próximo deploy."
       />
       {can("project:write") ? null : (
         <p role="status" className="text-sm text-muted-foreground">
@@ -82,10 +97,12 @@ function ProjectSettingsPage() {
  * stacked on narrow screens.
  */
 function SettingsSection({
+  icon: Icon,
   title,
   description,
   children,
 }: {
+  readonly icon: LucideIcon;
   readonly title: ReactNode;
   readonly description: ReactNode;
   readonly children: ReactNode;
@@ -93,7 +110,10 @@ function SettingsSection({
   return (
     <section className="grid gap-5 p-5 md:grid-cols-[minmax(0,15rem)_minmax(0,1fr)] md:gap-10 md:p-6">
       <div className="space-y-1">
-        <h3 className="text-sm font-semibold">{title}</h3>
+        <h3 className="flex items-center gap-2 text-sm font-semibold">
+          <Icon aria-hidden className="size-4 shrink-0 text-muted-foreground" />
+          {title}
+        </h3>
         <div className="text-sm text-muted-foreground">{description}</div>
       </div>
       <div className="min-w-0">{children}</div>
@@ -147,6 +167,7 @@ function ProjectSettingsForm({
         >
           <fieldset disabled={canEdit === false} className="min-w-0 divide-y divide-border/70">
             <SettingsSection
+              icon={IdCardIcon}
               title="Geral"
               description="Nome exibido no painel e identificador usado no contêiner e no domínio automático."
             >
@@ -155,6 +176,7 @@ function ProjectSettingsForm({
               </div>
             </SettingsSection>
             <SettingsSection
+              icon={GitBranchIcon}
               title="Repositório"
               description="De onde vem o código e quando um deploy começa sozinho."
             >
@@ -183,6 +205,7 @@ function ProjectSettingsForm({
               </div>
             </SettingsSection>
             <SettingsSection
+              icon={HammerIcon}
               title="Build e execução"
               description="Como a imagem é construída e como o painel confere que a aplicação subiu."
             >
@@ -210,6 +233,7 @@ function ProjectSettingsForm({
                   disabled={isSubmitting}
                   onClick={() => form.reset()}
                 >
+                  <Undo2Icon aria-hidden />
                   Descartar
                 </Button>
                 <Button
@@ -217,7 +241,11 @@ function ProjectSettingsForm({
                   form={SETTINGS_FORM_ID}
                   disabled={canEdit === false || isSubmitting}
                 >
-                  {isSubmitting ? <LoaderCircleIcon aria-hidden className="animate-spin" /> : null}
+                  {isSubmitting ? (
+                    <LoaderCircleIcon aria-hidden className="animate-spin" />
+                  ) : (
+                    <SaveIcon aria-hidden />
+                  )}
                   Salvar alterações
                 </Button>
               </div>
@@ -253,6 +281,7 @@ function RepositoryTokenSection({
   };
   return (
     <SettingsSection
+      icon={KeyRoundIcon}
       title="Repositório privado"
       description={
         <>
@@ -262,13 +291,9 @@ function RepositoryTokenSection({
       }
     >
       <form className="space-y-3" onSubmit={submit}>
-        <p className="text-sm">
-          {hasToken ? (
-            <span className="font-medium text-success">Há um token salvo.</span>
-          ) : (
-            <span className="text-muted-foreground">Nenhum token salvo.</span>
-          )}
-        </p>
+        <Tag icon={hasToken ? CircleCheckIcon : CircleDashedIcon}>
+          {hasToken ? "Token salvo" : "Sem token"}
+        </Tag>
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
           <div className="flex-1 space-y-2">
             <Label htmlFor="repository-token">{hasToken ? "Substituir token" : "Token"}</Label>
@@ -276,17 +301,20 @@ function RepositoryTokenSection({
               id="repository-token"
               type="password"
               autoComplete="off"
+              placeholder="github_pat_…"
               value={token}
               onChange={(event) => setToken(event.target.value)}
             />
           </div>
           <Button type="submit" disabled={save.isPending || token.trim() === ""}>
+            <SaveIcon aria-hidden />
             Salvar token
           </Button>
           {hasToken ? (
             <ConfirmDialog
               trigger={
                 <Button type="button" variant="outline" disabled={save.isPending}>
+                  <Trash2Icon aria-hidden />
                   Remover
                 </Button>
               }
@@ -315,6 +343,7 @@ function DangerZone({ projectId, slug }: { readonly projectId: string; readonly 
   });
   return (
     <SettingsSection
+      icon={TriangleAlertIcon}
       title={<span className="text-destructive">Zona de perigo</span>}
       description="Ações que não podem ser desfeitas."
     >

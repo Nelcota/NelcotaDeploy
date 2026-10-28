@@ -1,6 +1,7 @@
 import {
   CalendarClockIcon,
   HandIcon,
+  HistoryIcon,
   LoaderCircleIcon,
   PencilIcon,
   PlayIcon,
@@ -17,7 +18,7 @@ import {
 import type { Task } from "@/tasks";
 import { ConfirmDialog } from "@/web/components/confirm-dialog";
 import { describeCronSchedule } from "@/web/components/cron-description";
-import { ListRow, Tag } from "@/web/components/layout";
+import { ListRow } from "@/web/components/layout";
 import { TaskStatusBadge } from "@/web/components/status-badge";
 import { Button } from "@/web/components/ui/button";
 import { Switch } from "@/web/components/ui/switch";
@@ -57,15 +58,8 @@ export function TaskListRow({
   readonly onDelete: () => void;
 }) {
   const command = formatCommandLine(task.command);
-  const ScheduleIcon = task.schedule == null ? HandIcon : CalendarClockIcon;
   return (
     <ListRow className="flex-wrap lg:flex-nowrap">
-      <span
-        aria-hidden
-        className="hidden size-9 shrink-0 items-center justify-center rounded-lg bg-well text-muted-foreground ring-1 ring-border/70 sm:flex"
-      >
-        <ScheduleIcon className="size-4" />
-      </span>
       <div className="min-w-0 flex-1 basis-56 space-y-1">
         <p className="flex min-w-0 items-center gap-2">
           <button
@@ -77,7 +71,6 @@ export function TaskListRow({
             {task.name}
             <span className="sr-only">: abrir histórico de execuções</span>
           </button>
-          {task.enabled ? null : <Tag>Pausada</Tag>}
         </p>
         <code className="block truncate font-mono text-xs text-muted-foreground" title={command}>
           {command}
@@ -116,6 +109,15 @@ export function TaskListRow({
             Executar
           </Button>
         ) : null}
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          aria-label={`Histórico de ${task.name}`}
+          title="Histórico de execuções"
+          onClick={onOpenHistory}
+        >
+          <HistoryIcon aria-hidden />
+        </Button>
         {canWrite ? <TaskActions task={task} onEdit={onEdit} onDelete={onDelete} /> : null}
       </div>
     </ListRow>
@@ -125,23 +127,29 @@ export function TaskListRow({
 function ScheduleCell({ task, now }: { readonly task: TaskRow; readonly now: Date }) {
   if (task.schedule == null) {
     return (
-      <div className="min-w-0 text-xs lg:w-44 lg:shrink-0">
-        <p className="text-muted-foreground">Sob demanda</p>
-        <p className="text-faint">sem agendamento</p>
-      </div>
+      <p className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground lg:w-44 lg:shrink-0">
+        <HandIcon aria-hidden className="size-3.5 shrink-0" />
+        Sob demanda
+      </p>
     );
   }
   const description = describeCronSchedule(task.schedule);
   return (
     <div className="min-w-0 space-y-0.5 text-xs lg:w-44 lg:shrink-0">
-      <p className="truncate text-muted-foreground" title={task.schedule}>
-        {description ?? <span className="font-mono">{task.schedule}</span>}
+      <p className="flex min-w-0 items-center gap-1.5 text-muted-foreground" title={task.schedule}>
+        <CalendarClockIcon aria-hidden className="size-3.5 shrink-0" />
+        <span className="truncate">
+          {description ?? <span className="font-mono">{task.schedule}</span>}
+        </span>
       </p>
       {task.enabled && task.nextRunAt != null ? (
-        <p className="truncate text-muted-foreground" title={formatDateTime(task.nextRunAt)}>
+        <p className="truncate pl-5 text-muted-foreground" title={formatDateTime(task.nextRunAt)}>
           próxima {formatRelativeTime(task.nextRunAt, now)}
         </p>
       ) : null}
+      {task.enabled ? null : (
+        <p className="truncate pl-5 text-muted-foreground">não roda enquanto pausada</p>
+      )}
     </div>
   );
 }
@@ -155,7 +163,10 @@ function LastExecutionCell({
 }) {
   if (execution == null) {
     return (
-      <p className="min-w-0 text-xs text-muted-foreground lg:w-36 lg:shrink-0">Nunca executada</p>
+      <p className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground lg:w-36 lg:shrink-0">
+        <HistoryIcon aria-hidden className="size-3.5 shrink-0" />
+        Nunca executada
+      </p>
     );
   }
   return (

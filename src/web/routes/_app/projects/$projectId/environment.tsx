@@ -1,6 +1,7 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import {
+  ChevronRightIcon,
   EyeIcon,
   HammerIcon,
   KeyRoundIcon,
@@ -8,7 +9,6 @@ import {
   LockIcon,
   PencilIcon,
   PlusIcon,
-  RefreshCwIcon,
   SearchIcon,
   Trash2Icon,
   VariableIcon,
@@ -122,17 +122,6 @@ function EnvironmentPage() {
         }
         actions={
           <>
-            {canRedeploy && showApplyBanner === false ? (
-              <Button
-                variant="outline"
-                disabled={redeploy.isPending}
-                onClick={() => redeploy.mutate()}
-                title="Recria o contêiner com a imagem atual e as variáveis salvas, sem novo build"
-              >
-                <RefreshCwIcon aria-hidden />
-                Aplicar com redeploy
-              </Button>
-            ) : null}
             {canEdit ? (
               <>
                 <EnvImportDialog projectId={projectId} onImported={refreshPendingChanges} />
@@ -160,7 +149,11 @@ function EnvironmentPage() {
         onDelete={(variableId) => remove.mutate(variableId)}
       />
       <details className="group text-sm text-muted-foreground">
-        <summary className="w-fit cursor-pointer rounded-sm text-xs font-medium text-muted-foreground hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none">
+        <summary className="flex w-fit cursor-pointer list-none items-center gap-1.5 rounded-sm text-xs font-medium text-muted-foreground hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none [&::-webkit-details-marker]:hidden">
+          <ChevronRightIcon
+            aria-hidden
+            className="size-3.5 transition-transform group-open:rotate-90"
+          />
           Saiba mais sobre secrets e redeploy
         </summary>
         <p className="mt-2 max-w-2xl text-xs leading-relaxed">
@@ -266,7 +259,7 @@ function VariablesList({
                 )}
               </p>
             </div>
-            <div className="flex shrink-0 flex-wrap items-center gap-2 text-xs">
+            <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2 text-xs sm:flex-none">
               <Tag icon={variable.kind === "secret" ? LockIcon : EyeIcon}>
                 {variable.kind === "secret" ? "Secret" : "Configuração"}
               </Tag>
@@ -280,7 +273,7 @@ function VariablesList({
               </time>
             </div>
             {canEdit ? (
-              <div className="flex shrink-0 gap-1">
+              <div className="ml-auto flex shrink-0 gap-1">
                 <Button
                   variant="ghost"
                   size="icon-sm"
