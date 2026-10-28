@@ -87,7 +87,7 @@ function DashboardPage() {
     <>
       <section className="flex flex-col gap-6 2xl:flex-row 2xl:items-start 2xl:justify-between">
         <div className="min-w-0 flex-1 space-y-4">
-          <h1 className="text-3xl leading-tight font-semibold tracking-tight">Painel</h1>
+          <h1 className="text-3xl leading-tight font-medium tracking-tight">Painel</h1>
           <div className="flex flex-wrap gap-2">
             {can("project:write") ? (
               <Button size="sm" asChild>

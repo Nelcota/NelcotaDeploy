@@ -1,6 +1,6 @@
 @import "tailwindcss";
 @import "tw-animate-css";
-@import "@fontsource-variable/inter";
+@import "@fontsource-variable/manrope";
 
 @custom-variant dark (&:is(.dark *));
 
@@ -20,7 +20,7 @@
   --card-foreground: #141922;
   --popover: #ffffff;
   --popover-foreground: #141922;
-  --primary: #003fda;
+  --primary: #1f55f0;
   --primary-foreground: #ffffff;
   --secondary: #e9edf2;
   --secondary-foreground: #1d2430;
@@ -46,43 +46,43 @@
 }
 
 .dark {
-  --brand: #4d7fff;
-  --background: #141414;
-  --foreground: #f0f0f0;
-  --surface: #1b1b1b;
-  --surface-raised: #222222;
-  --surface-sunken: #101010;
-  --card: #1b1b1b;
-  --card-foreground: #f0f0f0;
-  --popover: #1f1f1f;
-  --popover-foreground: #f0f0f0;
-  --primary: #3d74ff;
+  --brand: #4a7dff;
+  --background: #262626;
+  --foreground: #ededed;
+  --surface: #2b2b2b;
+  --surface-raised: #323232;
+  --surface-sunken: #212121;
+  --card: #2a2a2a;
+  --card-foreground: #ededed;
+  --popover: #2e2e2e;
+  --popover-foreground: #ededed;
+  --primary: #1f55f0;
   --primary-foreground: #ffffff;
-  --secondary: #262626;
-  --secondary-foreground: #f0f0f0;
-  --muted: #262626;
-  --muted-foreground: #a6a6a6;
-  --accent: #1a2340;
+  --secondary: #333333;
+  --secondary-foreground: #ededed;
+  --muted: #333333;
+  --muted-foreground: #a3a3a3;
+  --accent: #1d2a4d;
   --accent-foreground: #c9d7ff;
   --destructive: #ff5b6b;
-  --border: #2a2a2a;
-  --input: #333333;
-  --ring: #5b8bff;
+  --border: #363636;
+  --input: #3d3d3d;
+  --ring: #4a7dff;
   --success: #3ccf8e;
   --warning: #f2b544;
-  --chart-1: #5b8bff;
+  --chart-1: #4a7dff;
   --chart-2: #3ccf8e;
   --chart-3: #f2b544;
-  --sidebar: #101010;
-  --sidebar-foreground: #f0f0f0;
-  --sidebar-accent: #1e1e1e;
-  --sidebar-border: #222222;
-  --console: #0c0c0c;
+  --sidebar: #1e1e1e;
+  --sidebar-foreground: #ededed;
+  --sidebar-accent: #2f2f2f;
+  --sidebar-border: #2c2c2c;
+  --console: #1c1c1c;
   --console-foreground: #e6e6e6;
 }
 
 @theme inline {
-  --font-sans: "Inter Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "Manrope Variable", ui-sans-serif, system-ui, sans-serif;
   --font-mono: ui-monospace, "JetBrains Mono", "SFMono-Regular", Menlo, monospace;
   /* One type scale for the whole panel, slightly larger than Tailwind's defaults. */
   --text-xs: 0.8125rem;
@@ -143,7 +143,6 @@
   }
   body {
     @apply bg-background font-sans text-foreground;
-    font-feature-settings: "cv11", "ss01";
   }
   ::selection {
     background: color-mix(in oklab, var(--primary) 35%, transparent);

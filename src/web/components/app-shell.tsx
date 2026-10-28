@@ -1,16 +1,37 @@
 import { useQuery } from "@tanstack/react-query";
-import { Link, useParams, useRouter, useRouterState, useSearch } from "@tanstack/react-router";
 import {
+  Link,
+  type LinkComponentProps,
+  useParams,
+  useRouter,
+  useRouterState,
+  useSearch,
+} from "@tanstack/react-router";
+import {
+  ActivityIcon,
+  BoxesIcon,
   CheckIcon,
+  ChevronDownIcon,
   ChevronRightIcon,
   ChevronsUpDownIcon,
+  ClockIcon,
+  GaugeIcon,
+  GlobeIcon,
+  HomeIcon,
+  LayoutListIcon,
   LogOutIcon,
+  type LucideIcon,
   MenuIcon,
   MoonIcon,
   PlusIcon,
+  RocketIcon,
+  ScrollTextIcon,
   SearchIcon,
+  SettingsIcon,
   ShieldCheckIcon,
+  SlidersHorizontalIcon,
   SunIcon,
+  VariableIcon,
 } from "lucide-react";
 import { type ReactNode, useState } from "react";
 import { toast } from "sonner";
@@ -36,13 +57,11 @@ import {
   DropdownMenuTrigger,
 } from "./ui/dropdown-menu";
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "./ui/sheet";
-import { Skeleton } from "./ui/skeleton";
 
 const NAV_LINK =
   "group flex h-10 items-center gap-3 rounded-lg px-3 text-base text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/40 focus-visible:outline-none data-[status=active]:bg-sidebar-accent data-[status=active]:font-medium data-[status=active]:text-foreground";
 const NAV_ICON = "size-5 shrink-0 group-data-[status=active]:text-brand";
 const STATUS_POLL_INTERVAL_IN_MS = 10_000;
-const RECENT_PROJECT_LIMIT = 6;
 
 type NavigateProps = { readonly onNavigate?: (() => void) | undefined };
 
@@ -134,43 +153,15 @@ function SearchButton({ onSearch }: { readonly onSearch: () => void }) {
     <button
       type="button"
       onClick={onSearch}
-      className="flex h-10 w-full items-center gap-3 rounded-lg border bg-surface px-3 text-base text-muted-foreground transition-colors hover:border-input hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/40 focus-visible:outline-none"
+      aria-label="Buscar projetos e páginas"
+      className="ml-auto flex h-10 shrink-0 items-center gap-3 rounded-lg border bg-surface px-3 text-base whitespace-nowrap text-muted-foreground transition-colors hover:border-input hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/40 focus-visible:outline-none sm:w-80"
     >
       <SearchIcon aria-hidden className="size-[1.125rem]" />
-      Buscar
-      <kbd className="ml-auto rounded-md border bg-surface-sunken px-1.5 py-0.5 font-mono text-xs">
+      <span className="hidden sm:inline">Buscar…</span>
+      <kbd className="ml-auto hidden rounded-md border bg-surface-sunken px-1.5 py-0.5 font-mono text-xs whitespace-nowrap sm:inline">
         Ctrl K
       </kbd>
     </button>
-  );
-}
-
-function MainNavigation({ onNavigate }: NavigateProps) {
-  const projects = useQuery(projectsQuery());
-  const status = useQuery(sidebarStatusQuery());
-  const activeDeployments = status.data?.activeDeployments ?? 0;
-  const [dashboard, projectsArea, deploymentsArea] = MAIN_AREAS;
-  return (
-    <div className="space-y-1">
-      {[dashboard, projectsArea, deploymentsArea].map((item) => (
-        <Link
-          key={item.to}
-          to={item.to}
-          activeOptions={{ exact: item.exact }}
-          onClick={onNavigate}
-          className={NAV_LINK}
-        >
-          <item.icon aria-hidden className={NAV_ICON} />
-          {item.label}
-          {item === projectsArea && projects.data != null ? (
-            <CountBadge value={projects.data.length} />
-          ) : null}
-          {item === deploymentsArea && activeDeployments > 0 ? (
-            <CountBadge value={activeDeployments} tone="active" />
-          ) : null}
-        </Link>
-      ))}
-    </div>
   );
 }
 
@@ -228,115 +219,269 @@ function ProjectSwitcher({
   );
 }
 
+/** A sidebar entry: a link, or a collapsible group of links. */
+type NavItem = {
+  readonly key: string;
+  readonly label: string;
+  readonly icon: ReactNode;
+  readonly link?: Pick<LinkComponentProps, "to" | "params" | "search" | "activeOptions">;
+  readonly badge?: ReactNode;
+  readonly children?: readonly NavItem[];
+  /** Groups start expanded unless this is false. */
+  readonly defaultOpen?: boolean;
+};
+
+const SUB_LINK =
+  "group flex min-h-9 items-center gap-3 rounded-lg px-3 py-1.5 text-[0.9375rem] leading-snug text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/40 focus-visible:outline-none data-[status=active]:bg-sidebar-accent data-[status=active]:font-medium data-[status=active]:text-foreground";
+
+function NavLeaf({
+  item,
+  sub,
+  onNavigate,
+}: { readonly item: NavItem; readonly sub: boolean } & NavigateProps) {
+  return (
+    <Link {...item.link} onClick={onNavigate} className={sub ? SUB_LINK : NAV_LINK}>
+      <span
+        className={cn(
+          "flex shrink-0 items-center justify-center",
+          sub ? "size-[1.125rem]" : "size-5",
+        )}
+      >
+        {item.icon}
+      </span>
+      <span className="min-w-0 flex-1">{item.label}</span>
+      {item.badge}
+    </Link>
+  );
+}
+
+function NavGroup({ item, onNavigate }: { readonly item: NavItem } & NavigateProps) {
+  const [open, setOpen] = useState(item.defaultOpen !== false);
+  const children = item.children ?? [];
+  return (
+    <div>
+      <button
+        type="button"
+        aria-expanded={open}
+        onClick={() => setOpen((current) => current === false)}
+        className={cn(NAV_LINK, "w-full text-left")}
+      >
+        <span className="flex size-5 shrink-0 items-center justify-center">{item.icon}</span>
+        <span className="min-w-0 flex-1">{item.label}</span>
+        {item.badge}
+        <ChevronDownIcon
+          aria-hidden
+          className={cn("size-4 shrink-0 transition-transform", open ? "" : "-rotate-90")}
+        />
+      </button>
+      {open ? (
+        <div className="mt-1 mb-2 ml-[1.375rem] space-y-0.5 border-l border-sidebar-border pl-3">
+          {children.map((child) => (
+            <NavLeaf key={child.key} item={child} sub onNavigate={onNavigate} />
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function NavTree({ items, onNavigate }: { readonly items: readonly NavItem[] } & NavigateProps) {
+  return (
+    <div className="space-y-1">
+      {items.map((item) =>
+        item.children == null ? (
+          <NavLeaf key={item.key} item={item} sub={false} onNavigate={onNavigate} />
+        ) : (
+          <NavGroup key={item.key} item={item} onNavigate={onNavigate} />
+        ),
+      )}
+    </div>
+  );
+}
+
+function icon(Icon: LucideIcon, sub = false) {
+  return <Icon aria-hidden className={cn(sub ? "size-[1.125rem]" : NAV_ICON, "shrink-0")} />;
+}
+
+function administrationItem(permissions: readonly string[], defaultOpen = true): NavItem {
+  return {
+    key: "administration",
+    defaultOpen,
+    label: "Administração",
+    icon: icon(ShieldCheckIcon),
+    children: SETTINGS_SECTIONS.filter(
+      (section) => section.permission == null || permissions.includes(section.permission),
+    ).map((section) => ({
+      key: `settings-${section.tab}`,
+      label: section.label,
+      icon: icon(section.icon, true),
+      link: {
+        to: "/settings",
+        search: { tab: section.tab },
+        activeOptions: { includeSearch: true },
+      },
+    })),
+  };
+}
+
+/** Navigation on global pages: areas, the project list and administration. */
+function GlobalNavigation({ user, onNavigate }: { readonly user: SessionUser } & NavigateProps) {
+  const projects = useQuery(projectsQuery());
+  const status = useQuery(sidebarStatusQuery());
+  const activeDeployments = status.data?.activeDeployments ?? 0;
+  const list = projects.data ?? [];
+  const projectChildren: NavItem[] = list.map((project) => ({
+    key: project.id,
+    label: project.name,
+    icon: <StatusDot online={project.containerState === "running"} />,
+    link: { to: "/projects/$projectId", params: { projectId: project.id } },
+  }));
+  projectChildren.push({
+    key: "all-projects",
+    label: "Todos os projetos",
+    icon: icon(LayoutListIcon, true),
+    link: { to: "/projects", activeOptions: { exact: true } },
+  });
+  if (user.permissions.includes("project:write")) {
+    projectChildren.push({
+      key: "new-project",
+      label: "Novo projeto",
+      icon: icon(PlusIcon, true),
+      link: { to: "/projects/new" },
+    });
+  }
+  const items: NavItem[] = [
+    {
+      key: "dashboard",
+      label: "Painel",
+      icon: icon(HomeIcon),
+      link: { to: "/", activeOptions: { exact: true } },
+    },
+    {
+      key: "projects",
+      label: "Projetos",
+      icon: icon(BoxesIcon),
+      badge: projects.data == null ? null : <CountBadge value={list.length} />,
+      children: projectChildren,
+    },
+    {
+      key: "deployments",
+      label: "Deploys",
+      icon: icon(RocketIcon),
+      link: { to: "/deployments" },
+      badge: activeDeployments > 0 ? <CountBadge value={activeDeployments} tone="active" /> : null,
+    },
+    administrationItem(user.permissions),
+  ];
+  return <NavTree items={items} onNavigate={onNavigate} />;
+}
+
+/** Navigation inside a project: its pages grouped by purpose, then a way back. */
 function ProjectNavigation({
   projectId,
+  user,
   onNavigate,
-}: { readonly projectId: string } & NavigateProps) {
+}: { readonly projectId: string; readonly user: SessionUser } & NavigateProps) {
+  const params = { projectId };
+  const items: NavItem[] = [
+    {
+      key: "overview",
+      label: "Visão geral",
+      icon: icon(HomeIcon),
+      link: { to: "/projects/$projectId", params, activeOptions: { exact: true } },
+    },
+    {
+      key: "deployments",
+      label: "Deploys",
+      icon: icon(RocketIcon),
+      link: { to: "/projects/$projectId/deployments", params },
+    },
+    {
+      key: "observability",
+      label: "Observabilidade",
+      icon: icon(GaugeIcon),
+      children: [
+        {
+          key: "logs",
+          label: "Logs",
+          icon: icon(ScrollTextIcon, true),
+          link: { to: "/projects/$projectId/logs", params },
+        },
+        {
+          key: "metrics",
+          label: "Métricas",
+          icon: icon(ActivityIcon, true),
+          link: { to: "/projects/$projectId/metrics", params },
+        },
+      ],
+    },
+    {
+      key: "configuration",
+      label: "Configuração",
+      icon: icon(SlidersHorizontalIcon),
+      children: [
+        {
+          key: "environment",
+          label: "Variáveis",
+          icon: icon(VariableIcon, true),
+          link: { to: "/projects/$projectId/environment", params },
+        },
+        {
+          key: "domains",
+          label: "Domínios",
+          icon: icon(GlobeIcon, true),
+          link: { to: "/projects/$projectId/domains", params },
+        },
+        {
+          key: "settings",
+          label: "Ajustes do projeto",
+          icon: icon(SettingsIcon, true),
+          link: { to: "/projects/$projectId/settings", params },
+        },
+      ],
+    },
+    {
+      key: "tasks",
+      label: "Tasks",
+      icon: icon(ClockIcon),
+      link: { to: "/projects/$projectId/tasks", params },
+    },
+  ];
+  const general: NavItem[] = [
+    {
+      key: "dashboard",
+      label: "Painel",
+      icon: icon(HomeIcon),
+      link: { to: "/", activeOptions: { exact: true } },
+    },
+    {
+      key: "projects",
+      label: "Todos os projetos",
+      icon: icon(BoxesIcon),
+      link: { to: "/projects", activeOptions: { exact: true } },
+    },
+    {
+      key: "all-deployments",
+      label: "Deploys",
+      icon: icon(RocketIcon),
+      link: { to: "/deployments" },
+    },
+    administrationItem(user.permissions, false),
+  ];
   return (
-    <section className="space-y-2">
-      <SectionTitle>Projeto</SectionTitle>
-      <ProjectSwitcher projectId={projectId} onNavigate={onNavigate} />
-      <div className="space-y-1 pt-1">
-        {PROJECT_SECTIONS.map((item) => (
-          <Link
-            key={item.to}
-            to={item.to}
-            params={{ projectId }}
-            activeOptions={{ exact: item.exact }}
-            onClick={onNavigate}
-            className={NAV_LINK}
-          >
-            <item.icon aria-hidden className={NAV_ICON} />
-            {item.label}
-          </Link>
-        ))}
-      </div>
-    </section>
-  );
-}
-
-function RecentProjects({
-  canCreate,
-  onNavigate,
-}: { readonly canCreate: boolean } & NavigateProps) {
-  const projects = useQuery(projectsQuery());
-  const list = projects.data ?? [];
-  return (
-    <section className="space-y-1">
-      <SectionTitle>Projetos</SectionTitle>
-      {projects.isPending ? <Skeleton className="mx-3 h-9" /> : null}
-      {list.slice(0, RECENT_PROJECT_LIMIT).map((project) => (
-        <Link
-          key={project.id}
-          to="/projects/$projectId"
-          params={{ projectId: project.id }}
-          onClick={onNavigate}
-          className={NAV_LINK}
-        >
-          <span className="flex size-5 items-center justify-center">
-            <StatusDot online={project.containerState === "running"} />
-          </span>
-          <span className="truncate">{project.name}</span>
-        </Link>
-      ))}
-      {list.length > RECENT_PROJECT_LIMIT ? (
-        <Link to="/projects" onClick={onNavigate} className={cn(NAV_LINK, "text-sm")}>
-          <span className="size-5" />
-          Ver todos os {list.length} projetos
-        </Link>
-      ) : null}
-      {projects.isSuccess && list.length === 0 ? (
-        <p className="px-3 py-1 text-sm text-muted-foreground">Nenhum projeto ainda.</p>
-      ) : null}
-      {canCreate ? (
-        <Link to="/projects/new" onClick={onNavigate} className={NAV_LINK}>
-          <PlusIcon aria-hidden className={NAV_ICON} />
-          Novo projeto
-        </Link>
-      ) : null}
-    </section>
-  );
-}
-
-function AdministrationNavigation({
-  permissions,
-  onNavigate,
-}: { readonly permissions: readonly string[] } & NavigateProps) {
-  const pathname = usePathname();
-  const search = useSearch({ strict: false });
-  const onSettings = pathname.startsWith("/settings");
-  const currentTab = typeof search.tab === "string" ? search.tab : "organization";
-  const sections = SETTINGS_SECTIONS.filter(
-    (section) => section.permission == null || permissions.includes(section.permission),
-  );
-  if (onSettings === false) {
-    return (
-      <section className="space-y-1">
-        <SectionTitle>Sistema</SectionTitle>
-        <Link to="/settings" onClick={onNavigate} className={NAV_LINK}>
-          <ShieldCheckIcon aria-hidden className={NAV_ICON} />
-          Administração
-        </Link>
+    <>
+      <section className="space-y-2">
+        <SectionTitle>Projeto</SectionTitle>
+        <ProjectSwitcher projectId={projectId} onNavigate={onNavigate} />
+        <div className="pt-1">
+          <NavTree items={items} onNavigate={onNavigate} />
+        </div>
       </section>
-    );
-  }
-  return (
-    <section className="space-y-1">
-      <SectionTitle>Administração</SectionTitle>
-      {sections.map((section) => (
-        <Link
-          key={section.tab}
-          to="/settings"
-          search={{ tab: section.tab }}
-          onClick={onNavigate}
-          data-status={onSettings && section.tab === currentTab ? "active" : undefined}
-          className={NAV_LINK}
-        >
-          <section.icon aria-hidden className={NAV_ICON} />
-          {section.label}
-        </Link>
-      ))}
-    </section>
+      <section className="space-y-1">
+        <SectionTitle>Geral</SectionTitle>
+        <NavTree items={general} onNavigate={onNavigate} />
+      </section>
+    </>
   );
 }
 
@@ -421,15 +566,11 @@ function AccountMenu({ user }: { readonly user: SessionUser }) {
 }
 
 /** Everything inside the sidebar; shared by the desktop sidebar and the mobile drawer. */
-function SidebarContent({
-  user,
-  onSearch,
-  onNavigate,
-}: { readonly user: SessionUser; readonly onSearch: () => void } & NavigateProps) {
+function SidebarContent({ user, onNavigate }: { readonly user: SessionUser } & NavigateProps) {
   const projectId = useCurrentProjectId();
   return (
     <div className="flex h-full flex-col">
-      <div className="space-y-5 px-3 pt-5">
+      <div className="px-3 pt-5">
         <Link
           to="/"
           onClick={onNavigate}
@@ -439,19 +580,13 @@ function SidebarContent({
           <NelcotaLogo className="h-7 w-auto text-foreground" />
           <span className="text-lg font-medium text-muted-foreground">Deploy</span>
         </Link>
-        <SearchButton onSearch={onSearch} />
       </div>
       <nav aria-label="Navegação principal" className="flex-1 space-y-6 overflow-y-auto px-3 py-5">
-        <MainNavigation onNavigate={onNavigate} />
         {projectId == null ? (
-          <RecentProjects
-            canCreate={user.permissions.includes("project:write")}
-            onNavigate={onNavigate}
-          />
+          <GlobalNavigation user={user} onNavigate={onNavigate} />
         ) : (
-          <ProjectNavigation projectId={projectId} onNavigate={onNavigate} />
+          <ProjectNavigation projectId={projectId} user={user} onNavigate={onNavigate} />
         )}
-        <AdministrationNavigation permissions={user.permissions} onNavigate={onNavigate} />
       </nav>
       <div className="space-y-1 border-t border-sidebar-border px-3 py-3">
         <WorkerStatusRow />
@@ -542,13 +677,7 @@ function Breadcrumb() {
   );
 }
 
-function MobileMenu({
-  user,
-  onSearch,
-}: {
-  readonly user: SessionUser;
-  readonly onSearch: () => void;
-}) {
+function MobileMenu({ user }: { readonly user: SessionUser }) {
   const [open, setOpen] = useState(false);
   return (
     <Sheet open={open} onOpenChange={setOpen}>
@@ -559,14 +688,7 @@ function MobileMenu({
       </SheetTrigger>
       <SheetContent side="left" className="w-80 gap-0 p-0">
         <SheetTitle className="sr-only">Menu</SheetTitle>
-        <SidebarContent
-          user={user}
-          onNavigate={() => setOpen(false)}
-          onSearch={() => {
-            setOpen(false);
-            onSearch();
-          }}
-        />
+        <SidebarContent user={user} onNavigate={() => setOpen(false)} />
       </SheetContent>
     </Sheet>
   );
@@ -593,12 +715,13 @@ export function AppShell({
   return (
     <div className="flex h-svh overflow-hidden bg-background">
       <aside className="hidden w-72 shrink-0 border-r border-sidebar-border bg-sidebar lg:block">
-        <SidebarContent user={user} onSearch={openSearch} />
+        <SidebarContent user={user} />
       </aside>
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="flex h-16 shrink-0 items-center gap-2 border-b border-sidebar-border px-4 md:px-8">
-          <MobileMenu user={user} onSearch={openSearch} />
+          <MobileMenu user={user} />
           <Breadcrumb />
+          <SearchButton onSearch={openSearch} />
         </header>
         <main id="main" className="flex-1 overflow-y-auto">
           <div className="mx-auto max-w-[88rem] space-y-8 px-5 py-8 md:px-10 md:py-10">
