@@ -27,6 +27,12 @@ const shortTimeFormat = new Intl.DateTimeFormat(LOCALE, {
   hour: "2-digit",
   minute: "2-digit",
 });
+const longDateFormat = new Intl.DateTimeFormat(LOCALE, {
+  timeZone: TIME_ZONE,
+  weekday: "long",
+  day: "numeric",
+  month: "long",
+});
 const numberFormat = new Intl.NumberFormat(LOCALE, { maximumFractionDigits: 1 });
 const percentFormat = new Intl.NumberFormat(LOCALE, {
   style: "percent",
@@ -166,4 +172,14 @@ export function formatPercent(percent: number | null | undefined): string {
  */
 export function pluralize(count: number, singular: string, plural: string): string {
   return `${count} ${count === 1 ? singular : plural}`;
+}
+
+/**
+ * Formats a date as "quarta-feira, 28 de outubro" in São Paulo time.
+ *
+ * @param date - Instant to format.
+ * @returns Weekday, day and month in Portuguese.
+ */
+export function formatLongDate(date: Date): string {
+  return longDateFormat.format(date);
 }

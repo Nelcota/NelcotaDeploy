@@ -1,6 +1,13 @@
 import { describe, expect, test } from "bun:test";
 
-import { formatBytes, formatDateTime, formatDuration, formatPercent, pluralize } from "./format";
+import {
+  formatBytes,
+  formatDateTime,
+  formatDuration,
+  formatLongDate,
+  formatPercent,
+  pluralize,
+} from "./format";
 
 describe("format", () => {
   test("formats dates in São Paulo time", () => {
@@ -33,5 +40,9 @@ describe("format", () => {
     expect(pluralize(1, "deploy", "deploys")).toBe("1 deploy");
     expect(pluralize(0, "deploy", "deploys")).toBe("0 deploys");
     expect(pluralize(3, "deploy", "deploys")).toBe("3 deploys");
+  });
+
+  test("formats a long date with weekday and month in São Paulo time", () => {
+    expect(formatLongDate(new Date("2026-10-28T02:00:00Z"))).toBe("terça-feira, 27 de outubro");
   });
 });
