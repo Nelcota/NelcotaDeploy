@@ -10,8 +10,9 @@ import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { formatTime } from "@/shared/format";
-import { classifyLogLevel, type LogLevel } from "@/shared/log-level";
+import type { LogLevel } from "@/shared/log-level";
 
+import { countLogLevels, filterLogLines, levelOf, type LogLevelFilter } from "./log-filter";
 import { StatusPill } from "./status-badge";
 import { cn } from "./ui/class-names";
 
@@ -36,6 +37,12 @@ const LEVEL_CLASSES: Record<LogLevel, string> = {
 };
 
 const LEVEL_PREFIX: Record<LogLevel, string> = { info: "", warn: "AVISO", error: "ERRO" };
+
+const LEVEL_FILTERS = [
+  { value: "all", label: "Tudo" },
+  { value: "warn", label: "Avisos" },
+  { value: "error", label: "Erros" },
+] as const satisfies readonly { readonly value: LogLevelFilter; readonly label: string }[];
 
 /**
  * Subscribes to a server-sent log stream. EventSource reconnects by itself and sends the
@@ -168,18 +175,20 @@ export function LogViewer({
 
   const [highlightedId, setHighlightedId] = useState<number | null>(null);
 
-  const visible = useMemo(() => {
-    const needle = filter.trim().toLowerCase();
-    // Blank lines (common in BuildKit output) only add noise to the view.
-    return lines.filter(
-      (line) =>
-        line.message.trim() !== "" &&
-        (needle === "" || line.message.toLowerCase().includes(needle)),
-    );
-  }, [lines, filter]);
-  const firstError = visible.find(
-    (line) => (line.level ?? classifyLogLevel(line.message)) === "error",
+  const [levelFilter, setLevelFilter] = useState<LogLevelFilter>("all");
+  const searched = useMemo(
+    () => filterLogLines(lines, { search: filter, level: "all" }),
+    [lines, filter],
   );
+  const counts = useMemo(() => countLogLevels(searched), [searched]);
+  const visible = useMemo(
+    () =>
+      levelFilter === "all"
+        ? searched
+        : filterLogLines(searched, { search: "", level: levelFilter }),
+    [searched, levelFilter],
+  );
+  const firstError = visible.find((line) => levelOf(line) === "error");
 
   const jumpToError = () => {
     if (firstError == null) {
@@ -207,6 +216,37 @@ export function LogViewer({
         <span className="text-xs text-console-foreground/50 tabular-nums">
           {visible.length} linhas
         </span>
+        <div
+          role="group"
+          aria-label="Filtrar por nível"
+          className="flex items-center gap-0.5 rounded-md bg-white/5 p-0.5"
+        >
+          {LEVEL_FILTERS.map((option) => {
+            const count =
+              option.value === "error" ? counts.errors : counts.warnings + counts.errors;
+            return (
+              <button
+                key={option.value}
+                type="button"
+                aria-pressed={levelFilter === option.value}
+                onClick={() => setLevelFilter(option.value)}
+                className={cn(
+                  "inline-flex h-7 items-center gap-1.5 rounded px-2 text-xs font-medium text-console-foreground/60 transition-colors hover:text-console-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
+                  levelFilter === option.value ? "bg-white/10 text-console-foreground" : "",
+                )}
+              >
+                {option.label}
+                {option.value === "all" ? null : (
+                  <span
+                    className={cn("tabular-nums", count > 0 ? LEVEL_CLASSES[option.value] : "")}
+                  >
+                    {count}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
         <div className="ml-auto flex items-center gap-1">
           <div className="relative mr-1">
             <SearchIcon
@@ -270,7 +310,7 @@ export function LogViewer({
           </p>
         ) : (
           visible.map((line) => {
-            const level = line.level ?? classifyLogLevel(line.message);
+            const level = levelOf(line);
             return (
               <div
                 key={line.id}
