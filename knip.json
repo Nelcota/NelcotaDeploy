@@ -4,7 +4,8 @@
     "src/web/start.ts",
     "src/web/router.tsx",
     "src/web/routes/**/*.{ts,tsx}",
-    "src/**/*.test.ts"
+    "src/**/*.test.ts",
+    "src/ui-review/seed.ts"
   ],
   "project": ["src/**/*.{ts,tsx}"],
   "ignore": ["src/web/routeTree.gen.ts", "src/web/components/ui/**"],

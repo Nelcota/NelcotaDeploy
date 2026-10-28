@@ -19,6 +19,7 @@
     "typecheck": "tsc --noEmit",
     "knip": "knip",
     "test": "bun test",
+    "ui:review": "bun run src/ui-review/main.ts",
     "test:docker": "DOCKER_INTEGRATION=1 bun test src/worker/deploy.integration.test.ts",
     "check": "bun run format:check && bun run lint && bun run typecheck && bun run knip && bun run test",
     "prepare": "lefthook install"
@@ -48,6 +49,7 @@
     "zod": "4.6.7"
   },
   "devDependencies": {
+    "@axe-core/playwright": "4.13.0",
     "@tailwindcss/vite": "4.3.3",
     "@types/bun": "1.4.2",
     "@types/react": "19.3.0",
@@ -59,6 +61,7 @@
     "oxfmt": "0.72.0",
     "oxlint": "1.87.0",
     "oxlint-tsgolint": "7.0.2003",
+    "playwright": "1.64.1",
     "tailwindcss": "4.3.3",
     "typescript": "7.0.2",
     "vite": "8.3.4"
