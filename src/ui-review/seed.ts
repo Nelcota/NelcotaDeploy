@@ -202,5 +202,33 @@ for (let index = 0; index < METRIC_SAMPLES; index += 1) {
     .run();
 }
 
+const RUNTIME_LOG_LINES = [
+  ["stdout", "Server listening on http://0.0.0.0:3000"],
+  ["stdout", "Connected to postgres at db:5432 (pool size 10)"],
+  ["stdout", "GET /health 200 2ms"],
+  ["stdout", "POST /pagamentos/pix 201 84ms"],
+  ["stderr", "warning: PIX_WEBHOOK_URL not set, notifications disabled"],
+  ["stdout", "GET /pagamentos/3f9a 200 12ms"],
+  ["stderr", "Error: connection refused while calling https://api.banco.exemplo.com/cobrancas"],
+  ["stdout", "Retrying request to api.banco.exemplo.com (attempt 2 of 3)"],
+  ["stdout", "POST /pagamentos/pix 201 91ms"],
+  ["stdout", "GET /health 200 1ms"],
+] as const;
+const LOG_LINE_SPACING_IN_MS = 7000;
+database
+  .insert(tables.runtimeLogs)
+  .values(
+    RUNTIME_LOG_LINES.map(([stream, message], index) => ({
+      projectId: api.id,
+      deploymentId: liveDeploymentId,
+      stream,
+      message,
+      createdAt: new Date(
+        now - (RUNTIME_LOG_LINES.length - index) * LOG_LINE_SPACING_IN_MS,
+      ).toISOString(),
+    })),
+  )
+  .run();
+
 // The last line is read by main.ts to know which pages to open.
 process.stdout.write(`${JSON.stringify({ projectId: api.id, deploymentId: liveDeploymentId })}\n`);
