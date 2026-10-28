@@ -1,7 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, Link, Outlet } from "@tanstack/react-router";
-import { AlertTriangleIcon, ShieldCheckIcon } from "lucide-react";
+import { AlertTriangleIcon, LoaderCircleIcon, ShieldCheckIcon } from "lucide-react";
 
+import { ConfirmDialog } from "@/web/components/confirm-dialog";
 import { ProjectBand } from "@/web/components/project-header";
 import { type ProjectDetails, projectQueryOptions } from "@/web/components/project-query";
 import { ErrorState } from "@/web/components/states";
@@ -74,9 +75,20 @@ function ProjectBanners({ details }: { readonly details: ProjectDetails }) {
             repositório, por isso nenhum deploy roda antes da aprovação.
           </p>
           {can("project:approve") ? (
-            <Button size="sm" disabled={approve.isPending} onClick={() => approve.mutate()}>
-              Aprovar
-            </Button>
+            <ConfirmDialog
+              trigger={
+                <Button size="sm" disabled={approve.isPending}>
+                  {approve.isPending ? (
+                    <LoaderCircleIcon aria-hidden className="animate-spin" />
+                  ) : null}
+                  Aprovar
+                </Button>
+              }
+              title="Aprovar deploys deste projeto?"
+              description={`O Dockerfile de ${project.repositoryFullName} (branch ${project.branch}) poderá ser executado neste servidor.`}
+              confirmLabel="Aprovar"
+              onConfirm={() => approve.mutate()}
+            />
           ) : null}
         </div>
       )}

@@ -50,7 +50,7 @@ function ProjectSettingsPage() {
   const { project } = details.data;
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       <TabHeader
         icon={SettingsIcon}
         title="Ajustes do projeto"
@@ -190,10 +190,8 @@ function ProjectSettingsForm({
         </form>
         {children}
       </div>
-      <form.Subscribe
-        selector={(state) => [state.isDefaultValue, state.canSubmit, state.isSubmitting] as const}
-      >
-        {([isDefaultValue, canSubmit, isSubmitting]) =>
+      <form.Subscribe selector={(state) => [state.isDefaultValue, state.isSubmitting] as const}>
+        {([isDefaultValue, isSubmitting]) =>
           isDefaultValue ? null : (
             <div className="sticky bottom-4 z-10 flex flex-col gap-3 rounded-lg bg-popover p-3 shadow-lg ring-1 ring-border sm:flex-row sm:items-center sm:justify-between">
               <p className="text-sm font-medium" aria-live="polite">
@@ -211,7 +209,7 @@ function ProjectSettingsForm({
                 <Button
                   type="submit"
                   form={SETTINGS_FORM_ID}
-                  disabled={canEdit === false || canSubmit === false || isSubmitting}
+                  disabled={canEdit === false || isSubmitting}
                 >
                   {isSubmitting ? <LoaderCircleIcon aria-hidden className="animate-spin" /> : null}
                   Salvar alterações

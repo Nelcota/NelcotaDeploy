@@ -20,6 +20,7 @@ import { type ReactNode, useState } from "react";
 import { formatBytes, formatPercent, formatRelativeTime, formatShortTime } from "@/shared/format";
 import {
   ACTIVE_DEPLOYMENT_STATUSES,
+  CONTAINER_HEALTH_LABELS,
   CONTAINER_STATE_LABELS,
   DEPLOYMENT_STATUS_LABELS,
   DEPLOYMENT_TRIGGER_LABELS,
@@ -33,6 +34,7 @@ import { ListSkeleton } from "@/web/components/states";
 import { DeploymentStatusBadge } from "@/web/components/status-badge";
 import { Card } from "@/web/components/ui/card";
 import { Skeleton } from "@/web/components/ui/skeleton";
+import { useCan } from "@/web/components/use-permissions";
 import { getDeploymentFn, listDeploymentsFn } from "@/web/functions/deployments.functions";
 import { getProjectMetricsFn } from "@/web/functions/monitoring.functions";
 
@@ -74,6 +76,7 @@ function ProjectOverviewPage() {
   const { projectId } = Route.useParams();
   const details = useQuery(projectQueryOptions(projectId));
   const recent = useRecentDeployments(projectId);
+  const can = useCan();
 
   if (details.data == null) {
     return <ListSkeleton rows={4} />;
@@ -81,13 +84,21 @@ function ProjectOverviewPage() {
   const data = details.data;
   return (
     <div className="space-y-6">
-      <SituationCard details={data} latest={recent.data?.[0] ?? null} />
+      <SituationCard
+        details={data}
+        latest={recent.data?.[0] ?? null}
+        latestLoading={recent.isPending}
+      />
       {/* Both rows share one three-column grid so card edges line up. */}
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="min-w-0 lg:col-span-2">
           <ResourcesCard projectId={projectId} />
         </div>
-        <RecentDeploymentsCard projectId={projectId} deployments={recent.data ?? null} />
+        <RecentDeploymentsCard
+          projectId={projectId}
+          deployments={recent.data ?? null}
+          canDeploy={can("deployment:create") && data.project.deploymentsApproved}
+        />
       </div>
       <div className="grid gap-6 lg:grid-cols-3">
         <AddressesCard details={data} />
@@ -102,9 +113,11 @@ function ProjectOverviewPage() {
 function SituationCard({
   details,
   latest,
+  latestLoading,
 }: {
   readonly details: ProjectDetails;
   readonly latest: RecentDeployment | null;
+  readonly latestLoading: boolean;
 }) {
   const { project } = details;
   const container = currentContainer(details);
@@ -119,6 +132,8 @@ function SituationCard({
   const restarts = container?.restartCount ?? 0;
   const startedAt = running ? (container.startedAt ?? null) : null;
   const sha = current.data?.commitSha ?? null;
+  const latestValue = latest == null ? "—" : DEPLOYMENT_STATUS_LABELS[latest.status];
+  const latestDetail = latest == null ? "nenhum ainda" : formatRelativeTime(latest.createdAt, now);
 
   let statusIcon = CircleDashedIcon;
   let statusColor = "";
@@ -137,21 +152,31 @@ function SituationCard({
               ? "Sem contêiner"
               : (CONTAINER_STATE_LABELS[container.state] ?? container.state)
           }
-          detail={container?.health == null ? undefined : `saúde: ${container.health}`}
+          detail={
+            container?.health == null
+              ? undefined
+              : (CONTAINER_HEALTH_LABELS[container.health] ?? container.health)
+          }
           label="Contêiner"
           icon={statusIcon}
           iconClassName={statusColor}
         />
         <StatusTile
-          value={latest == null ? "—" : DEPLOYMENT_STATUS_LABELS[latest.status]}
-          detail={latest == null ? "nenhum ainda" : formatRelativeTime(latest.createdAt, now)}
+          value={latestLoading ? <Skeleton className="h-6 w-20" /> : latestValue}
+          detail={latestLoading ? undefined : latestDetail}
           label="Último deploy"
           icon={RocketIcon}
           iconClassName={latest?.status === "failed" ? "text-destructive" : ""}
           tone={latest?.status === "failed" ? "danger" : "default"}
         />
         <StatusTile
-          value={<span className="font-mono">{sha?.slice(0, SHORT_SHA_LENGTH) ?? "—"}</span>}
+          value={
+            current.isLoading ? (
+              <Skeleton className="h-6 w-20" />
+            ) : (
+              <span className="font-mono">{sha?.slice(0, SHORT_SHA_LENGTH) ?? "—"}</span>
+            )
+          }
           detail={current.data?.commitMessage ?? undefined}
           label="Commit no ar"
           icon={GitCommitHorizontalIcon}
@@ -167,6 +192,7 @@ function SituationCard({
           detail={startedAt == null ? undefined : formatRelativeTime(startedAt, now)}
           label="No ar desde"
           icon={ClockIcon}
+          className="col-span-2 md:col-span-1"
         />
       </dl>
     </Card>
@@ -209,11 +235,7 @@ function ResourcesCard({ projectId }: { readonly projectId: string }) {
         <p className="text-sm text-muted-foreground">
           Agora <span className="font-medium text-foreground tabular-nums">{current}</span>
           {" · "}
-          <Link
-            to="/projects/$projectId/metrics"
-            params={{ projectId }}
-            className="underline-offset-4 hover:text-foreground hover:underline"
-          >
+          <Link to="/projects/$projectId/metrics" params={{ projectId }} className={CARD_LINK}>
             Ver métricas
           </Link>
         </p>
@@ -243,26 +265,27 @@ function ResourcesCard({ projectId }: { readonly projectId: string }) {
 function RecentDeploymentsCard({
   projectId,
   deployments,
+  canDeploy,
 }: {
   readonly projectId: string;
   readonly deployments: readonly RecentDeployment[] | null;
+  /** Whether the Deploy button is shown above, so the empty state may point at it. */
+  readonly canDeploy: boolean;
 }) {
   const now = new Date();
   return (
     <Card className="gap-4 p-5">
       <CardTitleRow icon={HistoryIcon} title="Deploys recentes">
-        <Link
-          to="/projects/$projectId/deployments"
-          params={{ projectId }}
-          className="text-sm text-muted-foreground transition-colors hover:text-foreground"
-        >
+        <Link to="/projects/$projectId/deployments" params={{ projectId }} className={CARD_LINK}>
           Ver todos
         </Link>
       </CardTitleRow>
       {deployments == null ? <Skeleton className="h-60 rounded-lg" /> : null}
       {deployments?.length === 0 ? (
         <p className="py-6 text-center text-sm text-muted-foreground">
-          Nenhum deploy ainda. Use o botão Deploy acima para publicar a primeira versão.
+          {canDeploy
+            ? "Nenhum deploy ainda. Use o botão Deploy acima para publicar a primeira versão."
+            : "Nenhum deploy ainda."}
         </p>
       ) : null}
       {deployments == null || deployments.length === 0 ? null : (
@@ -301,7 +324,7 @@ function RecentDeploymentsCard({
 }
 
 const CARD_LINK =
-  "text-sm text-muted-foreground transition-colors hover:text-foreground focus-visible:text-foreground focus-visible:outline-none";
+  "rounded-sm text-sm text-muted-foreground transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none";
 
 /** A label and its value on one line; long values wrap instead of being cut. */
 function Fact({ label, children }: { readonly label: string; readonly children: ReactNode }) {

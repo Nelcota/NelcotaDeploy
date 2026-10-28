@@ -1,6 +1,6 @@
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { PlusIcon, SearchIcon } from "lucide-react";
+import { BoxesIcon, PlusIcon, SearchIcon } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { z } from "zod";
 
@@ -10,7 +10,7 @@ import { DEPLOYMENT_STATUS_LABELS } from "@/web/components/labels";
 import { List, ListRow } from "@/web/components/layout";
 import { PageHeader } from "@/web/components/page-header";
 import { containerAccent } from "@/web/components/project-accent";
-import { ErrorState } from "@/web/components/states";
+import { EmptyState, ErrorState, ListSkeleton } from "@/web/components/states";
 import {
   ContainerStateBadge,
   DeploymentStatusBadge,
@@ -26,7 +26,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/web/components/ui/select";
-import { Skeleton } from "@/web/components/ui/skeleton";
 import { useCan } from "@/web/components/use-permissions";
 import { listProjectsFn } from "@/web/functions/projects.functions";
 
@@ -151,22 +150,20 @@ function LatestDeployment({ project, now }: { readonly project: ProjectRow; read
 }
 
 function ProjectListRow({ project, now }: { readonly project: ProjectRow; readonly now: Date }) {
-  const navigate = useNavigate();
   const accent = project.deploymentsApproved
     ? containerAccent(project.containerState, project.containerHealth)
     : "warning";
   return (
     <ListRow accent={accent}>
-      <button
-        type="button"
-        aria-label={`Abrir ${project.name}`}
-        onClick={() =>
-          void navigate({ to: "/projects/$projectId", params: { projectId: project.id } })
-        }
-        className="absolute inset-0 cursor-pointer focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none focus-visible:ring-inset"
-      />
       <div className="min-w-0 flex-1">
-        <p className="truncate font-medium">{project.name}</p>
+        {/* The link covers the whole row, so the row opens the project and stays a real link. */}
+        <Link
+          to="/projects/$projectId"
+          params={{ projectId: project.id }}
+          className="block truncate font-medium after:absolute after:inset-0 focus-visible:outline-none focus-visible:after:ring-2 focus-visible:after:ring-ring focus-visible:after:ring-inset"
+        >
+          {project.name}
+        </Link>
         <p className="truncate font-mono text-xs text-faint">{project.slug}</p>
       </div>
       <div className="hidden w-56 min-w-0 shrink-0 text-sm md:block">
@@ -294,24 +291,49 @@ function ProjectsPage() {
         {projects.isError ? (
           <ErrorState error={projects.error} onRetry={() => void projects.refetch()} />
         ) : null}
-        {projects.isPending ? <Skeleton className="h-80 rounded-xl" /> : null}
-        {projects.isSuccess ? (
+        {projects.isPending ? <ListSkeleton rows={5} /> : null}
+        {projects.data != null && rows.length === 0 && (hasProjects || filtering) ? (
+          <EmptyState
+            icon={SearchIcon}
+            title="Nenhum projeto encontrado"
+            description="Nenhum projeto corresponde à busca ou ao filtro."
+            action={
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  setSearch("");
+                  setFilter("all");
+                }}
+              >
+                Limpar filtros
+              </Button>
+            }
+          />
+        ) : null}
+        {projects.data != null &&
+        rows.length === 0 &&
+        hasProjects === false &&
+        filtering === false ? (
+          <EmptyState
+            icon={BoxesIcon}
+            title="Nenhum projeto ainda"
+            description="Cadastre uma aplicação apontando para um repositório GitHub com Dockerfile."
+            action={
+              canCreate ? (
+                <Button size="sm" asChild>
+                  <Link to="/projects/new">
+                    <PlusIcon aria-hidden />
+                    Criar projeto
+                  </Link>
+                </Button>
+              ) : undefined
+            }
+          />
+        ) : null}
+        {projects.data != null && rows.length > 0 ? (
           <section aria-label="Lista de projetos">
             <List>
-              {rows.length === 0 ? (
-                <ListRow>
-                  <p className="flex-1 text-sm text-muted-foreground">
-                    {hasProjects || filtering
-                      ? "Nenhum projeto corresponde à busca ou ao filtro."
-                      : "Nenhum projeto ainda. Cadastre uma aplicação apontando para um repositório GitHub com Dockerfile."}
-                  </p>
-                  {canCreate && hasProjects === false && filtering === false ? (
-                    <Button size="sm" variant="outline" asChild>
-                      <Link to="/projects/new">Criar projeto</Link>
-                    </Button>
-                  ) : null}
-                </ListRow>
-              ) : null}
               {rows.map((project) => (
                 <ProjectListRow key={project.id} project={project} now={now} />
               ))}

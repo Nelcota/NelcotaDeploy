@@ -1,4 +1,5 @@
 import { useForm } from "@tanstack/react-form";
+import { Link } from "@tanstack/react-router";
 import { ChevronRightIcon, LoaderCircleIcon } from "lucide-react";
 import { useState } from "react";
 import type { z } from "zod";
@@ -116,6 +117,17 @@ export function useProjectForm({
 
 type ProjectFormApi = ReturnType<typeof useProjectForm>;
 
+/**
+ * Errors worth showing for a field: only once the user left it or tried to submit, so a
+ * half-typed form is not covered in red.
+ */
+function visibleErrors(
+  form: ProjectFormApi,
+  meta: { readonly isBlurred: boolean; readonly errors: readonly unknown[] },
+): readonly unknown[] {
+  return meta.isBlurred || form.state.submissionAttempts > 0 ? meta.errors : [];
+}
+
 /** Name and slug; a new project derives its slug from the name until the slug is edited. */
 export function IdentityFields({ form }: { readonly form: ProjectFormApi }) {
   const [slugEdited, setSlugEdited] = useState(() => form.getFieldValue("slug") !== "");
@@ -123,7 +135,7 @@ export function IdentityFields({ form }: { readonly form: ProjectFormApi }) {
     <>
       <form.Field name="name">
         {(field) => (
-          <FormField id="project-name" label="Nome" errors={field.state.meta.errors}>
+          <FormField id="project-name" label="Nome" errors={visibleErrors(form, field.state.meta)}>
             {(props) => (
               <Input
                 {...props}
@@ -146,7 +158,7 @@ export function IdentityFields({ form }: { readonly form: ProjectFormApi }) {
             id="project-slug"
             label="Identificador"
             hint="Usado no nome do contêiner e no domínio automático."
-            errors={field.state.meta.errors}
+            errors={visibleErrors(form, field.state.meta)}
           >
             {(props) => (
               <Input
@@ -177,7 +189,7 @@ export function RepositoryFields({ form }: { readonly form: ProjectFormApi }) {
             id="project-repository"
             label="Repositório GitHub"
             hint="URL HTTPS, por exemplo https://github.com/organizacao/api"
-            errors={field.state.meta.errors}
+            errors={visibleErrors(form, field.state.meta)}
           >
             {(props) => (
               <Input
@@ -194,7 +206,11 @@ export function RepositoryFields({ form }: { readonly form: ProjectFormApi }) {
       </form.Field>
       <form.Field name="branch">
         {(field) => (
-          <FormField id="project-branch" label="Branch" errors={field.state.meta.errors}>
+          <FormField
+            id="project-branch"
+            label="Branch"
+            errors={visibleErrors(form, field.state.meta)}
+          >
             {(props) => (
               <Input
                 {...props}
@@ -257,7 +273,7 @@ export function PortField({ form }: { readonly form: ProjectFormApi }) {
           id="project-port"
           label="Porta interna"
           hint="Porta em que a aplicação escuta dentro do contêiner."
-          errors={field.state.meta.errors}
+          errors={visibleErrors(form, field.state.meta)}
         >
           {(props) => (
             <Input
@@ -283,7 +299,7 @@ export function HealthCheckField({ form }: { readonly form: ProjectFormApi }) {
           id="project-health"
           label="Caminho do health check (opcional)"
           hint="Ex.: /health. Sem caminho, basta a porta aceitar conexões."
-          errors={field.state.meta.errors}
+          errors={visibleErrors(form, field.state.meta)}
         >
           {(props) => (
             <Input
@@ -310,7 +326,7 @@ export function BuildFields({ form }: { readonly form: ProjectFormApi }) {
           <FormField
             id="project-dockerfile"
             label="Caminho do Dockerfile"
-            errors={field.state.meta.errors}
+            errors={visibleErrors(form, field.state.meta)}
           >
             {(props) => (
               <Input
@@ -330,7 +346,7 @@ export function BuildFields({ form }: { readonly form: ProjectFormApi }) {
             id="project-context"
             label="Diretório de build"
             hint="Relativo à raiz do repositório."
-            errors={field.state.meta.errors}
+            errors={visibleErrors(form, field.state.meta)}
           >
             {(props) => (
               <Input
@@ -391,10 +407,13 @@ export function ProjectForm({
           </div>
         </details>
       </fieldset>
-      <div className="flex justify-end border-t border-border/70 pt-5">
-        <form.Subscribe selector={(state) => [state.canSubmit, state.isSubmitting] as const}>
-          {([canSubmit, isSubmitting]) => (
-            <Button type="submit" disabled={disabled || canSubmit === false || isSubmitting}>
+      <div className="flex justify-end gap-2 border-t border-border/70 pt-5">
+        <Button variant="ghost" asChild>
+          <Link to="/projects">Cancelar</Link>
+        </Button>
+        <form.Subscribe selector={(state) => state.isSubmitting}>
+          {(isSubmitting) => (
+            <Button type="submit" disabled={disabled || isSubmitting}>
               {isSubmitting ? <LoaderCircleIcon aria-hidden className="animate-spin" /> : null}
               {submitLabel}
             </Button>
