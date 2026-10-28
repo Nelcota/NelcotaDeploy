@@ -66,15 +66,15 @@ function Brand() {
   );
 }
 
-/** The official blue Nelcota symbol on a white tile, at the top of the icon rail. */
+/** The Nelcota emblem straight on the rail, in the brand blue of the current theme. */
 function BrandTile() {
   return (
     <Link
       to="/"
       aria-label="Nelcota Deploy — Painel"
-      className="flex size-10 items-center justify-center rounded-xl bg-white shadow-sm ring-1 ring-black/5 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+      className="flex size-10 items-center justify-center rounded-xl transition-opacity hover:opacity-80 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
     >
-      <img src="/nelcota-symbol-blue.svg" alt="" width={28} height={28} className="size-7" />
+      <NelcotaMark aria-hidden className="h-7 w-auto" />
     </Link>
   );
 }
