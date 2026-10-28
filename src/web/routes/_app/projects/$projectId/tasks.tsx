@@ -29,7 +29,7 @@ import type { Task } from "@/tasks";
 import { ConfirmDialog } from "@/web/components/confirm-dialog";
 import { describeCronSchedule } from "@/web/components/cron-description";
 import { FormField } from "@/web/components/form-field";
-import { List, ListRow } from "@/web/components/layout";
+import { List, ListRow, Tag } from "@/web/components/layout";
 import { TabHeader } from "@/web/components/project-header";
 import { EmptyState, ErrorState, ListSkeleton } from "@/web/components/states";
 import { TaskStatusBadge } from "@/web/components/status-badge";
@@ -274,9 +274,6 @@ function executionAccent(status: string | null): "success" | "danger" | "progres
   return status == null ? "neutral" : "progress";
 }
 
-const TASK_PILL =
-  "shrink-0 rounded-md bg-well px-1.5 py-0.5 text-xs text-muted-foreground ring-1 ring-border/60";
-
 function TaskListRow({
   task,
   now,
@@ -327,7 +324,7 @@ function TaskListRow({
             {task.name}
             <span className="sr-only">: abrir histórico de execuções</span>
           </button>
-          {task.enabled ? null : <span className={TASK_PILL}>Pausada</span>}
+          {task.enabled ? null : <Tag>Pausada</Tag>}
         </p>
         <code className="block truncate font-mono text-xs text-muted-foreground" title={command}>
           {command}

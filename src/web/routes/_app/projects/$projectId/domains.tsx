@@ -17,7 +17,7 @@ import { domainInputSchema } from "@/shared/domain.schema";
 import { ApplyChangesBanner } from "@/web/components/apply-changes-banner";
 import { ConfirmDialog } from "@/web/components/confirm-dialog";
 import { CopyButton } from "@/web/components/copy-button";
-import { CardTitleRow, List, ListRow } from "@/web/components/layout";
+import { CardTitleRow, List, ListRow, Tag } from "@/web/components/layout";
 import { TabHeader } from "@/web/components/project-header";
 import { projectQueryOptions } from "@/web/components/project-query";
 import { ErrorState, ListSkeleton } from "@/web/components/states";
@@ -42,9 +42,6 @@ type DomainItem = {
   readonly httpsEnabled: boolean;
   readonly automatic: boolean;
 };
-
-const DOMAIN_PILL =
-  "inline-flex items-center gap-1 rounded-md bg-well px-1.5 py-0.5 text-xs text-muted-foreground ring-1 ring-border/60";
 
 function DomainsPage() {
   const { projectId } = Route.useParams();
@@ -176,9 +173,9 @@ function DomainRows({
           <span className="sr-only">(abre em nova aba)</span>
         </a>
         <div className="flex flex-wrap gap-1.5">
-          {index === 0 ? <span className={DOMAIN_PILL}>Principal</span> : null}
-          <span className={DOMAIN_PILL}>{domain.httpsEnabled ? "HTTPS" : "Somente HTTP"}</span>
-          {domain.automatic ? <span className={DOMAIN_PILL}>Automático</span> : null}
+          {index === 0 ? <Tag>Principal</Tag> : null}
+          <Tag>{domain.httpsEnabled ? "HTTPS" : "Somente HTTP"}</Tag>
+          {domain.automatic ? <Tag>Automático</Tag> : null}
         </div>
       </div>
       {canEdit && domain.id != null ? (

@@ -25,7 +25,7 @@ import {
   DEPLOYMENT_STATUS_LABELS,
   DEPLOYMENT_TRIGGER_LABELS,
 } from "@/web/components/labels";
-import { CardTitleRow, StatusTile } from "@/web/components/layout";
+import { CardTitleRow, StatusTile, TEXT_LINK } from "@/web/components/layout";
 import { MetricChart } from "@/web/components/metric-chart";
 import { SegmentedControl } from "@/web/components/overview";
 import { currentContainer } from "@/web/components/project-header";
@@ -235,7 +235,7 @@ function ResourcesCard({ projectId }: { readonly projectId: string }) {
         <p className="text-sm text-muted-foreground">
           Agora <span className="font-medium text-foreground tabular-nums">{current}</span>
           {" · "}
-          <Link to="/projects/$projectId/metrics" params={{ projectId }} className={CARD_LINK}>
+          <Link to="/projects/$projectId/metrics" params={{ projectId }} className={TEXT_LINK}>
             Ver métricas
           </Link>
         </p>
@@ -276,7 +276,7 @@ function RecentDeploymentsCard({
   return (
     <Card className="gap-4 p-5">
       <CardTitleRow icon={HistoryIcon} title="Deploys recentes">
-        <Link to="/projects/$projectId/deployments" params={{ projectId }} className={CARD_LINK}>
+        <Link to="/projects/$projectId/deployments" params={{ projectId }} className={TEXT_LINK}>
           Ver todos
         </Link>
       </CardTitleRow>
@@ -323,9 +323,6 @@ function RecentDeploymentsCard({
   );
 }
 
-const CARD_LINK =
-  "rounded-sm text-sm text-muted-foreground transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none";
-
 /** A label and its value on one line; long values wrap instead of being cut. */
 function Fact({ label, children }: { readonly label: string; readonly children: ReactNode }) {
   return (
@@ -344,7 +341,7 @@ function AddressesCard({ details }: { readonly details: ProjectDetails }) {
         <Link
           to="/projects/$projectId/domains"
           params={{ projectId: project.id }}
-          className={CARD_LINK}
+          className={TEXT_LINK}
         >
           Gerenciar
         </Link>
@@ -424,7 +421,7 @@ function ConfigurationCard({ details }: { readonly details: ProjectDetails }) {
         <Link
           to="/projects/$projectId/settings"
           params={{ projectId: project.id }}
-          className={CARD_LINK}
+          className={TEXT_LINK}
         >
           Editar
         </Link>

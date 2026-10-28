@@ -28,7 +28,15 @@ import {
   DEPLOYMENT_STATUS_LABELS,
   DEPLOYMENT_TRIGGER_LABELS,
 } from "@/web/components/labels";
-import { CardTitleRow, List, ListRow, type Stat, StatRow } from "@/web/components/layout";
+import {
+  CardTitleRow,
+  DayHeading,
+  List,
+  ListRow,
+  LiveBadge,
+  type Stat,
+  StatRow,
+} from "@/web/components/layout";
 import { SegmentedControl } from "@/web/components/overview";
 import { PageHeader } from "@/web/components/page-header";
 import { ErrorState, ListSkeleton } from "@/web/components/states";
@@ -230,9 +238,7 @@ function History() {
           ) : null}
           {groups.map(([day, items]) => (
             <Fragment key={day}>
-              <h3 className="bg-well/40 px-5 py-2 text-xs font-medium tracking-wide text-muted-foreground uppercase">
-                {formatDayHeading(items[0]?.createdAt ?? "", now)}
-              </h3>
+              <DayHeading>{formatDayHeading(items[0]?.createdAt ?? "", now)}</DayHeading>
               {items.map((deployment) => (
                 <HistoryRow key={deployment.id} deployment={deployment} />
               ))}
@@ -285,11 +291,7 @@ function HistoryRow({ deployment }: { readonly deployment: DeploymentItem }) {
             {deployment.projectName}
           </Link>
           <span className="shrink-0 font-mono text-xs text-muted-foreground">{shortSha}</span>
-          {deployment.isLive ? (
-            <span className="shrink-0 rounded-full bg-secondary px-2 py-0.5 text-xs font-medium text-muted-foreground">
-              No ar
-            </span>
-          ) : null}
+          {deployment.isLive ? <LiveBadge /> : null}
         </p>
         <p
           className="truncate text-sm text-muted-foreground"

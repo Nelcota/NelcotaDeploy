@@ -25,7 +25,7 @@ import { ConfirmDialog } from "@/web/components/confirm-dialog";
 import { EnvImportDialog } from "@/web/components/env-import-dialog";
 import { type VariableKind, VariableKindToggle } from "@/web/components/env-kind-toggle";
 import { FormField } from "@/web/components/form-field";
-import { List, ListRow } from "@/web/components/layout";
+import { List, ListRow, Tag } from "@/web/components/layout";
 import { TabHeader } from "@/web/components/project-header";
 import { projectQueryOptions } from "@/web/components/project-query";
 import { EmptyState, ErrorState, ListSkeleton } from "@/web/components/states";
@@ -187,9 +187,6 @@ function describeKinds(variables: readonly EnvironmentVariableView[]): string {
   return `${pluralize(secrets, "secret", "secrets")}, ${pluralize(plain, "configuração", "configurações")}`;
 }
 
-const VARIABLE_TAG =
-  "inline-flex items-center gap-1.5 rounded-md bg-well px-2 py-0.5 text-muted-foreground ring-1 ring-border/60";
-
 function VariablesList({
   query,
   canEdit,
@@ -271,24 +268,14 @@ function VariablesList({
               </p>
             </div>
             <div className="flex shrink-0 flex-wrap items-center gap-2 text-xs">
-              <span className={VARIABLE_TAG}>
-                {variable.kind === "secret" ? (
-                  <LockIcon aria-hidden className="size-3.5" />
-                ) : (
-                  <EyeIcon aria-hidden className="size-3.5" />
-                )}
+              <Tag icon={variable.kind === "secret" ? LockIcon : EyeIcon}>
                 {variable.kind === "secret" ? "Secret" : "Configuração"}
-              </span>
-              {variable.availableAtBuild ? (
-                <span className={VARIABLE_TAG}>
-                  <HammerIcon aria-hidden className="size-3.5" />
-                  No build
-                </span>
-              ) : null}
+              </Tag>
+              {variable.availableAtBuild ? <Tag icon={HammerIcon}>No build</Tag> : null}
               <time
                 dateTime={variable.updatedAt}
                 title={`Alterada em ${formatDateTime(variable.updatedAt)}`}
-                className="hidden w-28 text-right text-faint md:inline"
+                className="hidden w-28 text-right text-muted-foreground md:inline"
               >
                 {formatRelativeTime(variable.updatedAt, now)}
               </time>

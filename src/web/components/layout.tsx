@@ -249,3 +249,41 @@ export function StatusTile({
     </div>
   );
 }
+
+/** Small neutral label beside a name, such as "Secret", "HTTPS" or "Pausada". */
+export function Tag({
+  icon: Icon,
+  children,
+}: {
+  readonly icon?: LucideIcon;
+  readonly children: ReactNode;
+}) {
+  return (
+    <span className="inline-flex shrink-0 items-center gap-1.5 rounded-md bg-well px-2 py-0.5 text-xs text-muted-foreground ring-1 ring-border/60">
+      {Icon == null ? null : <Icon aria-hidden className="size-3.5" />}
+      {children}
+    </span>
+  );
+}
+
+/** Marks the deployment a project is serving right now. */
+export function LiveBadge() {
+  return (
+    <span className="shrink-0 rounded-full bg-secondary px-2 py-0.5 text-xs font-medium text-muted-foreground">
+      No ar
+    </span>
+  );
+}
+
+/** Heading inside a {@link List} that starts the rows of one day. */
+export function DayHeading({ children }: { readonly children: ReactNode }) {
+  return (
+    <h3 className="bg-well/40 px-5 py-2 text-xs font-medium tracking-wide text-muted-foreground uppercase">
+      {children}
+    </h3>
+  );
+}
+
+/** Classes for a quiet text link with a visible keyboard focus ring. */
+export const TEXT_LINK =
+  "rounded-sm text-sm text-muted-foreground transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none";

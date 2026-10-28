@@ -19,7 +19,7 @@ import {
   DEPLOYMENT_STATUS_LABELS,
   DEPLOYMENT_TRIGGER_LABELS,
 } from "@/web/components/labels";
-import { List, ListRow } from "@/web/components/layout";
+import { DayHeading, List, ListRow, LiveBadge } from "@/web/components/layout";
 import { SegmentedControl } from "@/web/components/overview";
 import { TabHeader } from "@/web/components/project-header";
 import { projectQueryOptions } from "@/web/components/project-query";
@@ -190,9 +190,7 @@ function ProjectDeploymentsPage() {
         ) : null}
         {groups.map(([day, items]) => (
           <Fragment key={day}>
-            <h3 className="bg-well/40 px-5 py-2 text-xs font-medium tracking-wide text-muted-foreground uppercase">
-              {formatDayHeading(items[0]?.createdAt ?? "", now)}
-            </h3>
+            <DayHeading>{formatDayHeading(items[0]?.createdAt ?? "", now)}</DayHeading>
             {items.map((deployment) => (
               <DeploymentListRow
                 key={deployment.id}
@@ -278,11 +276,7 @@ function CommitCell({
         >
           {deployment.branch}
         </span>
-        {current ? (
-          <span className="shrink-0 rounded-full bg-secondary px-2 py-0.5 text-xs font-medium text-muted-foreground">
-            No ar
-          </span>
-        ) : null}
+        {current ? <LiveBadge /> : null}
       </div>
       <p
         className="truncate text-sm text-muted-foreground"

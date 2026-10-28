@@ -32,6 +32,7 @@
   --secondary-foreground: #1b1b1e;
   --muted: #ecece8;
   --muted-foreground: #55555c;
+  /* Third text level: dates, hints, captions. Kept at 4.5:1 on cards; never lighter. */
   --faint: #6b6b72;
   --accent: #e9efff;
   --accent-foreground: #1a3fb8;
