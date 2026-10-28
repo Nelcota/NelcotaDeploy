@@ -16,6 +16,8 @@ export function getRouter() {
     routeTree,
     context: { queryClient },
     scrollRestoration: true,
+    // Pages scroll inside the app panel, not the window, so new pages start at its top.
+    scrollToTopSelectors: ["#main"],
     defaultPreload: "intent",
   });
 }

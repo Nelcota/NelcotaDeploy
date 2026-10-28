@@ -232,20 +232,25 @@ function MobileNavigation() {
 
 function ShortcutPill({
   to,
+  status,
   label,
   count,
 }: {
   readonly to: "/projects" | "/deployments";
+  /** Projects filter the shortcut opens with. */
+  readonly status?: "online" | "offline";
   readonly label: string;
   readonly count: number | null;
 }) {
   return (
     <Link
       to={to}
-      className="flex h-10 items-center gap-2.5 rounded-full bg-well px-4 text-sm whitespace-nowrap ring-1 ring-border transition-colors hover:bg-well-hover focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+      search={to === "/projects" ? { status } : {}}
+      activeOptions={{ exact: true, includeSearch: true }}
+      className="group flex h-10 items-center gap-2.5 rounded-full bg-well px-4 text-sm whitespace-nowrap ring-1 ring-border transition-colors hover:bg-well-hover focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none data-[status=active]:bg-primary data-[status=active]:text-primary-foreground data-[status=active]:ring-primary"
     >
       {label}
-      <span className="rounded-md bg-background/60 px-1.5 text-xs text-muted-foreground tabular-nums">
+      <span className="rounded-md bg-background/60 px-1.5 text-xs text-muted-foreground tabular-nums group-data-[status=active]:bg-white/20 group-data-[status=active]:text-primary-foreground">
         {count ?? "–"}
       </span>
     </Link>
@@ -262,9 +267,15 @@ function ShortcutPills() {
   const status = useSystemStatus();
   return (
     <nav aria-label="Atalhos" className="hidden items-center gap-2 xl:flex">
-      <ShortcutPill to="/projects" label="Online" count={dashboard.data?.onlineCount ?? null} />
       <ShortcutPill
         to="/projects"
+        status="online"
+        label="Online"
+        count={dashboard.data?.onlineCount ?? null}
+      />
+      <ShortcutPill
+        to="/projects"
+        status="offline"
         label="Precisam de atenção"
         count={dashboard.data?.offlineCount ?? null}
       />
@@ -283,7 +294,7 @@ function SearchButton({ onSearch }: { readonly onSearch: () => void }) {
       type="button"
       onClick={onSearch}
       aria-label="Buscar projetos e páginas"
-      className="flex h-10 min-w-0 flex-1 items-center gap-3 rounded-full bg-well px-4 text-sm text-muted-foreground ring-1 ring-border transition-colors hover:bg-well-hover hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none sm:max-w-md"
+      className="flex size-10 shrink-0 items-center justify-center gap-3 rounded-full bg-well text-sm text-muted-foreground ring-1 ring-border transition-colors hover:bg-well-hover hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none sm:w-auto sm:min-w-0 sm:max-w-md sm:flex-1 sm:shrink sm:justify-start sm:px-4"
     >
       <SearchIcon aria-hidden className="size-4 shrink-0" />
       <span className="hidden truncate sm:inline">Buscar projetos, deploys e páginas</span>
@@ -425,7 +436,8 @@ function AccountMenu({ user }: { readonly user: SessionUser }) {
 
 /**
  * Application frame: a sidebar with the areas and projects, a top bar with shortcuts,
- * search, refresh, system status and account, and the page on a raised panel.
+ * search, refresh, system status and account, and the page on a raised panel. Only the
+ * panel scrolls, so the bars stay put and page content never slides under them.
  */
 export function AppShell({
   user,
@@ -438,18 +450,18 @@ export function AppShell({
   useCommandPaletteShortcut(() => setSearchOpen(true));
   useDeploymentNotifications();
   return (
-    <div className="flex min-h-svh bg-background">
+    <div className="flex h-svh overflow-hidden bg-background">
       <a
         href="#main"
         className="sr-only z-50 rounded-lg bg-primary px-4 py-2 text-primary-foreground focus:not-sr-only focus:fixed focus:top-3 focus:left-3"
       >
         Pular para o conteúdo
       </a>
-      <aside className="sticky top-0 hidden h-svh w-[17rem] shrink-0 lg:flex">
+      <aside className="hidden h-full w-[17rem] shrink-0 lg:flex">
         <SidebarContent onNavigate={() => undefined} />
       </aside>
-      <div className="flex min-w-0 flex-1 flex-col">
-        <header className="sticky top-0 z-40 flex h-20 shrink-0 items-center gap-3 bg-background px-4 lg:px-6">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+        <header className="flex h-20 shrink-0 items-center gap-3 bg-background px-4 lg:px-6">
           <MobileNavigation />
           <ShortcutPills />
           <div className="ml-auto flex min-w-0 flex-1 items-center justify-end gap-2.5">
@@ -462,7 +474,8 @@ export function AppShell({
         <main
           id="main"
           tabIndex={-1}
-          className="flex-1 bg-panel ring-1 ring-border/60 focus:outline-none lg:rounded-tl-3xl"
+          data-scroll-restoration-id="main"
+          className="min-h-0 flex-1 overflow-y-auto bg-panel ring-1 ring-border/60 focus:outline-none lg:rounded-tl-3xl"
         >
           {children}
         </main>
