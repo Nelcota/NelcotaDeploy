@@ -27,7 +27,9 @@ const tabsListVariants = cva(
   {
     variants: {
       variant: {
-        default: "gap-2",
+        // The list scrolls sideways on small screens, which clips anything outside its box;
+        // the padding (offset by the negative margin) keeps pill borders and focus rings whole.
+        default: "-m-1 gap-2 p-1",
         line: "bg-transparent",
       },
     },
@@ -57,7 +59,7 @@ function TabsTrigger({ className, ...props }: React.ComponentProps<typeof TabsPr
     <TabsPrimitive.Trigger
       data-slot="tabs-trigger"
       className={cn(
-        "inline-flex h-9 flex-none cursor-pointer items-center justify-center gap-2 rounded-full px-4 text-sm whitespace-nowrap text-foreground ring-1 ring-border transition-colors group-data-[orientation=vertical]/tabs:w-full group-data-[orientation=vertical]/tabs:justify-start hover:bg-well focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:ring-primary [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+        "inline-flex h-9 flex-none cursor-pointer items-center justify-center gap-2 rounded-full px-4 text-sm whitespace-nowrap bg-well text-foreground ring-1 ring-border transition-colors group-data-[orientation=vertical]/tabs:w-full group-data-[orientation=vertical]/tabs:justify-start hover:bg-well-hover focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:ring-primary [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
         className,
       )}
       {...props}

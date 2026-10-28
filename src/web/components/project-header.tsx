@@ -115,8 +115,9 @@ function ProjectTabs({ projectId }: { readonly projectId: string }) {
               to={section.to}
               params={{ projectId }}
               activeOptions={{ exact: section.exact }}
-              className="inline-flex h-9 items-center rounded-full px-4 text-sm text-foreground ring-1 ring-border transition-colors hover:bg-well focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none data-[status=active]:bg-primary data-[status=active]:text-primary-foreground data-[status=active]:ring-primary"
+              className="inline-flex h-9 items-center gap-2 rounded-full bg-well px-4 text-sm text-foreground ring-1 ring-border transition-colors hover:bg-well-hover focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none data-[status=active]:bg-primary data-[status=active]:text-primary-foreground data-[status=active]:ring-primary"
             >
+              <section.icon aria-hidden className="size-4" />
               {section.label}
             </Link>
           </li>

@@ -19,6 +19,7 @@ import { ConfirmDialog } from "@/web/components/confirm-dialog";
 import { FormField } from "@/web/components/form-field";
 import { ROLE_LABELS } from "@/web/components/labels";
 import { List, ListRow, Section, StatRow } from "@/web/components/layout";
+import { SETTINGS_SECTIONS as SETTINGS_NAVIGATION } from "@/web/components/navigation";
 import { PageHeader } from "@/web/components/page-header";
 import { EmptyState, ErrorState, ListSkeleton } from "@/web/components/states";
 import { StatusPill } from "@/web/components/status-badge";
@@ -76,6 +77,12 @@ export const Route = createFileRoute("/_app/settings")({
   head: () => ({ meta: [{ title: "Configurações · Nelcota Deploy" }] }),
   component: SettingsPage,
 });
+
+/** Icon of a settings tab, shared with the command palette's list of settings pages. */
+function SettingsTabIcon({ tab }: { readonly tab: (typeof SETTINGS_SECTIONS)[number] }) {
+  const Icon = SETTINGS_NAVIGATION.find((item) => item.tab === tab)?.icon;
+  return Icon == null ? null : <Icon aria-hidden />;
+}
 
 const SETTINGS_TITLES: Record<(typeof SETTINGS_SECTIONS)[number], string> = {
   organization: "Organização",
@@ -175,6 +182,7 @@ function SettingsPage() {
         <TabsList>
           {SETTINGS_SECTIONS.filter((section) => canSee(section)).map((section) => (
             <TabsTrigger key={section} value={section}>
+              <SettingsTabIcon tab={section} />
               {SETTINGS_TITLES[section]}
             </TabsTrigger>
           ))}

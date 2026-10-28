@@ -458,7 +458,7 @@ function ApplicationsCard() {
               "flex h-9 items-center gap-2 rounded-full px-4 text-sm whitespace-nowrap transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
               option.value === filter
                 ? "bg-primary text-primary-foreground"
-                : "ring-1 ring-border hover:bg-well",
+                : "bg-well ring-1 ring-border hover:bg-well-hover",
             )}
           >
             {option.icon == null ? null : <option.icon aria-hidden className="size-4" />}
