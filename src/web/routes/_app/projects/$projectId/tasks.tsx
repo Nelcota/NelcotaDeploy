@@ -5,6 +5,7 @@ import {
   CalendarClockIcon,
   ClockIcon,
   HandIcon,
+  InfoIcon,
   HistoryIcon,
   ListChecksIcon,
   PencilIcon,
@@ -25,12 +26,14 @@ import {
 import { DEFAULT_TASK_TIMEOUT_IN_SECONDS, taskInputSchema } from "@/shared/task.schema";
 import type { Task } from "@/tasks";
 import { ConfirmDialog } from "@/web/components/confirm-dialog";
+import { describeCronSchedule } from "@/web/components/cron-description";
 import { FormField } from "@/web/components/form-field";
 import { List, ListRow } from "@/web/components/layout";
 import { TabHeader } from "@/web/components/project-header";
 import { EmptyState, ErrorState, ListSkeleton } from "@/web/components/states";
 import { TaskStatusBadge } from "@/web/components/status-badge";
 import { Button } from "@/web/components/ui/button";
+import { cn } from "@/web/components/ui/class-names";
 import {
   Dialog,
   DialogContent,
@@ -199,102 +202,27 @@ function TasksPage() {
       {tasks.length > 0 ? (
         <List>
           {tasks.map((task) => (
-            <ListRow
+            <TaskListRow
               key={task.id}
-              accent={executionAccent(task.latestExecution?.status ?? null)}
-              className="flex-wrap md:flex-nowrap"
-            >
-              <div className="min-w-0 flex-1 space-y-1">
-                <button
-                  type="button"
-                  className="block max-w-full truncate text-left text-sm font-medium hover:underline focus-visible:underline focus-visible:outline-none"
-                  title="Abrir histórico de execuções"
-                  onClick={() => setHistoryTaskId(task.id)}
-                >
-                  {task.name}
-                  <span className="sr-only">: abrir histórico de execuções</span>
-                </button>
-                <p
-                  className="truncate font-mono text-xs text-faint"
-                  title={formatCommandLine(task.command)}
-                >
-                  {formatCommandLine(task.command)}
-                </p>
-              </div>
-              <div className="hidden min-w-0 shrink-0 space-y-1 text-right text-xs md:block">
-                {task.schedule == null ? (
-                  <span className={TASK_TAG}>
-                    <HandIcon aria-hidden className="size-3.5" />
-                    Manual
-                  </span>
-                ) : (
-                  <span className={TASK_TAG}>
-                    <CalendarClockIcon aria-hidden className="size-3.5" />
-                    <span className="font-mono">{task.schedule}</span>
-                  </span>
-                )}
-                {task.nextRunAt == null ? null : (
-                  <p className="text-faint" title={formatDateTime(task.nextRunAt)}>
-                    próxima {formatRelativeTime(task.nextRunAt, now)}
-                  </p>
-                )}
-              </div>
-              <div className="w-36 shrink-0">
-                {task.latestExecution == null ? (
-                  <span className="text-xs text-faint">Nunca executada</span>
-                ) : (
-                  <div className="space-y-0.5">
-                    <TaskStatusBadge status={task.latestExecution.status} />
-                    <p className="text-xs text-faint">
-                      {task.latestExecution.startedAt == null
-                        ? "na fila"
-                        : `${formatRelativeTime(task.latestExecution.startedAt, now)} · ${formatDuration(
-                            durationBetween(
-                              task.latestExecution.startedAt,
-                              task.latestExecution.finishedAt,
-                            ),
-                          )}`}
-                    </p>
-                  </div>
-                )}
-              </div>
-              <div className="flex shrink-0 items-center gap-2">
-                <label className="flex items-center gap-2 text-xs text-muted-foreground">
-                  <Switch
-                    aria-label={`Ativar ${task.name}`}
-                    checked={task.enabled}
-                    disabled={
-                      canWrite === false ||
-                      (toggle.isPending && toggle.variables.task.id === task.id)
-                    }
-                    onCheckedChange={(enabled) => toggle.mutate({ task, enabled })}
-                  />
-                  <span aria-hidden className="w-14">
-                    {task.enabled ? "Ativa" : "Pausada"}
-                  </span>
-                </label>
-                <TaskActions
-                  task={task}
-                  canRun={canRun}
-                  canWrite={canWrite}
-                  onRun={() => run.mutate(task.id)}
-                  onEdit={() => openDialog(task)}
-                  onDelete={() => remove.mutate(task.id)}
-                />
-              </div>
-            </ListRow>
+              task={task}
+              now={now}
+              canRun={canRun}
+              canWrite={canWrite}
+              toggling={toggle.isPending && toggle.variables.task.id === task.id}
+              onToggle={(enabled) => toggle.mutate({ task, enabled })}
+              onOpenHistory={() => setHistoryTaskId(task.id)}
+              onRun={() => run.mutate(task.id)}
+              onEdit={() => openDialog(task)}
+              onDelete={() => remove.mutate(task.id)}
+            />
           ))}
         </List>
       ) : null}
-      <details className="text-sm text-muted-foreground">
-        <summary className="w-fit cursor-pointer text-xs font-medium text-faint hover:text-foreground focus-visible:text-foreground focus-visible:outline-none">
-          Como os comandos são executados
-        </summary>
-        <p className="mt-2 max-w-2xl text-xs leading-relaxed">
-          Cada comando roda com docker exec no contêiner atual, como lista de argumentos: não passa
-          por um shell e nunca executa no servidor host. Agendamentos usam o fuso {timeZone}.
-        </p>
-      </details>
+      <p className="flex items-start gap-2 text-xs leading-relaxed text-faint">
+        <InfoIcon aria-hidden className="mt-0.5 size-3.5 shrink-0" />
+        Cada comando roda com docker exec no contêiner atual, como lista de argumentos: não passa
+        por um shell e nunca executa no servidor host. Agendamentos usam o fuso {timeZone}.
+      </p>
       <Sheet
         open={historyTask != null}
         onOpenChange={(open) => {
@@ -305,7 +233,13 @@ function TasksPage() {
       >
         <SheetContent side="right" className="w-full gap-0 overflow-y-auto sm:max-w-xl">
           {historyTask == null ? null : (
-            <ExecutionHistory projectId={projectId} task={historyTask} />
+            <ExecutionHistory
+              projectId={projectId}
+              task={historyTask}
+              canRun={canRun}
+              running={run.isPending}
+              onRun={() => run.mutate(historyTask.id)}
+            />
           )}
         </SheetContent>
       </Sheet>
@@ -331,66 +265,174 @@ function executionAccent(status: string | null): "success" | "danger" | "progres
   return status == null ? "neutral" : "progress";
 }
 
-const TASK_TAG =
-  "inline-flex items-center gap-1.5 rounded-md bg-well px-2 py-0.5 text-muted-foreground ring-1 ring-border/60";
-
-function TaskActions({
+function TaskListRow({
   task,
+  now,
   canRun,
   canWrite,
+  toggling,
+  onToggle,
+  onOpenHistory,
   onRun,
   onEdit,
   onDelete,
 }: {
-  readonly task: Task;
+  readonly task: TaskRow;
+  readonly now: Date;
   readonly canRun: boolean;
   readonly canWrite: boolean;
+  readonly toggling: boolean;
+  readonly onToggle: (enabled: boolean) => void;
+  readonly onOpenHistory: () => void;
   readonly onRun: () => void;
   readonly onEdit: () => void;
   readonly onDelete: () => void;
 }) {
+  const command = formatCommandLine(task.command);
+  const ScheduleIcon = task.schedule == null ? HandIcon : CalendarClockIcon;
   return (
-    <div className="flex justify-end gap-1">
-      {canRun ? (
-        <Button variant="ghost" size="sm" onClick={onRun}>
-          <PlayIcon aria-hidden />
-          Executar
-        </Button>
-      ) : null}
-      {canWrite ? (
-        <>
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            aria-label={`Editar ${task.name}`}
-            onClick={onEdit}
-          >
-            <PencilIcon aria-hidden />
-          </Button>
-          <ConfirmDialog
-            trigger={
-              <Button variant="ghost" size="icon-sm" aria-label={`Excluir ${task.name}`}>
-                <Trash2Icon aria-hidden />
-              </Button>
-            }
-            title={`Excluir a task ${task.name}?`}
-            description="O histórico de execuções também será removido."
-            confirmLabel="Excluir"
-            destructive
-            onConfirm={onDelete}
+    <ListRow
+      accent={task.enabled ? executionAccent(task.latestExecution?.status ?? null) : "neutral"}
+      className="flex-wrap lg:flex-nowrap"
+    >
+      <span
+        aria-hidden
+        className="hidden size-9 shrink-0 items-center justify-center rounded-lg bg-well text-muted-foreground ring-1 ring-border/70 sm:flex"
+      >
+        <ScheduleIcon className="size-4" />
+      </span>
+      <div className={cn("min-w-0 flex-1 basis-56 space-y-1", task.enabled ? "" : "opacity-60")}>
+        <button
+          type="button"
+          className="block max-w-full truncate text-left text-sm font-medium hover:underline focus-visible:underline focus-visible:outline-none"
+          title="Abrir histórico de execuções"
+          onClick={onOpenHistory}
+        >
+          {task.name}
+          <span className="sr-only">: abrir histórico de execuções</span>
+        </button>
+        <code className="block truncate font-mono text-xs text-muted-foreground" title={command}>
+          {command}
+        </code>
+      </div>
+      <ScheduleCell task={task} now={now} />
+      <LastExecutionCell execution={task.latestExecution} now={now} />
+      <div className="flex shrink-0 items-center gap-1">
+        <div className="mr-2 flex items-center gap-2">
+          <Switch
+            id={`task-enabled-${task.id}`}
+            checked={task.enabled}
+            disabled={canWrite === false || toggling}
+            onCheckedChange={onToggle}
           />
-        </>
-      ) : null}
+          <label htmlFor={`task-enabled-${task.id}`} className="w-14 text-xs text-muted-foreground">
+            {task.enabled ? "Ativa" : "Pausada"}
+          </label>
+        </div>
+        {canRun ? (
+          <Button variant="outline" size="sm" onClick={onRun}>
+            <PlayIcon aria-hidden />
+            Executar
+          </Button>
+        ) : null}
+        {canWrite ? <TaskActions task={task} onEdit={onEdit} onDelete={onDelete} /> : null}
+      </div>
+    </ListRow>
+  );
+}
+
+function ScheduleCell({ task, now }: { readonly task: TaskRow; readonly now: Date }) {
+  if (task.schedule == null) {
+    return (
+      <div className="w-44 shrink-0 text-xs">
+        <p className="text-muted-foreground">Sob demanda</p>
+        <p className="text-faint">sem agendamento</p>
+      </div>
+    );
+  }
+  const description = describeCronSchedule(task.schedule);
+  return (
+    <div className="w-44 shrink-0 space-y-0.5 text-xs">
+      <p className="truncate text-muted-foreground" title={task.schedule}>
+        {description ?? <span className="font-mono">{task.schedule}</span>}
+      </p>
+      {task.enabled && task.nextRunAt != null ? (
+        <p className="truncate text-faint" title={formatDateTime(task.nextRunAt)}>
+          próxima {formatRelativeTime(task.nextRunAt, now)}
+        </p>
+      ) : (
+        <p className="truncate text-faint">{task.enabled ? "" : "pausada"}</p>
+      )}
     </div>
+  );
+}
+
+function LastExecutionCell({
+  execution,
+  now,
+}: {
+  readonly execution: TaskRow["latestExecution"];
+  readonly now: Date;
+}) {
+  if (execution == null) {
+    return <p className="w-36 shrink-0 text-xs text-faint">Nunca executada</p>;
+  }
+  return (
+    <div className="w-36 shrink-0 space-y-0.5">
+      <TaskStatusBadge status={execution.status} />
+      <p className="text-xs text-faint tabular-nums">
+        {execution.startedAt == null
+          ? "na fila"
+          : `${formatRelativeTime(execution.startedAt, now)} · ${formatDuration(
+              durationBetween(execution.startedAt, execution.finishedAt),
+            )}`}
+      </p>
+    </div>
+  );
+}
+
+function TaskActions({
+  task,
+  onEdit,
+  onDelete,
+}: {
+  readonly task: Task;
+  readonly onEdit: () => void;
+  readonly onDelete: () => void;
+}) {
+  return (
+    <>
+      <Button variant="ghost" size="icon-sm" aria-label={`Editar ${task.name}`} onClick={onEdit}>
+        <PencilIcon aria-hidden />
+      </Button>
+      <ConfirmDialog
+        trigger={
+          <Button variant="ghost" size="icon-sm" aria-label={`Excluir ${task.name}`}>
+            <Trash2Icon aria-hidden />
+          </Button>
+        }
+        title={`Excluir a task ${task.name}?`}
+        description="O histórico de execuções também será removido."
+        confirmLabel="Excluir"
+        destructive
+        onConfirm={onDelete}
+      />
+    </>
   );
 }
 
 function ExecutionHistory({
   projectId,
   task,
+  canRun,
+  running,
+  onRun,
 }: {
   readonly projectId: string;
   readonly task: Task;
+  readonly canRun: boolean;
+  readonly running: boolean;
+  readonly onRun: () => void;
 }) {
   const executions = useQuery({
     queryKey: ["task-executions", projectId, task.id],
@@ -409,6 +451,12 @@ function ExecutionHistory({
         <SheetDescription className="font-mono text-xs">
           {formatCommandLine(task.command)}
         </SheetDescription>
+        {canRun ? (
+          <Button size="sm" className="mt-3 w-fit" disabled={running} onClick={onRun}>
+            <PlayIcon aria-hidden />
+            Executar agora
+          </Button>
+        ) : null}
       </SheetHeader>
       <div className="space-y-4 px-6 py-5">
         {executions.isError ? (
@@ -458,6 +506,23 @@ function ExecutionHistory({
       </div>
     </>
   );
+}
+
+const SCHEDULE_PRESETS = [
+  { label: "Sob demanda", cron: "" },
+  { label: "A cada hora", cron: "0 * * * *" },
+  { label: "Todo dia às 03:00", cron: "0 3 * * *" },
+  { label: "Toda segunda às 08:00", cron: "0 8 * * 1" },
+] as const;
+
+function scheduleHint(schedule: string, timeZone: string): string {
+  if (schedule.trim() === "") {
+    return `Sem agendamento: a task só roda quando executada. Cron de 5 campos no fuso ${timeZone}.`;
+  }
+  const description = describeCronSchedule(schedule);
+  return description == null
+    ? `Cron de 5 campos no fuso ${timeZone}.`
+    : `${description} (fuso ${timeZone}).`;
 }
 
 function TaskDialog({
@@ -547,24 +612,43 @@ function TaskDialog({
           </form.Field>
           <form.Field name="schedule">
             {(field) => (
-              <FormField
-                id="task-schedule"
-                label="Agendamento"
-                hint={`cron de 5 campos no fuso ${timeZone}, vazio = só manual`}
-                errors={field.state.meta.errors}
-              >
-                {(props) => (
-                  <Input
-                    {...props}
-                    className="font-mono"
-                    placeholder="0 3 * * *"
-                    autoComplete="off"
-                    value={field.state.value}
-                    onBlur={field.handleBlur}
-                    onChange={(event) => field.handleChange(event.target.value)}
-                  />
-                )}
-              </FormField>
+              <div className="space-y-2">
+                <FormField
+                  id="task-schedule"
+                  label="Agendamento"
+                  hint={scheduleHint(field.state.value, timeZone)}
+                  errors={field.state.meta.errors}
+                >
+                  {(props) => (
+                    <Input
+                      {...props}
+                      className="font-mono"
+                      placeholder="0 3 * * *"
+                      autoComplete="off"
+                      value={field.state.value}
+                      onBlur={field.handleBlur}
+                      onChange={(event) => field.handleChange(event.target.value)}
+                    />
+                  )}
+                </FormField>
+                <div
+                  role="group"
+                  aria-label="Atalhos de agendamento"
+                  className="flex flex-wrap gap-1.5"
+                >
+                  {SCHEDULE_PRESETS.map((preset) => (
+                    <Button
+                      key={preset.label}
+                      type="button"
+                      variant={field.state.value.trim() === preset.cron ? "secondary" : "outline"}
+                      size="xs"
+                      onClick={() => field.handleChange(preset.cron)}
+                    >
+                      {preset.label}
+                    </Button>
+                  ))}
+                </div>
+              </div>
             )}
           </form.Field>
           <form.Field name="timeoutInSeconds">
