@@ -242,7 +242,13 @@ export function StatusTile({
           </span>
         )}
       </dd>
-      <dt className="flex min-w-0 items-center gap-2 text-sm leading-tight text-muted-foreground">
+      <dt
+        className={cn(
+          "flex min-w-0 items-center gap-2 text-sm leading-tight",
+          // Tinted tiles darken the muted gray below 4.5:1, so their label uses full contrast.
+          tone === "default" ? "text-muted-foreground" : "text-foreground",
+        )}
+      >
         <Icon aria-hidden className={cn("size-4 shrink-0", iconClassName)} />
         <span>{label}</span>
       </dt>

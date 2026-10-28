@@ -32,15 +32,15 @@
   --secondary-foreground: #1b1b1e;
   --muted: #ecece8;
   --muted-foreground: #55555c;
-  /* Third text level: dates, hints, captions. Kept at 4.5:1 on cards; never lighter. */
-  --faint: #6b6b72;
+  /* Third text level: dates, hints, captions. Kept above 4.5:1 on cards and wells; never lighter. */
+  --faint: #65656c;
   --accent: #e9efff;
   --accent-foreground: #1a3fb8;
-  --destructive: #d92d3f;
+  --destructive: #c0283a;
   --border: #e4e4e0;
   --input: #d9d9d4;
   --ring: #1f55f0;
-  --success: #0e7a51;
+  --success: #0b6b47;
   --warning: #9a5b00;
   --chart-1: #1f55f0;
   --chart-2: #12a06a;

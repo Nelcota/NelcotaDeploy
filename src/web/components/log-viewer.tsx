@@ -217,7 +217,8 @@ export function LogViewer({
 
   const pill = STATE_PILLS[state];
   return (
-    <div className="overflow-hidden rounded-xl bg-console ring-1 ring-border/70">
+    // The console is dark in both themes; the dark palette keeps its pills and text readable.
+    <div className="dark overflow-hidden rounded-xl bg-console ring-1 ring-border/70">
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-white/8 px-4 py-2.5">
         <span role="status">
           <StatusPill tone={pill.tone} label={pill.label} className="text-xs" />
