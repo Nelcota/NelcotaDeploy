@@ -2,6 +2,7 @@ import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { PlusIcon, SearchIcon } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import { z } from "zod";
 
 import type { DeploymentStatus } from "@/deployments";
 import { formatRelativeTime } from "@/shared/format";
@@ -32,11 +33,6 @@ import { listProjectsFn } from "@/web/functions/projects.functions";
 const SEARCH_DEBOUNCE_IN_MS = 300;
 const REFRESH_INTERVAL_IN_MS = 10_000;
 
-export const Route = createFileRoute("/_app/projects/")({
-  head: () => ({ meta: [{ title: "Projetos · Nelcota Deploy" }] }),
-  component: ProjectsPage,
-});
-
 type ProjectRow = Awaited<ReturnType<typeof listProjectsFn>>[number];
 
 const STATUS_FILTERS = {
@@ -48,6 +44,21 @@ const STATUS_FILTERS = {
 } as const;
 
 type StatusFilter = keyof typeof STATUS_FILTERS;
+
+const STATUS_FILTER_VALUES = [
+  "all",
+  "online",
+  "offline",
+  "never",
+  "pending",
+] as const satisfies readonly StatusFilter[];
+
+// The status filter lives in the URL so links such as the top bar shortcuts open the list filtered.
+export const Route = createFileRoute("/_app/projects/")({
+  validateSearch: z.object({ status: z.enum(STATUS_FILTER_VALUES).optional().catch(undefined) }),
+  head: () => ({ meta: [{ title: "Projetos · Nelcota Deploy" }] }),
+  component: ProjectsPage,
+});
 
 function isDeploymentStatus(status: string): status is DeploymentStatus {
   return Object.hasOwn(DEPLOYMENT_STATUS_LABELS, status);
@@ -182,7 +193,11 @@ function ProjectListRow({ project, now }: { readonly project: ProjectRow; readon
 function ProjectsPage() {
   const can = useCan();
   const [search, setSearch] = useState("");
-  const [filter, setFilter] = useState<StatusFilter>("all");
+  const navigate = useNavigate({ from: Route.fullPath });
+  const filter: StatusFilter = Route.useSearch().status ?? "all";
+  const setFilter = (next: StatusFilter) => {
+    void navigate({ search: { status: next === "all" ? undefined : next }, replace: true });
+  };
   const [sortOption, setSortOption] = useState<SortOption>("name-ascending");
   const debouncedSearch = useDebouncedValue(search.trim(), SEARCH_DEBOUNCE_IN_MS);
   const projects = useQuery({
