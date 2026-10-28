@@ -297,7 +297,8 @@ function SearchButton({ onSearch }: { readonly onSearch: () => void }) {
       className="flex size-10 shrink-0 items-center justify-center gap-3 rounded-full bg-well text-sm text-muted-foreground ring-1 ring-border transition-colors hover:bg-well-hover hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none sm:w-auto sm:min-w-0 sm:max-w-md sm:flex-1 sm:shrink sm:justify-start sm:px-4"
     >
       <SearchIcon aria-hidden className="size-4 shrink-0" />
-      <span className="hidden truncate sm:inline">Buscar projetos, deploys e páginas</span>
+      <span className="hidden truncate sm:inline 2xl:hidden">Buscar…</span>
+      <span className="hidden truncate 2xl:inline">Buscar projetos e páginas</span>
       <kbd className="ml-auto hidden rounded border border-border px-1.5 font-mono text-xs whitespace-nowrap text-faint sm:inline">
         Ctrl K
       </kbd>
