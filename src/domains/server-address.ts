@@ -1,45 +1,23 @@
 import { isIP } from "node:net";
 
+import ipaddr from "ipaddr.js";
+
 /** Resolves a hostname to one address, like `dns.promises.lookup`. */
 type Lookup = (hostname: string) => Promise<{ readonly address: string }>;
 
-const IPV4_PRIVATE_PREFIXES = ["10.", "127.", "169.254.", "192.168.", "0."] as const;
-// 172.16.0.0/12 is private and 100.64.0.0/10 is carrier-grade NAT.
-const IPV4_SHARED_FIRST_OCTET = 172;
-const IPV4_SHARED_SECOND_OCTET_MIN = 16;
-const IPV4_SHARED_SECOND_OCTET_MAX = 31;
-const IPV4_CGNAT_FIRST_OCTET = 100;
-const IPV4_CGNAT_SECOND_OCTET_MIN = 64;
-const IPV4_CGNAT_SECOND_OCTET_MAX = 127;
-const IPV6_LOCAL_PREFIXES = ["::1", "fc", "fd", "fe80", "::"] as const;
-
 /**
  * Tells whether an IP address can be reached from the internet, which a DNS A or AAAA record
- * needs. Loopback, private, link-local and carrier-grade NAT ranges cannot.
+ * needs. Loopback, private, link-local, carrier-grade NAT, documentation, multicast and other
+ * reserved ranges cannot.
  *
- * @param address - IPv4 or IPv6 address.
- * @returns True for a public address; false for local ranges and for text that is not an IP.
+ * @param address - IPv4 or IPv6 address; IPv4-mapped IPv6 is judged as IPv4.
+ * @returns True for a public address; false for any special range and for text that is not an IP.
  */
 export function isPublicIpAddress(address: string): boolean {
-  const version = isIP(address);
-  if (version === 4) {
-    if (IPV4_PRIVATE_PREFIXES.some((prefix) => address.startsWith(prefix))) {
-      return false;
-    }
-    const [first, second] = address.split(".").map(Number);
-    if (first === IPV4_SHARED_FIRST_OCTET && second != null) {
-      return second < IPV4_SHARED_SECOND_OCTET_MIN || second > IPV4_SHARED_SECOND_OCTET_MAX;
-    }
-    if (first === IPV4_CGNAT_FIRST_OCTET && second != null) {
-      return second < IPV4_CGNAT_SECOND_OCTET_MIN || second > IPV4_CGNAT_SECOND_OCTET_MAX;
-    }
-    return true;
+  if (ipaddr.isValid(address) === false) {
+    return false;
   }
-  if (version === 6) {
-    const lower = address.toLowerCase();
-    return IPV6_LOCAL_PREFIXES.some((prefix) => lower.startsWith(prefix)) === false;
-  }
-  return false;
+  return ipaddr.process(address).range() === "unicast";
 }
 
 /**
