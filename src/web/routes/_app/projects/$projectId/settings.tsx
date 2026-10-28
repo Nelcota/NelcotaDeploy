@@ -1,22 +1,24 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { GitBranchIcon, KeyRoundIcon, SettingsIcon, Trash2Icon } from "lucide-react";
-import { type FormEvent, useState } from "react";
+import { LoaderCircleIcon, SettingsIcon, Trash2Icon, TriangleAlertIcon } from "lucide-react";
+import { type FormEvent, type ReactNode, useState } from "react";
 import { toast } from "sonner";
 
 import { ConfirmDialog } from "@/web/components/confirm-dialog";
-import { ProjectForm, projectToFormValues } from "@/web/components/project-form";
+import {
+  AutoDeployField,
+  BuildFields,
+  HealthCheckField,
+  IdentityFields,
+  PortField,
+  projectToFormValues,
+  RepositoryFields,
+  useProjectForm,
+} from "@/web/components/project-form";
 import { TabHeader } from "@/web/components/project-header";
 import { projectQueryOptions } from "@/web/components/project-query";
-import { ListSkeleton } from "@/web/components/states";
+import { ErrorState, ListSkeleton } from "@/web/components/states";
 import { Button } from "@/web/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/web/components/ui/card";
 import { Input } from "@/web/components/ui/input";
 import { Label } from "@/web/components/ui/label";
 import { useAction } from "@/web/components/use-action";
@@ -27,16 +29,21 @@ import {
   updateProjectFn,
 } from "@/web/functions/projects.functions";
 
+const SETTINGS_FORM_ID = "project-settings-form";
+
 export const Route = createFileRoute("/_app/projects/$projectId/settings")({
+  head: () => ({ meta: [{ title: "Ajustes · Nelcota Deploy" }] }),
   component: ProjectSettingsPage,
 });
 
 function ProjectSettingsPage() {
   const { projectId } = Route.useParams();
   const details = useQuery(projectQueryOptions(projectId));
-  const queryClient = useQueryClient();
   const can = useCan();
 
+  if (details.isError) {
+    return <ErrorState error={details.error} onRetry={() => void details.refetch()} />;
+  }
   if (details.data == null) {
     return <ListSkeleton rows={6} />;
   }
@@ -49,46 +56,176 @@ function ProjectSettingsPage() {
         title="Ajustes do projeto"
         description="Repositório, build e porta. As mudanças valem no próximo deploy."
       />
-      <Card>
-        <CardHeader>
-          <CardTitle>
-            <GitBranchIcon aria-hidden />
-            Repositório e build
-          </CardTitle>
-          <CardDescription>
-            Trocar o repositório exige nova aprovação de um administrador.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <ProjectForm
-            key={project.updatedAt}
-            initialValues={projectToFormValues(project)}
-            submitLabel="Salvar alterações"
-            disabled={can("project:write") === false}
-            onSubmit={async (values) => {
-              try {
-                await updateProjectFn({ data: { projectId, project: values } });
-                toast.success("Projeto atualizado");
-                await Promise.all([
-                  queryClient.invalidateQueries({ queryKey: ["project", projectId] }),
-                  queryClient.invalidateQueries({ queryKey: ["projects"] }),
-                ]);
-              } catch (error) {
-                toast.error(error instanceof Error ? error.message : "Não foi possível salvar.");
-              }
-            }}
-          />
-        </CardContent>
-      </Card>
-      {can("project:approve") ? (
-        <RepositoryTokenCard projectId={projectId} hasToken={project.hasRepositoryToken} />
-      ) : null}
-      {can("project:delete") ? <DangerZone projectId={projectId} slug={project.slug} /> : null}
+      <ProjectSettingsForm
+        key={project.updatedAt}
+        projectId={projectId}
+        project={project}
+        canEdit={can("project:write")}
+      >
+        {can("project:approve") ? (
+          <RepositoryTokenSection projectId={projectId} hasToken={project.hasRepositoryToken} />
+        ) : null}
+        {can("project:delete") ? <DangerZone projectId={projectId} slug={project.slug} /> : null}
+      </ProjectSettingsForm>
     </div>
   );
 }
 
-function RepositoryTokenCard({
+/**
+ * One block of the settings page: title and explanation on the left, controls on the right;
+ * stacked on narrow screens.
+ */
+function SettingsSection({
+  title,
+  description,
+  children,
+}: {
+  readonly title: ReactNode;
+  readonly description: ReactNode;
+  readonly children: ReactNode;
+}) {
+  return (
+    <section className="grid gap-5 p-5 md:grid-cols-[minmax(0,15rem)_minmax(0,1fr)] md:gap-10 md:p-6">
+      <div className="space-y-1">
+        <h3 className="text-sm font-semibold">{title}</h3>
+        <div className="text-sm text-muted-foreground">{description}</div>
+      </div>
+      <div className="min-w-0">{children}</div>
+    </section>
+  );
+}
+
+/**
+ * The project fields split into sections, saved together from a bar that appears once
+ * something changes. `children` adds more sections to the same panel, outside the form
+ * element because forms cannot nest.
+ */
+function ProjectSettingsForm({
+  projectId,
+  project,
+  canEdit,
+  children,
+}: {
+  readonly projectId: string;
+  readonly project: Parameters<typeof projectToFormValues>[0];
+  readonly canEdit: boolean;
+  readonly children: ReactNode;
+}) {
+  const queryClient = useQueryClient();
+  const form = useProjectForm({
+    initialValues: projectToFormValues(project),
+    onSubmit: async (values) => {
+      try {
+        await updateProjectFn({ data: { projectId, project: values } });
+        toast.success("Projeto atualizado");
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: ["project", projectId] }),
+          queryClient.invalidateQueries({ queryKey: ["projects"] }),
+        ]);
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : "Não foi possível salvar.");
+      }
+    },
+  });
+
+  return (
+    <>
+      <div className="divide-y divide-border/70 rounded-xl bg-card ring-1 ring-border/70">
+        <form
+          id={SETTINGS_FORM_ID}
+          noValidate
+          onSubmit={(event) => {
+            event.preventDefault();
+            void form.handleSubmit();
+          }}
+        >
+          <fieldset disabled={canEdit === false} className="min-w-0 divide-y divide-border/70">
+            <SettingsSection
+              title="Geral"
+              description="Nome exibido no painel e identificador usado no contêiner e no domínio automático."
+            >
+              <div className="grid gap-x-6 gap-y-5 sm:grid-cols-2">
+                <IdentityFields form={form} />
+              </div>
+            </SettingsSection>
+            <SettingsSection
+              title="Repositório"
+              description="De onde vem o código e quando um deploy começa sozinho."
+            >
+              <div className="grid gap-x-6 gap-y-5 sm:grid-cols-2">
+                <RepositoryFields form={form} />
+                <AutoDeployField form={form} className="sm:col-span-2" />
+                <form.Subscribe
+                  selector={(state) => state.values.repositoryUrl !== project.repositoryUrl}
+                >
+                  {(repositoryChanged) =>
+                    repositoryChanged ? (
+                      <p
+                        role="status"
+                        className="flex items-start gap-2 text-sm text-muted-foreground sm:col-span-2"
+                      >
+                        <TriangleAlertIcon
+                          aria-hidden
+                          className="mt-0.5 size-4 shrink-0 text-warning"
+                        />
+                        Trocar o repositório exige nova aprovação de um administrador antes do
+                        próximo deploy.
+                      </p>
+                    ) : null
+                  }
+                </form.Subscribe>
+              </div>
+            </SettingsSection>
+            <SettingsSection
+              title="Build e execução"
+              description="Como a imagem é construída e como o painel confere que a aplicação subiu."
+            >
+              <div className="grid gap-x-6 gap-y-5 sm:grid-cols-2">
+                <PortField form={form} />
+                <HealthCheckField form={form} />
+                <BuildFields form={form} />
+              </div>
+            </SettingsSection>
+          </fieldset>
+        </form>
+        {children}
+      </div>
+      <form.Subscribe
+        selector={(state) => [state.isDefaultValue, state.canSubmit, state.isSubmitting] as const}
+      >
+        {([isDefaultValue, canSubmit, isSubmitting]) =>
+          isDefaultValue ? null : (
+            <div className="sticky bottom-4 z-10 flex flex-col gap-3 rounded-lg bg-popover p-3 shadow-lg ring-1 ring-border sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-sm font-medium" aria-live="polite">
+                Alterações não salvas
+              </p>
+              <div className="flex gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={isSubmitting}
+                  onClick={() => form.reset()}
+                >
+                  Descartar
+                </Button>
+                <Button
+                  type="submit"
+                  form={SETTINGS_FORM_ID}
+                  disabled={canEdit === false || canSubmit === false || isSubmitting}
+                >
+                  {isSubmitting ? <LoaderCircleIcon aria-hidden className="animate-spin" /> : null}
+                  Salvar alterações
+                </Button>
+              </div>
+            </div>
+          )
+        }
+      </form.Subscribe>
+    </>
+  );
+}
+
+function RepositoryTokenSection({
   projectId,
   hasToken,
 }: {
@@ -111,19 +248,24 @@ function RepositoryTokenCard({
     save.mutate(token.trim());
   };
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>
-          <KeyRoundIcon aria-hidden />
-          Repositório privado
-        </CardTitle>
-        <CardDescription>
+    <SettingsSection
+      title="Repositório privado"
+      description={
+        <>
           Token de leitura do GitHub (permissão “Contents: read”). Fica criptografado e nunca é
-          exibido. {hasToken ? "Há um token salvo." : "Nenhum token salvo."}
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        <form className="flex flex-col gap-3 sm:flex-row sm:items-end" onSubmit={submit}>
+          exibido.
+        </>
+      }
+    >
+      <form className="space-y-3" onSubmit={submit}>
+        <p className="text-sm">
+          {hasToken ? (
+            <span className="font-medium text-success">Há um token salvo.</span>
+          ) : (
+            <span className="text-muted-foreground">Nenhum token salvo.</span>
+          )}
+        </p>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
           <div className="flex-1 space-y-2">
             <Label htmlFor="repository-token">{hasToken ? "Substituir token" : "Token"}</Label>
             <Input
@@ -151,9 +293,9 @@ function RepositoryTokenCard({
               onConfirm={() => save.mutate(null)}
             />
           ) : null}
-        </form>
-      </CardContent>
-    </Card>
+        </div>
+      </form>
+    </SettingsSection>
   );
 }
 
@@ -168,37 +310,36 @@ function DangerZone({ projectId, slug }: { readonly projectId: string; readonly 
     },
   });
   return (
-    <section
-      aria-labelledby="danger-zone-title"
-      className="flex flex-col gap-4 rounded-xl px-5 py-5 ring-1 ring-destructive/40 sm:flex-row sm:items-center sm:justify-between"
+    <SettingsSection
+      title={<span className="text-destructive">Zona de perigo</span>}
+      description="Ações que não podem ser desfeitas."
     >
-      <div className="space-y-1">
-        <h2 id="danger-zone-title" className="text-sm font-semibold text-destructive">
-          Excluir projeto
-        </h2>
-        <p className="max-w-xl text-sm text-muted-foreground">
-          Remove o projeto, seus contêineres, imagens, variáveis, tasks e histórico. Não pode ser
-          desfeito.
-        </p>
+      <div className="flex flex-col gap-4 rounded-lg p-4 ring-1 ring-destructive/40 sm:flex-row sm:items-center sm:justify-between">
+        <div className="space-y-1">
+          <p className="text-sm font-medium">Excluir projeto</p>
+          <p className="text-sm text-muted-foreground">
+            Remove o projeto, seus contêineres, imagens, variáveis, tasks e histórico.
+          </p>
+        </div>
+        <ConfirmDialog
+          trigger={
+            <Button
+              variant="outline"
+              className="shrink-0 text-destructive"
+              disabled={remove.isPending}
+            >
+              <Trash2Icon aria-hidden />
+              Excluir projeto
+            </Button>
+          }
+          title="Excluir este projeto?"
+          description="A aplicação sai do ar e todos os dados do projeto são apagados."
+          confirmLabel="Excluir definitivamente"
+          destructive
+          confirmationText={slug}
+          onConfirm={() => remove.mutate()}
+        />
       </div>
-      <ConfirmDialog
-        trigger={
-          <Button
-            variant="outline"
-            className="shrink-0 text-destructive"
-            disabled={remove.isPending}
-          >
-            <Trash2Icon aria-hidden />
-            Excluir projeto
-          </Button>
-        }
-        title="Excluir este projeto?"
-        description="A aplicação sai do ar e todos os dados do projeto são apagados."
-        confirmLabel="Excluir definitivamente"
-        destructive
-        confirmationText={slug}
-        onConfirm={() => remove.mutate()}
-      />
-    </section>
+    </SettingsSection>
   );
 }
