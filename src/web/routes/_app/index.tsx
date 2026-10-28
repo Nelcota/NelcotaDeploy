@@ -434,11 +434,11 @@ function ApplicationsCard() {
         title="Aplicações"
         count={projects.data == null ? null : all.length}
       >
-        <Button variant="outline" size="sm" asChild className="rounded-full">
+        <Button variant="outline" size="sm" asChild>
           <Link to="/projects">Ver todos os projetos</Link>
         </Button>
         {can("project:write") ? (
-          <Button size="sm" asChild className="rounded-full">
+          <Button size="sm" asChild>
             <Link to="/projects/new">
               <PlusIcon aria-hidden />
               Novo projeto
