@@ -19,6 +19,7 @@ import {
   completeDeployment,
   countActiveDeployments,
   getDeployment,
+  listDeployments,
   requestDeployment,
   transitionDeployment,
 } from "./deployment.service";
@@ -173,6 +174,19 @@ describe("deployment lifecycle", () => {
       .get();
     expect(row?.current).toBe(deploymentId);
     expect(getDeployment(database, deploymentId).finishedAt).not.toBeNull();
+  });
+
+  test("marks only the project's current deployment as live", () => {
+    const database = openMemoryDatabase();
+    const project = createTestProject(database);
+    const first = requestDeployment(database, { projectId: project.id, ...manual });
+    finishSuccessfully(database, first.deploymentId);
+    const second = requestDeployment(database, { projectId: project.id, ...manual });
+
+    const rows = listDeployments(database, { projectId: project.id, limit: 10 });
+
+    expect(rows.find((row) => row.id === first.deploymentId)?.isLive).toBe(true);
+    expect(rows.find((row) => row.id === second.deploymentId)?.isLive).toBe(false);
   });
 
   test("throws InvalidDeploymentTransitionError when skipping the build", () => {

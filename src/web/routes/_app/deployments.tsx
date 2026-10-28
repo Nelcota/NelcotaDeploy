@@ -285,6 +285,11 @@ function HistoryRow({ deployment }: { readonly deployment: DeploymentItem }) {
             {deployment.projectName}
           </Link>
           <span className="shrink-0 font-mono text-xs text-muted-foreground">{shortSha}</span>
+          {deployment.isLive ? (
+            <span className="shrink-0 rounded-full bg-secondary px-2 py-0.5 text-xs font-medium text-muted-foreground">
+              No ar
+            </span>
+          ) : null}
         </p>
         <p
           className="truncate text-sm text-muted-foreground"

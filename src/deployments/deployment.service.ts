@@ -1,4 +1,4 @@
-import { and, count, desc, eq, inArray, isNotNull, lt, ne } from "drizzle-orm";
+import { and, count, desc, eq, inArray, isNotNull, lt, ne, sql } from "drizzle-orm";
 
 import { type Actor, recordAuditEvent } from "@/audit";
 import { type Database, tables, type Transaction } from "@/db";
@@ -62,6 +62,10 @@ const deploymentColumns = {
   createdAt: tables.deployments.createdAt,
   startedAt: tables.deployments.startedAt,
   finishedAt: tables.deployments.finishedAt,
+  // Every query with these columns joins the project, so its current deployment is at hand.
+  isLive: sql<boolean>`${tables.projects.currentDeploymentId} = ${tables.deployments.id}`.mapWith(
+    (value: unknown) => value === 1 || value === true,
+  ),
 };
 
 /** A deployment with its project name. */
@@ -70,6 +74,8 @@ export type Deployment = {
   readonly projectId: string;
   readonly projectName: string;
   readonly projectSlug: string;
+  /** Whether this is the deployment the project serves right now. */
+  readonly isLive: boolean;
   readonly status: DeploymentStatus;
   readonly trigger: DeploymentTrigger;
   readonly triggeredByLabel: string;
