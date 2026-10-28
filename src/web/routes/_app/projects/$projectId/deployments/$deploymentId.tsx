@@ -1,7 +1,7 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { ArrowLeftIcon, OctagonXIcon } from "lucide-react";
-import { type ReactNode, useEffect, useState } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { durationBetween, formatDateTime, formatDuration } from "@/shared/format";
@@ -64,6 +64,11 @@ function DeploymentDetailPage() {
   });
   const active = deployment.data != null && ACTIVE_DEPLOYMENT_STATUSES.has(deployment.data.status);
   const now = useNow(active);
+  // Only announce results the user watched happen, not finished deploys opened later.
+  const watchedLive = useRef(false);
+  if (active) {
+    watchedLive.current = true;
+  }
   const cancel = useAction({
     action: () => cancelDeploymentFn({ data: { deploymentId } }),
     successMessage: (result) =>
@@ -79,9 +84,10 @@ function DeploymentDetailPage() {
   const handleEnd = (summary: unknown) => {
     const status =
       typeof summary === "object" && summary != null && "status" in summary ? summary.status : null;
-    if (status === "succeeded") {
+    const announce = watchedLive.current;
+    if (announce && status === "succeeded") {
       toast.success("Deploy concluído");
-    } else if (status === "failed") {
+    } else if (announce && status === "failed") {
       toast.error("O deploy falhou. Veja os logs para o motivo.");
     }
     void queryClient.invalidateQueries({ queryKey: ["deployment", deploymentId] });

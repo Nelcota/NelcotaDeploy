@@ -25,6 +25,8 @@ import {
   type LucideIcon,
   MenuIcon,
   MoonIcon,
+  PanelLeftCloseIcon,
+  PanelLeftOpenIcon,
   PlusIcon,
   RocketIcon,
   ScrollTextIcon,
@@ -36,7 +38,7 @@ import {
   SunIcon,
   VariableIcon,
 } from "lucide-react";
-import { type ReactNode, useEffect, useState } from "react";
+import { createContext, type ReactNode, useContext, useEffect, useState } from "react";
 import { toast } from "sonner";
 
 import { getSidebarStatusFn } from "@/web/functions/dashboard.functions";
@@ -73,6 +75,13 @@ const NAV_ICON = "size-5 shrink-0 group-data-[status=active]:text-brand";
 const STATUS_POLL_INTERVAL_IN_MS = 10_000;
 
 type NavigateProps = { readonly onNavigate?: (() => void) | undefined };
+
+/** True when the sidebar shows icons only. */
+const CollapsedContext = createContext(false);
+
+function useCollapsed(): boolean {
+  return useContext(CollapsedContext);
+}
 
 function projectsQuery() {
   return { queryKey: ["projects", ""], queryFn: () => listProjectsFn({ data: { search: "" } }) };
@@ -146,6 +155,9 @@ function CountBadge({
 }
 
 function SectionTitle({ children }: { readonly children: ReactNode }) {
+  if (useCollapsed()) {
+    return null;
+  }
   return (
     <div className="flex h-8 items-center px-3">
       <h2 className="text-sm font-semibold text-muted-foreground">{children}</h2>
@@ -179,36 +191,49 @@ function SearchButton({ onSearch }: { readonly onSearch: () => void }) {
  * menu to jump to any project.
  */
 function ContextSwitcher({ onNavigate }: NavigateProps) {
+  const collapsed = useCollapsed();
   const projectId = useCurrentProjectId();
   const projects = useQuery(projectsQuery());
   const current = projects.data?.find((project) => project.id === projectId) ?? null;
   const online = current?.containerState === "running";
   const count = projects.data?.length ?? 0;
+  const title = current?.name ?? "Todos os projetos";
+  const subtitle =
+    current == null
+      ? `${count} ${count === 1 ? "projeto" : "projetos"}`
+      : current.repositoryFullName;
+  const trigger = collapsed ? (
+    <button type="button" aria-label={`Projeto: ${title}`} className={RAIL_LINK}>
+      <span className="relative">
+        <FolderIcon aria-hidden className="size-5" />
+        {current == null ? null : (
+          <StatusDot
+            online={online}
+            className="absolute -right-1 -bottom-1 size-2.5 ring-2 ring-sidebar"
+          />
+        )}
+      </span>
+    </button>
+  ) : (
+    <button
+      type="button"
+      className="flex w-full items-center gap-3 rounded-lg border border-sidebar-border px-3 py-2.5 text-left transition-colors hover:bg-sidebar-accent focus-visible:ring-3 focus-visible:ring-ring/40 focus-visible:outline-none"
+    >
+      <FolderIcon aria-hidden className="size-5 shrink-0 text-muted-foreground" />
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-base font-semibold">{title}</span>
+        <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+          {current == null ? null : <StatusDot online={online} className="size-2" />}
+          <span className="truncate">{subtitle}</span>
+        </span>
+      </span>
+      <ChevronDownIcon aria-hidden className="size-4 shrink-0 text-muted-foreground" />
+    </button>
+  );
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <button
-          type="button"
-          className="flex h-full w-full items-center gap-3 px-5 text-left transition-colors hover:bg-sidebar-accent/60 focus-visible:ring-3 focus-visible:ring-ring/40 focus-visible:outline-none focus-visible:ring-inset"
-        >
-          <FolderIcon aria-hidden className="size-5 shrink-0 text-muted-foreground" />
-          <span className="min-w-0 flex-1">
-            <span className="block truncate text-base font-semibold">
-              {current?.name ?? "Nelcota Deploy"}
-            </span>
-            <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
-              {current == null ? null : <StatusDot online={online} className="size-2" />}
-              <span className="truncate">
-                {current == null
-                  ? `${count} ${count === 1 ? "projeto" : "projetos"}`
-                  : current.repositoryFullName}
-              </span>
-            </span>
-          </span>
-          <ChevronDownIcon aria-hidden className="size-4 shrink-0 text-muted-foreground" />
-        </button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className="w-[var(--radix-dropdown-menu-trigger-width)]">
+      <DropdownMenuTrigger asChild>{trigger}</DropdownMenuTrigger>
+      <DropdownMenuContent side={collapsed ? "right" : "bottom"} align="start" className="w-64">
         <DropdownMenuLabel className="text-xs text-muted-foreground">Projetos</DropdownMenuLabel>
         {(projects.data ?? []).map((project) => (
           <DropdownMenuItem key={project.id} asChild>
@@ -257,6 +282,15 @@ function NavLeaf({
   sub,
   onNavigate,
 }: { readonly item: NavItem; readonly sub: boolean } & NavigateProps) {
+  if (useCollapsed()) {
+    return (
+      <RailTooltip label={item.label}>
+        <Link {...item.link} onClick={onNavigate} aria-label={item.label} className={RAIL_LINK}>
+          {item.icon}
+        </Link>
+      </RailTooltip>
+    );
+  }
   return (
     <Link {...item.link} onClick={onNavigate} className={sub ? SUB_LINK : NAV_LINK}>
       <span
@@ -305,7 +339,45 @@ function useGroupHoldsCurrentPage(item: NavItem): boolean {
   });
 }
 
+/** Collapsed groups open their pages in a menu beside the icon. */
+function NavGroupFlyout({
+  item,
+  current,
+  onNavigate,
+}: { readonly item: NavItem; readonly current: boolean } & NavigateProps) {
+  return (
+    <DropdownMenu>
+      <RailTooltip label={item.label}>
+        <DropdownMenuTrigger asChild>
+          <button
+            type="button"
+            aria-label={item.label}
+            data-status={current ? "active" : undefined}
+            className={RAIL_LINK}
+          >
+            {item.icon}
+          </button>
+        </DropdownMenuTrigger>
+      </RailTooltip>
+      <DropdownMenuContent side="right" align="start" className="w-56">
+        <DropdownMenuLabel className="text-xs text-muted-foreground">
+          {item.label}
+        </DropdownMenuLabel>
+        {(item.children ?? []).map((child) => (
+          <DropdownMenuItem key={child.key} asChild>
+            <Link {...child.link} onClick={onNavigate}>
+              {child.icon}
+              <span className="truncate">{child.label}</span>
+            </Link>
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
 function NavGroup({ item, onNavigate }: { readonly item: NavItem } & NavigateProps) {
+  const collapsed = useCollapsed();
   const holdsCurrentPage = useGroupHoldsCurrentPage(item);
   const [open, setOpen] = useState(holdsCurrentPage || item.defaultOpen === true);
   useEffect(() => {
@@ -314,6 +386,9 @@ function NavGroup({ item, onNavigate }: { readonly item: NavItem } & NavigatePro
       setOpen(true);
     }
   }, [holdsCurrentPage]);
+  if (collapsed) {
+    return <NavGroupFlyout item={item} current={holdsCurrentPage} onNavigate={onNavigate} />;
+  }
   const children = item.children ?? [];
   return (
     <div>
@@ -346,8 +421,9 @@ function NavGroup({ item, onNavigate }: { readonly item: NavItem } & NavigatePro
 }
 
 function NavTree({ items, onNavigate }: { readonly items: readonly NavItem[] } & NavigateProps) {
+  const collapsed = useCollapsed();
   return (
-    <div className="space-y-1">
+    <div className={collapsed ? "flex flex-col items-center gap-1.5" : "space-y-1"}>
       {items.map((item) =>
         item.children == null ? (
           <NavLeaf key={item.key} item={item} sub={false} onNavigate={onNavigate} />
@@ -444,7 +520,12 @@ function GlobalNavigation({ user, onNavigate }: { readonly user: SessionUser } &
 }
 
 function PanelDivider() {
-  return <div aria-hidden className="mx-3 h-px bg-sidebar-border" />;
+  return (
+    <div
+      aria-hidden
+      className={cn("h-px bg-sidebar-border", useCollapsed() ? "mx-auto w-8" : "mx-3")}
+    />
+  );
 }
 
 /** Navigation inside a project: its pages grouped by purpose, then a way back. */
@@ -519,6 +600,12 @@ function ProjectNavigation({
     },
   ];
   const general: NavItem[] = [
+    {
+      key: "dashboard",
+      label: "Painel",
+      icon: icon(HomeIcon),
+      link: { to: "/", activeOptions: { exact: true } },
+    },
     {
       key: "projects",
       label: "Todos os projetos",
@@ -696,53 +783,121 @@ function ThemeButton() {
   );
 }
 
-/** Narrow column with the logo, the main areas and the account. */
-function Rail({ user }: { readonly user: SessionUser }) {
+const SIDEBAR_STORAGE_KEY = "nelcota-sidebar-collapsed";
+
+/** Remembers whether the sidebar is collapsed; Ctrl+B toggles it. */
+function useSidebarCollapsed(): [boolean, () => void] {
+  const [collapsed, setCollapsed] = useState(false);
+  useEffect(() => {
+    try {
+      setCollapsed(localStorage.getItem(SIDEBAR_STORAGE_KEY) === "true");
+    } catch {
+      // Storage may be blocked; the sidebar then starts expanded.
+    }
+  }, []);
+  const toggle = () =>
+    setCollapsed((current) => {
+      const next = current === false;
+      try {
+        localStorage.setItem(SIDEBAR_STORAGE_KEY, String(next));
+      } catch {
+        // The preference just isn't remembered.
+      }
+      return next;
+    });
+  useEffect(() => {
+    const handler = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "b") {
+        event.preventDefault();
+        toggle();
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  });
+  return [collapsed, toggle];
+}
+
+function ThemeRow() {
+  const { theme, toggleTheme } = useTheme();
   return (
-    <div className="hidden w-[4.5rem] shrink-0 flex-col items-center justify-between bg-sidebar py-4 lg:flex">
-      <div className="flex flex-col items-center gap-6">
-        <Link
-          to="/"
-          aria-label="Nelcota Deploy — Painel"
-          className="flex size-12 items-center justify-center rounded-lg focus-visible:ring-3 focus-visible:ring-ring/40 focus-visible:outline-none"
-        >
-          <NelcotaMark className="h-8 w-auto" />
-        </Link>
-        <nav aria-label="Áreas" className="flex flex-col items-center gap-1.5">
-          {MAIN_AREAS.map((area) => (
-            <RailTooltip key={area.to} label={area.label}>
-              <Link
-                to={area.to}
-                activeOptions={{ exact: area.exact }}
-                aria-label={area.label}
-                className={RAIL_LINK}
-              >
-                <area.icon aria-hidden className="size-5" />
-              </Link>
-            </RailTooltip>
-          ))}
-        </nav>
-      </div>
-      <div className="flex flex-col items-center gap-1.5">
-        <WorkerStatusIcon />
-        <ThemeButton />
-        <AccountMenu user={user} compact />
-      </div>
-    </div>
+    <button type="button" onClick={toggleTheme} className={cn(NAV_LINK, "w-full text-left")}>
+      {theme === "dark" ? (
+        <SunIcon aria-hidden className="size-5" />
+      ) : (
+        <MoonIcon aria-hidden className="size-5" />
+      )}
+      {theme === "dark" ? "Tema claro" : "Tema escuro"}
+    </button>
   );
 }
 
-/** The current context: switcher on top, then the pages of the project or of the platform. */
-function ContextPanel({ user, onNavigate }: { readonly user: SessionUser } & NavigateProps) {
+function CollapseButton({ onToggle }: { readonly onToggle: () => void }) {
+  const collapsed = useCollapsed();
+  const label = collapsed ? "Expandir menu" : "Recolher menu";
+  const Icon = collapsed ? PanelLeftOpenIcon : PanelLeftCloseIcon;
+  if (collapsed) {
+    return (
+      <RailTooltip label={`${label} (Ctrl B)`}>
+        <button type="button" aria-label={label} onClick={onToggle} className={RAIL_LINK}>
+          <Icon aria-hidden className="size-5" />
+        </button>
+      </RailTooltip>
+    );
+  }
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      title="Ctrl B"
+      className={cn(NAV_LINK, "w-full text-left")}
+    >
+      <Icon aria-hidden className="size-5" />
+      {label}
+    </button>
+  );
+}
+
+/**
+ * The only sidebar: logo, project switcher, the pages of the current project or of the
+ * platform, and worker status, theme and account at the bottom. It collapses to icons.
+ */
+function Sidebar({
+  user,
+  onToggle,
+  onNavigate,
+}: { readonly user: SessionUser; readonly onToggle?: () => void } & NavigateProps) {
+  const collapsed = useCollapsed();
   const projectId = useCurrentProjectId();
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="h-16 shrink-0 border-b border-sidebar-border">
+      <div
+        className={cn(
+          "flex h-16 shrink-0 items-center border-b border-sidebar-border",
+          collapsed ? "justify-center" : "px-5",
+        )}
+      >
+        <Link
+          to="/"
+          onClick={onNavigate}
+          aria-label="Nelcota Deploy — Painel"
+          className="flex items-center gap-3 rounded-lg focus-visible:ring-3 focus-visible:ring-ring/40 focus-visible:outline-none"
+        >
+          <NelcotaMark className="h-8 w-auto" />
+          {collapsed ? null : (
+            <span className="text-lg font-semibold tracking-tight">Nelcota Deploy</span>
+          )}
+        </Link>
+      </div>
+      <div className={cn("pt-4", collapsed ? "flex justify-center" : "px-3")}>
         <ContextSwitcher onNavigate={onNavigate} />
       </div>
       <nav
-        aria-label="Navegação da seção"
-        className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain px-3 py-5"
+        aria-label="Navegação principal"
+        className={cn(
+          "min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain py-4",
+          collapsed ? "px-2" : "px-3",
+        )}
       >
         {projectId == null ? (
           <GlobalNavigation user={user} onNavigate={onNavigate} />
@@ -750,6 +905,17 @@ function ContextPanel({ user, onNavigate }: { readonly user: SessionUser } & Nav
           <ProjectNavigation projectId={projectId} user={user} onNavigate={onNavigate} />
         )}
       </nav>
+      <div
+        className={cn(
+          "border-t border-sidebar-border py-3",
+          collapsed ? "flex flex-col items-center gap-1.5" : "space-y-1 px-3",
+        )}
+      >
+        {collapsed ? <WorkerStatusIcon /> : <WorkerStatusRow />}
+        {collapsed ? <ThemeButton /> : <ThemeRow />}
+        {onToggle == null ? null : <CollapseButton onToggle={onToggle} />}
+        <AccountMenu user={user} compact={collapsed} />
+      </div>
     </div>
   );
 }
@@ -907,30 +1073,9 @@ function MobileMenu({ user }: { readonly user: SessionUser }) {
           <MenuIcon aria-hidden />
         </Button>
       </SheetTrigger>
-      <SheetContent side="left" className="w-80 gap-0 bg-panel p-0">
+      <SheetContent side="left" className="w-80 gap-0 bg-sidebar p-0">
         <SheetTitle className="sr-only">Menu</SheetTitle>
-        <nav
-          aria-label="Áreas"
-          className="grid grid-cols-4 gap-1 border-b border-sidebar-border p-3"
-        >
-          {MAIN_AREAS.map((area) => (
-            <Link
-              key={area.to}
-              to={area.to}
-              activeOptions={{ exact: area.exact }}
-              onClick={() => setOpen(false)}
-              className="flex flex-col items-center gap-1 rounded-lg py-2 text-xs text-muted-foreground hover:bg-sidebar-accent data-[status=active]:bg-sidebar-accent data-[status=active]:text-foreground"
-            >
-              <area.icon aria-hidden className="size-5" />
-              {area.label}
-            </Link>
-          ))}
-        </nav>
-        <ContextPanel user={user} onNavigate={() => setOpen(false)} />
-        <div className="space-y-1 border-t border-sidebar-border p-3">
-          <WorkerStatusRow />
-          <AccountMenu user={user} />
-        </div>
+        <Sidebar user={user} onNavigate={() => setOpen(false)} />
       </SheetContent>
     </Sheet>
   );
@@ -941,8 +1086,8 @@ function MobileMenu({ user }: { readonly user: SessionUser }) {
 /* -------------------------------------------------------------------------- */
 
 /**
- * Application frame: an icon rail (areas, worker status, theme, account), a context panel
- * (project switcher and the pages of the current project or of the platform) and a top bar.
+ * Application frame: one collapsible sidebar and a top bar with breadcrumb, quick deploy and
+ * search.
  */
 export function AppShell({
   user,
@@ -952,6 +1097,7 @@ export function AppShell({
   readonly children: ReactNode;
 }) {
   const [searchOpen, setSearchOpen] = useState(false);
+  const [collapsed, toggleCollapsed] = useSidebarCollapsed();
   useCommandPaletteShortcut(() => setSearchOpen(true));
   useDeploymentNotifications();
   const openSearch = () => setSearchOpen(true);
@@ -963,9 +1109,15 @@ export function AppShell({
       >
         Pular para o conteúdo
       </a>
-      <Rail user={user} />
-      <aside className="hidden w-64 shrink-0 flex-col border-x border-sidebar-border bg-panel lg:flex">
-        <ContextPanel user={user} />
+      <aside
+        className={cn(
+          "hidden shrink-0 flex-col border-r border-sidebar-border bg-sidebar transition-[width] duration-200 lg:flex",
+          collapsed ? "w-[4.5rem]" : "w-64",
+        )}
+      >
+        <CollapsedContext value={collapsed}>
+          <Sidebar user={user} onToggle={toggleCollapsed} />
+        </CollapsedContext>
       </aside>
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="flex h-16 shrink-0 items-center gap-2 border-b border-sidebar-border px-4 md:px-8">
