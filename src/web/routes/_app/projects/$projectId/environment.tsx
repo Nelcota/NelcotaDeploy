@@ -7,6 +7,8 @@ import {
   LockIcon,
   PencilIcon,
   PlusIcon,
+  RefreshCwIcon,
+  SearchIcon,
   Trash2Icon,
   VariableIcon,
 } from "lucide-react";
@@ -16,7 +18,7 @@ import { z } from "zod";
 import type { EnvironmentVariableView } from "@/environments";
 import { normalizeVariableKey } from "@/shared/dotenv";
 import { environmentVariableInputSchema } from "@/shared/environment-variable.schema";
-import { formatDateTime, formatRelativeTime } from "@/shared/format";
+import { formatDateTime, formatRelativeTime, pluralize } from "@/shared/format";
 import { ConfirmDialog } from "@/web/components/confirm-dialog";
 import { EnvImportDialog } from "@/web/components/env-import-dialog";
 import { type VariableKind, VariableKindToggle } from "@/web/components/env-kind-toggle";
@@ -40,6 +42,7 @@ import { Switch } from "@/web/components/ui/switch";
 import { Textarea } from "@/web/components/ui/textarea";
 import { useAction } from "@/web/components/use-action";
 import { useCan } from "@/web/components/use-permissions";
+import { filterVariablesByKey } from "@/web/components/variable-filter";
 import { redeployProjectFn } from "@/web/functions/deployments.functions";
 import {
   deleteEnvironmentVariableFn,
@@ -105,34 +108,34 @@ function EnvironmentPage() {
         title="Variáveis"
         count={variables.data?.length ?? null}
         description={
-          <span>
+          <>
             Configurações e secrets entregues ao contêiner. As mudanças valem no próximo deploy
-            {canRedeploy ? (
-              <>
-                {" — "}
-                <button
-                  type="button"
-                  disabled={redeploy.isPending}
-                  onClick={() => redeploy.mutate()}
-                  className="font-medium text-foreground underline-offset-4 hover:underline focus-visible:underline focus-visible:outline-none disabled:opacity-50"
-                >
-                  redeploy agora
-                </button>
-              </>
-            ) : null}
-            .
-          </span>
+            {variables.data == null ? "." : ` · ${describeKinds(variables.data)}.`}
+          </>
         }
         actions={
-          canEdit ? (
-            <>
-              <EnvImportDialog projectId={projectId} />
-              <Button onClick={openCreate}>
-                <PlusIcon aria-hidden />
-                Nova variável
+          <>
+            {canRedeploy ? (
+              <Button
+                variant="outline"
+                disabled={redeploy.isPending}
+                onClick={() => redeploy.mutate()}
+                title="Recria o contêiner com a imagem atual e as variáveis salvas, sem novo build"
+              >
+                <RefreshCwIcon aria-hidden />
+                Aplicar com redeploy
               </Button>
-            </>
-          ) : null
+            ) : null}
+            {canEdit ? (
+              <>
+                <EnvImportDialog projectId={projectId} />
+                <Button onClick={openCreate}>
+                  <PlusIcon aria-hidden />
+                  Nova variável
+                </Button>
+              </>
+            ) : null}
+          </>
         }
       />
       <VariablesList
@@ -161,6 +164,12 @@ function EnvironmentPage() {
   );
 }
 
+function describeKinds(variables: readonly EnvironmentVariableView[]): string {
+  const secrets = variables.filter((variable) => variable.kind === "secret").length;
+  const plain = variables.length - secrets;
+  return `${pluralize(secrets, "secret", "secrets")}, ${pluralize(plain, "configuração", "configurações")}`;
+}
+
 const VARIABLE_TAG =
   "inline-flex items-center gap-1.5 rounded-md bg-well px-2 py-0.5 text-muted-foreground ring-1 ring-border/60";
 
@@ -175,6 +184,7 @@ function VariablesList({
   readonly onEdit: (variable: EnvironmentVariableView) => void;
   readonly onDelete: (variableId: string) => void;
 }) {
+  const [search, setSearch] = useState("");
   if (query.isError) {
     return <ErrorState error={query.error} onRetry={() => void query.refetch()} />;
   }
@@ -191,73 +201,96 @@ function VariablesList({
     );
   }
   const now = new Date();
+  const visible = filterVariablesByKey(query.data, search);
   return (
-    <List>
-      {query.data.map((variable) => (
-        <ListRow key={variable.id} className="flex-wrap sm:flex-nowrap">
-          <div className="min-w-0 flex-1 space-y-1">
-            <p className="truncate font-mono text-sm font-medium">{variable.key}</p>
-            <p
-              className="truncate font-mono text-xs text-muted-foreground"
-              title={variable.value ?? undefined}
-            >
-              {variable.kind === "secret" ? (
-                <span aria-label="Valor oculto">{MASKED_VALUE}</span>
-              ) : (
-                <PlainValue value={variable.value} />
-              )}
-            </p>
-          </div>
-          <div className="flex shrink-0 flex-wrap items-center gap-2 text-xs">
-            <span className={VARIABLE_TAG}>
-              {variable.kind === "secret" ? (
-                <LockIcon aria-hidden className="size-3.5" />
-              ) : (
-                <EyeIcon aria-hidden className="size-3.5" />
-              )}
-              {variable.kind === "secret" ? "Secret" : "Configuração"}
-            </span>
-            {variable.availableAtBuild ? (
-              <span className={VARIABLE_TAG}>
-                <HammerIcon aria-hidden className="size-3.5" />
-                No build
-              </span>
-            ) : null}
-            <time
-              dateTime={variable.updatedAt}
-              title={`Alterada em ${formatDateTime(variable.updatedAt)}`}
-              className="hidden w-28 text-right text-faint md:inline"
-            >
-              {formatRelativeTime(variable.updatedAt, now)}
-            </time>
-          </div>
-          {canEdit ? (
-            <div className="flex shrink-0 gap-1">
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                aria-label={`Editar ${variable.key}`}
-                onClick={() => onEdit(variable)}
+    <div className="space-y-3">
+      <div className="relative max-w-sm">
+        <SearchIcon
+          aria-hidden
+          className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-faint"
+        />
+        <Input
+          type="search"
+          aria-label="Buscar variável pelo nome"
+          placeholder="Buscar pelo nome"
+          className="pl-9"
+          autoComplete="off"
+          value={search}
+          onChange={(event) => setSearch(event.target.value)}
+        />
+      </div>
+      <List>
+        {visible.length === 0 ? (
+          <ListRow>
+            <p className="text-sm text-muted-foreground">Nenhuma variável com esse nome.</p>
+          </ListRow>
+        ) : null}
+        {visible.map((variable) => (
+          <ListRow key={variable.id} className="flex-wrap sm:flex-nowrap">
+            <div className="min-w-0 flex-1 space-y-1">
+              <p className="truncate font-mono text-sm font-medium">{variable.key}</p>
+              <p
+                className="truncate font-mono text-xs text-muted-foreground"
+                title={variable.value ?? undefined}
               >
-                <PencilIcon aria-hidden />
-              </Button>
-              <ConfirmDialog
-                trigger={
-                  <Button variant="ghost" size="icon-sm" aria-label={`Excluir ${variable.key}`}>
-                    <Trash2Icon aria-hidden />
-                  </Button>
-                }
-                title={`Excluir ${variable.key}?`}
-                description="A variável deixa de ser enviada ao contêiner a partir do próximo deploy."
-                confirmLabel="Excluir"
-                destructive
-                onConfirm={() => onDelete(variable.id)}
-              />
+                {variable.kind === "secret" ? (
+                  <span aria-label="Valor oculto">{MASKED_VALUE}</span>
+                ) : (
+                  <PlainValue value={variable.value} />
+                )}
+              </p>
             </div>
-          ) : null}
-        </ListRow>
-      ))}
-    </List>
+            <div className="flex shrink-0 flex-wrap items-center gap-2 text-xs">
+              <span className={VARIABLE_TAG}>
+                {variable.kind === "secret" ? (
+                  <LockIcon aria-hidden className="size-3.5" />
+                ) : (
+                  <EyeIcon aria-hidden className="size-3.5" />
+                )}
+                {variable.kind === "secret" ? "Secret" : "Configuração"}
+              </span>
+              {variable.availableAtBuild ? (
+                <span className={VARIABLE_TAG}>
+                  <HammerIcon aria-hidden className="size-3.5" />
+                  No build
+                </span>
+              ) : null}
+              <time
+                dateTime={variable.updatedAt}
+                title={`Alterada em ${formatDateTime(variable.updatedAt)}`}
+                className="hidden w-28 text-right text-faint md:inline"
+              >
+                {formatRelativeTime(variable.updatedAt, now)}
+              </time>
+            </div>
+            {canEdit ? (
+              <div className="flex shrink-0 gap-1">
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label={`Editar ${variable.key}`}
+                  onClick={() => onEdit(variable)}
+                >
+                  <PencilIcon aria-hidden />
+                </Button>
+                <ConfirmDialog
+                  trigger={
+                    <Button variant="ghost" size="icon-sm" aria-label={`Excluir ${variable.key}`}>
+                      <Trash2Icon aria-hidden />
+                    </Button>
+                  }
+                  title={`Excluir ${variable.key}?`}
+                  description="A variável deixa de ser enviada ao contêiner a partir do próximo deploy."
+                  confirmLabel="Excluir"
+                  destructive
+                  onConfirm={() => onDelete(variable.id)}
+                />
+              </div>
+            ) : null}
+          </ListRow>
+        ))}
+      </List>
+    </div>
   );
 }
 
