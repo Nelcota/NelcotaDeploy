@@ -266,7 +266,7 @@ function ShortcutPills() {
   });
   const status = useSystemStatus();
   return (
-    <nav aria-label="Atalhos" className="hidden items-center gap-2 xl:flex">
+    <nav aria-label="Atalhos" className="hidden items-center gap-2 min-[1400px]:flex">
       <ShortcutPill
         to="/projects"
         status="online"

@@ -375,7 +375,7 @@ function UsersTab() {
             >
               <div className="min-w-0 flex-1 space-y-0.5">
                 <p className="truncate text-sm font-medium">{user.name}</p>
-                <p className="truncate text-sm text-muted-foreground">{user.email}</p>
+                <p className="text-sm break-all text-muted-foreground">{user.email}</p>
               </div>
               <span className="hidden shrink-0 text-xs text-faint lg:block">
                 desde {formatDateTime(user.createdAt)}
