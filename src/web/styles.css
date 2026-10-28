@@ -162,6 +162,16 @@
   html {
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
+    /* No grey flash over whatever is tapped on phones; buttons show their own pressed state. */
+    -webkit-tap-highlight-color: transparent;
+  }
+  /* A double click on a button or tab should act, not paint its label as selected text. */
+  button,
+  [role="tab"],
+  [role="radio"],
+  [role="option"],
+  summary {
+    user-select: none;
   }
   * {
     @apply border-border outline-ring/60;
