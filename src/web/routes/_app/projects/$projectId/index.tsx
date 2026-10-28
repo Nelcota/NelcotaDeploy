@@ -2,6 +2,8 @@ import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import {
   ActivityIcon,
+  LockOpenIcon,
+  LockIcon,
   BoxIcon,
   CircleAlertIcon,
   CircleCheckIcon,
@@ -30,9 +32,10 @@ import {
   CONTAINER_HEALTH_LABELS,
   CONTAINER_STATE_LABELS,
   DEPLOYMENT_STATUS_LABELS,
+  DEPLOYMENT_TRIGGER_ICONS,
   DEPLOYMENT_TRIGGER_LABELS,
 } from "@/web/components/labels";
-import { CardTitleRow, StatusTile, TEXT_LINK } from "@/web/components/layout";
+import { CardTitleRow, StatusTile, Tag, TEXT_LINK } from "@/web/components/layout";
 import { MetricChart } from "@/web/components/metric-chart";
 import { SegmentedControl } from "@/web/components/overview";
 import { currentContainer } from "@/web/components/project-header";
@@ -97,7 +100,7 @@ function ProjectOverviewPage() {
         latestLoading={recent.isPending}
       />
       {/* Both rows share one three-column grid so card edges line up. */}
-      <div className="grid gap-6 lg:grid-cols-3">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <div className="min-w-0 lg:col-span-2">
           <ResourcesCard projectId={projectId} />
         </div>
@@ -107,7 +110,7 @@ function ProjectOverviewPage() {
           canDeploy={can("deployment:create") && data.project.deploymentsApproved}
         />
       </div>
-      <div className="grid gap-6 lg:grid-cols-3">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <AddressesCard details={data} />
         <ContainerCard details={data} />
         <ConfigurationCard details={data} />
@@ -313,9 +316,10 @@ function RecentDeploymentsCard({
                     </span>{" "}
                     {deployment.commitMessage ?? "sem mensagem"}
                   </span>
-                  <span className="block truncate text-xs text-faint">
-                    {DEPLOYMENT_TRIGGER_LABELS[deployment.trigger]} · {deployment.triggeredByLabel}
-                  </span>
+                  <TriggerLine
+                    trigger={deployment.trigger}
+                    triggeredBy={deployment.triggeredByLabel}
+                  />
                 </span>
                 <span className="flex shrink-0 flex-col items-end gap-1">
                   <DeploymentStatusBadge status={deployment.status} />
@@ -339,6 +343,24 @@ function Fact({ label, children }: { readonly label: string; readonly children: 
       <dt className="text-xs text-faint">{label}</dt>
       <dd className="text-sm break-all">{children}</dd>
     </div>
+  );
+}
+
+function TriggerLine({
+  trigger,
+  triggeredBy,
+}: {
+  readonly trigger: RecentDeployment["trigger"];
+  readonly triggeredBy: string;
+}) {
+  const TriggerIcon = DEPLOYMENT_TRIGGER_ICONS[trigger];
+  return (
+    <span className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
+      <TriggerIcon aria-hidden className="size-3.5 shrink-0" />
+      <span className="truncate">
+        {DEPLOYMENT_TRIGGER_LABELS[trigger]} · {triggeredBy}
+      </span>
+    </span>
   );
 }
 
@@ -376,16 +398,16 @@ function AddressesCard({ details }: { readonly details: ProjectDetails }) {
                   href={url}
                   target="_blank"
                   rel="noreferrer noopener"
-                  className="group flex min-w-0 items-center gap-2 font-mono text-sm"
+                  className="group flex min-w-0 items-center gap-2 rounded-sm font-mono text-sm focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                  title={domain.hostname}
                 >
-                  <span className="break-all group-hover:underline">{domain.hostname}</span>
+                  <span className="truncate group-hover:underline">{domain.hostname}</span>
                   <ExternalLinkIcon aria-hidden className="size-3.5 shrink-0 text-faint" />
                   <span className="sr-only"> (abre em nova aba)</span>
                 </a>
-                <span className="shrink-0 text-xs text-faint">
+                <Tag icon={domain.httpsEnabled ? LockIcon : LockOpenIcon}>
                   {domain.httpsEnabled ? "HTTPS" : "HTTP"}
-                  {domain.automatic ? " · automático" : ""}
-                </span>
+                </Tag>
               </li>
             );
           })}
@@ -436,6 +458,21 @@ function ConfigurationCard({ details }: { readonly details: ProjectDetails }) {
         </Link>
       </CardTitleRow>
       <dl className="divide-y divide-border">
+        <Fact label="Repositório">
+          <a
+            href={`https://github.com/${project.repositoryFullName}`}
+            target="_blank"
+            rel="noreferrer noopener"
+            className="inline-flex min-w-0 items-center gap-1 rounded-sm underline-offset-4 hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+          >
+            <span className="truncate">{project.repositoryFullName}</span>
+            <ExternalLinkIcon aria-hidden className="size-3.5 shrink-0" />
+            <span className="sr-only"> (abre em nova aba)</span>
+          </a>
+        </Fact>
+        <Fact label="Branch">
+          <span className="font-mono">{project.branch}</span>
+        </Fact>
         <Fact label="Dockerfile">
           <span className="font-mono">{project.dockerfilePath}</span>
         </Fact>

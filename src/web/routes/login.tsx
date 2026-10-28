@@ -1,5 +1,5 @@
 import { createFileRoute, redirect, useRouter } from "@tanstack/react-router";
-import { LoaderCircleIcon } from "lucide-react";
+import { EyeIcon, EyeOffIcon, LoaderCircleIcon } from "lucide-react";
 import { type FormEvent, useState } from "react";
 import { z } from "zod";
 
@@ -36,6 +36,7 @@ function LoginPage() {
   const search = Route.useSearch();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [passwordVisible, setPasswordVisible] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -73,7 +74,7 @@ function LoginPage() {
 
   return (
     <div className="flex min-h-svh bg-background p-0 sm:p-6">
-      <main className="flex flex-1 flex-col items-center bg-panel bg-gradient-to-b from-well/40 to-transparent px-5 py-12 ring-1 ring-border/60 sm:rounded-3xl">
+      <main className="flex flex-1 flex-col items-center bg-panel px-5 py-12 ring-1 ring-border/60 sm:rounded-3xl">
         <div className="flex w-full max-w-sm flex-1 flex-col justify-center gap-8">
           {/* The wordmark exists in white and black; each theme shows the one with contrast. */}
           <img
@@ -114,23 +115,39 @@ function LoginPage() {
             </div>
             <div className="space-y-2">
               <Label htmlFor="password">Senha</Label>
-              <Input
-                id="password"
-                type="password"
-                autoComplete="current-password"
-                required
-                aria-invalid={error != null}
-                aria-describedby={error == null ? undefined : "login-error"}
-                value={password}
-                onChange={(event) => setPassword(event.target.value)}
-              />
+              <div className="relative">
+                <Input
+                  id="password"
+                  type={passwordVisible ? "text" : "password"}
+                  className="pr-11"
+                  autoComplete="current-password"
+                  required
+                  aria-invalid={error != null}
+                  aria-describedby={error == null ? undefined : "login-error"}
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
+                />
+                <button
+                  type="button"
+                  aria-label={passwordVisible ? "Ocultar senha" : "Mostrar senha"}
+                  aria-pressed={passwordVisible}
+                  onClick={() => setPasswordVisible((visible) => visible === false)}
+                  className="absolute inset-y-0 right-0 flex w-11 items-center justify-center rounded-lg text-muted-foreground hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                >
+                  {passwordVisible ? (
+                    <EyeOffIcon aria-hidden className="size-4" />
+                  ) : (
+                    <EyeIcon aria-hidden className="size-4" />
+                  )}
+                </button>
+              </div>
             </div>
             {error == null ? null : (
               <p id="login-error" role="alert" className="text-sm text-destructive">
                 {error}
               </p>
             )}
-            <Button type="submit" size="lg" className="w-full rounded-lg" disabled={submitting}>
+            <Button type="submit" size="lg" className="w-full" disabled={submitting}>
               {submitting ? <LoaderCircleIcon aria-hidden className="animate-spin" /> : null}
               Entrar
             </Button>

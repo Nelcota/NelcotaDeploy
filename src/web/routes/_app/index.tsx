@@ -7,18 +7,18 @@ import {
   CircleCheckIcon,
   CircleDashedIcon,
   CircleXIcon,
-  GitCommitHorizontalIcon,
   HistoryIcon,
   ListIcon,
   LoaderCircleIcon,
   type LucideIcon,
   PlusIcon,
+  RocketIcon,
   ServerIcon,
 } from "lucide-react";
 import { useState } from "react";
 
 import { formatPercent, formatRelativeTime } from "@/shared/format";
-import { CardTitleRow, List, StatusTile } from "@/web/components/layout";
+import { CardTitleRow, List, StatusTile, TEXT_LINK } from "@/web/components/layout";
 import { MetricChart } from "@/web/components/metric-chart";
 import { SegmentedControl } from "@/web/components/overview";
 import { type ApplicationFilter, matchesApplicationFilter } from "@/web/components/project-accent";
@@ -87,7 +87,7 @@ function DashboardPage() {
     <>
       <h1 className="sr-only">Painel</h1>
       <OverviewCard data={data} />
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1.7fr)_minmax(0,1fr)]">
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1.7fr)_minmax(0,1fr)]">
         <ServerCard />
         <ActivityCard data={data} now={now} />
       </div>
@@ -136,19 +136,12 @@ function OverviewCard({ data }: { readonly data: DashboardSummary | null }) {
   // Same rule as the "Precisam de atenção" filter: down, or running but failing its check.
   const attention = data.offlineCount + data.unhealthyCount;
   return (
-    <Card className="grid gap-6 p-5 lg:grid-cols-[15rem_minmax(0,1fr)] lg:gap-0">
-      <div className="flex flex-col gap-3 lg:border-r lg:border-border lg:pr-6">
-        <CardTitleRow icon={BoxesIcon} title="Aplicações" />
-        <p className="text-5xl leading-none font-semibold tabular-nums">{data.projectCount}</p>
-        <p className="text-sm text-muted-foreground">
-          {data.projectCount === 1 ? "projeto cadastrado" : "projetos cadastrados"}
-        </p>
-      </div>
-      <div className="flex min-w-0 flex-col gap-4 lg:pl-6">
-        <CardTitleRow icon={ActivityIcon} title="Status das aplicações">
+    <Card className="gap-4 p-5">
+      <div className="flex min-w-0 flex-col gap-4">
+        <CardTitleRow icon={ActivityIcon} title="Status das aplicações" count={data.projectCount}>
           <WorkerPill />
         </CardTitleRow>
-        <dl className="grid grid-cols-2 gap-3 sm:grid-cols-3 2xl:grid-cols-6">
+        <dl className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
           <StatusTile
             value={data.onlineCount}
             label="Online"
@@ -165,7 +158,7 @@ function OverviewCard({ data }: { readonly data: DashboardSummary | null }) {
           <StatusTile
             value={data.deploymentsLastDayCount}
             label="Deploys em 24 h"
-            icon={GitCommitHorizontalIcon}
+            icon={RocketIcon}
           />
           <StatusTile
             value={active}
@@ -295,9 +288,9 @@ function ActivityCard({
   return (
     <Card className="gap-4 p-5">
       <CardTitleRow icon={HistoryIcon} title="Atividade">
-        <Button variant="ghost" size="sm" asChild>
-          <Link to="/deployments">Ver todos</Link>
-        </Button>
+        <Link to="/deployments" className={TEXT_LINK}>
+          Ver todos
+        </Link>
       </CardTitleRow>
       <SegmentedControl
         label="Atividade"
@@ -350,9 +343,9 @@ function ApplicationsCard() {
         title="Todas as aplicações"
         count={projects.data == null ? null : all.length}
       >
-        <Button variant="outline" size="sm" asChild>
-          <Link to="/projects">Ver todos os projetos</Link>
-        </Button>
+        <Link to="/projects" className={TEXT_LINK}>
+          Ver todos
+        </Link>
         {can("project:write") ? (
           <Button size="sm" asChild>
             <Link to="/projects/new">
@@ -362,7 +355,11 @@ function ApplicationsCard() {
           </Button>
         ) : null}
       </CardTitleRow>
-      <div role="radiogroup" aria-label="Filtrar aplicações" className="flex flex-wrap gap-2">
+      <div
+        role="radiogroup"
+        aria-label="Filtrar aplicações"
+        className="-m-1 flex gap-2 overflow-x-auto p-1 [scrollbar-width:none] sm:flex-wrap sm:overflow-visible"
+      >
         {APPLICATION_FILTERS.map((option) => (
           <button
             key={option.value}
@@ -371,7 +368,7 @@ function ApplicationsCard() {
             aria-checked={option.value === filter}
             onClick={() => setFilter(option.value)}
             className={cn(
-              "flex h-9 items-center gap-2 rounded-full px-4 text-sm whitespace-nowrap transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
+              "flex h-9 shrink-0 items-center gap-2 rounded-full px-4 text-sm whitespace-nowrap transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
               option.value === filter
                 ? "bg-primary text-primary-foreground"
                 : "bg-well ring-1 ring-border hover:bg-well-hover",

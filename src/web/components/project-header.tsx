@@ -1,9 +1,11 @@
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import {
   EllipsisIcon,
+  FolderGit2Icon,
   LoaderCircleIcon,
   ExternalLinkIcon,
   GitBranchIcon,
+  GlobeIcon,
   type LucideIcon,
   PlayIcon,
   RefreshCwIcon,
@@ -76,29 +78,30 @@ export function ProjectBand({ details }: { readonly details: ProjectDetails }) {
             />
           </div>
           <div className="flex flex-wrap items-center gap-x-5 gap-y-1 text-sm text-muted-foreground">
-            {url == null ? (
-              <a
-                href={`https://github.com/${project.repositoryFullName}`}
-                target="_blank"
-                rel="noreferrer noopener"
-                title={project.repositoryFullName}
-                className={HEADER_LINK}
-              >
-                {project.repositoryFullName}
-                <span className="sr-only"> (repositório, abre em nova aba)</span>
-              </a>
-            ) : (
+            {url == null ? null : (
               <a
                 href={url}
                 target="_blank"
                 rel="noreferrer noopener"
                 title={url}
-                className={HEADER_LINK}
+                className={`${HEADER_LINK} inline-flex items-center gap-1.5`}
               >
-                {url.replace(/^https?:\/\//, "")}
+                <GlobeIcon aria-hidden className="size-3.5 shrink-0" />
+                <span className="truncate">{url.replace(/^https?:\/\//, "")}</span>
                 <span className="sr-only"> (abre em nova aba)</span>
               </a>
             )}
+            <a
+              href={`https://github.com/${project.repositoryFullName}`}
+              target="_blank"
+              rel="noreferrer noopener"
+              title={project.repositoryFullName}
+              className={`${HEADER_LINK} inline-flex items-center gap-1.5`}
+            >
+              <FolderGit2Icon aria-hidden className="size-3.5 shrink-0" />
+              <span className="truncate">{project.repositoryFullName}</span>
+              <span className="sr-only"> (repositório no GitHub, abre em nova aba)</span>
+            </a>
             <span className="inline-flex items-center gap-1.5 font-mono">
               <GitBranchIcon aria-hidden className="size-3.5" />
               {project.branch}
@@ -246,7 +249,7 @@ function ProjectActions({
   const running = containerState === "running";
 
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex items-center gap-2 max-lg:pb-1">
       {url == null ? null : (
         <Button variant="outline" size="sm" asChild>
           <a href={url} target="_blank" rel="noreferrer noopener">

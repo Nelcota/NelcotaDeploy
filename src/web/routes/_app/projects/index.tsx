@@ -6,6 +6,7 @@ import { z } from "zod";
 
 import { List } from "@/web/components/layout";
 import { PageHeader } from "@/web/components/page-header";
+import { matchesApplicationFilter } from "@/web/components/project-accent";
 import { ProjectListRow } from "@/web/components/project-list-row";
 import { EmptyState, ErrorState, ListSkeleton } from "@/web/components/states";
 import { Button } from "@/web/components/ui/button";
@@ -29,7 +30,7 @@ type ProjectRow = Awaited<ReturnType<typeof listProjectsFn>>[number];
 const STATUS_FILTERS = {
   all: "Todos",
   online: "Online",
-  offline: "Offline",
+  offline: "Precisam de atenção",
   never: "Sem deploy",
   pending: "Aguardando aprovação",
 } as const;
@@ -59,12 +60,17 @@ function matchesFilter(project: ProjectRow, filter: StatusFilter): boolean {
   switch (filter) {
     case "all":
       return true;
+    // Same rules as the dashboard chips, so a shortcut's count matches the list it opens.
     case "online":
-      return project.containerState === "running";
+      return matchesApplicationFilter("online", project.containerState, project.containerHealth);
     case "offline":
-      return project.currentDeploymentId != null && project.containerState !== "running";
+      return matchesApplicationFilter("attention", project.containerState, project.containerHealth);
     case "never":
-      return project.currentDeploymentId == null;
+      return matchesApplicationFilter(
+        "never-deployed",
+        project.containerState,
+        project.containerHealth,
+      );
     case "pending":
       return project.deploymentsApproved === false;
   }
@@ -140,7 +146,7 @@ function ProjectsPage() {
     placeholderData: keepPreviousData,
     refetchInterval: REFRESH_INTERVAL_IN_MS,
   });
-  const [now] = useState(() => new Date());
+  const now = new Date();
   const rows = useMemo(
     () =>
       sortProjects(

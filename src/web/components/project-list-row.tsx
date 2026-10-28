@@ -1,4 +1,5 @@
 import { Link } from "@tanstack/react-router";
+import { FolderGit2Icon, GitBranchIcon, HandIcon, ZapIcon } from "lucide-react";
 
 import type { DeploymentStatus } from "@/deployments";
 import { formatRelativeTime } from "@/shared/format";
@@ -17,12 +18,12 @@ function isDeploymentStatus(status: string): status is DeploymentStatus {
 function LatestDeployment({ project, now }: { readonly project: ProjectRow; readonly now: Date }) {
   const latest = project.latestDeployment;
   if (latest == null || isDeploymentStatus(latest.status) === false) {
-    return <p className="text-xs text-faint">sem deploy</p>;
+    return <StatusPill tone="neutral" label="Sem deploy" />;
   }
   return (
     <div className="space-y-0.5">
       <DeploymentStatusBadge status={latest.status} />
-      <p className="text-xs text-faint">{formatRelativeTime(latest.createdAt, now)}</p>
+      <p className="text-xs text-muted-foreground">{formatRelativeTime(latest.createdAt, now)}</p>
     </div>
   );
 }
@@ -46,19 +47,31 @@ export function ProjectListRow({
         >
           {project.name}
         </Link>
-        <p className="truncate font-mono text-xs text-faint">{project.slug}</p>
+        <p className="truncate font-mono text-xs text-muted-foreground">{project.slug}</p>
       </div>
-      <div className="hidden w-56 min-w-0 shrink-0 text-sm md:block">
-        <p className="truncate text-muted-foreground">{project.repositoryFullName}</p>
-        <p className="truncate font-mono text-xs text-faint">{project.branch}</p>
+      <div className="hidden w-56 min-w-0 shrink-0 space-y-0.5 text-sm md:block">
+        <p className="flex min-w-0 items-center gap-1.5 text-muted-foreground">
+          <FolderGit2Icon aria-hidden className="size-3.5 shrink-0" />
+          <span className="truncate">{project.repositoryFullName}</span>
+        </p>
+        <p className="flex min-w-0 items-center gap-1.5 font-mono text-xs text-muted-foreground">
+          <GitBranchIcon aria-hidden className="size-3.5 shrink-0" />
+          <span className="truncate">{project.branch}</span>
+        </p>
       </div>
       <div className="hidden w-36 shrink-0 lg:block">
         <LatestDeployment project={project} now={now} />
       </div>
-      <p className="hidden w-20 shrink-0 text-xs text-muted-foreground lg:block">
+      <p className="hidden w-28 shrink-0 items-center gap-1.5 text-xs text-muted-foreground lg:flex">
+        {project.autoDeploy ? (
+          <ZapIcon aria-hidden className="size-3.5 shrink-0" />
+        ) : (
+          <HandIcon aria-hidden className="size-3.5 shrink-0" />
+        )}
+        <span className="sr-only">Deploy </span>
         {project.autoDeploy ? "Automático" : "Manual"}
       </p>
-      <div className="flex w-40 shrink-0 justify-end">
+      <div className="flex shrink-0 justify-end md:w-40">
         {project.deploymentsApproved ? (
           <ContainerStateBadge state={project.containerState} health={project.containerHealth} />
         ) : (
