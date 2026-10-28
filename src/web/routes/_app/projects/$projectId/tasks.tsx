@@ -199,100 +199,90 @@ function TasksPage() {
       {tasks.length > 0 ? (
         <List>
           {tasks.map((task) => (
-            <div
+            <ListRow
               key={task.id}
-              role="button"
-              tabIndex={0}
-              aria-label={`${task.name}: abrir histórico de execuções`}
-              className="cursor-pointer focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none focus-visible:ring-inset"
-              onClick={() => setHistoryTaskId(task.id)}
-              onKeyDown={(event) => {
-                if (
-                  event.target === event.currentTarget &&
-                  (event.key === "Enter" || event.key === " ")
-                ) {
-                  event.preventDefault();
-                  setHistoryTaskId(task.id);
-                }
-              }}
+              accent={executionAccent(task.latestExecution?.status ?? null)}
+              className="flex-wrap md:flex-nowrap"
             >
-              <ListRow
-                accent={executionAccent(task.latestExecution?.status ?? null)}
-                className="flex-wrap md:flex-nowrap"
-              >
-                <div className="min-w-0 flex-1 space-y-1">
-                  <p className="truncate text-sm font-medium">{task.name}</p>
-                  <p
-                    className="truncate font-mono text-xs text-faint"
-                    title={formatCommandLine(task.command)}
-                  >
-                    {formatCommandLine(task.command)}
-                  </p>
-                </div>
-                <div className="hidden min-w-0 shrink-0 space-y-1 text-right text-xs md:block">
-                  {task.schedule == null ? (
-                    <span className={TASK_TAG}>
-                      <HandIcon aria-hidden className="size-3.5" />
-                      Manual
-                    </span>
-                  ) : (
-                    <span className={TASK_TAG}>
-                      <CalendarClockIcon aria-hidden className="size-3.5" />
-                      <span className="font-mono">{task.schedule}</span>
-                    </span>
-                  )}
-                  {task.nextRunAt == null ? null : (
-                    <p className="text-faint" title={formatDateTime(task.nextRunAt)}>
-                      próxima {formatRelativeTime(task.nextRunAt, now)}
-                    </p>
-                  )}
-                </div>
-                <div className="w-36 shrink-0">
-                  {task.latestExecution == null ? (
-                    <span className="text-xs text-faint">Nunca executada</span>
-                  ) : (
-                    <div className="space-y-0.5">
-                      <TaskStatusBadge status={task.latestExecution.status} />
-                      <p className="text-xs text-faint">
-                        {task.latestExecution.startedAt == null
-                          ? "na fila"
-                          : `${formatRelativeTime(task.latestExecution.startedAt, now)} · ${formatDuration(
-                              durationBetween(
-                                task.latestExecution.startedAt,
-                                task.latestExecution.finishedAt,
-                              ),
-                            )}`}
-                      </p>
-                    </div>
-                  )}
-                </div>
-                <div
-                  className="flex shrink-0 items-center gap-2"
-                  onClick={stopRowClick}
-                  onKeyDown={stopRowClick}
+              <div className="min-w-0 flex-1 space-y-1">
+                <button
+                  type="button"
+                  className="block max-w-full truncate text-left text-sm font-medium hover:underline focus-visible:underline focus-visible:outline-none"
+                  title="Abrir histórico de execuções"
+                  onClick={() => setHistoryTaskId(task.id)}
                 >
-                  <label className="flex items-center gap-2 text-xs text-muted-foreground">
-                    <Switch
-                      aria-label={`Ativar ${task.name}`}
-                      checked={task.enabled}
-                      disabled={canWrite === false || toggle.isPending}
-                      onCheckedChange={(enabled) => toggle.mutate({ task, enabled })}
-                    />
-                    <span aria-hidden className="w-14">
-                      {task.enabled ? "Ativa" : "Pausada"}
-                    </span>
-                  </label>
-                  <TaskActions
-                    task={task}
-                    canRun={canRun}
-                    canWrite={canWrite}
-                    onRun={() => run.mutate(task.id)}
-                    onEdit={() => openDialog(task)}
-                    onDelete={() => remove.mutate(task.id)}
+                  {task.name}
+                  <span className="sr-only">: abrir histórico de execuções</span>
+                </button>
+                <p
+                  className="truncate font-mono text-xs text-faint"
+                  title={formatCommandLine(task.command)}
+                >
+                  {formatCommandLine(task.command)}
+                </p>
+              </div>
+              <div className="hidden min-w-0 shrink-0 space-y-1 text-right text-xs md:block">
+                {task.schedule == null ? (
+                  <span className={TASK_TAG}>
+                    <HandIcon aria-hidden className="size-3.5" />
+                    Manual
+                  </span>
+                ) : (
+                  <span className={TASK_TAG}>
+                    <CalendarClockIcon aria-hidden className="size-3.5" />
+                    <span className="font-mono">{task.schedule}</span>
+                  </span>
+                )}
+                {task.nextRunAt == null ? null : (
+                  <p className="text-faint" title={formatDateTime(task.nextRunAt)}>
+                    próxima {formatRelativeTime(task.nextRunAt, now)}
+                  </p>
+                )}
+              </div>
+              <div className="w-36 shrink-0">
+                {task.latestExecution == null ? (
+                  <span className="text-xs text-faint">Nunca executada</span>
+                ) : (
+                  <div className="space-y-0.5">
+                    <TaskStatusBadge status={task.latestExecution.status} />
+                    <p className="text-xs text-faint">
+                      {task.latestExecution.startedAt == null
+                        ? "na fila"
+                        : `${formatRelativeTime(task.latestExecution.startedAt, now)} · ${formatDuration(
+                            durationBetween(
+                              task.latestExecution.startedAt,
+                              task.latestExecution.finishedAt,
+                            ),
+                          )}`}
+                    </p>
+                  </div>
+                )}
+              </div>
+              <div className="flex shrink-0 items-center gap-2">
+                <label className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <Switch
+                    aria-label={`Ativar ${task.name}`}
+                    checked={task.enabled}
+                    disabled={
+                      canWrite === false ||
+                      (toggle.isPending && toggle.variables.task.id === task.id)
+                    }
+                    onCheckedChange={(enabled) => toggle.mutate({ task, enabled })}
                   />
-                </div>
-              </ListRow>
-            </div>
+                  <span aria-hidden className="w-14">
+                    {task.enabled ? "Ativa" : "Pausada"}
+                  </span>
+                </label>
+                <TaskActions
+                  task={task}
+                  canRun={canRun}
+                  canWrite={canWrite}
+                  onRun={() => run.mutate(task.id)}
+                  onEdit={() => openDialog(task)}
+                  onDelete={() => remove.mutate(task.id)}
+                />
+              </div>
+            </ListRow>
           ))}
         </List>
       ) : null}
@@ -341,13 +331,8 @@ function executionAccent(status: string | null): "success" | "danger" | "progres
   return status == null ? "neutral" : "progress";
 }
 
-/** Keeps clicks on controls inside a row from also opening the row. */
 const TASK_TAG =
   "inline-flex items-center gap-1.5 rounded-md bg-well px-2 py-0.5 text-muted-foreground ring-1 ring-border/60";
-
-function stopRowClick(event: { stopPropagation: () => void }): void {
-  event.stopPropagation();
-}
 
 function TaskActions({
   task,
