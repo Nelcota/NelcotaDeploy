@@ -4,7 +4,6 @@ import {
   ArrowRightIcon,
   BoxesIcon,
   CpuIcon,
-  GaugeIcon,
   GitBranchIcon,
   HistoryIcon,
   PlusIcon,
@@ -38,6 +37,7 @@ import { ContainerStateBadge } from "@/web/components/status-badge";
 import { Button } from "@/web/components/ui/button";
 import {
   Card,
+  CardAction,
   CardContent,
   CardDescription,
   CardHeader,
@@ -287,18 +287,17 @@ function DashboardPage() {
         }
       />
 
+      <StatusBanner data={data ?? null} />
+
       {data == null ? (
         <Skeleton className="h-48 rounded-2xl" />
       ) : (
         <StatRow stats={dashboardStats(data, hostMetrics.data ?? [], hours, now)} />
       )}
 
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
-        <div className="flex min-w-0 flex-col gap-6">
-          <SummaryCard data={data ?? null} />
-          <ActivityCard deployments={data?.recentDeployments ?? null} now={now} />
-        </div>
+      <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
         <ApplicationsCard canCreate={can("project:write")} />
+        <ActivityCard deployments={data?.recentDeployments ?? null} now={now} />
       </div>
 
       <ServerCard samples={hostMetrics.data ?? null} hours={hours} />
@@ -315,38 +314,31 @@ function CardIcon({ children }: { readonly children: ReactNode }) {
   );
 }
 
-function SummaryCard({ data }: { readonly data: DashboardSummary | null }) {
+/** One line on how things are, with the brand emblem and a way to the deploy history. */
+function StatusBanner({ data }: { readonly data: DashboardSummary | null }) {
   return (
-    <Card className="gap-4 pb-2">
-      <CardHeader>
-        <CardTitle className="flex items-center gap-3 text-base font-semibold">
-          <CardIcon>
-            <GaugeIcon aria-hidden />
-          </CardIcon>
-          Resumo
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="px-2">
-        <CardWell className="relative flex min-h-64 flex-col gap-3 overflow-hidden rounded-2xl bg-gradient-to-br from-well-hover to-well p-6">
-          <NelcotaMark
-            aria-hidden
-            className="pointer-events-none absolute right-6 bottom-6 h-36 w-auto opacity-[0.14]"
-          />
-          <h2 className="relative text-2xl leading-tight font-semibold tracking-tight">
-            {data == null ? "Carregando…" : <Headline data={data} />}
-          </h2>
-          <p className="relative max-w-sm text-sm text-muted-foreground">
-            {data == null ? "Lendo o estado do servidor." : subline(data)}
-          </p>
-          <Button asChild className="relative mt-auto w-fit rounded-xl">
-            <Link to="/deployments">
-              Ver deploys
-              <ArrowRightIcon aria-hidden />
-            </Link>
-          </Button>
-        </CardWell>
-      </CardContent>
-    </Card>
+    <section
+      aria-label="Resumo"
+      className="flex flex-col gap-4 rounded-2xl bg-card p-4 ring-1 ring-border/70 sm:flex-row sm:items-center sm:gap-5 sm:px-5"
+    >
+      <span className="flex size-12 shrink-0 items-center justify-center rounded-xl bg-well ring-1 ring-border/60">
+        <NelcotaMark aria-hidden className="h-7 w-auto" />
+      </span>
+      <div className="min-w-0 flex-1 space-y-0.5">
+        <h2 className="text-lg leading-tight font-semibold tracking-tight">
+          {data == null ? "Carregando…" : <Headline data={data} />}
+        </h2>
+        <p className="text-sm text-muted-foreground">
+          {data == null ? "Lendo o estado do servidor." : subline(data)}
+        </p>
+      </div>
+      <Button variant="outline" asChild className="w-fit rounded-xl">
+        <Link to="/deployments">
+          Ver deploys
+          <ArrowRightIcon aria-hidden />
+        </Link>
+      </Button>
+    </section>
   );
 }
 
@@ -363,21 +355,26 @@ function ApplicationsCard({ canCreate }: { readonly canCreate: boolean }) {
     matchesApplicationFilter(filter, project.containerState, project.containerHealth),
   );
   return (
-    <Card className="min-w-0 gap-4 pt-4 pb-2">
-      <div className="flex flex-wrap items-center justify-between gap-3 px-4">
-        <h2 className="sr-only">Aplicações</h2>
+    <Card className="min-w-0 gap-4 pb-2">
+      <div className="flex flex-wrap items-center justify-between gap-3 px-5">
+        <div className="flex items-center gap-3">
+          <CardIcon>
+            <BoxesIcon aria-hidden />
+          </CardIcon>
+          <h2 className="text-base font-semibold">Aplicações</h2>
+          <Link
+            to="/projects"
+            className="text-sm text-muted-foreground transition-colors hover:text-foreground"
+          >
+            Ver todas
+          </Link>
+        </div>
         <SegmentedControl
           label="Filtrar aplicações"
           options={APPLICATION_FILTERS}
           value={filter}
           onChange={setFilter}
         />
-        <Button variant="outline" size="sm" asChild className="rounded-xl">
-          <Link to="/projects">
-            Todos os projetos
-            <ArrowRightIcon aria-hidden />
-          </Link>
-        </Button>
       </div>
       <CardContent className="flex flex-col gap-1.5 px-2">
         {projects.isPending ? <Skeleton className="h-64 rounded-xl" /> : null}
@@ -513,6 +510,14 @@ function ActivityCard({
           Atividade
         </CardTitle>
         <CardDescription className="sr-only">Deploys mais recentes.</CardDescription>
+        <CardAction>
+          <Link
+            to="/deployments"
+            className="text-sm text-muted-foreground transition-colors hover:text-foreground"
+          >
+            Ver todos
+          </Link>
+        </CardAction>
       </CardHeader>
       <CardContent>
         {deployments == null ? <Skeleton className="h-40 rounded-xl" /> : null}
