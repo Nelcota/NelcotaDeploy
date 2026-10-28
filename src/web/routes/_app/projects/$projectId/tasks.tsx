@@ -183,14 +183,6 @@ function TasksPage() {
           icon={ListChecksIcon}
           title="Nenhuma task ainda"
           description="Use tasks para migrações, limpezas de cache ou rotinas agendadas."
-          action={
-            canWrite ? (
-              <Button variant="outline" size="sm" onClick={() => openDialog(null)}>
-                <PlusIcon aria-hidden />
-                Nova task
-              </Button>
-            ) : null
-          }
         />
       ) : null}
       {tasks.length > 0 ? (

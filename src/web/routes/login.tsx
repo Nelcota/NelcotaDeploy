@@ -42,6 +42,10 @@ function LoginPage() {
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
+    if (email.trim() === "" || password === "") {
+      setError("Informe o e-mail e a senha.");
+      return;
+    }
     setSubmitting(true);
     setError(null);
     const result = await authClient.signIn.email({ email: email.trim().toLowerCase(), password });
@@ -59,17 +63,22 @@ function LoginPage() {
 
   return (
     <main className="flex min-h-svh flex-col items-center justify-center bg-background px-5 py-10">
-      <div className="w-full max-w-sm space-y-10">
-        <div className="flex flex-col items-center gap-6 text-center">
-          <NelcotaMark className="h-10 w-auto" />
-          <div className="space-y-2">
-            <h1 className="text-3xl font-semibold tracking-tight">Entrar</h1>
-            <p className="text-base text-muted-foreground">
-              Use a conta criada pelo administrador do Nelcota Deploy.
+      <div className="w-full max-w-sm space-y-8">
+        <div className="flex items-center justify-center gap-3">
+          <NelcotaMark aria-hidden className="h-9 w-auto" />
+          <span className="text-xl font-semibold tracking-tight">Nelcota Deploy</span>
+        </div>
+        <form
+          className="space-y-5 rounded-2xl bg-panel p-6 ring-1 ring-border/70 sm:p-8"
+          onSubmit={(event) => void submit(event)}
+          noValidate
+        >
+          <div className="space-y-1">
+            <h1 className="text-2xl font-semibold tracking-tight">Entrar</h1>
+            <p className="text-sm text-muted-foreground">
+              Use a conta criada pelo administrador do painel.
             </p>
           </div>
-        </div>
-        <form className="space-y-5" onSubmit={(event) => void submit(event)} noValidate>
           <div className="space-y-2">
             <Label htmlFor="email">E-mail</Label>
             <Input
@@ -98,12 +107,7 @@ function LoginPage() {
               {error}
             </p>
           )}
-          <Button
-            type="submit"
-            size="lg"
-            className="mt-2 w-full"
-            disabled={submitting || email.trim() === "" || password === ""}
-          >
+          <Button type="submit" size="lg" className="mt-2 w-full" disabled={submitting}>
             {submitting ? <LoaderCircleIcon aria-hidden className="animate-spin" /> : null}
             Entrar
           </Button>

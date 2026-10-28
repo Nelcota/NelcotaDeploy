@@ -129,7 +129,6 @@ function EnvironmentPage() {
         canEdit={canEdit}
         onEdit={openEdit}
         onDelete={(variableId) => remove.mutate(variableId)}
-        onCreate={openCreate}
       />
       <details className="group text-sm text-muted-foreground">
         <summary className="w-fit cursor-pointer text-xs font-medium text-faint hover:text-foreground focus-visible:text-foreground focus-visible:outline-none">
@@ -156,13 +155,11 @@ function VariablesList({
   canEdit,
   onEdit,
   onDelete,
-  onCreate,
 }: {
   readonly query: ReturnType<typeof useQuery<EnvironmentVariableView[]>>;
   readonly canEdit: boolean;
   readonly onEdit: (variable: EnvironmentVariableView) => void;
   readonly onDelete: (variableId: string) => void;
-  readonly onCreate: () => void;
 }) {
   if (query.isError) {
     return <ErrorState error={query.error} onRetry={() => void query.refetch()} />;
@@ -176,14 +173,6 @@ function VariablesList({
         icon={KeyRoundIcon}
         title="Nenhuma variável ainda"
         description="Adicione configurações como NODE_ENV ou secrets como DATABASE_URL."
-        action={
-          canEdit ? (
-            <Button variant="outline" size="sm" onClick={onCreate}>
-              <PlusIcon aria-hidden />
-              Nova variável
-            </Button>
-          ) : null
-        }
       />
     );
   }
