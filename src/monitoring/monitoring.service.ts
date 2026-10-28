@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gte, inArray, isNull, lt, notInArray } from "drizzle-orm";
+import { and, asc, count, desc, eq, gte, inArray, isNull, lt, notInArray } from "drizzle-orm";
 
 import { type Database, tables } from "@/db";
 
@@ -346,18 +346,20 @@ export function getDashboardSummary(database: Database, now: Date = new Date()) 
     .orderBy(desc(tables.deployments.createdAt))
     .limit(RECENT_DEPLOYMENTS)
     .all();
+  const lastDayStart = new Date(now.getTime() - RECENT_FAILURE_WINDOW_IN_MS).toISOString();
+  // The lists above are capped for display; the dashboard figures need the real totals.
+  const lastDayCounts = database
+    .select({ status: tables.deployments.status, total: count() })
+    .from(tables.deployments)
+    .where(gte(tables.deployments.createdAt, lastDayStart))
+    .groupBy(tables.deployments.status)
+    .all();
   const recentFailures = database
     .select(recentColumns)
     .from(tables.deployments)
     .innerJoin(tables.projects, eq(tables.projects.id, tables.deployments.projectId))
     .where(
-      and(
-        eq(tables.deployments.status, "failed"),
-        gte(
-          tables.deployments.createdAt,
-          new Date(now.getTime() - RECENT_FAILURE_WINDOW_IN_MS).toISOString(),
-        ),
-      ),
+      and(eq(tables.deployments.status, "failed"), gte(tables.deployments.createdAt, lastDayStart)),
     )
     .orderBy(desc(tables.deployments.createdAt))
     .limit(RECENT_DEPLOYMENTS)
@@ -378,6 +380,8 @@ export function getDashboardSummary(database: Database, now: Date = new Date()) 
     offlineCount: offline,
     neverDeployedCount: projects.length - deployedProjects,
     unhealthyCount: unhealthy,
+    deploymentsLastDayCount: lastDayCounts.reduce((sum, row) => sum + row.total, 0),
+    failuresLastDayCount: lastDayCounts.find((row) => row.status === "failed")?.total ?? 0,
     recentDeployments,
     recentFailures,
     hostSample: getLatestHostSample(database),
