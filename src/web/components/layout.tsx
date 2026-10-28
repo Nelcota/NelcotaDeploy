@@ -73,7 +73,7 @@ export function StatRow({
         >
           <dt className="flex min-w-0 items-center gap-2 text-sm text-muted-foreground">
             {stat.icon == null ? null : <stat.icon aria-hidden className="size-4 shrink-0" />}
-            <span className="truncate">{stat.label}</span>
+            <span className="leading-tight">{stat.label}</span>
           </dt>
           <dd className="min-w-0 space-y-0.5">
             <span
@@ -142,6 +142,85 @@ export function ListRow({
       )}
     >
       {children}
+    </div>
+  );
+}
+
+/** Title row of a panel card: icon, title, an optional count badge and actions on the right. */
+export function CardTitleRow({
+  icon: Icon,
+  title,
+  count,
+  children,
+}: {
+  readonly icon: LucideIcon;
+  readonly title: string;
+  readonly count?: number | null;
+  readonly children?: ReactNode;
+}) {
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-3">
+      <h2 className="flex items-center gap-3 text-base font-semibold">
+        <Icon aria-hidden className="size-[1.15rem] text-muted-foreground" />
+        {title}
+        {count == null ? null : (
+          <span className="rounded-md bg-well px-1.5 py-0.5 text-xs font-medium text-muted-foreground tabular-nums">
+            {count}
+          </span>
+        )}
+      </h2>
+      {children == null ? null : (
+        <div className="flex flex-wrap items-center gap-2">{children}</div>
+      )}
+    </div>
+  );
+}
+
+const TILE_TONES = {
+  default: "bg-well ring-border/70",
+  progress: "bg-primary/25 ring-primary/30",
+  danger: "bg-destructive/20 ring-destructive/30",
+} as const;
+
+/**
+ * One figure in a grid of tiles: the value on top, an icon and label at the bottom. Must be
+ * placed inside a `dl`.
+ */
+export function StatusTile({
+  value,
+  label,
+  icon: Icon,
+  iconClassName,
+  tone = "default",
+  detail,
+}: {
+  readonly value: ReactNode;
+  readonly label: string;
+  readonly icon: LucideIcon;
+  readonly iconClassName?: string;
+  readonly tone?: keyof typeof TILE_TONES;
+  /** Small line under the value, such as a relative time. */
+  readonly detail?: ReactNode;
+}) {
+  return (
+    <div
+      className={cn(
+        "flex min-h-28 min-w-0 flex-col justify-between gap-4 rounded-xl p-4 ring-1",
+        TILE_TONES[tone],
+      )}
+    >
+      <dd className="min-w-0 space-y-1">
+        <span className="block truncate text-2xl leading-none font-semibold tabular-nums">
+          {value}
+        </span>
+        {detail == null ? null : (
+          <span className="block truncate text-xs text-faint">{detail}</span>
+        )}
+      </dd>
+      <dt className="flex min-w-0 items-center gap-2 text-sm leading-tight text-muted-foreground">
+        <Icon aria-hidden className={cn("size-4 shrink-0", iconClassName)} />
+        <span>{label}</span>
+      </dt>
     </div>
   );
 }

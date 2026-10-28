@@ -16,9 +16,10 @@ import {
   PlusIcon,
   ServerIcon,
 } from "lucide-react";
-import { type ReactNode, useState } from "react";
+import { useState } from "react";
 
 import { formatPercent, formatRelativeTime } from "@/shared/format";
+import { CardTitleRow, StatusTile } from "@/web/components/layout";
 import { MetricChart } from "@/web/components/metric-chart";
 import { SegmentedControl } from "@/web/components/overview";
 import { type ApplicationFilter, matchesApplicationFilter } from "@/web/components/project-accent";
@@ -106,71 +107,6 @@ function DashboardPage() {
       </div>
       <ApplicationsCard />
     </>
-  );
-}
-
-/** Title row shared by the dashboard cards: icon, title, optional count and actions. */
-function CardTitleRow({
-  icon: Icon,
-  title,
-  count,
-  children,
-}: {
-  readonly icon: LucideIcon;
-  readonly title: string;
-  readonly count?: number | null;
-  readonly children?: ReactNode;
-}) {
-  return (
-    <div className="flex flex-wrap items-center justify-between gap-3">
-      <h2 className="flex items-center gap-3 text-base font-semibold">
-        <Icon aria-hidden className="size-[1.15rem] text-muted-foreground" />
-        {title}
-        {count == null ? null : (
-          <span className="rounded-md bg-well px-1.5 py-0.5 text-xs font-medium text-muted-foreground tabular-nums">
-            {count}
-          </span>
-        )}
-      </h2>
-      {children == null ? null : (
-        <div className="flex flex-wrap items-center gap-2">{children}</div>
-      )}
-    </div>
-  );
-}
-
-const TILE_TONES = {
-  default: "bg-well ring-border/70",
-  progress: "bg-primary/25 ring-primary/30",
-  danger: "bg-destructive/20 ring-destructive/30",
-} as const;
-
-function StatusTile({
-  value,
-  label,
-  icon: Icon,
-  iconClassName,
-  tone = "default",
-}: {
-  readonly value: ReactNode;
-  readonly label: string;
-  readonly icon: LucideIcon;
-  readonly iconClassName?: string;
-  readonly tone?: keyof typeof TILE_TONES;
-}) {
-  return (
-    <div
-      className={cn(
-        "flex min-h-28 min-w-0 flex-col justify-between gap-4 rounded-xl p-4 ring-1",
-        TILE_TONES[tone],
-      )}
-    >
-      <dd className="text-2xl leading-none font-semibold tabular-nums">{value}</dd>
-      <dt className="flex min-w-0 items-center gap-2 text-sm leading-tight text-muted-foreground">
-        <Icon aria-hidden className={cn("size-4 shrink-0", iconClassName)} />
-        <span>{label}</span>
-      </dt>
-    </div>
   );
 }
 

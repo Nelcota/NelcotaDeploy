@@ -1,29 +1,37 @@
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { ArrowRightIcon, ExternalLinkIcon } from "lucide-react";
-import type { ReactNode } from "react";
-
 import {
-  durationBetween,
-  formatBytes,
-  formatDuration,
-  formatPercent,
-  formatRelativeTime,
-  formatShortTime,
-} from "@/shared/format";
-import { DeploymentListRow } from "@/web/components/deployment-row";
+  ActivityIcon,
+  BoxIcon,
+  CircleAlertIcon,
+  CircleCheckIcon,
+  CircleDashedIcon,
+  ClockIcon,
+  ExternalLinkIcon,
+  GitCommitHorizontalIcon,
+  GlobeIcon,
+  HistoryIcon,
+  RocketIcon,
+  RotateCwIcon,
+  SlidersHorizontalIcon,
+} from "lucide-react";
+import { type ReactNode, useState } from "react";
+
+import { formatBytes, formatPercent, formatRelativeTime, formatShortTime } from "@/shared/format";
 import {
   ACTIVE_DEPLOYMENT_STATUSES,
   CONTAINER_STATE_LABELS,
   DEPLOYMENT_STATUS_LABELS,
   DEPLOYMENT_TRIGGER_LABELS,
 } from "@/web/components/labels";
-import { List, ListRow, Section, type Stat, StatRow } from "@/web/components/layout";
+import { CardTitleRow, StatusTile } from "@/web/components/layout";
 import { MetricChart } from "@/web/components/metric-chart";
+import { SegmentedControl } from "@/web/components/overview";
 import { currentContainer } from "@/web/components/project-header";
 import { type ProjectDetails, projectQueryOptions } from "@/web/components/project-query";
 import { ListSkeleton } from "@/web/components/states";
 import { DeploymentStatusBadge } from "@/web/components/status-badge";
+import { Card } from "@/web/components/ui/card";
 import { Skeleton } from "@/web/components/ui/skeleton";
 import { getDeploymentFn, listDeploymentsFn } from "@/web/functions/deployments.functions";
 import { getProjectMetricsFn } from "@/web/functions/monitoring.functions";
@@ -33,6 +41,15 @@ const RECENT_DEPLOYMENTS = 6;
 const ACTIVE_POLL_INTERVAL_IN_MS = 5000;
 const IDLE_POLL_INTERVAL_IN_MS = 30_000;
 const METRICS_POLL_INTERVAL_IN_MS = 30_000;
+const HOURS_PER_DAY = 24;
+const WINDOWS = [
+  { value: 1, label: "Última hora" },
+  { value: HOURS_PER_DAY, label: "24 horas" },
+] as const;
+const SERIES = [
+  { value: "cpu", label: "CPU", color: "--chart-1" },
+  { value: "memory", label: "Memória", color: "--chart-2" },
+] as const;
 
 export const Route = createFileRoute("/_app/projects/$projectId/")({
   component: ProjectOverviewPage,
@@ -63,24 +80,23 @@ function ProjectOverviewPage() {
   }
   const data = details.data;
   return (
-    <div className="space-y-10">
-      <OverviewStats details={data} latest={recent.data?.[0] ?? null} />
-      <div className="grid gap-10 lg:grid-cols-5">
-        <div className="min-w-0 lg:col-span-3">
-          <RecentDeployments projectId={projectId} deployments={recent.data ?? null} />
-        </div>
-        <div className="min-w-0 space-y-10 lg:col-span-2">
-          <Addresses details={data} />
-          <ContainerFacts details={data} />
-          <Resources projectId={projectId} />
-        </div>
+    <div className="space-y-6">
+      <SituationCard details={data} latest={recent.data?.[0] ?? null} />
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1.7fr)_minmax(0,1fr)]">
+        <ResourcesCard projectId={projectId} />
+        <RecentDeploymentsCard projectId={projectId} deployments={recent.data ?? null} />
       </div>
-      <ConfigurationLine details={data} />
+      <div className="grid gap-6 lg:grid-cols-3">
+        <AddressesCard details={data} />
+        <ContainerCard details={data} />
+        <ConfigurationCard details={data} />
+      </div>
     </div>
   );
 }
 
-function OverviewStats({
+/** The five figures that tell whether the application is serving the latest code. */
+function SituationCard({
   details,
   latest,
 }: {
@@ -96,56 +112,132 @@ function OverviewStats({
   });
   const now = new Date();
   const running = container?.state === "running";
-  const sha = current.data?.commitSha ?? null;
+  const healthy = running && container.health !== "unhealthy";
   const restarts = container?.restartCount ?? 0;
   const startedAt = running ? (container.startedAt ?? null) : null;
+  const sha = current.data?.commitSha ?? null;
 
-  let statusTone: Stat["tone"] = "default";
+  let statusIcon = CircleDashedIcon;
+  let statusColor = "";
   if (container != null) {
-    statusTone = running && container.health !== "unhealthy" ? "success" : "warning";
-  }
-  let latestTone: Stat["tone"] = "default";
-  if (latest?.status === "failed") {
-    latestTone = "danger";
+    statusIcon = healthy ? CircleCheckIcon : CircleAlertIcon;
+    statusColor = healthy ? "text-success" : "text-warning";
   }
 
-  const stats: Stat[] = [
-    {
-      label: "Status",
-      value:
-        container == null
-          ? "Sem contêiner"
-          : (CONTAINER_STATE_LABELS[container.state] ?? container.state),
-      detail: container?.health ?? undefined,
-      tone: statusTone,
-    },
-    {
-      label: "Último deploy",
-      value: latest == null ? "—" : DEPLOYMENT_STATUS_LABELS[latest.status],
-      detail: latest == null ? "nenhum ainda" : formatRelativeTime(latest.createdAt, now),
-      tone: latestTone,
-    },
-    {
-      label: "Commit",
-      value: <span className="font-mono">{sha?.slice(0, SHORT_SHA_LENGTH) ?? "—"}</span>,
-      detail: current.data?.commitMessage ?? undefined,
-    },
-    {
-      label: "Reinícios",
-      value: container == null ? "—" : restarts,
-      tone: restarts > 0 ? "warning" : "default",
-    },
-    {
-      label: "Iniciado",
-      value: startedAt == null ? "—" : formatShortTime(startedAt),
-      detail: startedAt == null ? undefined : formatRelativeTime(startedAt, now),
-    },
-  ];
-  // The tabs above already draw a line, so the row only needs the one below.
-  return <StatRow stats={stats} className="border-t-0 pt-0" />;
+  return (
+    <Card className="gap-4 p-5">
+      <CardTitleRow icon={ActivityIcon} title="Situação atual" />
+      <dl className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
+        <StatusTile
+          value={
+            container == null
+              ? "Sem contêiner"
+              : (CONTAINER_STATE_LABELS[container.state] ?? container.state)
+          }
+          detail={container?.health == null ? undefined : `saúde: ${container.health}`}
+          label="Contêiner"
+          icon={statusIcon}
+          iconClassName={statusColor}
+        />
+        <StatusTile
+          value={latest == null ? "—" : DEPLOYMENT_STATUS_LABELS[latest.status]}
+          detail={latest == null ? "nenhum ainda" : formatRelativeTime(latest.createdAt, now)}
+          label="Último deploy"
+          icon={RocketIcon}
+          iconClassName={latest?.status === "failed" ? "text-destructive" : ""}
+          tone={latest?.status === "failed" ? "danger" : "default"}
+        />
+        <StatusTile
+          value={<span className="font-mono">{sha?.slice(0, SHORT_SHA_LENGTH) ?? "—"}</span>}
+          detail={current.data?.commitMessage ?? undefined}
+          label="Commit no ar"
+          icon={GitCommitHorizontalIcon}
+        />
+        <StatusTile
+          value={container == null ? "—" : restarts}
+          label="Reinícios"
+          icon={RotateCwIcon}
+          iconClassName={restarts > 0 ? "text-warning" : ""}
+        />
+        <StatusTile
+          value={startedAt == null ? "—" : formatShortTime(startedAt)}
+          detail={startedAt == null ? undefined : formatRelativeTime(startedAt, now)}
+          label="No ar desde"
+          icon={ClockIcon}
+        />
+      </dl>
+    </Card>
+  );
 }
 
-function RecentDeployments({
+function ResourcesCard({ projectId }: { readonly projectId: string }) {
+  const [hours, setHours] = useState<number>(1);
+  const [series, setSeries] = useState<(typeof SERIES)[number]["value"]>("cpu");
+  const metrics = useQuery({
+    queryKey: ["project-metrics", projectId, hours],
+    queryFn: () => getProjectMetricsFn({ data: { projectId, hours } }),
+    refetchInterval: METRICS_POLL_INTERVAL_IN_MS,
+  });
+  const selected = SERIES.find((item) => item.value === series) ?? SERIES[0];
+  const samples = metrics.data ?? [];
+  const latest = samples.at(-1) ?? null;
+  let current = "—";
+  if (latest != null) {
+    current =
+      series === "cpu" ? formatPercent(latest.cpuPercent) : formatBytes(latest.memoryUsedBytes);
+  }
+  return (
+    <Card className="gap-5 p-5">
+      <CardTitleRow icon={ActivityIcon} title="Recursos">
+        <SegmentedControl
+          label="Janela de tempo"
+          options={WINDOWS}
+          value={hours}
+          onChange={setHours}
+        />
+      </CardTitleRow>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <SegmentedControl
+          label="Série"
+          options={SERIES.map((item) => ({ value: item.value, label: item.label }))}
+          value={series}
+          onChange={setSeries}
+        />
+        <p className="text-sm text-muted-foreground">
+          Agora <span className="font-medium text-foreground tabular-nums">{current}</span>
+          {" · "}
+          <Link
+            to="/projects/$projectId/metrics"
+            params={{ projectId }}
+            className="underline-offset-4 hover:text-foreground hover:underline"
+          >
+            Ver métricas
+          </Link>
+        </p>
+      </div>
+      {metrics.data == null ? <Skeleton className="h-64 rounded-lg" /> : null}
+      {metrics.data != null && samples.length === 0 ? (
+        <p className="py-16 text-center text-sm text-muted-foreground">
+          Sem amostras ainda. CPU e memória aparecem enquanto o contêiner roda.
+        </p>
+      ) : null}
+      {samples.length === 0 ? null : (
+        <MetricChart
+          label={selected.label}
+          colorVariable={selected.color}
+          {...(series === "cpu" ? { maxValue: 100 } : {})}
+          formatValue={(value) => (series === "cpu" ? `${Math.round(value)}%` : formatBytes(value))}
+          points={samples.map((sample) => ({
+            createdAt: sample.createdAt,
+            value: series === "cpu" ? sample.cpuPercent : sample.memoryUsedBytes,
+          }))}
+        />
+      )}
+    </Card>
+  );
+}
+
+function RecentDeploymentsCard({
   projectId,
   deployments,
 }: {
@@ -154,82 +246,85 @@ function RecentDeployments({
 }) {
   const now = new Date();
   return (
-    <Section
-      title="Deploys recentes"
-      action={
+    <Card className="gap-4 p-5">
+      <CardTitleRow icon={HistoryIcon} title="Deploys recentes">
         <Link
           to="/projects/$projectId/deployments"
           params={{ projectId }}
-          className="inline-flex items-center gap-1 text-sm text-muted-foreground transition-colors hover:text-foreground"
+          className="text-sm text-muted-foreground transition-colors hover:text-foreground"
         >
           Ver todos
-          <ArrowRightIcon aria-hidden className="size-4" />
         </Link>
-      }
-    >
-      {deployments == null ? <ListSkeleton rows={3} /> : null}
+      </CardTitleRow>
+      {deployments == null ? <Skeleton className="h-60 rounded-lg" /> : null}
       {deployments?.length === 0 ? (
-        <List>
-          <ListRow>
-            <p className="text-sm text-muted-foreground">
-              Nenhum deploy ainda. Use o botão Deploy acima para publicar a primeira versão.
-            </p>
-          </ListRow>
-        </List>
+        <p className="py-6 text-center text-sm text-muted-foreground">
+          Nenhum deploy ainda. Use o botão Deploy acima para publicar a primeira versão.
+        </p>
       ) : null}
       {deployments == null || deployments.length === 0 ? null : (
-        <List>
+        <ul className="-mx-2 divide-y divide-border">
           {deployments.map((deployment) => (
-            <DeploymentListRow
-              key={deployment.id}
-              projectId={projectId}
-              deploymentId={deployment.id}
-              status={deployment.status}
-            >
-              <div className="min-w-0 flex-1 space-y-1">
-                <div className="flex min-w-0 items-center gap-3">
-                  <Link
-                    to="/projects/$projectId/deployments/$deploymentId"
-                    params={{ projectId, deploymentId: deployment.id }}
-                    className="shrink-0 font-mono text-sm font-medium hover:underline focus-visible:underline focus-visible:outline-none"
-                  >
-                    {deployment.commitSha?.slice(0, SHORT_SHA_LENGTH) ??
-                      `deploy ${deployment.id.slice(-SHORT_SHA_LENGTH)}`}
-                  </Link>
-                  <span className="truncate text-sm">
+            <li key={deployment.id}>
+              <Link
+                to="/projects/$projectId/deployments/$deploymentId"
+                params={{ projectId, deploymentId: deployment.id }}
+                className="flex items-start justify-between gap-4 px-2 py-3 transition-colors hover:bg-well/50 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none focus-visible:ring-inset"
+              >
+                <span className="min-w-0">
+                  <span className="block truncate text-sm">
+                    <span className="font-mono font-medium">
+                      {deployment.commitSha?.slice(0, SHORT_SHA_LENGTH) ?? "—"}
+                    </span>{" "}
                     {deployment.commitMessage ?? "sem mensagem"}
                   </span>
-                </div>
-                <p className="truncate text-xs text-faint">
-                  {DEPLOYMENT_TRIGGER_LABELS[deployment.trigger]} · {deployment.triggeredByLabel} ·{" "}
-                  {formatRelativeTime(deployment.createdAt, now)} ·{" "}
-                  {formatDuration(durationBetween(deployment.startedAt, deployment.finishedAt))}
-                </p>
-              </div>
-              <DeploymentStatusBadge status={deployment.status} />
-            </DeploymentListRow>
+                  <span className="block truncate text-xs text-faint">
+                    {DEPLOYMENT_TRIGGER_LABELS[deployment.trigger]} · {deployment.triggeredByLabel}
+                  </span>
+                </span>
+                <span className="flex shrink-0 flex-col items-end gap-1">
+                  <DeploymentStatusBadge status={deployment.status} />
+                  <time dateTime={deployment.createdAt} className="text-xs text-faint">
+                    {formatRelativeTime(deployment.createdAt, now)}
+                  </time>
+                </span>
+              </Link>
+            </li>
           ))}
-        </List>
+        </ul>
       )}
-    </Section>
+    </Card>
   );
 }
 
-function Addresses({ details }: { readonly details: ProjectDetails }) {
-  const { project, domains } = details;
-  const manage = (
-    <Link
-      to="/projects/$projectId/domains"
-      params={{ projectId: project.id }}
-      className="text-sm text-muted-foreground transition-colors hover:text-foreground"
-    >
-      Gerenciar
-    </Link>
-  );
+const CARD_LINK =
+  "text-sm text-muted-foreground transition-colors hover:text-foreground focus-visible:text-foreground focus-visible:outline-none";
+
+/** A label and its value on one line; long values wrap instead of being cut. */
+function Fact({ label, children }: { readonly label: string; readonly children: ReactNode }) {
   return (
-    <Section title="Endereços" action={manage}>
+    <div className="space-y-0.5 py-2.5">
+      <dt className="text-xs text-faint">{label}</dt>
+      <dd className="text-sm break-all">{children}</dd>
+    </div>
+  );
+}
+
+function AddressesCard({ details }: { readonly details: ProjectDetails }) {
+  const { project, domains } = details;
+  return (
+    <Card className="gap-3 p-5">
+      <CardTitleRow icon={GlobeIcon} title="Endereços" count={domains.length}>
+        <Link
+          to="/projects/$projectId/domains"
+          params={{ projectId: project.id }}
+          className={CARD_LINK}
+        >
+          Gerenciar
+        </Link>
+      </CardTitleRow>
       {domains.length === 0 ? (
-        <p className="text-sm text-muted-foreground">
+        <p className="py-2.5 text-sm text-muted-foreground">
           Nenhum domínio.{" "}
           <Link
             to="/projects/$projectId/domains"
@@ -240,18 +335,18 @@ function Addresses({ details }: { readonly details: ProjectDetails }) {
           </Link>
         </p>
       ) : (
-        <ul className="space-y-2.5">
+        <ul className="divide-y divide-border">
           {domains.map((domain) => {
             const url = `${domain.httpsEnabled ? "https" : "http"}://${domain.hostname}`;
             return (
-              <li key={domain.hostname} className="flex items-center justify-between gap-3">
+              <li key={domain.hostname} className="flex items-center justify-between gap-3 py-2.5">
                 <a
                   href={url}
                   target="_blank"
                   rel="noreferrer noopener"
-                  className="group flex min-w-0 items-center gap-2 font-mono text-sm hover:text-foreground"
+                  className="group flex min-w-0 items-center gap-2 font-mono text-sm"
                 >
-                  <span className="truncate group-hover:underline">{domain.hostname}</span>
+                  <span className="break-all group-hover:underline">{domain.hostname}</span>
                   <ExternalLinkIcon aria-hidden className="size-3.5 shrink-0 text-faint" />
                   <span className="sr-only"> (abre em nova aba)</span>
                 </a>
@@ -264,41 +359,25 @@ function Addresses({ details }: { readonly details: ProjectDetails }) {
           })}
         </ul>
       )}
-    </Section>
+    </Card>
   );
 }
 
-function Fact({ label, children }: { readonly label: string; readonly children: ReactNode }) {
-  return (
-    <div className="flex items-baseline justify-between gap-4">
-      <dt className="shrink-0 text-sm text-muted-foreground">{label}</dt>
-      <dd className="min-w-0 truncate text-right text-sm">{children}</dd>
-    </div>
-  );
-}
-
-function ContainerFacts({ details }: { readonly details: ProjectDetails }) {
+function ContainerCard({ details }: { readonly details: ProjectDetails }) {
   const container = currentContainer(details);
   const others = details.containers.length - (container == null ? 0 : 1);
   return (
-    <Section title="Contêiner">
+    <Card className="gap-3 p-5">
+      <CardTitleRow icon={BoxIcon} title="Contêiner" />
       {container == null ? (
-        <p className="text-sm text-muted-foreground">Nenhum contêiner em execução.</p>
+        <p className="py-2.5 text-sm text-muted-foreground">Nenhum contêiner em execução.</p>
       ) : (
-        <dl className="space-y-2.5">
+        <dl className="divide-y divide-border">
           <Fact label="Nome">
-            <span className="font-mono" title={container.name}>
-              {container.name}
-            </span>
+            <span className="font-mono">{container.name}</span>
           </Fact>
           <Fact label="Imagem">
-            <span className="font-mono" title={container.image}>
-              {container.image}
-            </span>
-          </Fact>
-          <Fact label="Estado">
-            {CONTAINER_STATE_LABELS[container.state] ?? container.state}
-            {container.health == null ? "" : ` · ${container.health}`}
+            <span className="font-mono">{container.image}</span>
           </Fact>
           {others > 0 ? (
             <Fact label="Outros">
@@ -307,97 +386,33 @@ function ContainerFacts({ details }: { readonly details: ProjectDetails }) {
           ) : null}
         </dl>
       )}
-    </Section>
+    </Card>
   );
 }
 
-function Resources({ projectId }: { readonly projectId: string }) {
-  const metrics = useQuery({
-    queryKey: ["project-metrics", projectId, 1],
-    queryFn: () => getProjectMetricsFn({ data: { projectId, hours: 1 } }),
-    refetchInterval: METRICS_POLL_INTERVAL_IN_MS,
-  });
-  const samples = metrics.data ?? [];
-  const latest = samples.at(-1) ?? null;
-  return (
-    <Section
-      title="Recursos"
-      description="Última hora"
-      action={
-        <Link
-          to="/projects/$projectId/metrics"
-          params={{ projectId }}
-          className="inline-flex items-center gap-1 text-sm text-muted-foreground transition-colors hover:text-foreground"
-        >
-          Métricas
-          <ArrowRightIcon aria-hidden className="size-4" />
-        </Link>
-      }
-    >
-      {metrics.data == null ? <Skeleton className="h-28 rounded-lg" /> : null}
-      {metrics.data != null && samples.length === 0 ? (
-        <p className="text-sm text-muted-foreground">
-          Sem amostras ainda. CPU e memória aparecem enquanto o contêiner roda.
-        </p>
-      ) : null}
-      {latest == null ? null : (
-        <div className="space-y-5">
-          <div className="space-y-1.5">
-            <p className="flex items-baseline justify-between text-sm">
-              <span className="text-muted-foreground">CPU</span>
-              <span className="font-medium tabular-nums">{formatPercent(latest.cpuPercent)}</span>
-            </p>
-            <MetricChart
-              compact
-              label="CPU"
-              colorVariable="--chart-1"
-              maxValue={100}
-              formatValue={(value) => `${Math.round(value)}%`}
-              points={samples.map((sample) => ({
-                createdAt: sample.createdAt,
-                value: sample.cpuPercent,
-              }))}
-            />
-          </div>
-          <div className="space-y-1.5">
-            <p className="flex items-baseline justify-between text-sm">
-              <span className="text-muted-foreground">Memória</span>
-              <span className="font-medium tabular-nums">
-                {formatBytes(latest.memoryUsedBytes)}
-              </span>
-            </p>
-            <MetricChart
-              compact
-              label="Memória"
-              colorVariable="--chart-2"
-              formatValue={(value) => formatBytes(value)}
-              points={samples.map((sample) => ({
-                createdAt: sample.createdAt,
-                value: sample.memoryUsedBytes,
-              }))}
-            />
-          </div>
-        </div>
-      )}
-    </Section>
-  );
-}
-
-function ConfigurationLine({ details }: { readonly details: ProjectDetails }) {
+function ConfigurationCard({ details }: { readonly details: ProjectDetails }) {
   const { project } = details;
-  const healthCheck =
-    project.healthCheckPath == null ? "conexão TCP" : `HTTP ${project.healthCheckPath}`;
   return (
-    <p className="border-t border-border pt-6 text-sm text-faint">
-      <span className="font-mono">{project.dockerfilePath}</span> · porta {project.internalPort} ·
-      saúde por {healthCheck} · deploy {project.autoDeploy ? "automático a cada push" : "manual"} ·{" "}
-      <Link
-        to="/projects/$projectId/settings"
-        params={{ projectId: project.id }}
-        className="text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
-      >
-        Ajustes
-      </Link>
-    </p>
+    <Card className="gap-3 p-5">
+      <CardTitleRow icon={SlidersHorizontalIcon} title="Configuração">
+        <Link
+          to="/projects/$projectId/settings"
+          params={{ projectId: project.id }}
+          className={CARD_LINK}
+        >
+          Editar
+        </Link>
+      </CardTitleRow>
+      <dl className="divide-y divide-border">
+        <Fact label="Dockerfile">
+          <span className="font-mono">{project.dockerfilePath}</span>
+        </Fact>
+        <Fact label="Porta interna">{project.internalPort}</Fact>
+        <Fact label="Verificação de saúde">
+          {project.healthCheckPath == null ? "Conexão TCP" : `HTTP ${project.healthCheckPath}`}
+        </Fact>
+        <Fact label="Deploy">{project.autoDeploy ? "Automático a cada push" : "Manual"}</Fact>
+      </dl>
+    </Card>
   );
 }
