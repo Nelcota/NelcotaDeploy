@@ -16,6 +16,7 @@ import {
   ChevronRightIcon,
   ChevronsUpDownIcon,
   ClockIcon,
+  FolderIcon,
   GaugeIcon,
   GlobeIcon,
   HomeIcon,
@@ -28,13 +29,14 @@ import {
   RocketIcon,
   ScrollTextIcon,
   SearchIcon,
+  ServerIcon,
   SettingsIcon,
   ShieldCheckIcon,
   SlidersHorizontalIcon,
   SunIcon,
   VariableIcon,
 } from "lucide-react";
-import { type ReactNode, useState } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 import { toast } from "sonner";
 
 import { getSidebarStatusFn } from "@/web/functions/dashboard.functions";
@@ -43,7 +45,7 @@ import { listProjectsFn } from "@/web/functions/projects.functions";
 import type { SessionUser } from "@/web/functions/session.functions";
 
 import { authClient } from "./auth-client";
-import { NelcotaLogo } from "./brand-logo";
+import { NelcotaMark } from "./brand-logo";
 import { CommandPalette, useCommandPaletteShortcut } from "./command-palette";
 import { useDeploymentNotifications } from "./deployment-notifications";
 import { ROLE_LABELS } from "./labels";
@@ -61,6 +63,7 @@ import {
   DropdownMenuTrigger,
 } from "./ui/dropdown-menu";
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "./ui/sheet";
+import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 import { useAction } from "./use-action";
 import { useCan } from "./use-permissions";
 
@@ -171,39 +174,42 @@ function SearchButton({ onSearch }: { readonly onSearch: () => void }) {
   );
 }
 
-function ProjectSwitcher({
-  projectId,
-  onNavigate,
-}: { readonly projectId: string } & NavigateProps) {
+/**
+ * Header of the context panel: the open project (or the platform) with its status, and a
+ * menu to jump to any project.
+ */
+function ContextSwitcher({ onNavigate }: NavigateProps) {
+  const projectId = useCurrentProjectId();
   const projects = useQuery(projectsQuery());
   const current = projects.data?.find((project) => project.id === projectId) ?? null;
   const online = current?.containerState === "running";
+  const count = projects.data?.length ?? 0;
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <button
           type="button"
-          className="flex w-full items-center gap-3 rounded-lg border bg-surface px-3 py-2.5 text-left transition-colors hover:bg-surface-raised focus-visible:ring-3 focus-visible:ring-ring/40 focus-visible:outline-none"
+          className="flex h-full w-full items-center gap-3 px-5 text-left transition-colors hover:bg-sidebar-accent/60 focus-visible:ring-3 focus-visible:ring-ring/40 focus-visible:outline-none focus-visible:ring-inset"
         >
-          <span className="flex size-9 shrink-0 items-center justify-center rounded-md bg-accent text-sm font-bold text-accent-foreground">
-            {initialsOf(current?.name ?? "?")}
-          </span>
+          <FolderIcon aria-hidden className="size-5 shrink-0 text-muted-foreground" />
           <span className="min-w-0 flex-1">
             <span className="block truncate text-base font-semibold">
-              {current?.name ?? "Projeto"}
+              {current?.name ?? "Nelcota Deploy"}
             </span>
-            <span className="flex items-center gap-1.5 text-sm text-muted-foreground">
-              <StatusDot online={online} className="size-2" />
-              <span className="truncate">{online ? "Online" : "Offline"}</span>
+            <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              {current == null ? null : <StatusDot online={online} className="size-2" />}
+              <span className="truncate">
+                {current == null
+                  ? `${count} ${count === 1 ? "projeto" : "projetos"}`
+                  : current.repositoryFullName}
+              </span>
             </span>
           </span>
-          <ChevronsUpDownIcon aria-hidden className="size-4 shrink-0 text-muted-foreground" />
+          <ChevronDownIcon aria-hidden className="size-4 shrink-0 text-muted-foreground" />
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="w-[var(--radix-dropdown-menu-trigger-width)]">
-        <DropdownMenuLabel className="text-xs text-muted-foreground">
-          Trocar de projeto
-        </DropdownMenuLabel>
+        <DropdownMenuLabel className="text-xs text-muted-foreground">Projetos</DropdownMenuLabel>
         {(projects.data ?? []).map((project) => (
           <DropdownMenuItem key={project.id} asChild>
             <Link to="/projects/$projectId" params={{ projectId: project.id }} onClick={onNavigate}>
@@ -214,6 +220,12 @@ function ProjectSwitcher({
           </DropdownMenuItem>
         ))}
         <DropdownMenuSeparator />
+        <DropdownMenuItem asChild>
+          <Link to="/projects" onClick={onNavigate}>
+            <BoxesIcon aria-hidden />
+            Todos os projetos
+          </Link>
+        </DropdownMenuItem>
         <DropdownMenuItem asChild>
           <Link to="/projects/new" onClick={onNavigate}>
             <PlusIcon aria-hidden />
@@ -261,8 +273,47 @@ function NavLeaf({
   );
 }
 
+/** Path a nav link points to, with its params filled in, for "is this group current?" checks. */
+function itemPath(item: NavItem): string | null {
+  const to = item.link?.to;
+  if (typeof to !== "string") {
+    return null;
+  }
+  const params = item.link?.params;
+  const projectId =
+    typeof params === "object" && params != null && "projectId" in params
+      ? String(params.projectId)
+      : "";
+  return to.replace("$projectId", projectId);
+}
+
+function useGroupHoldsCurrentPage(item: NavItem): boolean {
+  const pathname = usePathname();
+  const search = useSearch({ strict: false });
+  return (item.children ?? []).some((child) => {
+    const path = itemPath(child);
+    if (path == null || pathname.startsWith(path) === false) {
+      return false;
+    }
+    const childSearch = child.link?.search;
+    if (typeof childSearch !== "object" || childSearch == null || "tab" in childSearch === false) {
+      return true;
+    }
+    return (
+      search.tab === childSearch.tab || (search.tab == null && childSearch.tab === "organization")
+    );
+  });
+}
+
 function NavGroup({ item, onNavigate }: { readonly item: NavItem } & NavigateProps) {
-  const [open, setOpen] = useState(item.defaultOpen !== false);
+  const holdsCurrentPage = useGroupHoldsCurrentPage(item);
+  const [open, setOpen] = useState(holdsCurrentPage || item.defaultOpen === true);
+  useEffect(() => {
+    // Navigating into a page of a collapsed group reveals where you are.
+    if (holdsCurrentPage) {
+      setOpen(true);
+    }
+  }, [holdsCurrentPage]);
   const children = item.children ?? [];
   return (
     <div>
@@ -275,9 +326,12 @@ function NavGroup({ item, onNavigate }: { readonly item: NavItem } & NavigatePro
         <span className="flex size-5 shrink-0 items-center justify-center">{item.icon}</span>
         <span className="min-w-0 flex-1">{item.label}</span>
         {item.badge}
-        <ChevronDownIcon
+        <ChevronRightIcon
           aria-hidden
-          className={cn("size-4 shrink-0 transition-transform", open ? "" : "-rotate-90")}
+          className={cn(
+            "size-4 shrink-0 text-muted-foreground transition-transform",
+            open ? "rotate-90" : "",
+          )}
         />
       </button>
       {open ? (
@@ -309,10 +363,9 @@ function icon(Icon: LucideIcon, sub = false) {
   return <Icon aria-hidden className={cn(sub ? "size-[1.125rem]" : NAV_ICON, "shrink-0")} />;
 }
 
-function administrationItem(permissions: readonly string[], defaultOpen = true): NavItem {
+function administrationItem(permissions: readonly string[]): NavItem {
   return {
     key: "administration",
-    defaultOpen,
     label: "Administração",
     icon: icon(ShieldCheckIcon),
     children: SETTINGS_SECTIONS.filter(
@@ -377,9 +430,21 @@ function GlobalNavigation({ user, onNavigate }: { readonly user: SessionUser } &
       link: { to: "/deployments" },
       badge: activeDeployments > 0 ? <CountBadge value={activeDeployments} tone="active" /> : null,
     },
-    administrationItem(user.permissions),
   ];
-  return <NavTree items={items} onNavigate={onNavigate} />;
+  return (
+    <>
+      <section className="space-y-1">
+        <SectionTitle>Visão geral</SectionTitle>
+        <NavTree items={items} onNavigate={onNavigate} />
+      </section>
+      <PanelDivider />
+      <NavTree items={[administrationItem(user.permissions)]} onNavigate={onNavigate} />
+    </>
+  );
+}
+
+function PanelDivider() {
+  return <div aria-hidden className="mx-3 h-px bg-sidebar-border" />;
 }
 
 /** Navigation inside a project: its pages grouped by purpose, then a way back. */
@@ -455,12 +520,6 @@ function ProjectNavigation({
   ];
   const general: NavItem[] = [
     {
-      key: "dashboard",
-      label: "Painel",
-      icon: icon(HomeIcon),
-      link: { to: "/", activeOptions: { exact: true } },
-    },
-    {
       key: "projects",
       label: "Todos os projetos",
       icon: icon(BoxesIcon),
@@ -472,21 +531,16 @@ function ProjectNavigation({
       icon: icon(RocketIcon),
       link: { to: "/deployments" },
     },
-    administrationItem(user.permissions, false),
+    administrationItem(user.permissions),
   ];
   return (
     <>
-      <section className="space-y-2">
-        <SectionTitle>Projeto</SectionTitle>
-        <ProjectSwitcher projectId={projectId} onNavigate={onNavigate} />
-        <div className="pt-1">
-          <NavTree items={items} onNavigate={onNavigate} />
-        </div>
-      </section>
       <section className="space-y-1">
-        <SectionTitle>Geral</SectionTitle>
-        <NavTree items={general} onNavigate={onNavigate} />
+        <SectionTitle>Projeto</SectionTitle>
+        <NavTree items={items} onNavigate={onNavigate} />
       </section>
+      <PanelDivider />
+      <NavTree items={general} onNavigate={onNavigate} />
     </>
   );
 }
@@ -515,7 +569,13 @@ function WorkerStatusRow() {
   );
 }
 
-function AccountMenu({ user }: { readonly user: SessionUser }) {
+function AccountMenu({
+  user,
+  compact = false,
+}: {
+  readonly user: SessionUser;
+  readonly compact?: boolean;
+}) {
   const { theme, toggleTheme } = useTheme();
   const router = useRouter();
   const signOut = async () => {
@@ -531,27 +591,33 @@ function AccountMenu({ user }: { readonly user: SessionUser }) {
       <DropdownMenuTrigger asChild>
         <button
           type="button"
-          className="flex w-full items-center gap-3 rounded-lg px-2 py-2 text-left transition-colors hover:bg-sidebar-accent focus-visible:ring-3 focus-visible:ring-ring/40 focus-visible:outline-none"
+          aria-label={compact ? `Conta de ${user.name}` : undefined}
+          className={cn(
+            "flex items-center gap-3 rounded-lg text-left transition-colors hover:bg-sidebar-accent focus-visible:ring-3 focus-visible:ring-ring/40 focus-visible:outline-none",
+            compact ? "p-1" : "w-full px-2 py-2",
+          )}
         >
           <span
             aria-hidden
-            className="flex size-10 shrink-0 items-center justify-center rounded-full bg-primary text-sm font-bold text-primary-foreground"
+            className="flex size-9 shrink-0 items-center justify-center rounded-full bg-primary text-sm font-bold text-primary-foreground"
           >
             {initialsOf(user.name)}
           </span>
-          <span className="min-w-0 flex-1">
+          <span className={cn("min-w-0 flex-1", compact ? "hidden" : "")}>
             <span className="block truncate text-base font-semibold">{user.name}</span>
             <span className="block truncate text-sm text-muted-foreground">
               {ROLE_LABELS[user.role]}
             </span>
           </span>
-          <ChevronsUpDownIcon aria-hidden className="size-4 shrink-0 text-muted-foreground" />
+          {compact ? null : (
+            <ChevronsUpDownIcon aria-hidden className="size-4 shrink-0 text-muted-foreground" />
+          )}
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent
-        side="top"
-        align="start"
-        className="w-[var(--radix-dropdown-menu-trigger-width)]"
+        side={compact ? "right" : "top"}
+        align={compact ? "end" : "start"}
+        className="w-64"
       >
         <DropdownMenuLabel className="font-normal">
           <p className="truncate font-semibold">{user.name}</p>
@@ -571,25 +637,112 @@ function AccountMenu({ user }: { readonly user: SessionUser }) {
   );
 }
 
-/** Everything inside the sidebar; shared by the desktop sidebar and the mobile drawer. */
-function SidebarContent({ user, onNavigate }: { readonly user: SessionUser } & NavigateProps) {
+const RAIL_LINK =
+  "flex size-11 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/40 focus-visible:outline-none data-[status=active]:bg-sidebar-accent data-[status=active]:text-foreground";
+
+function RailTooltip({
+  label,
+  children,
+}: {
+  readonly label: string;
+  readonly children: ReactNode;
+}) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>{children}</TooltipTrigger>
+      <TooltipContent side="right">{label}</TooltipContent>
+    </Tooltip>
+  );
+}
+
+function WorkerStatusIcon() {
+  const status = useQuery(sidebarStatusQuery());
+  const worker = status.data?.worker ?? null;
+  const healthy = worker?.online === true && worker.dockerAvailable;
+  let label = "Worker offline";
+  if (healthy) {
+    label = `Worker e Docker online${worker.dockerVersion == null ? "" : ` · Docker ${worker.dockerVersion}`}`;
+  } else if (worker?.online === true) {
+    label = "Worker online · Docker indisponível";
+  }
+  return (
+    <RailTooltip label={label}>
+      <Link to="/settings" search={{ tab: "server" }} aria-label={label} className={RAIL_LINK}>
+        <span className="relative">
+          <ServerIcon aria-hidden className="size-5" />
+          <StatusDot
+            online={healthy}
+            className="absolute -right-1 -bottom-1 size-2.5 ring-2 ring-sidebar"
+          />
+        </span>
+      </Link>
+    </RailTooltip>
+  );
+}
+
+function ThemeButton() {
+  const { theme, toggleTheme } = useTheme();
+  const label = theme === "dark" ? "Usar tema claro" : "Usar tema escuro";
+  return (
+    <RailTooltip label={label}>
+      <button type="button" aria-label={label} onClick={toggleTheme} className={RAIL_LINK}>
+        {theme === "dark" ? (
+          <SunIcon aria-hidden className="size-5" />
+        ) : (
+          <MoonIcon aria-hidden className="size-5" />
+        )}
+      </button>
+    </RailTooltip>
+  );
+}
+
+/** Narrow column with the logo, the main areas and the account. */
+function Rail({ user }: { readonly user: SessionUser }) {
+  return (
+    <div className="hidden w-[4.5rem] shrink-0 flex-col items-center justify-between bg-sidebar py-4 lg:flex">
+      <div className="flex flex-col items-center gap-6">
+        <Link
+          to="/"
+          aria-label="Nelcota Deploy — Painel"
+          className="flex size-12 items-center justify-center rounded-lg focus-visible:ring-3 focus-visible:ring-ring/40 focus-visible:outline-none"
+        >
+          <NelcotaMark className="h-8 w-auto" />
+        </Link>
+        <nav aria-label="Áreas" className="flex flex-col items-center gap-1.5">
+          {MAIN_AREAS.map((area) => (
+            <RailTooltip key={area.to} label={area.label}>
+              <Link
+                to={area.to}
+                activeOptions={{ exact: area.exact }}
+                aria-label={area.label}
+                className={RAIL_LINK}
+              >
+                <area.icon aria-hidden className="size-5" />
+              </Link>
+            </RailTooltip>
+          ))}
+        </nav>
+      </div>
+      <div className="flex flex-col items-center gap-1.5">
+        <WorkerStatusIcon />
+        <ThemeButton />
+        <AccountMenu user={user} compact />
+      </div>
+    </div>
+  );
+}
+
+/** The current context: switcher on top, then the pages of the project or of the platform. */
+function ContextPanel({ user, onNavigate }: { readonly user: SessionUser } & NavigateProps) {
   const projectId = useCurrentProjectId();
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="px-3 pt-5">
-        <Link
-          to="/"
-          onClick={onNavigate}
-          aria-label="Nelcota Deploy — Painel"
-          className="flex items-center gap-2.5 px-2 focus-visible:ring-3 focus-visible:ring-ring/40 focus-visible:outline-none"
-        >
-          <NelcotaLogo className="h-7 w-auto text-foreground" />
-          <span className="text-lg font-medium text-muted-foreground">Deploy</span>
-        </Link>
+      <div className="h-16 shrink-0 border-b border-sidebar-border">
+        <ContextSwitcher onNavigate={onNavigate} />
       </div>
       <nav
-        aria-label="Navegação principal"
-        className="min-h-0 flex-1 space-y-6 overflow-y-auto overscroll-contain px-3 py-5"
+        aria-label="Navegação da seção"
+        className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain px-3 py-5"
       >
         {projectId == null ? (
           <GlobalNavigation user={user} onNavigate={onNavigate} />
@@ -597,10 +750,6 @@ function SidebarContent({ user, onNavigate }: { readonly user: SessionUser } & N
           <ProjectNavigation projectId={projectId} user={user} onNavigate={onNavigate} />
         )}
       </nav>
-      <div className="space-y-1 border-t border-sidebar-border px-3 py-3">
-        <WorkerStatusRow />
-        <AccountMenu user={user} />
-      </div>
     </div>
   );
 }
@@ -758,9 +907,30 @@ function MobileMenu({ user }: { readonly user: SessionUser }) {
           <MenuIcon aria-hidden />
         </Button>
       </SheetTrigger>
-      <SheetContent side="left" className="w-80 gap-0 p-0">
+      <SheetContent side="left" className="w-80 gap-0 bg-panel p-0">
         <SheetTitle className="sr-only">Menu</SheetTitle>
-        <SidebarContent user={user} onNavigate={() => setOpen(false)} />
+        <nav
+          aria-label="Áreas"
+          className="grid grid-cols-4 gap-1 border-b border-sidebar-border p-3"
+        >
+          {MAIN_AREAS.map((area) => (
+            <Link
+              key={area.to}
+              to={area.to}
+              activeOptions={{ exact: area.exact }}
+              onClick={() => setOpen(false)}
+              className="flex flex-col items-center gap-1 rounded-lg py-2 text-xs text-muted-foreground hover:bg-sidebar-accent data-[status=active]:bg-sidebar-accent data-[status=active]:text-foreground"
+            >
+              <area.icon aria-hidden className="size-5" />
+              {area.label}
+            </Link>
+          ))}
+        </nav>
+        <ContextPanel user={user} onNavigate={() => setOpen(false)} />
+        <div className="space-y-1 border-t border-sidebar-border p-3">
+          <WorkerStatusRow />
+          <AccountMenu user={user} />
+        </div>
       </SheetContent>
     </Sheet>
   );
@@ -771,8 +941,8 @@ function MobileMenu({ user }: { readonly user: SessionUser }) {
 /* -------------------------------------------------------------------------- */
 
 /**
- * Application frame: one sidebar (areas, current project or recent projects, administration,
- * worker status and account) and a top bar with the breadcrumb.
+ * Application frame: an icon rail (areas, worker status, theme, account), a context panel
+ * (project switcher and the pages of the current project or of the platform) and a top bar.
  */
 export function AppShell({
   user,
@@ -793,8 +963,9 @@ export function AppShell({
       >
         Pular para o conteúdo
       </a>
-      <aside className="hidden w-72 shrink-0 flex-col border-r border-sidebar-border bg-sidebar lg:flex">
-        <SidebarContent user={user} />
+      <Rail user={user} />
+      <aside className="hidden w-64 shrink-0 flex-col border-x border-sidebar-border bg-panel lg:flex">
+        <ContextPanel user={user} />
       </aside>
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="flex h-16 shrink-0 items-center gap-2 border-b border-sidebar-border px-4 md:px-8">
