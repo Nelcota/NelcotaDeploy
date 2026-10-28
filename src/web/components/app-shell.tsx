@@ -3,6 +3,7 @@ import { Link, useRouter } from "@tanstack/react-router";
 import {
   ActivityIcon,
   ChevronDownIcon,
+  ImageUpIcon,
   LogOutIcon,
   MenuIcon,
   MoonIcon,
@@ -23,6 +24,7 @@ import { CommandPalette, useCommandPaletteShortcut } from "./command-palette";
 import { useDeploymentNotifications } from "./deployment-notifications";
 import { ROLE_LABELS } from "./labels";
 import { MAIN_AREAS } from "./navigation";
+import { ProfilePhotoDialog } from "./profile-photo-dialog";
 import { containerAccent, type RowAccent } from "./project-accent";
 import { useTheme } from "./theme";
 import { Button } from "./ui/button";
@@ -37,6 +39,7 @@ import {
 } from "./ui/dropdown-menu";
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "./ui/sheet";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
+import { UserAvatar } from "./user-avatar";
 
 const STATUS_POLL_INTERVAL_IN_MS = 10_000;
 /** Projects listed in the sidebar; the rest are one click away on the projects page. */
@@ -50,15 +53,6 @@ const ACCENT_DOTS: Record<RowAccent, string> = {
   progress: "bg-brand",
   neutral: "bg-faint",
 };
-
-function initialsOf(name: string): string {
-  return name
-    .split(/\s+/)
-    .map((part) => part.charAt(0))
-    .join("")
-    .slice(0, 2)
-    .toUpperCase();
-}
 
 /** Worker and Docker health plus running deployments, shared by the sidebar and the top bar. */
 function useSystemStatus() {
@@ -388,6 +382,7 @@ function SystemStatus() {
 function AccountMenu({ user }: { readonly user: SessionUser }) {
   const { theme, toggleTheme } = useTheme();
   const router = useRouter();
+  const [photoOpen, setPhotoOpen] = useState(false);
   const signOut = async () => {
     const result = await authClient.signOut();
     if (result.error != null) {
@@ -397,41 +392,46 @@ function AccountMenu({ user }: { readonly user: SessionUser }) {
     await router.navigate({ to: "/login" });
   };
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <button
-          type="button"
-          aria-label={`Conta de ${user.name}`}
-          className="flex shrink-0 items-center gap-3 rounded-full py-1 pr-2 pl-1 transition-colors hover:bg-well focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
-        >
-          <span className="flex size-9 items-center justify-center rounded-full bg-primary text-xs font-bold text-primary-foreground">
-            {initialsOf(user.name)}
-          </span>
-          <span className="hidden min-w-0 text-left md:block">
-            <span className="block max-w-36 truncate text-sm font-medium">{user.name}</span>
-            <span className="block text-xs text-faint">{ROLE_LABELS[user.role]}</span>
-          </span>
-          <ChevronDownIcon aria-hidden className="hidden size-4 text-muted-foreground md:block" />
-        </button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-64">
-        <DropdownMenuLabel className="font-normal">
-          <p className="truncate font-semibold">{user.name}</p>
-          <p className="truncate text-sm text-muted-foreground">
-            {user.email} · {ROLE_LABELS[user.role]}
-          </p>
-        </DropdownMenuLabel>
-        <DropdownMenuSeparator />
-        <DropdownMenuItem onSelect={toggleTheme}>
-          {theme === "dark" ? <SunIcon aria-hidden /> : <MoonIcon aria-hidden />}
-          {theme === "dark" ? "Tema claro" : "Tema escuro"}
-        </DropdownMenuItem>
-        <DropdownMenuItem onSelect={() => void signOut()}>
-          <LogOutIcon aria-hidden />
-          Sair
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
+    <>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <button
+            type="button"
+            aria-label={`Conta de ${user.name}`}
+            className="flex shrink-0 items-center gap-3 rounded-full py-1 pr-2 pl-1 transition-colors hover:bg-well focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+          >
+            <UserAvatar name={user.name} image={user.image} />
+            <span className="hidden min-w-0 text-left md:block">
+              <span className="block max-w-36 truncate text-sm font-medium">{user.name}</span>
+              <span className="block text-xs text-faint">{ROLE_LABELS[user.role]}</span>
+            </span>
+            <ChevronDownIcon aria-hidden className="hidden size-4 text-muted-foreground md:block" />
+          </button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-64">
+          <DropdownMenuLabel className="font-normal">
+            <p className="truncate font-semibold">{user.name}</p>
+            <p className="truncate text-sm text-muted-foreground">
+              {user.email} · {ROLE_LABELS[user.role]}
+            </p>
+          </DropdownMenuLabel>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem onSelect={() => setPhotoOpen(true)}>
+            <ImageUpIcon aria-hidden />
+            Foto de perfil
+          </DropdownMenuItem>
+          <DropdownMenuItem onSelect={toggleTheme}>
+            {theme === "dark" ? <SunIcon aria-hidden /> : <MoonIcon aria-hidden />}
+            {theme === "dark" ? "Tema claro" : "Tema escuro"}
+          </DropdownMenuItem>
+          <DropdownMenuItem onSelect={() => void signOut()}>
+            <LogOutIcon aria-hidden />
+            Sair
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+      <ProfilePhotoDialog user={user} open={photoOpen} onOpenChange={setPhotoOpen} />
+    </>
   );
 }
 

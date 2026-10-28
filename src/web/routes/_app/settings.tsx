@@ -55,6 +55,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/web/components/ui/ta
 import { usagePercent } from "@/web/components/usage-meter";
 import { useAction } from "@/web/components/use-action";
 import { useCan } from "@/web/components/use-permissions";
+import { UserAvatar } from "@/web/components/user-avatar";
 import {
   createApiTokenFn,
   createUserFn,
@@ -359,7 +360,8 @@ function UsersTab() {
               accent={user.disabled ? "neutral" : "none"}
               className="flex-wrap md:flex-nowrap"
             >
-              <div className="min-w-0 flex-1 basis-full space-y-0.5 md:basis-auto">
+              <UserAvatar name={user.name} image={user.image} />
+              <div className="min-w-0 flex-1 space-y-0.5 md:basis-auto">
                 <p className="truncate text-sm font-medium">{user.name}</p>
                 <p className="text-sm break-all text-muted-foreground">{user.email}</p>
               </div>

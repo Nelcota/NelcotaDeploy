@@ -19,6 +19,7 @@ import { Route as AppProjectsIndexRouteImport } from './routes/_app/projects/ind
 import { Route as AppProjectsProjectIdRouteImport } from './routes/_app/projects/$projectId'
 import { Route as AppProjectsNewRouteImport } from './routes/_app/projects/new'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
+import { Route as ApiAvatarsUserIdRouteImport } from './routes/api/avatars/$userId'
 import { Route as ApiWebhooksGithubRouteImport } from './routes/api/webhooks/github'
 import { Route as AppProjectsProjectIdIndexRouteImport } from './routes/_app/projects/$projectId/index'
 import { Route as AppProjectsProjectIdDomainsRouteImport } from './routes/_app/projects/$projectId/domains'
@@ -79,6 +80,11 @@ const AppProjectsNewRoute = AppProjectsNewRouteImport.update({
 const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
   id: '/api/auth/$',
   path: '/api/auth/$',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiAvatarsUserIdRoute = ApiAvatarsUserIdRouteImport.update({
+  id: '/api/avatars/$userId',
+  path: '/api/avatars/$userId',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiWebhooksGithubRoute = ApiWebhooksGithubRouteImport.update({
@@ -162,6 +168,7 @@ export interface FileRoutesByFullPath {
   '/projects/$projectId': typeof AppProjectsProjectIdRouteWithChildren
   '/projects/new': typeof AppProjectsNewRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/api/avatars/$userId': typeof ApiAvatarsUserIdRoute
   '/api/webhooks/github': typeof ApiWebhooksGithubRoute
   '/projects/': typeof AppProjectsIndexRoute
   '/projects/$projectId/domains': typeof AppProjectsProjectIdDomainsRoute
@@ -184,6 +191,7 @@ export interface FileRoutesByTo {
   '/': typeof AppIndexRoute
   '/projects/new': typeof AppProjectsNewRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/api/avatars/$userId': typeof ApiAvatarsUserIdRoute
   '/api/webhooks/github': typeof ApiWebhooksGithubRoute
   '/projects': typeof AppProjectsIndexRoute
   '/projects/$projectId/domains': typeof AppProjectsProjectIdDomainsRoute
@@ -209,6 +217,7 @@ export interface FileRoutesById {
   '/_app/projects/$projectId': typeof AppProjectsProjectIdRouteWithChildren
   '/_app/projects/new': typeof AppProjectsNewRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/api/avatars/$userId': typeof ApiAvatarsUserIdRoute
   '/api/webhooks/github': typeof ApiWebhooksGithubRoute
   '/_app/projects/': typeof AppProjectsIndexRoute
   '/_app/projects/$projectId/domains': typeof AppProjectsProjectIdDomainsRoute
@@ -234,6 +243,7 @@ export interface FileRouteTypes {
     | '/projects/$projectId'
     | '/projects/new'
     | '/api/auth/$'
+    | '/api/avatars/$userId'
     | '/api/webhooks/github'
     | '/projects/'
     | '/projects/$projectId/domains'
@@ -256,6 +266,7 @@ export interface FileRouteTypes {
     | '/'
     | '/projects/new'
     | '/api/auth/$'
+    | '/api/avatars/$userId'
     | '/api/webhooks/github'
     | '/projects'
     | '/projects/$projectId/domains'
@@ -280,6 +291,7 @@ export interface FileRouteTypes {
     | '/_app/projects/$projectId'
     | '/_app/projects/new'
     | '/api/auth/$'
+    | '/api/avatars/$userId'
     | '/api/webhooks/github'
     | '/_app/projects/'
     | '/_app/projects/$projectId/domains'
@@ -300,6 +312,7 @@ export interface RootRouteChildren {
   LoginRoute: typeof LoginRoute
   ApiHealthRoute: typeof ApiHealthRoute
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
+  ApiAvatarsUserIdRoute: typeof ApiAvatarsUserIdRoute
   ApiWebhooksGithubRoute: typeof ApiWebhooksGithubRoute
   ApiDeploymentsDeploymentIdLogsRoute: typeof ApiDeploymentsDeploymentIdLogsRoute
   ApiProjectsProjectIdRuntimeLogsRoute: typeof ApiProjectsProjectIdRuntimeLogsRoute
@@ -375,6 +388,13 @@ declare module '@tanstack/react-router' {
       path: '/api/auth/$'
       fullPath: '/api/auth/$'
       preLoaderRoute: typeof ApiAuthSplatRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/avatars/$userId': {
+      id: '/api/avatars/$userId'
+      path: '/api/avatars/$userId'
+      fullPath: '/api/avatars/$userId'
+      preLoaderRoute: typeof ApiAvatarsUserIdRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/webhooks/github': {
@@ -518,6 +538,7 @@ const rootRouteChildren: RootRouteChildren = {
   LoginRoute: LoginRoute,
   ApiHealthRoute: ApiHealthRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
+  ApiAvatarsUserIdRoute: ApiAvatarsUserIdRoute,
   ApiWebhooksGithubRoute: ApiWebhooksGithubRoute,
   ApiDeploymentsDeploymentIdLogsRoute: ApiDeploymentsDeploymentIdLogsRoute,
   ApiProjectsProjectIdRuntimeLogsRoute: ApiProjectsProjectIdRuntimeLogsRoute,
