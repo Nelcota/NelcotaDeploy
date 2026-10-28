@@ -19,7 +19,7 @@ export function Section({
 }) {
   return (
     <section className={cn("space-y-4", className)}>
-      <div className="flex items-end justify-between gap-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between sm:gap-4">
         <div className="min-w-0 space-y-1">
           <h2 className="text-base font-semibold tracking-tight">{title}</h2>
           {description == null ? null : (
@@ -169,7 +169,8 @@ export function CardTitleRow({
   readonly children?: ReactNode;
 }) {
   return (
-    <div className="flex flex-wrap items-center justify-between gap-3">
+    // Fixed minimum height: titles line up across cards whether or not they have buttons.
+    <div className="flex min-h-9 flex-wrap items-center justify-between gap-3">
       <h2 className="flex items-center gap-3 text-base font-semibold">
         <Icon aria-hidden className="size-[1.15rem] text-muted-foreground" />
         {title}

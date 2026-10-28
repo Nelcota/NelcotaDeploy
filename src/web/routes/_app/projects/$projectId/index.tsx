@@ -82,8 +82,11 @@ function ProjectOverviewPage() {
   return (
     <div className="space-y-6">
       <SituationCard details={data} latest={recent.data?.[0] ?? null} />
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1.7fr)_minmax(0,1fr)]">
-        <ResourcesCard projectId={projectId} />
+      {/* Both rows share one three-column grid so card edges line up. */}
+      <div className="grid gap-6 lg:grid-cols-3">
+        <div className="min-w-0 lg:col-span-2">
+          <ResourcesCard projectId={projectId} />
+        </div>
         <RecentDeploymentsCard projectId={projectId} deployments={recent.data ?? null} />
       </div>
       <div className="grid gap-6 lg:grid-cols-3">
@@ -187,7 +190,7 @@ function ResourcesCard({ projectId }: { readonly projectId: string }) {
       series === "cpu" ? formatPercent(latest.cpuPercent) : formatBytes(latest.memoryUsedBytes);
   }
   return (
-    <Card className="gap-5 p-5">
+    <Card className="h-full gap-5 p-5">
       <CardTitleRow icon={ActivityIcon} title="Recursos">
         <SegmentedControl
           label="Janela de tempo"
