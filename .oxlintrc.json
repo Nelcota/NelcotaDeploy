@@ -1,0 +1,115 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["typescript", "import", "jsdoc", "unicorn", "oxc"],
+  "jsPlugins": ["./lint/no-negation.js"],
+  "categories": {
+    "correctness": "error"
+  },
+  "ignorePatterns": ["node_modules", "dist", "coverage"],
+  "rules": {
+    "local/no-negation": "error",
+    "typescript/strict-boolean-expressions": [
+      "error",
+      {
+        "allowString": false,
+        "allowNumber": false,
+        "allowNullableObject": false
+      }
+    ],
+    "typescript/no-non-null-assertion": "error",
+    "eqeqeq": [
+      "error",
+      "always",
+      {
+        "null": "ignore"
+      }
+    ],
+    "no-else-return": [
+      "error",
+      {
+        "allowElseIf": false
+      }
+    ],
+    "max-depth": ["error", 2],
+    "no-nested-ternary": "error",
+    "typescript/no-floating-promises": "error",
+    "typescript/no-misused-promises": "error",
+    "typescript/require-await": "error",
+    "typescript/return-await": ["error", "always"],
+    "typescript/no-explicit-any": "error",
+    "typescript/switch-exhaustiveness-check": "error",
+    "typescript/consistent-type-imports": "error",
+    "typescript/only-throw-error": "error",
+    "use-isnan": "error",
+    "no-magic-numbers": [
+      "warn",
+      {
+        "ignore": [-1, 0, 1, 2, 100],
+        "ignoreEnums": true,
+        "ignoreNumericLiteralTypes": true,
+        "ignoreReadonlyClassProperties": true,
+        "ignoreTypeIndexes": true
+      }
+    ],
+    "prefer-const": "error",
+    "no-param-reassign": [
+      "error",
+      {
+        "props": true
+      }
+    ],
+    "no-empty": [
+      "error",
+      {
+        "allowEmptyCatch": false
+      }
+    ],
+    "no-eval": "error",
+    "no-implied-eval": "error",
+    "no-new-func": "error",
+    "import/no-cycle": "error",
+    "import/no-self-import": "error",
+    "no-restricted-imports": [
+      "error",
+      {
+        "patterns": [
+          {
+            "group": ["../*/*", "../../*/*", "!../shared/*", "!../../shared/*"],
+            "message": "Import other packages only through their index.ts (e.g. '../orders'), never internal files."
+          }
+        ]
+      }
+    ],
+    "jsdoc/require-param-type": "off",
+    "jsdoc/require-returns-type": "off",
+    "jsdoc/check-tag-names": [
+      "error",
+      {
+        "definedTags": [
+          "remarks",
+          "typeParam",
+          "defaultValue",
+          "privateRemarks",
+          "packageDocumentation"
+        ]
+      }
+    ],
+    "no-await-in-loop": "warn",
+    "oxc/no-accumulating-spread": "error",
+    "oxc/no-map-spread": "error",
+    "unicorn/prefer-set-has": "error",
+    "unicorn/prefer-array-some": "error",
+    "unicorn/prefer-array-find": "error",
+    "unicorn/prefer-array-flat-map": "error",
+    "unicorn/no-useless-spread": "error",
+    "unicorn/no-unnecessary-await": "error"
+  },
+  "overrides": [
+    {
+      "files": ["**/*.test.ts"],
+      "rules": {
+        "no-magic-numbers": "off"
+      }
+    }
+  ]
+}
