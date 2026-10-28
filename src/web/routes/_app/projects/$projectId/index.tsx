@@ -1,260 +1,350 @@
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import {
+  ActivityIcon,
+  ArrowRightIcon,
   ExternalLinkIcon,
   GlobeIcon,
   LockIcon,
   RocketIcon,
   ServerIcon,
+  SettingsIcon,
   UnlockIcon,
 } from "lucide-react";
 
 import {
   durationBetween,
-  formatDateTime,
+  formatBytes,
   formatDuration,
   formatRelativeTime,
+  pluralize,
 } from "@/shared/format";
-import { DEPLOYMENT_TRIGGER_LABELS } from "@/web/components/labels";
+import { ACTIVE_DEPLOYMENT_STATUSES, DEPLOYMENT_TRIGGER_LABELS } from "@/web/components/labels";
+import { MetricChart } from "@/web/components/metric-chart";
 import { ProjectHeader } from "@/web/components/project-header";
-import { projectQueryOptions } from "@/web/components/project-query";
+import { InfoNote } from "@/web/components/project-overview-info";
+import { type ProjectDetails, projectQueryOptions } from "@/web/components/project-query";
 import { EmptyState, ListSkeleton } from "@/web/components/states";
 import {
   ContainerStateBadge,
   DeploymentStatusBadge,
   StatusPill,
 } from "@/web/components/status-badge";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/web/components/ui/card";
-import { getDeploymentFn } from "@/web/functions/deployments.functions";
+import { Card, CardContent, CardHeader, CardTitle } from "@/web/components/ui/card";
+import { Skeleton } from "@/web/components/ui/skeleton";
+import { listDeploymentsFn } from "@/web/functions/deployments.functions";
+import { getProjectMetricsFn } from "@/web/functions/monitoring.functions";
 
-const SHORT_SHA_LENGTH = 12;
+const SHORT_SHA_LENGTH = 7;
+const RECENT_DEPLOYMENTS = 5;
+const ACTIVE_POLL_INTERVAL_IN_MS = 5000;
+const IDLE_POLL_INTERVAL_IN_MS = 30_000;
+const METRICS_POLL_INTERVAL_IN_MS = 30_000;
 
 export const Route = createFileRoute("/_app/projects/$projectId/")({
   component: ProjectOverviewPage,
 });
 
-function DetailRow({
-  label,
-  children,
-}: {
-  readonly label: string;
-  readonly children: React.ReactNode;
-}) {
-  return (
-    <div className="flex flex-col gap-0.5 py-2 sm:flex-row sm:justify-between sm:gap-4">
-      <dt className="text-sm text-muted-foreground">{label}</dt>
-      <dd className="text-sm break-all sm:text-right">{children}</dd>
-    </div>
-  );
-}
-
 function ProjectOverviewPage() {
   const { projectId } = Route.useParams();
   const details = useQuery(projectQueryOptions(projectId));
-  const currentDeploymentId = details.data?.project.currentDeploymentId ?? null;
-  const currentDeployment = useQuery({
-    queryKey: ["deployment", currentDeploymentId],
-    queryFn: () => getDeploymentFn({ data: { deploymentId: currentDeploymentId ?? "" } }),
-    enabled: currentDeploymentId != null,
-  });
 
   if (details.data == null) {
     return <ListSkeleton rows={4} />;
   }
-  const { project, domains, containers } = details.data;
-  const now = new Date();
-
+  const data = details.data;
   return (
     <>
-      <ProjectHeader details={details.data} />
-      <div className="grid gap-4 lg:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Configuração</CardTitle>
-            <CardDescription>Alterações valem a partir do próximo deploy.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <dl className="divide-y">
-              <DetailRow label="Repositório">{project.repositoryFullName}</DetailRow>
-              <DetailRow label="Branch">
-                <span className="font-mono">{project.branch}</span>
-              </DetailRow>
-              <DetailRow label="Dockerfile">
-                <span className="font-mono">{project.dockerfilePath}</span>
-              </DetailRow>
-              <DetailRow label="Diretório de build">
-                <span className="font-mono">{project.buildContext}</span>
-              </DetailRow>
-              <DetailRow label="Porta interna">{project.internalPort}</DetailRow>
-              <DetailRow label="Health check">
-                {project.healthCheckPath == null ? (
-                  "Conexão TCP na porta"
-                ) : (
-                  <span className="font-mono">{project.healthCheckPath}</span>
-                )}
-              </DetailRow>
-              <DetailRow label="Deploy automático">
-                {project.autoDeploy ? "Ativado" : "Desativado"}
-              </DetailRow>
-            </dl>
-            {project.autoDeploy ? (
-              <p className="mt-3 rounded-md bg-muted p-3 text-xs text-muted-foreground">
-                Para o deploy automático funcionar, configure o webhook do GitHub apontando para a
-                URL exibida em Administração › Servidor, com o evento “push”.
-              </p>
-            ) : null}
-          </CardContent>
-        </Card>
+      <ProjectHeader details={data} />
+      <ConfigurationLine details={data} />
+      <div className="grid gap-4 xl:grid-cols-5">
+        <div className="min-w-0 xl:col-span-3">
+          <RecentDeployments projectId={projectId} />
+        </div>
+        <div className="min-w-0 space-y-4 xl:col-span-2">
+          <DomainsCard details={data} />
+          <ContainersCard details={data} />
+        </div>
+      </div>
+      <ResourcesCard projectId={projectId} />
+    </>
+  );
+}
 
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-base">
-              <RocketIcon aria-hidden className="size-4" />
-              Deploy atual
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {currentDeploymentId == null ? (
-              <EmptyState
-                icon={RocketIcon}
-                title="Nenhum deploy concluído"
-                description="Clique em Deploy para publicar a aplicação."
-              />
-            ) : null}
-            {currentDeploymentId != null && currentDeployment.data == null ? (
-              <ListSkeleton rows={2} />
-            ) : null}
-            {currentDeployment.data == null || currentDeploymentId == null ? null : (
-              <dl className="divide-y">
-                <DetailRow label="Situação">
-                  <DeploymentStatusBadge status={currentDeployment.data.status} />
-                </DetailRow>
-                <DetailRow label="Commit">
-                  <span className="font-mono">
-                    {currentDeployment.data.commitSha?.slice(0, SHORT_SHA_LENGTH) ?? "—"}
-                  </span>
-                  {currentDeployment.data.commitMessage == null
-                    ? null
-                    : ` · ${currentDeployment.data.commitMessage}`}
-                </DetailRow>
-                <DetailRow label="Origem">
-                  {DEPLOYMENT_TRIGGER_LABELS[currentDeployment.data.trigger]} ·{" "}
-                  {currentDeployment.data.triggeredByLabel}
-                </DetailRow>
-                <DetailRow label="Concluído em">
-                  {formatDateTime(currentDeployment.data.finishedAt)}
-                </DetailRow>
-                <DetailRow label="Duração">
-                  {formatDuration(
-                    durationBetween(
-                      currentDeployment.data.startedAt,
-                      currentDeployment.data.finishedAt,
-                    ),
-                  )}
-                </DetailRow>
-                <div className="pt-3">
-                  <Link
-                    to="/projects/$projectId/deployments/$deploymentId"
-                    params={{ projectId, deploymentId: currentDeploymentId }}
-                    className="text-sm font-medium underline-offset-4 hover:underline"
-                  >
-                    Ver detalhes e logs do deploy
-                  </Link>
-                </div>
-              </dl>
-            )}
-          </CardContent>
-        </Card>
+function ConfigurationLine({ details }: { readonly details: ProjectDetails }) {
+  const { project } = details;
+  const healthCheck =
+    project.healthCheckPath == null ? "conexão TCP" : `HTTP ${project.healthCheckPath}`;
+  return (
+    <InfoNote
+      action={
+        <Link
+          to="/projects/$projectId/settings"
+          params={{ projectId: project.id }}
+          className="inline-flex items-center gap-1.5 text-sm font-medium hover:underline"
+        >
+          <SettingsIcon aria-hidden className="size-4" />
+          Ajustes do projeto
+        </Link>
+      }
+      details={
+        project.autoDeploy
+          ? "Cada push na branch dispara um deploy pelo webhook do GitHub (URL em Administração › Servidor, evento “push”)."
+          : undefined
+      }
+    >
+      <span className="font-mono">{project.dockerfilePath}</span> · porta {project.internalPort} ·
+      saúde por {healthCheck} · deploy {project.autoDeploy ? "automático" : "manual"}
+    </InfoNote>
+  );
+}
 
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-base">
-              <GlobeIcon aria-hidden className="size-4" />
-              Domínios
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {domains.length === 0 ? (
-              <EmptyState
-                icon={GlobeIcon}
-                title="Nenhum domínio"
-                description="Adicione domínios na aba Domínios."
-              />
-            ) : (
-              <ul className="divide-y">
-                {domains.map((domain) => (
-                  <li
-                    key={domain.hostname}
-                    className="flex flex-wrap items-center justify-between gap-2 py-2"
-                  >
-                    <a
-                      href={`${domain.httpsEnabled ? "https" : "http"}://${domain.hostname}`}
-                      target="_blank"
-                      rel="noreferrer noopener"
-                      className="inline-flex items-center gap-1.5 text-sm hover:underline"
-                    >
-                      {domain.httpsEnabled ? (
-                        <LockIcon aria-hidden className="size-3.5" />
-                      ) : (
-                        <UnlockIcon aria-hidden className="size-3.5" />
-                      )}
-                      {domain.hostname}
-                      <ExternalLinkIcon aria-hidden className="size-3.5" />
-                      <span className="sr-only">
-                        {domain.httpsEnabled
-                          ? "(HTTPS, abre em nova aba)"
-                          : "(HTTP, abre em nova aba)"}
+function RecentDeployments({ projectId }: { readonly projectId: string }) {
+  const deployments = useQuery({
+    queryKey: ["deployments", { projectId, limit: RECENT_DEPLOYMENTS }],
+    queryFn: () => listDeploymentsFn({ data: { projectId, limit: RECENT_DEPLOYMENTS } }),
+    refetchInterval: (query) =>
+      (query.state.data ?? []).some((deployment) =>
+        ACTIVE_DEPLOYMENT_STATUSES.has(deployment.status),
+      )
+        ? ACTIVE_POLL_INTERVAL_IN_MS
+        : IDLE_POLL_INTERVAL_IN_MS,
+  });
+  const now = new Date();
+  return (
+    <Card className="h-full">
+      <CardHeader className="flex flex-row items-center justify-between">
+        <CardTitle className="flex items-center gap-2">
+          <RocketIcon aria-hidden className="size-4" />
+          Deploys recentes
+        </CardTitle>
+        <Link
+          to="/projects/$projectId/deployments"
+          params={{ projectId }}
+          className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
+        >
+          Ver todos
+          <ArrowRightIcon aria-hidden className="size-4" />
+        </Link>
+      </CardHeader>
+      <CardContent>
+        {deployments.data == null ? <ListSkeleton rows={3} /> : null}
+        {deployments.data?.length === 0 ? (
+          <EmptyState
+            icon={RocketIcon}
+            title="Nenhum deploy ainda"
+            description="Clique em Deploy para publicar a aplicação."
+          />
+        ) : null}
+        {deployments.data == null || deployments.data.length === 0 ? null : (
+          <ol className="relative space-y-1 before:absolute before:top-3 before:bottom-3 before:left-[0.4375rem] before:w-px before:bg-border">
+            {deployments.data.map((deployment) => (
+              <li key={deployment.id} className="relative">
+                <Link
+                  to="/projects/$projectId/deployments/$deploymentId"
+                  params={{ projectId, deploymentId: deployment.id }}
+                  className="flex items-start gap-4 rounded-lg py-2.5 pr-3 transition-colors hover:bg-surface-raised focus-visible:ring-3 focus-visible:ring-ring/40 focus-visible:outline-none"
+                >
+                  <span
+                    aria-hidden
+                    className="relative z-10 mt-1.5 size-[0.9375rem] shrink-0 rounded-full border-4 border-card bg-muted-foreground/60"
+                  />
+                  <div className="min-w-0 flex-1 space-y-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <DeploymentStatusBadge status={deployment.status} />
+                      <span className="font-mono text-sm">
+                        {deployment.commitSha?.slice(0, SHORT_SHA_LENGTH) ?? "—"}
                       </span>
-                    </a>
-                    {domain.automatic ? <StatusPill tone="neutral" label="Automático" /> : null}
-                  </li>
-                ))}
-              </ul>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-base">
-              <ServerIcon aria-hidden className="size-4" />
-              Contêineres
-            </CardTitle>
-            <CardDescription>Estado observado pelo worker a cada poucos segundos.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {containers.length === 0 ? (
-              <EmptyState icon={ServerIcon} title="Nenhum contêiner" />
-            ) : (
-              <ul className="divide-y">
-                {containers.map((container) => (
-                  <li key={container.containerId} className="space-y-1 py-2">
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <span className="font-mono text-sm break-all">{container.name}</span>
-                      <ContainerStateBadge state={container.state} health={container.health} />
+                      <span className="truncate text-sm">
+                        {deployment.commitMessage ?? "sem mensagem"}
+                      </span>
                     </div>
                     <p className="text-xs text-muted-foreground">
-                      {container.state === "running"
-                        ? `Em execução desde ${formatRelativeTime(container.startedAt, now)}`
-                        : "Parado"}
-                      {" · "}
-                      {container.restartCount} reinicializações
-                      {container.health == null ? "" : ` · saúde: ${container.health}`}
-                      {container.deploymentId === project.currentDeploymentId ? " · atual" : ""}
+                      {DEPLOYMENT_TRIGGER_LABELS[deployment.trigger]} ·{" "}
+                      {deployment.triggeredByLabel} ·{" "}
+                      {formatRelativeTime(deployment.createdAt, now)} ·{" "}
+                      {formatDuration(durationBetween(deployment.startedAt, deployment.finishedAt))}
                     </p>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </CardContent>
-        </Card>
-      </div>
-    </>
+                  </div>
+                </Link>
+              </li>
+            ))}
+          </ol>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function DomainsCard({ details }: { readonly details: ProjectDetails }) {
+  const { project, domains } = details;
+  return (
+    <Card className="gap-3">
+      <CardHeader className="flex flex-row items-center justify-between">
+        <CardTitle className="flex items-center gap-2">
+          <GlobeIcon aria-hidden className="size-4" />
+          Domínios
+        </CardTitle>
+        <Link
+          to="/projects/$projectId/domains"
+          params={{ projectId: project.id }}
+          className="text-sm text-muted-foreground hover:text-foreground"
+        >
+          Gerenciar
+        </Link>
+      </CardHeader>
+      <CardContent>
+        {domains.length === 0 ? (
+          <p className="text-sm text-muted-foreground">
+            Nenhum domínio.{" "}
+            <Link
+              to="/projects/$projectId/domains"
+              params={{ projectId: project.id }}
+              className="font-medium text-foreground underline-offset-4 hover:underline"
+            >
+              Adicionar domínio
+            </Link>
+          </p>
+        ) : (
+          <ul className="divide-y">
+            {domains.map((domain) => {
+              const url = `${domain.httpsEnabled ? "https" : "http"}://${domain.hostname}`;
+              return (
+                <li key={domain.hostname} className="flex items-center justify-between gap-3 py-2">
+                  <span className="flex min-w-0 items-center gap-2 text-sm">
+                    {domain.httpsEnabled ? (
+                      <LockIcon aria-label="HTTPS" className="size-3.5 shrink-0 text-success" />
+                    ) : (
+                      <UnlockIcon
+                        aria-label="HTTP"
+                        className="size-3.5 shrink-0 text-muted-foreground"
+                      />
+                    )}
+                    <span className="truncate">{domain.hostname}</span>
+                    {domain.automatic ? <StatusPill tone="neutral" label="Automático" /> : null}
+                  </span>
+                  <a
+                    href={url}
+                    target="_blank"
+                    rel="noreferrer noopener"
+                    className="inline-flex shrink-0 items-center gap-1 text-sm font-medium hover:underline"
+                  >
+                    Abrir
+                    <ExternalLinkIcon aria-hidden className="size-3.5" />
+                    <span className="sr-only">{domain.hostname} em nova aba</span>
+                  </a>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function ContainersCard({ details }: { readonly details: ProjectDetails }) {
+  const { project, containers } = details;
+  const now = new Date();
+  return (
+    <Card className="gap-3">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <ServerIcon aria-hidden className="size-4" />
+          Contêineres
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        {containers.length === 0 ? (
+          <p className="text-sm text-muted-foreground">Nenhum contêiner em execução.</p>
+        ) : (
+          <ul className="divide-y">
+            {containers.map((container) => (
+              <li
+                key={container.containerId}
+                className="flex items-center justify-between gap-3 py-2"
+              >
+                <div className="min-w-0">
+                  <p className="truncate font-mono text-xs">{container.name}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {container.state === "running"
+                      ? `iniciado ${formatRelativeTime(container.startedAt, now)}`
+                      : "parado"}
+                    {" · "}
+                    {pluralize(container.restartCount, "reinício", "reinícios")}
+                    {container.deploymentId === project.currentDeploymentId ? " · atual" : ""}
+                  </p>
+                </div>
+                <ContainerStateBadge state={container.state} health={container.health} />
+              </li>
+            ))}
+          </ul>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function ResourcesCard({ projectId }: { readonly projectId: string }) {
+  const metrics = useQuery({
+    queryKey: ["project-metrics", projectId, 1],
+    queryFn: () => getProjectMetricsFn({ data: { projectId, hours: 1 } }),
+    refetchInterval: METRICS_POLL_INTERVAL_IN_MS,
+  });
+  const samples = metrics.data ?? [];
+  return (
+    <Card>
+      <CardHeader className="flex flex-row items-center justify-between">
+        <CardTitle className="flex items-center gap-2">
+          <ActivityIcon aria-hidden className="size-4" />
+          Recursos na última hora
+        </CardTitle>
+        <Link
+          to="/projects/$projectId/metrics"
+          params={{ projectId }}
+          className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
+        >
+          Ver métricas
+          <ArrowRightIcon aria-hidden className="size-4" />
+        </Link>
+      </CardHeader>
+      <CardContent>
+        {metrics.data == null ? <Skeleton className="h-64 rounded-lg" /> : null}
+        {metrics.data != null && samples.length === 0 ? (
+          <p className="text-sm text-muted-foreground">
+            Sem amostras ainda. O worker coleta CPU e memória enquanto o contêiner está em execução.
+          </p>
+        ) : null}
+        {samples.length === 0 ? null : (
+          <div className="grid gap-6 lg:grid-cols-2">
+            <div className="space-y-2">
+              <p className="text-sm font-medium">CPU</p>
+              <MetricChart
+                label="CPU"
+                colorVariable="--chart-1"
+                maxValue={100}
+                formatValue={(value) => `${Math.round(value)}%`}
+                points={samples.map((sample) => ({
+                  createdAt: sample.createdAt,
+                  value: sample.cpuPercent,
+                }))}
+              />
+            </div>
+            <div className="space-y-2">
+              <p className="text-sm font-medium">Memória</p>
+              <MetricChart
+                label="Memória"
+                colorVariable="--chart-2"
+                formatValue={(value) => formatBytes(value)}
+                points={samples.map((sample) => ({
+                  createdAt: sample.createdAt,
+                  value: sample.memoryUsedBytes,
+                }))}
+              />
+            </div>
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }

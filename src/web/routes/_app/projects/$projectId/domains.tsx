@@ -1,13 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
-import {
-  ExternalLinkIcon,
-  GlobeIcon,
-  InfoIcon,
-  PlusIcon,
-  RefreshCwIcon,
-  Trash2Icon,
-} from "lucide-react";
+import { ExternalLinkIcon, GlobeIcon, PlusIcon, RefreshCwIcon, Trash2Icon } from "lucide-react";
 import { type FormEvent, useState } from "react";
 import { z } from "zod";
 
@@ -15,6 +8,7 @@ import { domainInputSchema } from "@/shared/domain.schema";
 import { ConfirmDialog } from "@/web/components/confirm-dialog";
 import { FormField } from "@/web/components/form-field";
 import { PageHeader } from "@/web/components/page-header";
+import { InfoNote } from "@/web/components/project-overview-info";
 import { projectQueryOptions } from "@/web/components/project-query";
 import { EmptyState, ErrorState, ListSkeleton } from "@/web/components/states";
 import { StatusPill } from "@/web/components/status-badge";
@@ -68,35 +62,26 @@ function DomainsPage() {
     <>
       <PageHeader
         title="Domínios"
-        description="Endereços públicos roteados pelo Traefik até a porta interna do contêiner."
+        description="Endereços públicos que levam até a sua aplicação."
       />
-      <div className="flex flex-col gap-3 rounded-lg border bg-muted/40 p-4 text-sm sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex items-start gap-2">
-          <InfoIcon aria-hidden className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
-          <div className="space-y-1">
-            <p>
-              Crie um registro DNS do tipo A apontando cada domínio para o IP deste servidor. Com
-              DNS e ACME configurados, o Traefik emite os certificados HTTPS (Let&apos;s Encrypt)
-              automaticamente.
-            </p>
-            <p className="text-muted-foreground">
-              O roteamento só muda quando o contêiner é recriado: use “Aplicar agora” depois de
-              alterar os domínios.
-            </p>
-          </div>
-        </div>
-        {canRedeploy ? (
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={redeploy.isPending}
-            onClick={() => redeploy.mutate()}
-          >
-            <RefreshCwIcon aria-hidden />
-            Aplicar agora
-          </Button>
-        ) : null}
-      </div>
+      <InfoNote
+        details="Crie um registro DNS do tipo A apontando o domínio para o IP deste servidor. Com DNS e ACME configurados, o Traefik emite o certificado HTTPS (Let's Encrypt) sozinho. O roteamento muda quando o contêiner é recriado."
+        action={
+          canRedeploy ? (
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={redeploy.isPending}
+              onClick={() => redeploy.mutate()}
+            >
+              <RefreshCwIcon aria-hidden />
+              Aplicar agora
+            </Button>
+          ) : null
+        }
+      >
+        Depois de alterar domínios, clique em Aplicar agora.
+      </InfoNote>
 
       <Card>
         <CardHeader>

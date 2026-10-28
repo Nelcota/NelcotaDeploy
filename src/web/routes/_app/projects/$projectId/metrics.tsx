@@ -5,10 +5,11 @@ import { useState } from "react";
 
 import { formatBytes, formatDateTime, formatRelativeTime } from "@/shared/format";
 import { MetricChart } from "@/web/components/metric-chart";
+import { SegmentedControl } from "@/web/components/overview";
+import { PageHeader } from "@/web/components/page-header";
 import { projectQueryOptions } from "@/web/components/project-query";
 import { EmptyState, ErrorState } from "@/web/components/states";
 import { ContainerStateBadge } from "@/web/components/status-badge";
-import { Button } from "@/web/components/ui/button";
 import {
   Card,
   CardContent,
@@ -17,13 +18,13 @@ import {
   CardTitle,
 } from "@/web/components/ui/card";
 import { Skeleton } from "@/web/components/ui/skeleton";
-import { UsageMeter, usagePercent } from "@/web/components/usage-meter";
+import { UsageMeter } from "@/web/components/usage-meter";
 import { getProjectMetricsFn } from "@/web/functions/monitoring.functions";
 
 const WINDOWS = [
-  { hours: 1, label: "1 hora" },
-  { hours: 6, label: "6 horas" },
-  { hours: 24, label: "24 horas" },
+  { value: 1, label: "1 hora" },
+  { value: 6, label: "6 horas" },
+  { value: 24, label: "24 horas" },
 ] as const;
 const REFRESH_INTERVAL_IN_MS = 15_000;
 const MAX_CPU_PERCENT = 100;
@@ -50,27 +51,17 @@ function ProjectMetricsPage() {
   const samples = metrics.data ?? [];
   const latest = samples.at(-1) ?? null;
   const now = new Date();
+  const cpuIdle = samples.length > 0 && samples.every((sample) => (sample.cpuPercent ?? 0) === 0);
 
   return (
-    <section aria-label="Métricas" className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="text-sm text-muted-foreground">
-          CPU e memória do contêiner atual, coletadas pelo worker.
-        </p>
-        <div role="group" aria-label="Período" className="flex gap-1">
-          {WINDOWS.map((window) => (
-            <Button
-              key={window.hours}
-              size="sm"
-              variant={hours === window.hours ? "default" : "outline"}
-              aria-pressed={hours === window.hours}
-              onClick={() => setHours(window.hours)}
-            >
-              {window.label}
-            </Button>
-          ))}
-        </div>
-      </div>
+    <section aria-label="Métricas" className="space-y-6">
+      <PageHeader
+        title="Métricas"
+        description="CPU e memória do contêiner atual, coletadas pelo worker."
+        actions={
+          <SegmentedControl label="Período" options={WINDOWS} value={hours} onChange={setHours} />
+        }
+      />
 
       <div className="grid gap-4 lg:grid-cols-3">
         <Card>
@@ -84,15 +75,18 @@ function ProjectMetricsPage() {
           </CardHeader>
           <CardContent className="space-y-4">
             <UsageMeter label="CPU" percent={latest?.cpuPercent ?? null} />
-            <UsageMeter
-              label="Memória"
-              percent={usagePercent(latest?.memoryUsedBytes, latest?.memoryTotalBytes)}
-              {...(latest == null
-                ? {}
-                : {
-                    detail: `${formatBytes(latest.memoryUsedBytes)} de ${formatBytes(latest.memoryTotalBytes)}`,
-                  })}
-            />
+            <div className="space-y-1">
+              <p className="text-sm font-semibold">Memória em uso</p>
+              <p className="text-2xl font-semibold tracking-tight tabular-nums">
+                {formatBytes(latest?.memoryUsedBytes ?? null)}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                {/* Docker reports the host memory as the limit when the container has none. */}
+                {latest?.memoryTotalBytes == null
+                  ? "Limite indisponível"
+                  : `Limite visto pelo contêiner: ${formatBytes(latest.memoryTotalBytes)}`}
+              </p>
+            </div>
           </CardContent>
         </Card>
         <Card className="lg:col-span-2">
@@ -152,6 +146,9 @@ function ProjectMetricsPage() {
               <CardTitle className="text-base">CPU</CardTitle>
             </CardHeader>
             <CardContent>
+              {cpuIdle ? (
+                <p className="mb-2 text-xs text-muted-foreground">CPU ociosa no período.</p>
+              ) : null}
               <MetricChart
                 label="CPU"
                 colorVariable="--chart-1"

@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import {
   Link,
   type LinkComponentProps,
+  useNavigate,
   useParams,
   useRouter,
   useRouterState,
@@ -37,14 +38,17 @@ import { type ReactNode, useState } from "react";
 import { toast } from "sonner";
 
 import { getSidebarStatusFn } from "@/web/functions/dashboard.functions";
+import { deployProjectFn } from "@/web/functions/deployments.functions";
 import { listProjectsFn } from "@/web/functions/projects.functions";
 import type { SessionUser } from "@/web/functions/session.functions";
 
 import { authClient } from "./auth-client";
 import { NelcotaLogo } from "./brand-logo";
 import { CommandPalette, useCommandPaletteShortcut } from "./command-palette";
+import { useDeploymentNotifications } from "./deployment-notifications";
 import { ROLE_LABELS } from "./labels";
 import { MAIN_AREAS, PROJECT_SECTIONS, SETTINGS_SECTIONS } from "./navigation";
+import { projectQueryOptions } from "./project-query";
 import { useTheme } from "./theme";
 import { Button } from "./ui/button";
 import { cn } from "./ui/class-names";
@@ -57,6 +61,8 @@ import {
   DropdownMenuTrigger,
 } from "./ui/dropdown-menu";
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "./ui/sheet";
+import { useAction } from "./use-action";
+import { useCan } from "./use-permissions";
 
 const NAV_LINK =
   "group flex h-10 items-center gap-3 rounded-lg px-3 text-base text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/40 focus-visible:outline-none data-[status=active]:bg-sidebar-accent data-[status=active]:font-medium data-[status=active]:text-foreground";
@@ -154,7 +160,7 @@ function SearchButton({ onSearch }: { readonly onSearch: () => void }) {
       type="button"
       onClick={onSearch}
       aria-label="Buscar projetos e páginas"
-      className="ml-auto flex h-10 shrink-0 items-center gap-3 rounded-lg border bg-surface px-3 text-base whitespace-nowrap text-muted-foreground transition-colors hover:border-input hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/40 focus-visible:outline-none sm:w-80"
+      className="flex h-10 shrink-0 items-center gap-3 rounded-lg border bg-surface px-3 text-base whitespace-nowrap text-muted-foreground transition-colors hover:border-input hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/40 focus-visible:outline-none sm:w-80"
     >
       <SearchIcon aria-hidden className="size-[1.125rem]" />
       <span className="hidden sm:inline">Buscar…</span>
@@ -569,7 +575,7 @@ function AccountMenu({ user }: { readonly user: SessionUser }) {
 function SidebarContent({ user, onNavigate }: { readonly user: SessionUser } & NavigateProps) {
   const projectId = useCurrentProjectId();
   return (
-    <div className="flex h-full flex-col">
+    <div className="flex min-h-0 flex-1 flex-col">
       <div className="px-3 pt-5">
         <Link
           to="/"
@@ -581,7 +587,10 @@ function SidebarContent({ user, onNavigate }: { readonly user: SessionUser } & N
           <span className="text-lg font-medium text-muted-foreground">Deploy</span>
         </Link>
       </div>
-      <nav aria-label="Navegação principal" className="flex-1 space-y-6 overflow-y-auto px-3 py-5">
+      <nav
+        aria-label="Navegação principal"
+        className="min-h-0 flex-1 space-y-6 overflow-y-auto overscroll-contain px-3 py-5"
+      >
         {projectId == null ? (
           <GlobalNavigation user={user} onNavigate={onNavigate} />
         ) : (
@@ -602,7 +611,32 @@ function SidebarContent({ user, onNavigate }: { readonly user: SessionUser } & N
 
 type Crumb = { readonly label: string; readonly link?: ReactNode };
 
+const SHORT_ID_LENGTH = 8;
+
+function deploymentCrumbs(
+  projectId: string,
+  section: (typeof PROJECT_SECTIONS)[number],
+  deploymentId: string | null,
+): Crumb[] {
+  if (deploymentId == null) {
+    return [{ label: section.label }];
+  }
+  return [
+    {
+      label: "Deploys",
+      link: (
+        <Link to="/projects/$projectId/deployments" params={{ projectId }}>
+          Deploys
+        </Link>
+      ),
+    },
+    { label: `Deploy ${deploymentId.replaceAll("-", "").slice(-SHORT_ID_LENGTH)}` },
+  ];
+}
+
 function useBreadcrumb(): Crumb[] {
+  const params = useParams({ strict: false });
+  const deploymentId = typeof params.deploymentId === "string" ? params.deploymentId : null;
   const pathname = usePathname();
   const search = useSearch({ strict: false });
   const projectId = useCurrentProjectId();
@@ -625,7 +659,7 @@ function useBreadcrumb(): Crumb[] {
           </Link>
         ),
       },
-      { label: section.label },
+      ...deploymentCrumbs(projectId, section, deploymentId),
     ];
   }
   if (pathname.startsWith("/settings")) {
@@ -653,11 +687,17 @@ function Breadcrumb() {
         {crumbs.map((crumb, index) => {
           const last = index === crumbs.length - 1;
           return (
-            <li key={`${crumb.label}-${index}`} className="flex min-w-0 items-center gap-1.5">
+            <li
+              key={`${crumb.label}-${index}`}
+              className={cn("min-w-0 items-center gap-1.5", last ? "flex" : "hidden sm:flex")}
+            >
               {index > 0 ? (
                 <ChevronRightIcon
                   aria-hidden
-                  className="size-4 shrink-0 text-muted-foreground/60"
+                  className={cn(
+                    "size-4 shrink-0 text-muted-foreground/60",
+                    last ? "hidden sm:block" : "",
+                  )}
                 />
               ) : null}
               {last ? (
@@ -674,6 +714,38 @@ function Breadcrumb() {
         })}
       </ol>
     </nav>
+  );
+}
+
+/** Deploy button in the top bar on every project page except the overview, which has its own. */
+function ProjectQuickDeploy() {
+  const projectId = useCurrentProjectId();
+  const pathname = usePathname();
+  const can = useCan();
+  const navigate = useNavigate();
+  const project = useQuery({ ...projectQueryOptions(projectId ?? ""), enabled: projectId != null });
+  const deploy = useAction({
+    action: () => deployProjectFn({ data: { projectId: projectId ?? "" } }),
+    successMessage: (result) =>
+      result.created ? "Deploy colocado na fila" : "Já existe um deploy igual na fila",
+    invalidate: [["project", projectId], ["deployments"]],
+    onSuccess: async (result) => {
+      await navigate({
+        to: "/projects/$projectId/deployments/$deploymentId",
+        params: { projectId: projectId ?? "", deploymentId: result.deploymentId },
+      });
+    },
+  });
+  const onOverview = projectId != null && pathname === `/projects/${projectId}`;
+  const approved = project.data?.project.deploymentsApproved === true;
+  if (projectId == null || onOverview || approved === false || can("deployment:create") === false) {
+    return null;
+  }
+  return (
+    <Button size="sm" disabled={deploy.isPending} onClick={() => deploy.mutate()}>
+      <RocketIcon aria-hidden />
+      <span className="hidden sm:inline">Deploy</span>
+    </Button>
   );
 }
 
@@ -711,19 +783,29 @@ export function AppShell({
 }) {
   const [searchOpen, setSearchOpen] = useState(false);
   useCommandPaletteShortcut(() => setSearchOpen(true));
+  useDeploymentNotifications();
   const openSearch = () => setSearchOpen(true);
   return (
     <div className="flex h-svh overflow-hidden bg-background">
-      <aside className="hidden w-72 shrink-0 border-r border-sidebar-border bg-sidebar lg:block">
+      <a
+        href="#main"
+        className="sr-only z-50 rounded-lg bg-primary px-4 py-2 text-primary-foreground focus:not-sr-only focus:fixed focus:top-3 focus:left-3"
+      >
+        Pular para o conteúdo
+      </a>
+      <aside className="hidden w-72 shrink-0 flex-col border-r border-sidebar-border bg-sidebar lg:flex">
         <SidebarContent user={user} />
       </aside>
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="flex h-16 shrink-0 items-center gap-2 border-b border-sidebar-border px-4 md:px-8">
           <MobileMenu user={user} />
           <Breadcrumb />
-          <SearchButton onSearch={openSearch} />
+          <div className="ml-auto flex items-center gap-2">
+            <ProjectQuickDeploy />
+            <SearchButton onSearch={openSearch} />
+          </div>
         </header>
-        <main id="main" className="flex-1 overflow-y-auto">
+        <main id="main" tabIndex={-1} className="flex-1 overflow-y-auto focus:outline-none">
           <div className="mx-auto max-w-[88rem] space-y-8 px-5 py-8 md:px-10 md:py-10">
             {children}
           </div>

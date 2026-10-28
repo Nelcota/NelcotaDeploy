@@ -1,7 +1,14 @@
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { createColumnHelper, tableFeatures, useTable } from "@tanstack/react-table";
-import { BoxesIcon, PlusIcon, SearchIcon } from "lucide-react";
+import {
+  ArrowDownIcon,
+  ArrowUpDownIcon,
+  ArrowUpIcon,
+  BoxesIcon,
+  PlusIcon,
+  SearchIcon,
+} from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 import type { DeploymentStatus } from "@/deployments";
@@ -90,13 +97,7 @@ function useColumns(now: Date) {
           header: "Projeto",
           cell: ({ row }) => (
             <div className="min-w-0">
-              <Link
-                to="/projects/$projectId"
-                params={{ projectId: row.original.id }}
-                className="font-medium hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
-              >
-                {row.original.name}
-              </Link>
+              <p className="font-medium">{row.original.name}</p>
               <p className="font-mono text-xs text-muted-foreground">{row.original.slug}</p>
             </div>
           ),
@@ -144,10 +145,13 @@ function useColumns(now: Date) {
         }),
         helper.display({
           id: "autoDeploy",
-          header: "Deploy automático",
-          cell: ({ row }) => (
-            <span className="text-sm">{row.original.autoDeploy ? "Ativado" : "Desativado"}</span>
-          ),
+          header: "Deploy",
+          cell: ({ row }) =>
+            row.original.autoDeploy ? (
+              <StatusPill tone="success" label="Automático" />
+            ) : (
+              <StatusPill tone="neutral" label="Manual" />
+            ),
         }),
       ]),
     [now],
@@ -165,6 +169,60 @@ function useDebouncedValue(value: string, delayInMs: number): string {
 
 const NO_PROJECTS: ProjectRow[] = [];
 
+type SortKey = "name" | "latestDeployment";
+type SortState = { readonly key: SortKey; readonly direction: "ascending" | "descending" };
+
+const SORT_LABELS: Record<SortKey, string> = { name: "Projeto", latestDeployment: "Último deploy" };
+
+function isSortKey(id: string): id is SortKey {
+  return Object.hasOwn(SORT_LABELS, id);
+}
+
+/**
+ * Orders projects by name or by the time of their latest deployment (projects never deployed
+ * go last in both directions).
+ */
+function sortProjects(projects: readonly ProjectRow[], sort: SortState): ProjectRow[] {
+  const sign = sort.direction === "ascending" ? 1 : -1;
+  return projects.toSorted((left, right) => {
+    if (sort.key === "name") {
+      return sign * left.name.localeCompare(right.name, "pt-BR");
+    }
+    const leftTime = left.latestDeployment?.createdAt ?? null;
+    const rightTime = right.latestDeployment?.createdAt ?? null;
+    if (leftTime == null || rightTime == null) {
+      return Number(leftTime == null) - Number(rightTime == null);
+    }
+    return sign * leftTime.localeCompare(rightTime);
+  });
+}
+
+function SortButton({
+  sortKey,
+  sort,
+  onSort,
+}: {
+  readonly sortKey: SortKey;
+  readonly sort: SortState;
+  readonly onSort: (key: SortKey) => void;
+}) {
+  const active = sort.key === sortKey;
+  let Icon = ArrowUpDownIcon;
+  if (active) {
+    Icon = sort.direction === "ascending" ? ArrowUpIcon : ArrowDownIcon;
+  }
+  return (
+    <button
+      type="button"
+      onClick={() => onSort(sortKey)}
+      className="-ml-1 inline-flex items-center gap-1.5 rounded-md px-1 py-0.5 hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/40 focus-visible:outline-none"
+    >
+      {SORT_LABELS[sortKey]}
+      <Icon aria-hidden className={active ? "size-3.5 text-foreground" : "size-3.5 opacity-60"} />
+    </button>
+  );
+}
+
 function ProjectsPage() {
   const can = useCan();
   const [search, setSearch] = useState("");
@@ -176,12 +234,26 @@ function ProjectsPage() {
     placeholderData: keepPreviousData,
     refetchInterval: REFRESH_INTERVAL_IN_MS,
   });
+  const navigate = useNavigate();
+  const [sort, setSort] = useState<SortState>({ key: "name", direction: "ascending" });
+  const toggleSort = (key: SortKey) =>
+    setSort((current) => ({
+      key,
+      direction:
+        current.key === key && current.direction === "ascending" ? "descending" : "ascending",
+    }));
   const [now] = useState(() => new Date());
   const columns = useColumns(now);
   const rows = useMemo(
-    () => (projects.data ?? NO_PROJECTS).filter((project) => matchesFilter(project, filter)),
-    [projects.data, filter],
+    () =>
+      sortProjects(
+        (projects.data ?? NO_PROJECTS).filter((project) => matchesFilter(project, filter)),
+        sort,
+      ),
+    [projects.data, filter, sort],
   );
+  const openProject = (projectId: string) =>
+    void navigate({ to: "/projects/$projectId", params: { projectId } });
   const table = useTable({ features, columns, data: rows });
 
   return (
@@ -201,22 +273,26 @@ function ProjectsPage() {
         }
       />
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-        <div className="relative flex-1 space-y-2">
-          <Label htmlFor="project-search">Buscar</Label>
+        <div className="relative flex-1">
+          <Label htmlFor="project-search" className="sr-only">
+            Buscar projetos
+          </Label>
           <SearchIcon
             aria-hidden
-            className="absolute bottom-2.5 left-2.5 size-4 text-muted-foreground"
+            className="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground"
           />
           <Input
             id="project-search"
-            placeholder="Nome, identificador ou repositório"
-            className="pl-8"
+            placeholder="Buscar por nome, identificador ou repositório"
+            className="pl-9"
             value={search}
             onChange={(event) => setSearch(event.target.value)}
           />
         </div>
-        <div className="space-y-2 sm:w-56">
-          <Label htmlFor="project-filter">Situação</Label>
+        <div className="sm:w-56">
+          <Label htmlFor="project-filter" className="sr-only">
+            Filtrar por situação
+          </Label>
           <Select
             value={filter}
             onValueChange={(value) => setFilter(isStatusFilter(value) ? value : "all")}
@@ -247,17 +323,40 @@ function ProjectsPage() {
             <TableHeader>
               {table.getHeaderGroups().map((group) => (
                 <TableRow key={group.id}>
-                  {group.headers.map((header) => (
-                    <TableHead key={header.id}>
-                      {header.isPlaceholder ? null : <table.FlexRender header={header} />}
-                    </TableHead>
-                  ))}
+                  {group.headers.map((header) => {
+                    const sortKey = isSortKey(header.column.id) ? header.column.id : null;
+                    let ariaSort: "ascending" | "descending" | "none" | undefined;
+                    if (sortKey != null) {
+                      ariaSort = sort.key === sortKey ? sort.direction : "none";
+                    }
+                    return (
+                      <TableHead key={header.id} aria-sort={ariaSort}>
+                        {sortKey == null ? (
+                          <table.FlexRender header={header} />
+                        ) : (
+                          <SortButton sortKey={sortKey} sort={sort} onSort={toggleSort} />
+                        )}
+                      </TableHead>
+                    );
+                  })}
                 </TableRow>
               ))}
             </TableHeader>
             <TableBody>
               {table.getRowModel().rows.map((row) => (
-                <TableRow key={row.id}>
+                <TableRow
+                  key={row.id}
+                  tabIndex={0}
+                  aria-label={`Abrir ${row.original.name}`}
+                  className="cursor-pointer focus-visible:ring-3 focus-visible:ring-ring/40 focus-visible:outline-none"
+                  onClick={() => openProject(row.original.id)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      openProject(row.original.id);
+                    }
+                  }}
+                >
                   {row.getAllCells().map((cell) => (
                     <TableCell key={cell.id}>
                       <table.FlexRender cell={cell} />

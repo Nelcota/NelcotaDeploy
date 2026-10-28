@@ -3,7 +3,6 @@ import { useQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import {
   HistoryIcon,
-  InfoIcon,
   ListChecksIcon,
   PencilIcon,
   PlayIcon,
@@ -20,6 +19,7 @@ import type { Task } from "@/tasks";
 import { ConfirmDialog } from "@/web/components/confirm-dialog";
 import { FormField } from "@/web/components/form-field";
 import { PageHeader } from "@/web/components/page-header";
+import { InfoNote } from "@/web/components/project-overview-info";
 import { EmptyState, ErrorState, ListSkeleton } from "@/web/components/states";
 import { TaskStatusBadge } from "@/web/components/status-badge";
 import { Button } from "@/web/components/ui/button";
@@ -182,11 +182,9 @@ function TasksPage() {
           ) : null
         }
       />
-      <p className="flex items-start gap-2 rounded-lg border bg-muted/40 p-4 text-sm">
-        <InfoIcon aria-hidden className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
-        Os comandos rodam dentro do contêiner atual do projeto via docker exec, como uma lista de
-        argumentos: não passam por um shell e nunca executam no servidor host.
-      </p>
+      <InfoNote details="Cada comando roda com docker exec no contêiner atual, como lista de argumentos: não passa por um shell e nunca executa no servidor host.">
+        Os comandos rodam dentro do contêiner da aplicação. Clique em uma task para ver o histórico.
+      </InfoNote>
       {tasksQuery.isError ? (
         <ErrorState error={tasksQuery.error} onRetry={() => void tasksQuery.refetch()} />
       ) : null}
@@ -214,7 +212,23 @@ function TasksPage() {
             </TableHeader>
             <TableBody>
               {tasks.map((task) => (
-                <TableRow key={task.id}>
+                <TableRow
+                  key={task.id}
+                  tabIndex={0}
+                  aria-label={`${task.name}: abrir histórico de execuções`}
+                  data-state={historyTaskId === task.id ? "selected" : undefined}
+                  className="cursor-pointer focus-visible:ring-3 focus-visible:ring-ring/40 focus-visible:outline-none"
+                  onClick={() => setHistoryTaskId(task.id)}
+                  onKeyDown={(event) => {
+                    if (
+                      event.target === event.currentTarget &&
+                      (event.key === "Enter" || event.key === " ")
+                    ) {
+                      event.preventDefault();
+                      setHistoryTaskId(task.id);
+                    }
+                  }}
+                >
                   <TableCell className="font-medium">{task.name}</TableCell>
                   <TableCell
                     className="max-w-xs truncate font-mono text-xs"
@@ -226,7 +240,7 @@ function TasksPage() {
                   <TableCell className="text-sm text-muted-foreground">
                     {formatDateTime(task.nextRunAt)}
                   </TableCell>
-                  <TableCell>
+                  <TableCell onClick={stopRowClick} onKeyDown={stopRowClick}>
                     <Switch
                       aria-label={`Ativar ${task.name}`}
                       checked={task.enabled}
@@ -251,7 +265,7 @@ function TasksPage() {
                       </div>
                     )}
                   </TableCell>
-                  <TableCell className="text-right">
+                  <TableCell className="text-right" onClick={stopRowClick} onKeyDown={stopRowClick}>
                     <TaskActions
                       task={task}
                       canRun={canRun}
@@ -259,7 +273,6 @@ function TasksPage() {
                       onRun={() => run.mutate(task.id)}
                       onEdit={() => openDialog(task)}
                       onDelete={() => remove.mutate(task.id)}
-                      onHistory={() => setHistoryTaskId(task.id)}
                     />
                   </TableCell>
                 </TableRow>
@@ -281,6 +294,11 @@ function TasksPage() {
   );
 }
 
+/** Keeps clicks on controls inside a row from also opening the row. */
+function stopRowClick(event: { stopPropagation: () => void }): void {
+  event.stopPropagation();
+}
+
 function TaskActions({
   task,
   canRun,
@@ -288,7 +306,6 @@ function TaskActions({
   onRun,
   onEdit,
   onDelete,
-  onHistory,
 }: {
   readonly task: Task;
   readonly canRun: boolean;
@@ -296,7 +313,6 @@ function TaskActions({
   readonly onRun: () => void;
   readonly onEdit: () => void;
   readonly onDelete: () => void;
-  readonly onHistory: () => void;
 }) {
   return (
     <div className="flex justify-end gap-1">
@@ -306,14 +322,6 @@ function TaskActions({
           Executar
         </Button>
       ) : null}
-      <Button
-        variant="ghost"
-        size="icon"
-        aria-label={`Histórico de ${task.name}`}
-        onClick={onHistory}
-      >
-        <HistoryIcon aria-hidden />
-      </Button>
       {canWrite ? (
         <>
           <Button variant="ghost" size="icon" aria-label={`Editar ${task.name}`} onClick={onEdit}>

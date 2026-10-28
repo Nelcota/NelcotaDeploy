@@ -1,22 +1,19 @@
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
-import {
-  InfoIcon,
-  KeyRoundIcon,
-  PencilIcon,
-  PlusIcon,
-  RefreshCwIcon,
-  Trash2Icon,
-} from "lucide-react";
+import { KeyRoundIcon, PencilIcon, PlusIcon, RefreshCwIcon, Trash2Icon } from "lucide-react";
 import { useState } from "react";
 import { z } from "zod";
 
 import type { EnvironmentVariableView } from "@/environments";
+import { normalizeVariableKey } from "@/shared/dotenv";
 import { environmentVariableInputSchema } from "@/shared/environment-variable.schema";
 import { formatDateTime } from "@/shared/format";
 import { ConfirmDialog } from "@/web/components/confirm-dialog";
+import { EnvImportDialog } from "@/web/components/env-import-dialog";
+import { type VariableKind, VariableKindToggle } from "@/web/components/env-kind-toggle";
 import { FormField } from "@/web/components/form-field";
 import { PageHeader } from "@/web/components/page-header";
+import { InfoNote } from "@/web/components/project-overview-info";
 import { projectQueryOptions } from "@/web/components/project-query";
 import { EmptyState, ErrorState, ListSkeleton } from "@/web/components/states";
 import { Badge } from "@/web/components/ui/badge";
@@ -31,13 +28,6 @@ import {
 } from "@/web/components/ui/dialog";
 import { Input } from "@/web/components/ui/input";
 import { Label } from "@/web/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/web/components/ui/select";
 import { Switch } from "@/web/components/ui/switch";
 import {
   Table,
@@ -63,8 +53,6 @@ export const Route = createFileRoute("/_app/projects/$projectId/environment")({
 });
 
 const MASKED_VALUE = "••••••";
-
-type VariableKind = "plain" | "secret";
 
 type VariableDraft = {
   readonly key: string;
@@ -114,34 +102,37 @@ function EnvironmentPage() {
     <>
       <PageHeader
         title="Variáveis de ambiente"
-        description="Configurações e secrets entregues ao contêiner. Secrets são criptografados (AES-256-GCM) e nunca voltam para o navegador."
+        description="Configurações e secrets entregues ao contêiner."
         actions={
           canEdit ? (
-            <Button onClick={openCreate}>
-              <PlusIcon aria-hidden />
-              Nova variável
-            </Button>
+            <>
+              <EnvImportDialog projectId={projectId} />
+              <Button onClick={openCreate}>
+                <PlusIcon aria-hidden />
+                Nova variável
+              </Button>
+            </>
           ) : null
         }
       />
-      <div className="flex flex-col gap-3 rounded-lg border bg-muted/40 p-4 text-sm sm:flex-row sm:items-center sm:justify-between">
-        <p className="flex items-start gap-2">
-          <InfoIcon aria-hidden className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
-          As alterações valem a partir do próximo deploy. Use o redeploy para recriar o contêiner
-          com a imagem atual e as novas variáveis.
-        </p>
-        {canRedeploy ? (
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={redeploy.isPending}
-            onClick={() => redeploy.mutate()}
-          >
-            <RefreshCwIcon aria-hidden />
-            Redeploy agora
-          </Button>
-        ) : null}
-      </div>
+      <InfoNote
+        details="O redeploy recria o contêiner com a imagem atual e as variáveis salvas, sem novo build. Secrets são criptografados com AES-256-GCM e nunca voltam para o navegador."
+        action={
+          canRedeploy ? (
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={redeploy.isPending}
+              onClick={() => redeploy.mutate()}
+            >
+              <RefreshCwIcon aria-hidden />
+              Redeploy agora
+            </Button>
+          ) : null
+        }
+      >
+        As alterações valem no próximo deploy.
+      </InfoNote>
       <VariablesTable
         query={variables}
         canEdit={canEdit}
@@ -322,7 +313,7 @@ function VariableDialog({
         <DialogHeader>
           <DialogTitle>{variable == null ? "Nova variável" : `Editar ${variable.key}`}</DialogTitle>
           <DialogDescription>
-            Nomes aceitam letras, números e _ e não podem começar com número.
+            O nome vira maiúsculo automaticamente; use letras, números e _.
           </DialogDescription>
         </DialogHeader>
         <form
@@ -340,24 +331,17 @@ function VariableDialog({
                 autoComplete="off"
                 disabled={variable != null}
                 value={draft.key}
-                onChange={(event) => update({ key: event.target.value })}
+                onChange={(event) => update({ key: normalizeVariableKey(event.target.value) })}
               />
             )}
           </FormField>
           <FormField id="variable-kind" label="Tipo" errors={errors.kind ?? []}>
             {(props) => (
-              <Select
+              <VariableKindToggle
+                id={props.id}
                 value={draft.kind}
-                onValueChange={(value) => update({ kind: value === "secret" ? "secret" : "plain" })}
-              >
-                <SelectTrigger {...props} className="w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="plain">Configuração (valor visível)</SelectItem>
-                  <SelectItem value="secret">Secret (criptografado e oculto)</SelectItem>
-                </SelectContent>
-              </Select>
+                onChange={(kind) => update({ kind })}
+              />
             )}
           </FormField>
           <FormField
@@ -382,8 +366,7 @@ function VariableDialog({
             <div className="space-y-1">
               <Label htmlFor="variable-build">Disponível no build</Label>
               <p id="variable-build-hint" className="text-xs text-muted-foreground">
-                O valor é passado ao docker build como build arg (ARG no Dockerfile), sem aparecer
-                na linha de comando.
+                Também entregue ao build da imagem (ARG no Dockerfile).
               </p>
             </div>
             <Switch

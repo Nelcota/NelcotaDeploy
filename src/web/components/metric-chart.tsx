@@ -10,6 +10,22 @@ import {
 
 import { formatShortTime } from "@/shared/format";
 
+const TICK_COUNT = 5;
+/** Headroom above the highest sample, so the line never touches the top of the chart. */
+const HEADROOM = 1.25;
+
+/**
+ * Upper bound of the value axis: the highest sample plus headroom. Starting the axis at zero
+ * keeps small fluctuations from looking like large swings and gives distinct tick labels.
+ *
+ * @param points - Series values; nulls are ignored.
+ * @returns A positive upper bound.
+ */
+export function niceUpperBound(points: readonly MetricPoint[]): number {
+  const highest = Math.max(0, ...points.map((point) => point.value ?? 0));
+  return highest > 0 ? highest * HEADROOM : 1;
+}
+
 /** One point of a time series; null means the value could not be collected. */
 export type MetricPoint = { readonly createdAt: string; readonly value: number | null };
 
@@ -31,6 +47,7 @@ export function MetricChart({
   readonly maxValue?: number;
 }) {
   const color = `var(${colorVariable})`;
+  const upperBound = maxValue ?? niceUpperBound(points);
   const gradientId = `gradient-${colorVariable.replaceAll(/[^a-z0-9]/gi, "")}`;
   return (
     <figure aria-label={label} className="h-64 w-full">
@@ -55,7 +72,8 @@ export function MetricChart({
             fontSize={11}
             width={64}
             tickFormatter={(value: number) => formatValue(value)}
-            domain={maxValue == null ? ["auto", "auto"] : [0, maxValue]}
+            domain={[0, upperBound]}
+            tickCount={TICK_COUNT}
           />
           <Tooltip
             contentStyle={{

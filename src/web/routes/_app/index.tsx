@@ -7,7 +7,6 @@ import {
   PlusIcon,
   RocketIcon,
   ServerIcon,
-  WebhookIcon,
 } from "lucide-react";
 import { useState } from "react";
 
@@ -138,12 +137,6 @@ function DashboardPage() {
                 Ver deploys
               </Link>
             </Button>
-            <Button size="sm" variant="outline" asChild>
-              <Link to="/settings" search={{ tab: "server" }}>
-                <WebhookIcon aria-hidden />
-                Configurar webhook
-              </Link>
-            </Button>
           </div>
         </div>
         {data == null ? (
@@ -253,12 +246,12 @@ function DashboardPage() {
 
       <section className="space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <p className="text-sm text-muted-foreground">
-            {hours === 1 ? "Última hora" : "Últimas 24 horas"} ·{" "}
-            {data?.worker == null
-              ? "worker nunca conectou"
-              : `worker ${data.worker.online ? "online" : "offline"}, Docker ${data.worker.dockerVersion ?? "indisponível"}`}
-          </p>
+          <h2 className="text-base font-medium">
+            Uso do servidor{" "}
+            <span className="text-muted-foreground">
+              · {hours === 1 ? "última hora" : "últimas 24 horas"}
+            </span>
+          </h2>
           <SegmentedControl
             label="Janela de tempo"
             options={WINDOWS}

@@ -11,6 +11,7 @@ import {
   formatDuration,
   formatRelativeTime,
 } from "@/shared/format";
+import { DeploymentRow } from "@/web/components/deployment-row";
 import {
   ACTIVE_DEPLOYMENT_STATUSES,
   DEPLOYMENT_STATUS_LABELS,
@@ -111,7 +112,15 @@ function DeploymentsPage() {
           const sha = deployment.commitSha ?? deployment.requestedCommitSha;
           return (
             <div className="max-w-64 min-w-0 text-xs">
-              <p className="font-mono">{sha == null ? "—" : sha.slice(0, SHORT_SHA_LENGTH)}</p>
+              <Link
+                to="/projects/$projectId/deployments/$deploymentId"
+                params={{ projectId: deployment.projectId, deploymentId: deployment.id }}
+                className="font-mono hover:underline focus-visible:underline focus-visible:outline-none"
+              >
+                {sha == null
+                  ? `deploy ${deployment.id.slice(-SHORT_SHA_LENGTH)}`
+                  : sha.slice(0, SHORT_SHA_LENGTH)}
+              </Link>
               <p className="truncate text-muted-foreground">
                 {deployment.commitMessage ?? "sem mensagem"}
               </p>
@@ -154,23 +163,6 @@ function DeploymentsPage() {
               durationBetween(info.row.original.startedAt, info.row.original.finishedAt),
             )}
           </span>
-        ),
-      }),
-      helper.display({
-        id: "actions",
-        header: () => <span className="sr-only">Ações</span>,
-        cell: (info) => (
-          <Button variant="ghost" size="sm" asChild>
-            <Link
-              to="/projects/$projectId/deployments/$deploymentId"
-              params={{
-                projectId: info.row.original.projectId,
-                deploymentId: info.row.original.id,
-              }}
-            >
-              Detalhes
-            </Link>
-          </Button>
         ),
       }),
     ]);
@@ -236,13 +228,17 @@ function DeploymentsPage() {
               </TableHeader>
               <TableBody>
                 {table.getRowModel().rows.map((row) => (
-                  <TableRow key={row.id}>
+                  <DeploymentRow
+                    key={row.id}
+                    projectId={row.original.projectId}
+                    deploymentId={row.original.id}
+                  >
                     {row.getAllCells().map((cell) => (
                       <TableCell key={cell.id}>
                         <table.FlexRender cell={cell} />
                       </TableCell>
                     ))}
-                  </TableRow>
+                  </DeploymentRow>
                 ))}
               </TableBody>
             </Table>

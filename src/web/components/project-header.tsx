@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import {
   BoxIcon,
+  EllipsisIcon,
   GitBranchIcon,
   GitForkIcon,
   PlayIcon,
@@ -10,6 +11,7 @@ import {
   RotateCwIcon,
   SquareIcon,
 } from "lucide-react";
+import { useState } from "react";
 
 import { formatRelativeTime, formatShortTime } from "@/shared/format";
 import {
@@ -24,6 +26,12 @@ import { MetricStrip } from "./overview";
 import type { ProjectDetails } from "./project-query";
 import { ContainerStateBadge } from "./status-badge";
 import { Button } from "./ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "./ui/dropdown-menu";
 import { useAction } from "./use-action";
 import { useCan } from "./use-permissions";
 
@@ -174,6 +182,13 @@ function ProjectActions({
   const canControl = can("container:control") && project.currentDeploymentId != null;
   const busy = deploy.isPending || redeploy.isPending || containerAction.isPending;
 
+  const stopDescription =
+    "O contêiner será parado e a aplicação ficará fora do ar até ser iniciada novamente.";
+  const redeployDescription =
+    "Um novo contêiner será criado com a imagem atual, aplicando as variáveis e domínios salvos, sem novo build. Pode haver uma breve troca de versão durante a substituição.";
+  const canRedeploy = canDeploy && project.currentDeploymentId != null;
+  const containerDisabled = busy || hasContainer === false;
+
   return (
     <div className="flex flex-wrap items-center gap-2">
       {canDeploy ? (
@@ -182,55 +197,144 @@ function ProjectActions({
           Deploy
         </Button>
       ) : null}
-      {canControl ? (
-        <>
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={busy || hasContainer === false}
-            onClick={() => containerAction.mutate("start")}
-          >
-            <PlayIcon aria-hidden />
-            Iniciar
-          </Button>
+      <div className="hidden flex-wrap items-center gap-2 sm:flex">
+        {canControl ? (
+          <>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={containerDisabled}
+              onClick={() => containerAction.mutate("start")}
+            >
+              <PlayIcon aria-hidden />
+              Iniciar
+            </Button>
+            <ConfirmDialog
+              trigger={
+                <Button variant="outline" size="sm" disabled={containerDisabled}>
+                  <SquareIcon aria-hidden />
+                  Parar
+                </Button>
+              }
+              title="Parar a aplicação?"
+              description={stopDescription}
+              confirmLabel="Parar"
+              destructive
+              onConfirm={() => containerAction.mutate("stop")}
+            />
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={containerDisabled}
+              onClick={() => containerAction.mutate("restart")}
+            >
+              <RotateCwIcon aria-hidden />
+              Reiniciar
+            </Button>
+          </>
+        ) : null}
+        {canRedeploy ? (
           <ConfirmDialog
             trigger={
-              <Button variant="outline" size="sm" disabled={busy || hasContainer === false}>
-                <SquareIcon aria-hidden />
-                Parar
+              <Button variant="outline" size="sm" disabled={busy}>
+                <RefreshCwIcon aria-hidden />
+                Redeploy
               </Button>
             }
-            title="Parar a aplicação?"
-            description="O contêiner será parado e a aplicação ficará fora do ar até ser iniciada novamente."
-            confirmLabel="Parar"
-            destructive
-            onConfirm={() => containerAction.mutate("stop")}
+            title="Recriar o contêiner?"
+            description={redeployDescription}
+            confirmLabel="Fazer redeploy"
+            onConfirm={() => redeploy.mutate()}
           />
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={busy || hasContainer === false}
-            onClick={() => containerAction.mutate("restart")}
-          >
-            <RotateCwIcon aria-hidden />
-            Reiniciar
-          </Button>
-        </>
-      ) : null}
-      {canDeploy && project.currentDeploymentId != null ? (
-        <ConfirmDialog
-          trigger={
-            <Button variant="outline" size="sm" disabled={busy}>
-              <RefreshCwIcon aria-hidden />
-              Redeploy
-            </Button>
-          }
-          title="Recriar o contêiner?"
-          description="Um novo contêiner será criado com a imagem atual, aplicando as variáveis e domínios salvos, sem novo build. Pode haver uma breve troca de versão durante a substituição."
-          confirmLabel="Fazer redeploy"
-          onConfirm={() => redeploy.mutate()}
+        ) : null}
+      </div>
+      {canControl || canRedeploy ? (
+        <MobileActionsMenu
+          canControl={canControl}
+          canRedeploy={canRedeploy}
+          containerDisabled={containerDisabled}
+          busy={busy}
+          onAction={(action) => containerAction.mutate(action)}
+          onRedeploy={() => redeploy.mutate()}
+          stopDescription={stopDescription}
+          redeployDescription={redeployDescription}
         />
       ) : null}
+    </div>
+  );
+}
+
+/** On small screens the secondary actions live in a "⋯" menu so the header stays on one line. */
+function MobileActionsMenu({
+  canControl,
+  canRedeploy,
+  containerDisabled,
+  busy,
+  onAction,
+  onRedeploy,
+  stopDescription,
+  redeployDescription,
+}: {
+  readonly canControl: boolean;
+  readonly canRedeploy: boolean;
+  readonly containerDisabled: boolean;
+  readonly busy: boolean;
+  readonly onAction: (action: "start" | "stop" | "restart") => void;
+  readonly onRedeploy: () => void;
+  readonly stopDescription: string;
+  readonly redeployDescription: string;
+}) {
+  const [confirming, setConfirming] = useState<"stop" | "redeploy" | null>(null);
+  return (
+    <div className="sm:hidden">
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button variant="outline" size="icon-sm" aria-label="Mais ações">
+            <EllipsisIcon aria-hidden />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="start">
+          {canControl ? (
+            <>
+              <DropdownMenuItem disabled={containerDisabled} onSelect={() => onAction("start")}>
+                <PlayIcon aria-hidden />
+                Iniciar
+              </DropdownMenuItem>
+              <DropdownMenuItem disabled={containerDisabled} onSelect={() => onAction("restart")}>
+                <RotateCwIcon aria-hidden />
+                Reiniciar
+              </DropdownMenuItem>
+              <DropdownMenuItem disabled={containerDisabled} onSelect={() => setConfirming("stop")}>
+                <SquareIcon aria-hidden />
+                Parar
+              </DropdownMenuItem>
+            </>
+          ) : null}
+          {canRedeploy ? (
+            <DropdownMenuItem disabled={busy} onSelect={() => setConfirming("redeploy")}>
+              <RefreshCwIcon aria-hidden />
+              Redeploy
+            </DropdownMenuItem>
+          ) : null}
+        </DropdownMenuContent>
+      </DropdownMenu>
+      <ConfirmDialog
+        open={confirming === "stop"}
+        onOpenChange={(open) => setConfirming(open ? "stop" : null)}
+        title="Parar a aplicação?"
+        description={stopDescription}
+        confirmLabel="Parar"
+        destructive
+        onConfirm={() => onAction("stop")}
+      />
+      <ConfirmDialog
+        open={confirming === "redeploy"}
+        onOpenChange={(open) => setConfirming(open ? "redeploy" : null)}
+        title="Recriar o contêiner?"
+        description={redeployDescription}
+        confirmLabel="Fazer redeploy"
+        onConfirm={onRedeploy}
+      />
     </div>
   );
 }

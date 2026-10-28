@@ -36,7 +36,12 @@ export const PROJECT_SECTIONS = [
   { to: "/projects/$projectId/domains", label: "Domínios", icon: GlobeIcon, exact: false },
   { to: "/projects/$projectId/tasks", label: "Tasks", icon: ClockIcon, exact: false },
   { to: "/projects/$projectId/metrics", label: "Métricas", icon: ActivityIcon, exact: false },
-  { to: "/projects/$projectId/settings", label: "Configurações", icon: SettingsIcon, exact: false },
+  {
+    to: "/projects/$projectId/settings",
+    label: "Ajustes do projeto",
+    icon: SettingsIcon,
+    exact: false,
+  },
 ] as const;
 
 /** Sections of the settings page; each is a `?tab=` value. */

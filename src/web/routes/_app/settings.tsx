@@ -384,6 +384,11 @@ function UsersTab() {
                         aria-label={`Usuário ${user.name} ativo`}
                         checked={user.disabled === false}
                         disabled={user.id === currentUser.id}
+                        title={
+                          user.id === currentUser.id
+                            ? "Você não pode desativar a própria conta"
+                            : undefined
+                        }
                         onCheckedChange={(active) =>
                           setDisabled.mutate({ userId: user.id, disabled: active === false })
                         }

@@ -8,5 +8,10 @@
   ],
   "project": ["src/**/*.{ts,tsx}"],
   "ignore": ["src/web/routeTree.gen.ts", "src/web/components/ui/**"],
-  "ignoreDependencies": ["tw-animate-css", "tailwindcss", "@fontsource-variable/manrope"]
+  "ignoreDependencies": [
+    "tw-animate-css",
+    "tailwindcss",
+    "@fontsource-variable/manrope",
+    "@fontsource-variable/jetbrains-mono"
+  ]
 }

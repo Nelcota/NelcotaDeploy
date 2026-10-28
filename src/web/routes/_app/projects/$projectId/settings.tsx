@@ -5,6 +5,7 @@ import { type FormEvent, useState } from "react";
 import { toast } from "sonner";
 
 import { ConfirmDialog } from "@/web/components/confirm-dialog";
+import { PageHeader } from "@/web/components/page-header";
 import { ProjectForm, projectToFormValues } from "@/web/components/project-form";
 import { projectQueryOptions } from "@/web/components/project-query";
 import { ListSkeleton } from "@/web/components/states";
@@ -43,12 +44,15 @@ function ProjectSettingsPage() {
 
   return (
     <div className="space-y-6">
+      <PageHeader
+        title="Ajustes do projeto"
+        description="Repositório, build e porta. As mudanças valem no próximo deploy."
+      />
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Configuração do projeto</CardTitle>
+          <CardTitle className="text-base">Repositório e build</CardTitle>
           <CardDescription>
-            As mudanças valem a partir do próximo deploy. Trocar o repositório exige nova aprovação
-            de um administrador.
+            Trocar o repositório exige nova aprovação de um administrador.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -110,9 +114,8 @@ function RepositoryTokenCard({
           Repositório privado
         </CardTitle>
         <CardDescription>
-          Token de leitura (fine-grained, somente “Contents: read”). Fica criptografado e nunca é
-          exibido, registrado em logs ou passado em URLs.{" "}
-          {hasToken ? "Há um token salvo." : "Nenhum token salvo."}
+          Token de leitura do GitHub (permissão “Contents: read”). Fica criptografado e nunca é
+          exibido. {hasToken ? "Há um token salvo." : "Nenhum token salvo."}
         </CardDescription>
       </CardHeader>
       <CardContent>

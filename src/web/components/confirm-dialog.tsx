@@ -27,8 +27,13 @@ export function ConfirmDialog({
   destructive = false,
   confirmationText,
   onConfirm,
+  open,
+  onOpenChange,
 }: {
-  readonly trigger: ReactNode;
+  /** Element that opens the dialog; omit when `open` is controlled by the caller. */
+  readonly trigger?: ReactNode;
+  readonly open?: boolean;
+  readonly onOpenChange?: (open: boolean) => void;
   readonly title: string;
   readonly description: ReactNode;
   readonly confirmLabel: string;
@@ -39,8 +44,14 @@ export function ConfirmDialog({
   const [typed, setTyped] = useState("");
   const blocked = confirmationText != null && typed !== confirmationText;
   return (
-    <AlertDialog onOpenChange={() => setTyped("")}>
-      <AlertDialogTrigger asChild>{trigger}</AlertDialogTrigger>
+    <AlertDialog
+      {...(open == null ? {} : { open })}
+      onOpenChange={(next) => {
+        setTyped("");
+        onOpenChange?.(next);
+      }}
+    >
+      {trigger == null ? null : <AlertDialogTrigger asChild>{trigger}</AlertDialogTrigger>}
       <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogTitle>{title}</AlertDialogTitle>

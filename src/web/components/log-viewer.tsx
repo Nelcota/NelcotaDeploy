@@ -1,5 +1,13 @@
-import { ArrowDownIcon, RadioIcon, SearchIcon } from "lucide-react";
+import {
+  ArrowDownIcon,
+  CopyIcon,
+  DownloadIcon,
+  OctagonAlertIcon,
+  RadioIcon,
+  SearchIcon,
+} from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { toast } from "sonner";
 
 import { formatTime } from "@/shared/format";
 import { classifyLogLevel, type LogLevel } from "@/shared/log-level";
@@ -79,14 +87,41 @@ const STATE_PILLS: Record<
   error: { tone: "danger", label: "Desconectado" },
 };
 
+function linesAsText(lines: readonly LogLine[]): string {
+  return lines.map((line) => `${line.createdAt} ${line.message}`).join("\n");
+}
+
+async function copyLines(lines: readonly LogLine[]): Promise<void> {
+  try {
+    await navigator.clipboard.writeText(linesAsText(lines));
+    toast.success("Logs copiados");
+  } catch {
+    toast.error("Não foi possível copiar. Use Baixar para salvar os logs.");
+  }
+}
+
+function downloadLines(lines: readonly LogLine[], fileName: string): void {
+  const url = URL.createObjectURL(
+    new Blob([linesAsText(lines)], { type: "text/plain;charset=utf-8" }),
+  );
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = fileName;
+  anchor.click();
+  URL.revokeObjectURL(url);
+}
+
 /** Scrollable, filterable log output that follows new lines until the user scrolls up. */
 export function LogViewer({
   url,
   emptyMessage,
   onEnd,
   heightClass = "h-[28rem]",
+  downloadName = "nelcota.log",
 }: {
   readonly url: string;
+  /** File name used by the "Baixar" button. */
+  readonly downloadName?: string;
   readonly emptyMessage: string;
   readonly onEnd?: (summary: unknown) => void;
   readonly heightClass?: string;
@@ -104,12 +139,31 @@ export function LogViewer({
     }
   }, [state, endSummary]);
 
+  const [highlightedId, setHighlightedId] = useState<number | null>(null);
+
   const visible = useMemo(() => {
     const needle = filter.trim().toLowerCase();
-    return needle === ""
-      ? lines
-      : lines.filter((line) => line.message.toLowerCase().includes(needle));
+    // Blank lines (common in BuildKit output) only add noise to the view.
+    return lines.filter(
+      (line) =>
+        line.message.trim() !== "" &&
+        (needle === "" || line.message.toLowerCase().includes(needle)),
+    );
   }, [lines, filter]);
+  const firstError = visible.find(
+    (line) => (line.level ?? classifyLogLevel(line.message)) === "error",
+  );
+
+  const jumpToError = () => {
+    if (firstError == null) {
+      return;
+    }
+    setFollowing(false);
+    setHighlightedId(firstError.id);
+    containerRef.current
+      ?.querySelector(`[data-line-id="${firstError.id}"]`)
+      ?.scrollIntoView({ block: "center", behavior: "smooth" });
+  };
 
   useEffect(() => {
     const container = containerRef.current;
@@ -123,8 +177,38 @@ export function LogViewer({
     <div className="overflow-hidden rounded-xl border bg-card">
       <div className="flex flex-wrap items-center gap-3 border-b px-4 py-3">
         <StatusPill tone={pill.tone} label={pill.label} />
-        <span className="text-sm text-muted-foreground">{lines.length} linhas</span>
-        <div className="relative ml-auto w-full sm:w-64">
+        <span className="text-sm text-muted-foreground">{visible.length} linhas</span>
+        <div className="ml-auto flex flex-wrap items-center gap-2">
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={firstError == null}
+            onClick={jumpToError}
+            title={firstError == null ? "Nenhum erro nas linhas exibidas" : undefined}
+          >
+            <OctagonAlertIcon aria-hidden />
+            Ir para o erro
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={visible.length === 0}
+            onClick={() => void copyLines(visible)}
+          >
+            <CopyIcon aria-hidden />
+            Copiar
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={visible.length === 0}
+            onClick={() => downloadLines(visible, downloadName)}
+          >
+            <DownloadIcon aria-hidden />
+            Baixar
+          </Button>
+        </div>
+        <div className="relative w-full sm:w-64">
           <SearchIcon
             aria-hidden
             className="absolute top-2.5 left-2.5 size-4 text-muted-foreground"
@@ -167,8 +251,10 @@ export function LogViewer({
             return (
               <div
                 key={line.id}
+                data-line-id={line.id}
                 className={cn(
                   "flex gap-3 whitespace-pre-wrap break-all",
+                  line.id === highlightedId ? "-mx-2 rounded bg-destructive/20 px-2" : "",
                   LEVEL_CLASSES[level],
                   line.stream === "system" ? "font-semibold" : "",
                 )}

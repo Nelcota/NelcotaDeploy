@@ -12,7 +12,9 @@ import {
   formatRelativeTime,
 } from "@/shared/format";
 import { ConfirmDialog } from "@/web/components/confirm-dialog";
+import { DeploymentRow } from "@/web/components/deployment-row";
 import { ACTIVE_DEPLOYMENT_STATUSES, DEPLOYMENT_TRIGGER_LABELS } from "@/web/components/labels";
+import { PageHeader } from "@/web/components/page-header";
 import { projectQueryOptions } from "@/web/components/project-query";
 import { EmptyState, ErrorState, ListSkeleton } from "@/web/components/states";
 import { DeploymentStatusBadge } from "@/web/components/status-badge";
@@ -172,14 +174,6 @@ function ProjectDeploymentsPage() {
           return (
             <div className="flex justify-end gap-2">
               {offerRollback ? <RollbackButton deployment={deployment} /> : null}
-              <Button variant="ghost" size="sm" asChild>
-                <Link
-                  to="/projects/$projectId/deployments/$deploymentId"
-                  params={{ projectId: deployment.projectId, deploymentId: deployment.id }}
-                >
-                  Detalhes
-                </Link>
-              </Button>
             </div>
           );
         },
@@ -189,24 +183,44 @@ function ProjectDeploymentsPage() {
 
   const table = useTable({ features, columns, data: rows });
 
+  const header = (
+    <PageHeader
+      title="Deploys"
+      description="Histórico de builds e publicações deste projeto. Clique em um deploy para ver as etapas e os logs."
+    />
+  );
   if (deployments.isError) {
-    return <ErrorState error={deployments.error} onRetry={() => void deployments.refetch()} />;
+    return (
+      <>
+        {header}
+        <ErrorState error={deployments.error} onRetry={() => void deployments.refetch()} />
+      </>
+    );
   }
   if (deployments.isPending) {
-    return <ListSkeleton rows={6} />;
+    return (
+      <>
+        {header}
+        <ListSkeleton rows={6} />
+      </>
+    );
   }
   if (rows.length === 0) {
     return (
-      <EmptyState
-        icon={RocketIcon}
-        title="Nenhum deploy ainda"
-        description="Use o botão Deploy no topo da página para publicar a primeira versão."
-      />
+      <>
+        {header}
+        <EmptyState
+          icon={RocketIcon}
+          title="Nenhum deploy ainda"
+          description="Use o botão Deploy na visão geral do projeto para publicar a primeira versão."
+        />
+      </>
     );
   }
 
   return (
-    <section aria-label="Histórico de deploys" className="space-y-4">
+    <section aria-label="Histórico de deploys" className="space-y-6">
+      {header}
       <div className="overflow-x-auto rounded-lg border">
         <Table>
           <TableHeader>
@@ -222,8 +236,10 @@ function ProjectDeploymentsPage() {
           </TableHeader>
           <TableBody>
             {table.getRowModel().rows.map((row) => (
-              <TableRow
+              <DeploymentRow
                 key={row.id}
+                projectId={row.original.projectId}
+                deploymentId={row.original.id}
                 className={row.original.id === currentDeploymentId ? "bg-muted/40" : undefined}
               >
                 {row.getAllCells().map((cell) => (
@@ -231,7 +247,7 @@ function ProjectDeploymentsPage() {
                     <table.FlexRender cell={cell} />
                   </TableCell>
                 ))}
-              </TableRow>
+              </DeploymentRow>
             ))}
           </TableBody>
         </Table>
@@ -255,7 +271,15 @@ function CommitCell({ deployment }: { readonly deployment: Deployment }) {
   const sha = deployment.commitSha ?? deployment.requestedCommitSha;
   return (
     <div className="max-w-72 min-w-0 text-xs">
-      <p className="font-mono">{sha == null ? "—" : sha.slice(0, SHORT_SHA_LENGTH)}</p>
+      <Link
+        to="/projects/$projectId/deployments/$deploymentId"
+        params={{ projectId: deployment.projectId, deploymentId: deployment.id }}
+        className="font-mono hover:underline focus-visible:underline focus-visible:outline-none"
+      >
+        {sha == null
+          ? `deploy ${deployment.id.slice(-SHORT_SHA_LENGTH)}`
+          : sha.slice(0, SHORT_SHA_LENGTH)}
+      </Link>
       <p className="truncate text-muted-foreground" title={deployment.commitMessage ?? undefined}>
         {deployment.commitMessage ?? "sem mensagem"}
       </p>
