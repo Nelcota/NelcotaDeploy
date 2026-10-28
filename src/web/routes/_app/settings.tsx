@@ -2,7 +2,6 @@ import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, useRouteContext } from "@tanstack/react-router";
 import {
   Building2Icon,
-  CopyIcon,
   KeyRoundIcon,
   PlusIcon,
   ShieldIcon,
@@ -17,6 +16,7 @@ import { formatBytes, formatDateTime, formatRelativeTime } from "@/shared/format
 import { type Role, ROLES } from "@/shared/roles";
 import { type SystemSettings, systemSettingsSchema } from "@/shared/settings.schema";
 import { ConfirmDialog } from "@/web/components/confirm-dialog";
+import { CopyButton } from "@/web/components/copy-button";
 import { FormField } from "@/web/components/form-field";
 import { ROLE_LABELS } from "@/web/components/labels";
 import { List, ListRow, Section, StatRow } from "@/web/components/layout";
@@ -141,24 +141,6 @@ function generatePassword(): string {
     .replaceAll("+", "-")
     .replaceAll("/", "_")
     .replaceAll("=", "");
-}
-
-async function copyToClipboard(text: string): Promise<void> {
-  try {
-    await navigator.clipboard.writeText(text);
-    toast.success("Copiado para a área de transferência");
-  } catch {
-    toast.error("Não foi possível copiar. Selecione o texto e copie manualmente.");
-  }
-}
-
-function CopyButton({ text, label }: { readonly text: string; readonly label: string }) {
-  return (
-    <Button type="button" variant="outline" size="sm" onClick={() => void copyToClipboard(text)}>
-      <CopyIcon aria-hidden />
-      {label}
-    </Button>
-  );
 }
 
 function SettingsPage() {
