@@ -14,7 +14,7 @@ import { type FormEvent, useState } from "react";
 import { z } from "zod";
 
 import { domainInputSchema } from "@/shared/domain.schema";
-import { ApplyChangesBanner } from "@/web/components/apply-changes-banner";
+import { ApplyChangesBanner, useApplyChanges } from "@/web/components/apply-changes-banner";
 import { ConfirmDialog } from "@/web/components/confirm-dialog";
 import { CopyButton } from "@/web/components/copy-button";
 import { CardTitleRow, List, ListRow, Tag } from "@/web/components/layout";
@@ -28,7 +28,6 @@ import { Input } from "@/web/components/ui/input";
 import { Switch } from "@/web/components/ui/switch";
 import { useAction } from "@/web/components/use-action";
 import { useCan } from "@/web/components/use-permissions";
-import { redeployProjectFn } from "@/web/functions/deployments.functions";
 import { addDomainFn, removeDomainFn } from "@/web/functions/domains.functions";
 
 export const Route = createFileRoute("/_app/projects/$projectId/domains")({
@@ -48,29 +47,23 @@ function DomainsPage() {
   const can = useCan();
   const canEdit = can("domain:write");
   const project = useQuery(projectQueryOptions(projectId));
-  const projectKey = ["project", projectId];
-  // Routing only changes when the container is recreated, so changes made here wait for it.
-  const [pendingApply, setPendingApply] = useState(false);
-
-  const redeploy = useAction({
-    action: () => redeployProjectFn({ data: { projectId } }),
-    successMessage: "Redeploy colocado na fila",
-    invalidate: [projectKey, ["deployments"]],
-    onSuccess: () => setPendingApply(false),
-  });
   const remove = useAction({
     action: (domainId: string) => removeDomainFn({ data: { projectId, domainId } }),
     successMessage: "Domínio removido",
-    invalidate: [projectKey],
-    onSuccess: () => setPendingApply(true),
+    invalidate: [["project", projectId]],
   });
+  const details = project.data;
+  const canRedeploy = details?.project.currentDeploymentId != null && can("deployment:create");
+  // Routing only changes when the container is recreated; the server tracks what is pending.
+  const { redeploy, showBanner: showApplyBanner } = useApplyChanges(
+    projectId,
+    details?.pendingRuntimeChanges === true,
+    canRedeploy,
+  );
 
   if (project.isError) {
     return <ErrorState error={project.error} onRetry={() => void project.refetch()} />;
   }
-  const details = project.data;
-  const canRedeploy = details?.project.currentDeploymentId != null && can("deployment:create");
-  const showApplyBanner = pendingApply && canRedeploy;
   const automaticHostname = details?.domains.find((domain) => domain.automatic)?.hostname ?? null;
 
   return (
@@ -109,9 +102,7 @@ function DomainsPage() {
         <ListSkeleton rows={2} />
       ) : (
         <List>
-          {canEdit ? (
-            <AddDomainForm projectId={projectId} onAdded={() => setPendingApply(true)} />
-          ) : null}
+          {canEdit ? <AddDomainForm projectId={projectId} /> : null}
           <DomainRows
             domains={details.domains}
             canEdit={canEdit}
@@ -210,13 +201,7 @@ function RemoveDomainButton({
   );
 }
 
-function AddDomainForm({
-  projectId,
-  onAdded,
-}: {
-  readonly projectId: string;
-  readonly onAdded: () => void;
-}) {
+function AddDomainForm({ projectId }: { readonly projectId: string }) {
   const [hostname, setHostname] = useState("");
   const [httpsEnabled, setHttpsEnabled] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -225,10 +210,7 @@ function AddDomainForm({
       addDomainFn({ data: { projectId, domain } }),
     successMessage: "Domínio adicionado",
     invalidate: [["project", projectId]],
-    onSuccess: () => {
-      setHostname("");
-      onAdded();
-    },
+    onSuccess: () => setHostname(""),
   });
 
   const submit = (event: FormEvent) => {

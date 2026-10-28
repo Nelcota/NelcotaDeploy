@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import {
   EyeIcon,
@@ -20,7 +20,7 @@ import type { EnvironmentVariableView } from "@/environments";
 import { normalizeVariableKey } from "@/shared/dotenv";
 import { environmentVariableInputSchema } from "@/shared/environment-variable.schema";
 import { formatDateTime, formatRelativeTime, pluralize } from "@/shared/format";
-import { ApplyChangesBanner } from "@/web/components/apply-changes-banner";
+import { ApplyChangesBanner, useApplyChanges } from "@/web/components/apply-changes-banner";
 import { ConfirmDialog } from "@/web/components/confirm-dialog";
 import { EnvImportDialog } from "@/web/components/env-import-dialog";
 import { type VariableKind, VariableKindToggle } from "@/web/components/env-kind-toggle";
@@ -45,7 +45,6 @@ import { Textarea } from "@/web/components/ui/textarea";
 import { useAction } from "@/web/components/use-action";
 import { useCan } from "@/web/components/use-permissions";
 import { filterVariablesByKey } from "@/web/components/variable-filter";
-import { redeployProjectFn } from "@/web/functions/deployments.functions";
 import {
   deleteEnvironmentVariableFn,
   listEnvironmentVariablesFn,
@@ -79,26 +78,26 @@ function EnvironmentPage() {
   });
   const [editing, setEditing] = useState<EnvironmentVariableView | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
-  // Variables reach the container only when it is recreated, so changes made here wait for it.
-  const [pendingApply, setPendingApply] = useState(false);
-  const markPending = () => setPendingApply(true);
+  const queryClient = useQueryClient();
+  // The server compares the variables with what the live container got; refresh that answer.
+  const refreshPendingChanges = () => {
+    void queryClient.invalidateQueries({ queryKey: ["project", projectId] });
+  };
 
-  const redeploy = useAction({
-    action: () => redeployProjectFn({ data: { projectId } }),
-    successMessage: "Redeploy colocado na fila",
-    invalidate: [["project", projectId], ["deployments"]],
-    onSuccess: () => setPendingApply(false),
-  });
   const remove = useAction({
     action: (variableId: string) =>
       deleteEnvironmentVariableFn({ data: { projectId, variableId } }),
     successMessage: "Variável excluída",
     invalidate: [["environment", projectId]],
-    onSuccess: markPending,
+    onSuccess: refreshPendingChanges,
   });
 
   const canRedeploy = project.data?.project.currentDeploymentId != null && can("deployment:create");
-  const showApplyBanner = pendingApply && canRedeploy;
+  const { redeploy, showBanner: showApplyBanner } = useApplyChanges(
+    projectId,
+    project.data?.pendingRuntimeChanges === true,
+    canRedeploy,
+  );
 
   const openCreate = () => {
     setEditing(null);
@@ -136,7 +135,7 @@ function EnvironmentPage() {
             ) : null}
             {canEdit ? (
               <>
-                <EnvImportDialog projectId={projectId} onImported={markPending} />
+                <EnvImportDialog projectId={projectId} onImported={refreshPendingChanges} />
                 <Button onClick={openCreate}>
                   <PlusIcon aria-hidden />
                   Nova variável
@@ -175,7 +174,7 @@ function EnvironmentPage() {
         open={dialogOpen}
         onOpenChange={setDialogOpen}
         variable={editing}
-        onSaved={markPending}
+        onSaved={refreshPendingChanges}
       />
     </>
   );

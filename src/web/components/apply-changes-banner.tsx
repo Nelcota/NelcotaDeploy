@@ -1,6 +1,10 @@
 import { LoaderCircleIcon, RefreshCwIcon } from "lucide-react";
+import { useEffect, useState } from "react";
+
+import { redeployProjectFn } from "@/web/functions/deployments.functions";
 
 import { Button } from "./ui/button";
+import { useAction } from "./use-action";
 
 /**
  * Notice shown after a change that only reaches the application when its container is
@@ -30,4 +34,29 @@ export function ApplyChangesBanner({
       </Button>
     </div>
   );
+}
+
+/**
+ * Redeploy action plus whether to offer it: the server reports changes not yet applied, and
+ * once a redeploy is queued the offer waits until the new container clears them.
+ *
+ * @param projectId - Project being edited.
+ * @param pending - The server's `pendingRuntimeChanges` for the project.
+ * @param canRedeploy - The user may redeploy and the project has a live deployment.
+ * @returns The redeploy action and whether to show the banner.
+ */
+export function useApplyChanges(projectId: string, pending: boolean, canRedeploy: boolean) {
+  const [requested, setRequested] = useState(false);
+  useEffect(() => {
+    if (pending === false) {
+      setRequested(false);
+    }
+  }, [pending]);
+  const redeploy = useAction({
+    action: () => redeployProjectFn({ data: { projectId } }),
+    successMessage: "Redeploy colocado na fila",
+    invalidate: [["project", projectId], ["deployments"]],
+    onSuccess: () => setRequested(true),
+  });
+  return { redeploy, showBanner: pending && canRedeploy && requested === false };
 }
