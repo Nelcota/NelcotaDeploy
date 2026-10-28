@@ -87,7 +87,7 @@ export function DeploymentsChart({ days }: { readonly days: readonly DeploymentC
             tickLine={false}
           />
           <Tooltip
-            cursor={{ fill: "var(--well)" }}
+            cursor={false}
             contentStyle={{
               background: "var(--popover)",
               border: "1px solid var(--border)",
