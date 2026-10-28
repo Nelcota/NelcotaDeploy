@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import {
   CalendarCheckIcon,
   CalendarClockIcon,
@@ -9,11 +9,13 @@ import {
   GitBranchIcon,
   GitCommitHorizontalIcon,
   InfoIcon,
+  LoaderCircleIcon,
   ListChecksIcon,
   type LucideIcon,
   OctagonXIcon,
   PackageIcon,
   RocketIcon,
+  RotateCwIcon,
   ScrollTextIcon,
   TimerIcon,
   Undo2Icon,
@@ -41,7 +43,11 @@ import { Card } from "@/web/components/ui/card";
 import { Skeleton } from "@/web/components/ui/skeleton";
 import { useAction } from "@/web/components/use-action";
 import { useCan } from "@/web/components/use-permissions";
-import { cancelDeploymentFn, getDeploymentFn } from "@/web/functions/deployments.functions";
+import {
+  cancelDeploymentFn,
+  getDeploymentFn,
+  retryDeploymentFn,
+} from "@/web/functions/deployments.functions";
 
 const ACTIVE_REFRESH_INTERVAL_IN_MS = 2000;
 const CLOCK_TICK_IN_MS = 1000;
@@ -106,6 +112,21 @@ function DeploymentDetailPage() {
   if (active) {
     watchedLive.current = true;
   }
+  const navigate = useNavigate();
+  const retry = useAction({
+    action: () => retryDeploymentFn({ data: { deploymentId } }),
+    successMessage: "Novo deploy colocado na fila",
+    invalidate: [
+      ["deployments", projectId],
+      ["project", projectId],
+    ],
+    onSuccess: async (result) => {
+      await navigate({
+        to: "/projects/$projectId/deployments/$deploymentId",
+        params: { projectId, deploymentId: result.deploymentId },
+      });
+    },
+  });
   const cancel = useAction({
     action: () => cancelDeploymentFn({ data: { deploymentId } }),
     successMessage: (result) =>
@@ -173,6 +194,19 @@ function DeploymentDetailPage() {
     data.isLive === false &&
     can("deployment:create");
 
+  const canRetry =
+    (data.status === "failed" || data.status === "cancelled") && can("deployment:create");
+  const retryButton = canRetry ? (
+    <Button size="sm" disabled={retry.isPending} onClick={() => retry.mutate()}>
+      {retry.isPending ? (
+        <LoaderCircleIcon aria-hidden className="animate-spin" />
+      ) : (
+        <RotateCwIcon aria-hidden />
+      )}
+      Tentar de novo
+    </Button>
+  ) : null;
+
   const cancelButton =
     active && can("deployment:create") ? (
       <ConfirmDialog
@@ -195,6 +229,9 @@ function DeploymentDetailPage() {
       />
     ) : null;
 
+  const rollbackButton = canRollback ? <RollbackButton deployment={data} /> : null;
+  const headerAction = cancelButton ?? retryButton ?? rollbackButton;
+
   return (
     <section aria-label="Detalhes do deploy" className="space-y-6">
       <div className="space-y-3">
@@ -213,7 +250,7 @@ function DeploymentDetailPage() {
             </>
           }
           description={data.commitMessage ?? "sem mensagem de commit"}
-          actions={canRollback ? <RollbackButton deployment={data} /> : cancelButton}
+          actions={headerAction}
         />
       </div>
 

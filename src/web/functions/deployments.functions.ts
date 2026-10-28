@@ -12,6 +12,7 @@ import {
   listRollbackCandidates,
   requestContainerAction,
   requestDeployment,
+  retryDeployment,
   summarizeDeployments,
 } from "@/deployments";
 import { getProject } from "@/projects";
@@ -59,6 +60,17 @@ export const deployProjectFn = createServerFn({ method: "POST" })
     return requestDeployment(getDatabase(), {
       projectId: data.projectId,
       trigger: "manual",
+      actor: userActor(user),
+      triggeredByUserId: user.id,
+    });
+  });
+
+/** Builds again the commit of a deploy that failed or was cancelled. */
+export const retryDeploymentFn = createServerFn({ method: "POST" })
+  .validator(z.object({ deploymentId: idSchema }))
+  .handler(async ({ data }) => {
+    const user = await authorize("deployment:create");
+    return retryDeployment(getDatabase(), data.deploymentId, {
       actor: userActor(user),
       triggeredByUserId: user.id,
     });

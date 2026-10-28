@@ -13,6 +13,7 @@ import {
 import {
   DeploymentNotFoundError,
   ProjectNotApprovedError,
+  RetryUnavailableError,
   RollbackUnavailableError,
 } from "./deployment.errors";
 
@@ -484,4 +485,33 @@ export function countActiveDeployments(database: Database): number {
     .where(inArray(tables.deployments.status, ["queued", ...IN_PROGRESS_STATUSES]))
     .get();
   return row?.total ?? 0;
+}
+
+/**
+ * Builds again the commit of a deployment that failed or was cancelled.
+ *
+ * @param database - Database.
+ * @param deploymentId - Deployment to retry.
+ * @param context - Who asks, for the audit log.
+ * @returns The new deployment, or the identical one already waiting in the queue.
+ * @throws {DeploymentNotFoundError} When the deployment does not exist.
+ * @throws {RetryUnavailableError} When the deployment did not fail and was not cancelled.
+ */
+export function retryDeployment(
+  database: Database,
+  deploymentId: string,
+  context: { readonly actor: Actor; readonly triggeredByUserId: string | null },
+) {
+  const deployment = getDeployment(database, deploymentId);
+  if (deployment.status !== "failed" && deployment.status !== "cancelled") {
+    throw new RetryUnavailableError(deploymentId, deployment.status);
+  }
+  return requestDeployment(database, {
+    projectId: deployment.projectId,
+    trigger: "manual",
+    actor: context.actor,
+    triggeredByUserId: context.triggeredByUserId,
+    commitSha: deployment.commitSha ?? deployment.requestedCommitSha,
+    commitMessage: deployment.commitMessage,
+  });
 }

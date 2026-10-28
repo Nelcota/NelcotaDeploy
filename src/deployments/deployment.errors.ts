@@ -29,3 +29,11 @@ export class NoActiveContainerError extends Error {
     this.name = "NoActiveContainerError";
   }
 }
+
+/** Thrown when a deployment cannot be retried because it did not fail or was not cancelled. */
+export class RetryUnavailableError extends Error {
+  constructor(deploymentId: string, status: string) {
+    super(`Deployment ${deploymentId} cannot be retried from status ${status}`);
+    this.name = "RetryUnavailableError";
+  }
+}

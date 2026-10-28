@@ -10,6 +10,7 @@ export {
   DeploymentNotFoundError,
   NoActiveContainerError,
   ProjectNotApprovedError,
+  RetryUnavailableError,
   RollbackUnavailableError,
 } from "./deployment.errors";
 export {
@@ -23,6 +24,7 @@ export {
   listDeployments,
   listRollbackCandidates,
   requestDeployment,
+  retryDeployment,
   transitionDeployment,
 } from "./deployment.service";
 export {

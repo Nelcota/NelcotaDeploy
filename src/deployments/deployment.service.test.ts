@@ -11,6 +11,7 @@ import { requestContainerAction } from "./container-action.service";
 import { InvalidDeploymentTransitionError } from "./deployment-status";
 import {
   NoActiveContainerError,
+  RetryUnavailableError,
   ProjectNotApprovedError,
   RollbackUnavailableError,
 } from "./deployment.errors";
@@ -21,6 +22,7 @@ import {
   getDeployment,
   listDeployments,
   requestDeployment,
+  retryDeployment,
   transitionDeployment,
 } from "./deployment.service";
 
@@ -289,5 +291,37 @@ describe("countActiveDeployments", () => {
     requestDeployment(database, { projectId: project.id, ...manual, commitSha: "c".repeat(40) });
 
     expect(countActiveDeployments(database)).toBe(2);
+  });
+});
+
+describe("retryDeployment", () => {
+  test("builds the same commit again after a failure", () => {
+    const database = openMemoryDatabase();
+    const project = createTestProject(database);
+    const { deploymentId } = requestDeployment(database, {
+      projectId: project.id,
+      ...manual,
+      commitSha: "abc1234def",
+    });
+    transitionDeployment(database, deploymentId, "failed", { errorMessage: "build failed" });
+
+    const retry = retryDeployment(database, deploymentId, {
+      actor: TEST_ACTOR,
+      triggeredByUserId: null,
+    });
+
+    expect(retry.deploymentId).not.toBe(deploymentId);
+    expect(getDeployment(database, retry.deploymentId).requestedCommitSha).toBe("abc1234def");
+  });
+
+  test("throws RetryUnavailableError for a deployment that succeeded", () => {
+    const database = openMemoryDatabase();
+    const project = createTestProject(database);
+    const { deploymentId } = requestDeployment(database, { projectId: project.id, ...manual });
+    finishSuccessfully(database, deploymentId);
+
+    expect(() =>
+      retryDeployment(database, deploymentId, { actor: TEST_ACTOR, triggeredByUserId: null }),
+    ).toThrow(RetryUnavailableError);
   });
 });

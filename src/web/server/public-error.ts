@@ -10,6 +10,7 @@ import {
   InvalidDeploymentTransitionError,
   NoActiveContainerError,
   ProjectNotApprovedError,
+  RetryUnavailableError,
   RollbackUnavailableError,
 } from "@/deployments";
 import { DomainNotFoundError, DomainTakenError } from "@/domains";
@@ -35,6 +36,7 @@ const MESSAGES: readonly (readonly [ErrorClass, string])[] = [
     RollbackUnavailableError,
     "Rollback indisponível: o deploy escolhido não tem uma imagem reutilizável.",
   ],
+  [RetryUnavailableError, "Só é possível tentar de novo um deploy que falhou ou foi cancelado."],
   [NoActiveContainerError, "O projeto ainda não tem um contêiner implantado."],
   [DeploymentNotFoundError, "Deploy não encontrado."],
   [InvalidDeploymentTransitionError, "O deploy mudou de estado. Atualize a página."],
