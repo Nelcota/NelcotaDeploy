@@ -18,16 +18,23 @@ const TONE_TEXT: Record<Tone, string> = {
   neutral: "text-muted-foreground",
 };
 
+const TONE_BACKGROUND: Record<Tone, string> = {
+  success: "bg-success/12",
+  danger: "bg-destructive/12",
+  progress: "bg-brand/14",
+  warning: "bg-warning/12",
+  neutral: "bg-well",
+};
+
 const TONE_DOT: Record<Tone, string> = {
-  success: "bg-success shadow-[0_0_0_3px_color-mix(in_oklab,var(--success)_18%,transparent)]",
-  danger:
-    "bg-destructive shadow-[0_0_0_3px_color-mix(in_oklab,var(--destructive)_18%,transparent)]",
+  success: "bg-success",
+  danger: "bg-destructive",
   progress: "bg-brand animate-pulse",
-  warning: "bg-warning shadow-[0_0_0_3px_color-mix(in_oklab,var(--warning)_18%,transparent)]",
+  warning: "bg-warning",
   neutral: "bg-faint",
 };
 
-/** Status as a colored dot and text. The text always names the state, so color is never the only cue. */
+/** Status as a tinted pill with a dot. The text always names the state, so color is never the only cue. */
 export function StatusPill({
   tone,
   label,
@@ -40,12 +47,13 @@ export function StatusPill({
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-2 text-sm font-medium whitespace-nowrap",
+        "inline-flex items-center gap-1.5 rounded-md px-2 py-0.5 text-xs font-medium whitespace-nowrap",
         TONE_TEXT[tone],
+        TONE_BACKGROUND[tone],
         className,
       )}
     >
-      <span aria-hidden className={cn("size-2 shrink-0 rounded-full", TONE_DOT[tone])} />
+      <span aria-hidden className={cn("size-1.5 shrink-0 rounded-full", TONE_DOT[tone])} />
       {label}
     </span>
   );

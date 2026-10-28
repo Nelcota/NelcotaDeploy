@@ -6,21 +6,22 @@
 @custom-variant dark (&:is(.dark *));
 
 /*
- * Nelcota Deploy — "control room".
- * Near-black canvas with a soft glow, rounded panels holding recessed wells, Nelcota blue
- * for actions and focus, green/amber/red reserved for status and four chart hues.
+ * Nelcota Deploy — same family as Nelcota PRs.
+ * The sidebar and top bar sit on the background; pages live on a raised panel holding
+ * cards, and cards hold tiles. Nelcota blue marks the active item and primary actions;
+ * green/amber/red are reserved for status.
  */
 :root {
   --radius: 0.625rem;
   --brand: #1f55f0;
-  --background: #f6f6f4;
+  --background: #ececea;
+  --panel: #f6f6f4;
   --foreground: #131315;
   --surface: #ffffff;
   --surface-raised: #ffffff;
   --surface-sunken: #eeeeeb;
   --well: #f4f4f1;
   --well-hover: #ecece8;
-  --glow: #e3e3de;
   --card: #ffffff;
   --card-foreground: #131315;
   --popover: #ffffff;
@@ -45,7 +46,7 @@
   --chart-3: #d48806;
   --chart-4: #7c4dff;
   --chart-5: #e5484d;
-  --sidebar: #ffffff;
+  --sidebar: #ececea;
   --sidebar-foreground: #131315;
   --sidebar-accent: #f0f0ed;
   --sidebar-border: #e4e4e0;
@@ -55,15 +56,15 @@
 
 .dark {
   --brand: #5b84ff;
-  --background: #0a0a0b;
+  --background: #111113;
+  --panel: #161618;
   --foreground: #f1f1f3;
   --surface: #151517;
   --surface-raised: #1c1c1f;
   --surface-sunken: #0a0a0b;
-  --well: #1a1a1d;
-  --well-hover: #222226;
-  --glow: #2a2622;
-  --card: #121214;
+  --well: #232327;
+  --well-hover: #2a2a2f;
+  --card: #1b1b1e;
   --card-foreground: #f1f1f3;
   --popover: #18181b;
   --popover-foreground: #f1f1f3;
@@ -77,7 +78,7 @@
   --accent: #161f3d;
   --accent-foreground: #bccbff;
   --destructive: #ff6b78;
-  --border: #222226;
+  --border: #28282d;
   --input: #2b2b30;
   --ring: #5b84ff;
   --success: #3fd49a;
@@ -87,7 +88,7 @@
   --chart-3: #f7bf4f;
   --chart-4: #9b6bff;
   --chart-5: #ff5a5f;
-  --sidebar: #0a0a0b;
+  --sidebar: #111113;
   --sidebar-foreground: #f1f1f3;
   --sidebar-accent: #1a1a1d;
   --sidebar-border: #1e1e22;
@@ -114,6 +115,7 @@
   --radius-xl: calc(var(--radius) + 4px);
   --color-brand: var(--brand);
   --color-background: var(--background);
+  --color-panel: var(--panel);
   --color-foreground: var(--foreground);
   --color-surface: var(--surface);
   --color-surface-raised: var(--surface-raised);
@@ -152,20 +154,6 @@
   --color-console-foreground: var(--console-foreground);
 }
 
-/* Stat bars grow from the baseline on first paint. Used with motion-safe:. */
-@theme {
-  --animate-bar-grow: bar-grow 700ms cubic-bezier(0.22, 1, 0.36, 1) both;
-
-  @keyframes bar-grow {
-    from {
-      transform: scaleY(0);
-    }
-    to {
-      transform: scaleY(1);
-    }
-  }
-}
-
 @layer base {
   html {
     -webkit-font-smoothing: antialiased;
@@ -176,13 +164,6 @@
   }
   body {
     @apply bg-background font-sans text-foreground;
-    /* Soft light centered above the page. */
-    background-image: radial-gradient(
-      60rem 32rem at 50% -10%,
-      color-mix(in oklab, var(--glow) 90%, transparent),
-      transparent 70%
-    );
-    background-attachment: fixed;
   }
   ::selection {
     background: color-mix(in oklab, var(--primary) 35%, transparent);

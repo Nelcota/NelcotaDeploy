@@ -62,17 +62,6 @@ function CardContent({ className, ...props }: React.ComponentProps<"div">) {
   return <div data-slot="card-content" className={cn("px-5", className)} {...props} />;
 }
 
-/** Recessed area inside a card that holds its main figure or content. */
-function CardWell({ className, ...props }: React.ComponentProps<"div">) {
-  return (
-    <div
-      data-slot="card-well"
-      className={cn("rounded-xl bg-well ring-1 ring-border/40", className)}
-      {...props}
-    />
-  );
-}
-
 function CardFooter({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
@@ -83,13 +72,4 @@ function CardFooter({ className, ...props }: React.ComponentProps<"div">) {
   );
 }
 
-export {
-  Card,
-  CardHeader,
-  CardFooter,
-  CardTitle,
-  CardAction,
-  CardDescription,
-  CardContent,
-  CardWell,
-};
+export { Card, CardHeader, CardFooter, CardTitle, CardAction, CardDescription, CardContent };

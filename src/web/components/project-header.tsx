@@ -108,14 +108,14 @@ export function ProjectBand({ details }: { readonly details: ProjectDetails }) {
 function ProjectTabs({ projectId }: { readonly projectId: string }) {
   return (
     <nav aria-label="Seções do projeto" className="-mx-1 overflow-x-auto px-1">
-      <ul className="flex w-fit min-w-max gap-1 rounded-full bg-well p-1 ring-1 ring-border/40">
+      <ul className="flex w-fit min-w-max gap-2 py-0.5">
         {PROJECT_SECTIONS.map((section) => (
           <li key={section.to}>
             <Link
               to={section.to}
               params={{ projectId }}
               activeOptions={{ exact: section.exact }}
-              className="inline-flex h-8 items-center rounded-full px-4 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none data-[status=active]:bg-foreground data-[status=active]:text-background"
+              className="inline-flex h-9 items-center rounded-full px-4 text-sm text-foreground ring-1 ring-border transition-colors hover:bg-well focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none data-[status=active]:bg-primary data-[status=active]:text-primary-foreground data-[status=active]:ring-primary"
             >
               {section.label}
             </Link>

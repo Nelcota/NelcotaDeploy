@@ -41,8 +41,6 @@ export type Stat = {
   readonly tone?: "default" | "success" | "warning" | "danger";
   /** Small icon beside the label. */
   readonly icon?: LucideIcon;
-  /** Compact chart shown next to the value, such as {@link MiniBars}. */
-  readonly visual?: ReactNode;
 };
 
 const STAT_TONES = {
@@ -52,7 +50,7 @@ const STAT_TONES = {
   danger: "text-destructive",
 } as const;
 
-/** Key figures as a row of cards: label on top, the value in a recessed well, detail below. */
+/** Key figures as tiles: the value on top, the label (and detail) at the bottom. */
 export function StatRow({
   stats,
   className,
@@ -63,7 +61,7 @@ export function StatRow({
   return (
     <dl
       className={cn(
-        "grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-[repeat(var(--stats),minmax(0,1fr))]",
+        "grid grid-cols-2 gap-3 lg:grid-cols-[repeat(var(--stats),minmax(0,1fr))]",
         className,
       )}
       style={{ "--stats": stats.length } as React.CSSProperties}
@@ -71,37 +69,32 @@ export function StatRow({
       {stats.map((stat) => (
         <div
           key={stat.label}
-          className="flex min-w-0 flex-col gap-2.5 rounded-2xl bg-card p-2.5 ring-1 ring-border/70"
+          className="flex min-h-28 min-w-0 flex-col-reverse justify-between gap-3 rounded-xl bg-card p-4 ring-1 ring-border/70"
         >
-          <dt className="flex items-center gap-3 px-2 pt-1.5 text-sm font-medium">
-            {stat.icon == null ? null : (
-              <span className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-well ring-1 ring-border/60">
-                <stat.icon aria-hidden className="size-3.5 text-muted-foreground" />
-              </span>
-            )}
+          <dt className="flex min-w-0 items-center gap-2 text-sm text-muted-foreground">
+            {stat.icon == null ? null : <stat.icon aria-hidden className="size-4 shrink-0" />}
             <span className="truncate">{stat.label}</span>
           </dt>
-          <dd className="flex h-28 items-center justify-between gap-4 rounded-xl bg-well px-5 ring-1 ring-border/40">
+          <dd className="min-w-0 space-y-0.5">
             <span
               className={cn(
-                "truncate text-3xl leading-tight font-semibold tracking-tight tabular-nums",
+                "block truncate text-2xl leading-tight font-semibold tracking-tight tabular-nums",
                 STAT_TONES[stat.tone ?? "default"],
               )}
             >
               {stat.value}
             </span>
-            {stat.visual == null ? null : <span className="shrink-0">{stat.visual}</span>}
+            {stat.detail == null ? null : (
+              <span className="block truncate text-xs text-faint">{stat.detail}</span>
+            )}
           </dd>
-          {stat.detail == null ? null : (
-            <dd className="truncate px-2 pb-1.5 text-sm text-faint">{stat.detail}</dd>
-          )}
         </div>
       ))}
     </dl>
   );
 }
 
-/** Rows as separate rounded blocks on one panel. */
+/** Rows separated by hairlines on one card. */
 export function List({
   children,
   className,
@@ -112,7 +105,7 @@ export function List({
   return (
     <div
       className={cn(
-        "flex flex-col gap-1.5 overflow-hidden rounded-2xl bg-card p-1.5 ring-1 ring-border/70",
+        "divide-y divide-border overflow-hidden rounded-2xl bg-card ring-1 ring-border/70",
         className,
       )}
     >
@@ -143,7 +136,7 @@ export function ListRow({
   return (
     <div
       className={cn(
-        "relative flex items-center gap-4 rounded-xl bg-well px-4 py-3.5 transition-colors before:absolute before:inset-y-3 before:left-0 before:w-[3px] before:rounded-r-full hover:bg-well-hover",
+        "relative flex items-center gap-4 px-5 py-4 transition-colors before:absolute before:inset-y-3 before:left-0 before:w-[3px] before:rounded-r-full hover:bg-well/50",
         ROW_ACCENTS[accent],
         className,
       )}
