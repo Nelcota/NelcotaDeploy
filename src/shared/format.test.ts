@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
 
 import {
+  dayKey,
+  formatDayHeading,
   formatBytes,
   formatDateTime,
   formatDuration,
@@ -44,5 +46,47 @@ describe("format", () => {
 
   test("formats a long date with weekday and month in São Paulo time", () => {
     expect(formatLongDate(new Date("2026-10-28T02:00:00Z"))).toBe("terça-feira, 27 de outubro");
+  });
+});
+
+describe("dayKey", () => {
+  test("uses the São Paulo calendar day", () => {
+    const key = dayKey("2026-10-29T01:00:00Z");
+
+    expect(key).toBe("2026-10-28");
+  });
+
+  test("returns null for an invalid date", () => {
+    const key = dayKey("not a date");
+
+    expect(key).toBeNull();
+  });
+});
+
+describe("formatDayHeading", () => {
+  const now = new Date("2026-10-28T15:00:00Z");
+
+  test("names a date on the same day as today", () => {
+    const heading = formatDayHeading("2026-10-28T03:30:00Z", now);
+
+    expect(heading).toBe("Hoje");
+  });
+
+  test("names a date on the previous day as yesterday", () => {
+    const heading = formatDayHeading("2026-10-28T02:00:00Z", now);
+
+    expect(heading).toBe("Ontem");
+  });
+
+  test("spells out older dates", () => {
+    const heading = formatDayHeading("2026-10-25T15:00:00Z", now);
+
+    expect(heading).toBe("domingo, 25 de outubro");
+  });
+
+  test("returns a dash for an invalid date", () => {
+    const heading = formatDayHeading("", now);
+
+    expect(heading).toBe("—");
   });
 });

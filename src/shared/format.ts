@@ -33,6 +33,13 @@ const longDateFormat = new Intl.DateTimeFormat(LOCALE, {
   day: "numeric",
   month: "long",
 });
+// "en-CA" formats dates as YYYY-MM-DD, a stable key for "same calendar day" comparisons.
+const dayKeyFormat = new Intl.DateTimeFormat("en-CA", {
+  timeZone: TIME_ZONE,
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+});
 const numberFormat = new Intl.NumberFormat(LOCALE, { maximumFractionDigits: 1 });
 const percentFormat = new Intl.NumberFormat(LOCALE, {
   style: "percent",
@@ -181,5 +188,44 @@ export function pluralize(count: number, singular: string, plural: string): stri
  * @returns Weekday, day and month in Portuguese.
  */
 export function formatLongDate(date: Date): string {
+  return longDateFormat.format(date);
+}
+
+const MILLISECONDS_PER_DAY =
+  HOURS_PER_DAY * MINUTES_PER_HOUR * SECONDS_PER_MINUTE * MILLISECONDS_PER_SECOND;
+
+/**
+ * Returns the calendar day of an instant in São Paulo time.
+ *
+ * @param isoDate - UTC ISO 8601 date.
+ * @returns The day as "YYYY-MM-DD", or null when the date is invalid.
+ *
+ * @example
+ * dayKey("2026-10-29T01:00:00Z"); // "2026-10-28" (22:00 in São Paulo)
+ */
+export function dayKey(isoDate: string): string | null {
+  const date = parseDate(isoDate);
+  return date == null ? null : dayKeyFormat.format(date);
+}
+
+/**
+ * Names the day of an instant for a list heading: "Hoje", "Ontem" or the long date.
+ *
+ * @param isoDate - UTC ISO 8601 date.
+ * @param now - Current instant, which decides what "today" is.
+ * @returns The heading in Portuguese, or "—" when the date is invalid.
+ */
+export function formatDayHeading(isoDate: string, now: Date): string {
+  const date = parseDate(isoDate);
+  if (date == null) {
+    return UNAVAILABLE;
+  }
+  const day = dayKeyFormat.format(date);
+  if (day === dayKeyFormat.format(now)) {
+    return "Hoje";
+  }
+  if (day === dayKeyFormat.format(new Date(now.getTime() - MILLISECONDS_PER_DAY))) {
+    return "Ontem";
+  }
   return longDateFormat.format(date);
 }
