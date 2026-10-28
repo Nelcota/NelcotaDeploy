@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import {
   ActivityIcon,
   BoxesIcon,
@@ -7,7 +7,6 @@ import {
   CircleCheckIcon,
   CircleDashedIcon,
   CircleXIcon,
-  GitBranchIcon,
   GitCommitHorizontalIcon,
   HistoryIcon,
   ListIcon,
@@ -19,24 +18,18 @@ import {
 import { useState } from "react";
 
 import { formatPercent, formatRelativeTime } from "@/shared/format";
-import { CardTitleRow, StatusTile } from "@/web/components/layout";
+import { CardTitleRow, List, StatusTile } from "@/web/components/layout";
 import { MetricChart } from "@/web/components/metric-chart";
 import { SegmentedControl } from "@/web/components/overview";
 import { type ApplicationFilter, matchesApplicationFilter } from "@/web/components/project-accent";
-import { ErrorState } from "@/web/components/states";
-import { ContainerStateBadge, DeploymentStatusBadge } from "@/web/components/status-badge";
+import { ProjectListRow } from "@/web/components/project-list-row";
+import { EmptyState, ErrorState, ListSkeleton } from "@/web/components/states";
+import { DeploymentStatusBadge } from "@/web/components/status-badge";
+import { describeSystemStatus, SYSTEM_STATUS_DOTS } from "@/web/components/system-status";
 import { Button } from "@/web/components/ui/button";
 import { Card } from "@/web/components/ui/card";
 import { cn } from "@/web/components/ui/class-names";
 import { Skeleton } from "@/web/components/ui/skeleton";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/web/components/ui/table";
 import { usagePercent } from "@/web/components/usage-meter";
 import { useCan } from "@/web/components/use-permissions";
 import {
@@ -49,7 +42,6 @@ import { listProjectsFn } from "@/web/functions/projects.functions";
 const REFRESH_INTERVAL_IN_MS = 10_000;
 const SHORT_SHA_LENGTH = 7;
 const HOURS_PER_DAY = 24;
-const MILLISECONDS_PER_DAY = 86_400_000;
 const WINDOWS = [
   { value: 1, label: "Última hora" },
   { value: HOURS_PER_DAY, label: "24 horas" },
@@ -78,12 +70,6 @@ type DashboardSummary = NonNullable<Awaited<ReturnType<typeof getDashboardFn>>>;
 type RecentDeployment = DashboardSummary["recentDeployments"][number];
 type HostSample = Awaited<ReturnType<typeof getHostMetricsFn>>[number];
 
-function deploymentsInLastDay(deployments: readonly RecentDeployment[], now: Date): number {
-  const since = now.getTime() - MILLISECONDS_PER_DAY;
-  return deployments.filter((deployment) => new Date(deployment.createdAt).getTime() >= since)
-    .length;
-}
-
 function DashboardPage() {
   const dashboard = useQuery({
     queryKey: ["dashboard"],
@@ -100,7 +86,7 @@ function DashboardPage() {
   return (
     <>
       <h1 className="sr-only">Painel</h1>
-      <OverviewCard data={data} now={now} />
+      <OverviewCard data={data} />
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1.7fr)_minmax(0,1fr)]">
         <ServerCard />
         <ActivityCard data={data} now={now} />
@@ -116,14 +102,13 @@ function WorkerPill() {
     queryFn: () => getSidebarStatusFn(),
     refetchInterval: REFRESH_INTERVAL_IN_MS,
   });
-  const worker = status.data?.worker ?? null;
-  const healthy = worker?.online === true && worker.dockerAvailable;
-  let label = "Worker ativo";
-  if (worker == null || worker.online === false) {
-    label = "Worker parado";
-  } else if (worker.dockerAvailable === false) {
-    label = "Docker indisponível";
-  }
+  // Deploys in progress already have their own tile here, so the pill only tells the health.
+  const { label, tone } = describeSystemStatus({
+    pending: status.isPending,
+    failed: status.isError,
+    worker: status.data?.worker ?? null,
+    activeDeployments: 0,
+  });
   return (
     <Link
       to="/settings"
@@ -132,22 +117,13 @@ function WorkerPill() {
     >
       <ServerIcon aria-hidden className="size-4 text-muted-foreground" />
       {label}
-      <span
-        aria-hidden
-        className={cn("size-2 rounded-full", healthy ? "bg-success" : "bg-destructive")}
-      />
+      <span aria-hidden className={cn("size-2 rounded-full", SYSTEM_STATUS_DOTS[tone])} />
     </Link>
   );
 }
 
 /** Top card: how many applications there are, and the state of each group at a glance. */
-function OverviewCard({
-  data,
-  now,
-}: {
-  readonly data: DashboardSummary | null;
-  readonly now: Date;
-}) {
+function OverviewCard({ data }: { readonly data: DashboardSummary | null }) {
   const status = useQuery({
     queryKey: ["sidebar-status"],
     queryFn: () => getSidebarStatusFn(),
@@ -157,14 +133,15 @@ function OverviewCard({
   if (data == null) {
     return <Skeleton className="h-52 rounded-2xl" />;
   }
+  // Same rule as the "Precisam de atenção" filter: down, or running but failing its check.
+  const attention = data.offlineCount + data.unhealthyCount;
   return (
     <Card className="grid gap-6 p-5 lg:grid-cols-[15rem_minmax(0,1fr)] lg:gap-0">
       <div className="flex flex-col gap-3 lg:border-r lg:border-border lg:pr-6">
         <CardTitleRow icon={BoxesIcon} title="Aplicações" />
-        <p className="text-sm text-muted-foreground">Todos os projetos</p>
         <p className="text-5xl leading-none font-semibold tabular-nums">{data.projectCount}</p>
-        <p className="mt-auto text-sm text-muted-foreground">
-          <span className="font-medium text-foreground">{data.onlineCount}</span> online agora
+        <p className="text-sm text-muted-foreground">
+          {data.projectCount === 1 ? "projeto cadastrado" : "projetos cadastrados"}
         </p>
       </div>
       <div className="flex min-w-0 flex-col gap-4 lg:pl-6">
@@ -176,17 +153,17 @@ function OverviewCard({
             value={data.onlineCount}
             label="Online"
             icon={CircleCheckIcon}
-            iconClassName="text-success"
+            iconClassName={data.onlineCount > 0 ? "text-success" : ""}
           />
           <StatusTile
-            value={data.offlineCount}
-            label="Fora do ar"
+            value={attention}
+            label="Precisam de atenção"
             icon={CircleAlertIcon}
-            iconClassName={data.offlineCount > 0 ? "text-warning" : ""}
+            iconClassName={attention > 0 ? "text-warning" : ""}
           />
           <StatusTile value={data.neverDeployedCount} label="Sem deploy" icon={CircleDashedIcon} />
           <StatusTile
-            value={deploymentsInLastDay(data.recentDeployments, now)}
+            value={data.deploymentsLastDayCount}
             label="Deploys em 24 h"
             icon={GitCommitHorizontalIcon}
           />
@@ -194,15 +171,15 @@ function OverviewCard({
             value={active}
             label="Em andamento"
             icon={LoaderCircleIcon}
-            iconClassName="text-brand"
-            tone="progress"
+            iconClassName={active > 0 ? "text-brand" : ""}
+            tone={active > 0 ? "progress" : "default"}
           />
           <StatusTile
-            value={data.recentFailures.length}
+            value={data.failuresLastDayCount}
             label="Falhas em 24 h"
             icon={CircleXIcon}
-            iconClassName="text-destructive"
-            tone="danger"
+            iconClassName={data.failuresLastDayCount > 0 ? "text-destructive" : ""}
+            tone={data.failuresLastDayCount > 0 ? "danger" : "default"}
           />
         </dl>
       </div>
@@ -249,9 +226,11 @@ function ServerCard() {
           </span>
         </p>
       </div>
-      {hostMetrics.data == null ? (
-        <Skeleton className="h-64 rounded-lg" />
-      ) : (
+      {hostMetrics.isError ? (
+        <ErrorState error={hostMetrics.error} onRetry={() => void hostMetrics.refetch()} />
+      ) : null}
+      {hostMetrics.isPending ? <Skeleton className="h-64 rounded-lg" /> : null}
+      {hostMetrics.data == null ? null : (
         <MetricChart
           label={selected.label}
           colorVariable={selected.color}
@@ -316,27 +295,29 @@ function ActivityCard({
   return (
     <Card className="gap-4 p-5">
       <CardTitleRow icon={HistoryIcon} title="Atividade">
-        <Link
-          to="/deployments"
-          className="text-sm text-muted-foreground transition-colors hover:text-foreground"
-        >
-          Ver todos
-        </Link>
+        <Button variant="ghost" size="sm" asChild>
+          <Link to="/deployments">Ver todos</Link>
+        </Button>
       </CardTitleRow>
       <SegmentedControl
         label="Atividade"
         options={[
-          { value: "recent", label: `Recentes (${recent.length})` },
-          { value: "failed", label: `Falhas em 24 h (${failed.length})` },
+          { value: "recent", label: "Recentes" },
+          {
+            value: "failed",
+            label:
+              data == null ? "Falhas em 24 h" : `Falhas em 24 h (${data.failuresLastDayCount})`,
+          },
         ]}
         value={view}
         onChange={setView}
       />
       {data == null ? <Skeleton className="h-60 rounded-lg" /> : null}
       {data != null && list.length === 0 ? (
-        <p className="py-6 text-center text-sm text-muted-foreground">
-          {view === "recent" ? "Nenhum deploy ainda." : "Nenhuma falha nas últimas 24 horas."}
-        </p>
+        <EmptyState
+          icon={HistoryIcon}
+          title={view === "recent" ? "Nenhum deploy ainda" : "Nenhuma falha nas últimas 24 horas"}
+        />
       ) : null}
       {list.length === 0 ? null : (
         <ul className="-mx-2 max-h-80 divide-y divide-border overflow-y-auto">
@@ -351,7 +332,6 @@ function ActivityCard({
 
 function ApplicationsCard() {
   const can = useCan();
-  const navigate = useNavigate();
   const [filter, setFilter] = useState<ApplicationFilter>("all");
   const projects = useQuery({
     queryKey: ["projects", ""],
@@ -367,7 +347,7 @@ function ApplicationsCard() {
     <Card className="gap-5 p-5">
       <CardTitleRow
         icon={ListIcon}
-        title="Aplicações"
+        title="Todas as aplicações"
         count={projects.data == null ? null : all.length}
       >
         <Button variant="outline" size="sm" asChild>
@@ -402,77 +382,44 @@ function ApplicationsCard() {
           </button>
         ))}
       </div>
-      {projects.isPending ? <Skeleton className="h-40 rounded-lg" /> : null}
+      {projects.isPending ? <ListSkeleton rows={3} /> : null}
       {projects.isError ? (
         <ErrorState error={projects.error} onRetry={() => void projects.refetch()} />
       ) : null}
-      {projects.isSuccess && list.length === 0 ? (
-        <p className="py-6 text-center text-sm text-muted-foreground">
-          {all.length === 0 ? "Nenhuma aplicação ainda." : "Nenhuma aplicação neste filtro."}
-        </p>
+      {projects.data != null && all.length === 0 ? (
+        <EmptyState
+          icon={BoxesIcon}
+          title="Nenhuma aplicação ainda"
+          description="Conecte um repositório para fazer o primeiro deploy."
+          action={
+            can("project:write") ? (
+              <Button size="sm" asChild>
+                <Link to="/projects/new">
+                  <PlusIcon aria-hidden />
+                  Novo projeto
+                </Link>
+              </Button>
+            ) : undefined
+          }
+        />
+      ) : null}
+      {all.length > 0 && list.length === 0 ? (
+        <EmptyState
+          icon={ListIcon}
+          title="Nenhuma aplicação neste filtro"
+          action={
+            <Button size="sm" variant="outline" onClick={() => setFilter("all")}>
+              Limpar filtro
+            </Button>
+          }
+        />
       ) : null}
       {list.length === 0 ? null : (
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Aplicação</TableHead>
-              <TableHead className="hidden md:table-cell">Branch</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead className="hidden lg:table-cell">Último deploy</TableHead>
-              <TableHead className="hidden text-right sm:table-cell">Atualizado</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {list.map((project) => (
-              <TableRow
-                key={project.id}
-                className="cursor-pointer"
-                onClick={() =>
-                  void navigate({ to: "/projects/$projectId", params: { projectId: project.id } })
-                }
-              >
-                <TableCell className="max-w-0 min-w-48">
-                  <Link
-                    to="/projects/$projectId"
-                    params={{ projectId: project.id }}
-                    className="block truncate font-medium hover:underline focus-visible:underline focus-visible:outline-none"
-                  >
-                    {project.name}
-                  </Link>
-                  <span className="block truncate font-mono text-xs text-faint">
-                    {project.repositoryFullName}
-                  </span>
-                </TableCell>
-                <TableCell className="hidden md:table-cell">
-                  <span className="inline-flex items-center gap-1.5 font-mono text-xs text-muted-foreground">
-                    <GitBranchIcon aria-hidden className="size-3.5" />
-                    {project.branch}
-                  </span>
-                </TableCell>
-                <TableCell>
-                  <ContainerStateBadge
-                    state={project.containerState}
-                    health={project.containerHealth}
-                  />
-                </TableCell>
-                <TableCell className="hidden lg:table-cell">
-                  {project.latestDeployment == null ? (
-                    <span className="text-sm text-faint">sem deploy</span>
-                  ) : (
-                    <span className="font-mono text-xs text-muted-foreground">
-                      {project.latestDeployment.commitSha?.slice(0, SHORT_SHA_LENGTH) ?? "—"}
-                    </span>
-                  )}
-                </TableCell>
-                <TableCell className="hidden text-right text-sm text-muted-foreground sm:table-cell">
-                  {project.latestDeployment == null
-                    ? "—"
-                    : formatRelativeTime(project.latestDeployment.createdAt, now)}
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+        <List>
+          {list.map((project) => (
+            <ProjectListRow key={project.id} project={project} now={now} />
+          ))}
+        </List>
       )}
     </Card>
   );

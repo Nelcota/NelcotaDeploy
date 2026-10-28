@@ -73,25 +73,29 @@ export function CommandPalette({
         id: `page-${item.to}`,
         group: "Páginas" as const,
         label: item.label,
-        hint: item.to,
+        hint: "Página",
         icon: item.icon,
         run: async () => await navigate({ to: item.to }),
       })),
-      {
-        id: "page-new-project",
-        group: "Páginas",
-        label: "Novo projeto",
-        hint: "/projects/new",
-        icon: PlusIcon,
-        run: async () => await navigate({ to: "/projects/new" }),
-      },
+      ...(permissions.includes("project:write")
+        ? [
+            {
+              id: "page-new-project",
+              group: "Páginas" as const,
+              label: "Novo projeto",
+              hint: "Criar projeto",
+              icon: PlusIcon,
+              run: async () => await navigate({ to: "/projects/new" }),
+            },
+          ]
+        : []),
       ...SETTINGS_SECTIONS.filter(
         (section) => section.permission == null || permissions.includes(section.permission),
       ).map((section) => ({
         id: `settings-${section.tab}`,
         group: "Páginas" as const,
         label: `Administração · ${section.label}`,
-        hint: `/settings?tab=${section.tab}`,
+        hint: "Administração",
         icon: section.icon,
         run: async () => await navigate({ to: "/settings", search: { tab: section.tab } }),
       })),
@@ -105,6 +109,15 @@ export function CommandPalette({
   useEffect(() => {
     setActiveIndex(0);
   }, [query, open]);
+
+  // Arrow keys move the selection; keep it inside the scrolling list.
+  const activeId = commands[activeIndex]?.id;
+  useEffect(() => {
+    if (activeId == null) {
+      return;
+    }
+    document.getElementById(activeId)?.scrollIntoView({ block: "nearest" });
+  }, [activeId]);
 
   const choose = (command: Command | undefined) => {
     if (command == null) {
@@ -130,7 +143,15 @@ export function CommandPalette({
 
   const groups = Object.groupBy(commands, (command) => command.group);
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog
+      open={open}
+      onOpenChange={(next) => {
+        if (next === false) {
+          setQuery("");
+        }
+        onOpenChange(next);
+      }}
+    >
       <DialogContent
         showCloseButton={false}
         className="top-[18%] translate-y-0 gap-0 overflow-hidden border-0 bg-popover p-0 shadow-lg ring-1 ring-border sm:max-w-xl"
@@ -157,7 +178,7 @@ export function CommandPalette({
         </div>
         <div id="command-results" role="listbox" className="max-h-[22rem] overflow-y-auto p-2">
           {commands.length === 0 ? (
-            <p className="px-3 py-8 text-center text-sm text-faint">Nada encontrado.</p>
+            <p className="px-3 py-8 text-center text-sm text-muted-foreground">Nada encontrado.</p>
           ) : null}
           {(["Projetos", "Páginas"] as const).map((group) => {
             const items = groups[group] ?? [];
@@ -175,17 +196,18 @@ export function CommandPalette({
                       key={command.id}
                       id={command.id}
                       role="option"
+                      tabIndex={-1}
                       aria-selected={active}
                       onMouseEnter={() => setActiveIndex(commands.indexOf(command))}
                       onClick={() => choose(command)}
                       className={cn(
-                        "flex w-full cursor-pointer items-center gap-3 rounded-lg px-3 py-2 text-left",
+                        "flex w-full cursor-pointer items-center gap-3 rounded-lg px-3 py-2 text-left hover:bg-secondary hover:text-foreground",
                         active ? "bg-secondary text-foreground" : "text-muted-foreground",
                       )}
                     >
                       <command.icon aria-hidden className="size-4 shrink-0 text-faint" />
                       <span className="truncate text-sm font-medium">{command.label}</span>
-                      <span className="ml-auto truncate font-mono text-xs text-faint">
+                      <span className="ml-auto truncate text-xs text-muted-foreground">
                         {command.hint}
                       </span>
                       {active ? (

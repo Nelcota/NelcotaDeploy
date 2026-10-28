@@ -47,9 +47,20 @@ function LoginPage() {
     }
     setSubmitting(true);
     setError(null);
-    const result = await authClient.signIn.email({ email: email.trim().toLowerCase(), password });
-    setSubmitting(false);
+    const result = await authClient.signIn
+      .email({ email: email.trim().toLowerCase(), password })
+      .catch((signInError: unknown) => {
+        console.error("sign-in request failed", signInError);
+        return null;
+      });
+    if (result == null) {
+      setSubmitting(false);
+      setError("Não foi possível conectar ao servidor. Tente novamente.");
+      return;
+    }
     if (result.error != null) {
+      // The button stays busy on success: it is re-enabled only when the user must act again.
+      setSubmitting(false);
       setError(
         result.error.status === TOO_MANY_REQUESTS
           ? "Muitas tentativas. Aguarde um minuto e tente novamente."
@@ -80,7 +91,7 @@ function LoginPage() {
             className="mx-auto h-18 w-auto dark:hidden"
           />
           <div className="space-y-2 text-center">
-            <h1 className="text-3xl font-semibold tracking-tight">Entrar no Deploy</h1>
+            <h1 className="text-3xl font-semibold tracking-tight">Entrar no Nelcota Deploy</h1>
             <p className="text-base text-muted-foreground">
               Use a conta criada pelo administrador do painel.
             </p>
@@ -94,6 +105,8 @@ function LoginPage() {
                 autoComplete="username"
                 placeholder="voce@empresa.com"
                 required
+                autoFocus
+                aria-invalid={error != null}
                 aria-describedby={error == null ? undefined : "login-error"}
                 value={email}
                 onChange={(event) => setEmail(event.target.value)}
@@ -106,6 +119,7 @@ function LoginPage() {
                 type="password"
                 autoComplete="current-password"
                 required
+                aria-invalid={error != null}
                 aria-describedby={error == null ? undefined : "login-error"}
                 value={password}
                 onChange={(event) => setPassword(event.target.value)}
@@ -121,11 +135,11 @@ function LoginPage() {
               Entrar
             </Button>
           </form>
-          <p className="text-center text-sm text-faint">
+          <p className="text-center text-sm text-muted-foreground">
             Esqueceu a senha? Peça a um administrador para redefini-la.
           </p>
         </div>
-        <footer className="pt-10 text-xs text-faint">
+        <footer className="pt-10 text-xs text-muted-foreground">
           © {new Date().getUTCFullYear()} Nelcota
         </footer>
       </main>

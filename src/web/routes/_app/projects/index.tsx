@@ -4,18 +4,10 @@ import { BoxesIcon, PlusIcon, SearchIcon } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { z } from "zod";
 
-import type { DeploymentStatus } from "@/deployments";
-import { formatRelativeTime } from "@/shared/format";
-import { DEPLOYMENT_STATUS_LABELS } from "@/web/components/labels";
-import { List, ListRow } from "@/web/components/layout";
+import { List } from "@/web/components/layout";
 import { PageHeader } from "@/web/components/page-header";
-import { containerAccent } from "@/web/components/project-accent";
+import { ProjectListRow } from "@/web/components/project-list-row";
 import { EmptyState, ErrorState, ListSkeleton } from "@/web/components/states";
-import {
-  ContainerStateBadge,
-  DeploymentStatusBadge,
-  StatusPill,
-} from "@/web/components/status-badge";
 import { Button } from "@/web/components/ui/button";
 import { Input } from "@/web/components/ui/input";
 import { Label } from "@/web/components/ui/label";
@@ -58,10 +50,6 @@ export const Route = createFileRoute("/_app/projects/")({
   head: () => ({ meta: [{ title: "Projetos · Nelcota Deploy" }] }),
   component: ProjectsPage,
 });
-
-function isDeploymentStatus(status: string): status is DeploymentStatus {
-  return Object.hasOwn(DEPLOYMENT_STATUS_LABELS, status);
-}
 
 function isStatusFilter(value: string): value is StatusFilter {
   return Object.hasOwn(STATUS_FILTERS, value);
@@ -134,57 +122,6 @@ function sortProjects(projects: readonly ProjectRow[], sort: SortState): Project
     }
     return sign * leftTime.localeCompare(rightTime);
   });
-}
-
-function LatestDeployment({ project, now }: { readonly project: ProjectRow; readonly now: Date }) {
-  const latest = project.latestDeployment;
-  if (latest == null || isDeploymentStatus(latest.status) === false) {
-    return <p className="text-xs text-faint">sem deploy</p>;
-  }
-  return (
-    <div className="space-y-0.5">
-      <DeploymentStatusBadge status={latest.status} />
-      <p className="text-xs text-faint">{formatRelativeTime(latest.createdAt, now)}</p>
-    </div>
-  );
-}
-
-function ProjectListRow({ project, now }: { readonly project: ProjectRow; readonly now: Date }) {
-  const accent = project.deploymentsApproved
-    ? containerAccent(project.containerState, project.containerHealth)
-    : "warning";
-  return (
-    <ListRow accent={accent}>
-      <div className="min-w-0 flex-1">
-        {/* The link covers the whole row, so the row opens the project and stays a real link. */}
-        <Link
-          to="/projects/$projectId"
-          params={{ projectId: project.id }}
-          className="block truncate font-medium after:absolute after:inset-0 focus-visible:outline-none focus-visible:after:ring-2 focus-visible:after:ring-ring focus-visible:after:ring-inset"
-        >
-          {project.name}
-        </Link>
-        <p className="truncate font-mono text-xs text-faint">{project.slug}</p>
-      </div>
-      <div className="hidden w-56 min-w-0 shrink-0 text-sm md:block">
-        <p className="truncate text-muted-foreground">{project.repositoryFullName}</p>
-        <p className="truncate font-mono text-xs text-faint">{project.branch}</p>
-      </div>
-      <div className="hidden w-36 shrink-0 lg:block">
-        <LatestDeployment project={project} now={now} />
-      </div>
-      <p className="hidden w-20 shrink-0 text-xs text-muted-foreground lg:block">
-        {project.autoDeploy ? "Automático" : "Manual"}
-      </p>
-      <div className="flex w-40 shrink-0 justify-end">
-        {project.deploymentsApproved ? (
-          <ContainerStateBadge state={project.containerState} health={project.containerHealth} />
-        ) : (
-          <StatusPill tone="warning" label="Aguardando aprovação" />
-        )}
-      </div>
-    </ListRow>
-  );
 }
 
 function ProjectsPage() {

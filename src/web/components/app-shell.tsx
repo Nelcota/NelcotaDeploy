@@ -22,10 +22,11 @@ import { authClient } from "./auth-client";
 import { NelcotaMark } from "./brand-logo";
 import { CommandPalette, useCommandPaletteShortcut } from "./command-palette";
 import { useDeploymentNotifications } from "./deployment-notifications";
-import { ROLE_LABELS } from "./labels";
+import { CONTAINER_STATE_LABELS, ROLE_LABELS } from "./labels";
 import { MAIN_AREAS } from "./navigation";
 import { ProfilePhotoDialog } from "./profile-photo-dialog";
 import { containerAccent, type RowAccent } from "./project-accent";
+import { describeSystemStatus, SYSTEM_STATUS_DOTS } from "./system-status";
 import { useTheme } from "./theme";
 import { Button } from "./ui/button";
 import { cn } from "./ui/class-names";
@@ -38,6 +39,7 @@ import {
   DropdownMenuTrigger,
 } from "./ui/dropdown-menu";
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "./ui/sheet";
+import { Skeleton } from "./ui/skeleton";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 import { UserAvatar } from "./user-avatar";
 
@@ -113,12 +115,21 @@ function SidebarGroup({
 function SidebarProjects({ onNavigate }: { readonly onNavigate: () => void }) {
   const projects = useProjectList();
   const list = projects.data ?? [];
-  if (projects.isPending) {
-    return null;
-  }
   return (
     <SidebarGroup label="Projetos">
-      {list.length === 0 ? <p className="px-3 text-sm text-faint">Nenhum projeto ainda.</p> : null}
+      {projects.isPending ? (
+        <div className="space-y-1" aria-busy="true" aria-label="Carregando projetos">
+          <Skeleton className="h-10 rounded-xl" />
+          <Skeleton className="h-10 rounded-xl" />
+          <Skeleton className="h-10 rounded-xl" />
+        </div>
+      ) : null}
+      {projects.isError && projects.data == null ? (
+        <p className="px-3 text-sm text-muted-foreground">Não foi possível carregar os projetos.</p>
+      ) : null}
+      {projects.data != null && list.length === 0 ? (
+        <p className="px-3 text-sm text-muted-foreground">Nenhum projeto ainda.</p>
+      ) : null}
       {list.slice(0, SIDEBAR_PROJECT_LIMIT).map((project) => (
         <Link
           key={project.id}
@@ -135,13 +146,19 @@ function SidebarProjects({ onNavigate }: { readonly onNavigate: () => void }) {
             )}
           />
           <span className="truncate">{project.name}</span>
+          <span className="sr-only">
+            {", "}
+            {project.containerState == null
+              ? "sem contêiner"
+              : (CONTAINER_STATE_LABELS[project.containerState] ?? project.containerState)}
+          </span>
         </Link>
       ))}
       {list.length > SIDEBAR_PROJECT_LIMIT ? (
         <Link
           to="/projects"
           onClick={onNavigate}
-          className="flex h-9 items-center px-3 text-sm text-faint transition-colors hover:text-foreground"
+          className="flex h-9 items-center rounded-xl px-3 text-sm text-muted-foreground transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
         >
           Ver todos ({list.length})
         </Link>
@@ -188,7 +205,7 @@ function SidebarContent({ onNavigate }: { readonly onNavigate: () => void }) {
         <SidebarProjects onNavigate={onNavigate} />
       </nav>
       <div className="border-t border-border pt-5">
-        <SidebarGroup label="Conta">
+        <SidebarGroup label="Sistema">
           {MAIN_AREAS.filter((area) => area.group === "account").map((area) => (
             <Link
               key={area.to}
@@ -212,7 +229,7 @@ function MobileNavigation() {
   return (
     <Sheet open={open} onOpenChange={setOpen}>
       <SheetTrigger asChild>
-        <Button variant="ghost" size="icon-sm" aria-label="Abrir menu" className="lg:hidden">
+        <Button variant="ghost" size="icon" aria-label="Abrir menu" className="lg:hidden">
           <MenuIcon aria-hidden />
         </Button>
       </SheetTrigger>
@@ -338,20 +355,13 @@ function RefreshButton() {
 function SystemStatus() {
   const status = useSystemStatus();
   const worker = status.data?.worker ?? null;
-  const active = status.data?.activeDeployments ?? 0;
-  const healthy = worker?.online === true && worker.dockerAvailable;
-  let label = "Sistema operando";
-  if (worker == null || worker.online === false) {
-    label = "Worker parado";
-  } else if (worker.dockerAvailable === false) {
-    label = "Docker indisponível";
-  } else if (active > 0) {
-    label = active === 1 ? "1 deploy em andamento" : `${active} deploys em andamento`;
-  }
-  let dot = "bg-destructive";
-  if (healthy) {
-    dot = active > 0 ? "bg-brand animate-pulse" : "bg-success";
-  }
+  const { label, tone } = describeSystemStatus({
+    pending: status.isPending,
+    failed: status.isError,
+    worker,
+    activeDeployments: status.data?.activeDeployments ?? 0,
+  });
+  const dot = SYSTEM_STATUS_DOTS[tone];
   return (
     <Tooltip>
       <TooltipTrigger asChild>
@@ -464,6 +474,13 @@ export function AppShell({
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         <header className="flex h-20 shrink-0 items-center gap-3 bg-background px-4 lg:px-6">
           <MobileNavigation />
+          <Link
+            to="/"
+            aria-label="Nelcota Deploy — Painel"
+            className="rounded-lg focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none lg:hidden"
+          >
+            <NelcotaMark aria-hidden className="h-7 w-auto" />
+          </Link>
           <ShortcutPills />
           <div className="ml-auto flex min-w-0 flex-1 items-center justify-end gap-2.5">
             <SearchButton onSearch={() => setSearchOpen(true)} />
