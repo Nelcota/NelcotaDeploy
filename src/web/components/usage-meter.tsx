@@ -24,10 +24,10 @@ export function UsageMeter({
     barClass = "bg-warning";
   }
   return (
-    <div className="space-y-1.5">
-      <div className="flex items-baseline justify-between gap-2 text-sm">
-        <span className="font-medium">{label}</span>
-        <span className="text-muted-foreground tabular-nums">
+    <div className="space-y-2">
+      <div className="flex items-baseline justify-between gap-2 text-[0.92rem]">
+        <span className="font-semibold">{label}</span>
+        <span className="font-semibold text-foreground tabular-nums">
           {known ? formatPercent(clamped) : "Indisponível"}
         </span>
       </div>
@@ -38,14 +38,14 @@ export function UsageMeter({
         aria-valuemax={100}
         aria-valuenow={known ? Math.round(clamped) : undefined}
         aria-valuetext={known ? formatPercent(clamped) : "Indisponível"}
-        className="h-2 overflow-hidden rounded-full bg-muted"
+        className="h-2.5 overflow-hidden rounded-full bg-surface-sunken"
       >
         <div
           className={cn("h-full rounded-full transition-all", barClass)}
           style={{ width: `${clamped}%` }}
         />
       </div>
-      {detail == null ? null : <p className="text-xs text-muted-foreground">{detail}</p>}
+      {detail == null ? null : <p className="text-[0.82rem] text-muted-foreground">{detail}</p>}
     </div>
   );
 }

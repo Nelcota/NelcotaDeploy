@@ -10,11 +10,13 @@ export function PageHeader({
   readonly actions?: ReactNode;
 }) {
   return (
-    <header className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-      <div className="min-w-0 space-y-1">
-        <h1 className="truncate text-2xl font-semibold tracking-tight">{title}</h1>
+    <header className="flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
+      <div className="min-w-0 space-y-1.5">
+        <h1 className="truncate text-[1.9rem] leading-tight font-bold tracking-tight">{title}</h1>
         {description == null ? null : (
-          <div className="text-sm text-muted-foreground">{description}</div>
+          <div className="max-w-3xl text-[0.98rem] leading-relaxed text-muted-foreground">
+            {description}
+          </div>
         )}
       </div>
       {actions == null ? null : <div className="flex flex-wrap items-center gap-2">{actions}</div>}

@@ -33,7 +33,7 @@ export function MetricChart({
   const color = `var(${colorVariable})`;
   const gradientId = `gradient-${colorVariable.replaceAll(/[^a-z0-9]/gi, "")}`;
   return (
-    <figure aria-label={label} className="h-48 w-full">
+    <figure aria-label={label} className="h-64 w-full">
       <ResponsiveContainer width="100%" height="100%">
         <AreaChart data={[...points]} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
           <defs>

@@ -55,11 +55,15 @@ export function FormField({
         "aria-invalid": messages.length > 0,
       })}
       {hint == null ? null : (
-        <p id={hintId} className="text-xs text-muted-foreground">
+        <p id={hintId} className="text-[0.82rem] leading-relaxed text-muted-foreground">
           {hint}
         </p>
       )}
-      <p id={errorId} aria-live="polite" className="text-xs text-destructive">
+      <p
+        id={errorId}
+        aria-live="polite"
+        className="text-[0.82rem] font-medium text-destructive empty:hidden"
+      >
         {messages[0] ?? ""}
       </p>
     </div>

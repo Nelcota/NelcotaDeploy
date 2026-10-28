@@ -47,8 +47,8 @@ function DetailRow({
 }) {
   return (
     <div className="flex flex-col gap-0.5 py-2 sm:flex-row sm:justify-between sm:gap-4">
-      <dt className="text-sm text-muted-foreground">{label}</dt>
-      <dd className="text-sm break-all sm:text-right">{children}</dd>
+      <dt className="text-[0.92rem] text-muted-foreground">{label}</dt>
+      <dd className="text-[0.92rem] break-all sm:text-right">{children}</dd>
     </div>
   );
 }
@@ -101,7 +101,7 @@ function ProjectOverviewPage() {
             </DetailRow>
           </dl>
           {project.autoDeploy ? (
-            <p className="mt-3 rounded-md bg-muted p-3 text-xs text-muted-foreground">
+            <p className="mt-3 rounded-md bg-muted p-3 text-[0.82rem] text-muted-foreground">
               Para o deploy automático funcionar, configure o webhook do GitHub apontando para a URL
               exibida em Configurações › Servidor, com o evento “push”.
             </p>
@@ -159,7 +159,7 @@ function ProjectOverviewPage() {
                 <Link
                   to="/projects/$projectId/deployments/$deploymentId"
                   params={{ projectId, deploymentId: currentDeploymentId }}
-                  className="text-sm font-medium underline-offset-4 hover:underline"
+                  className="text-[0.92rem] font-medium underline-offset-4 hover:underline"
                 >
                   Ver detalhes e logs do deploy
                 </Link>
@@ -194,7 +194,7 @@ function ProjectOverviewPage() {
                     href={`${domain.httpsEnabled ? "https" : "http"}://${domain.hostname}`}
                     target="_blank"
                     rel="noreferrer noopener"
-                    className="inline-flex items-center gap-1.5 text-sm hover:underline"
+                    className="inline-flex items-center gap-1.5 text-[0.92rem] hover:underline"
                   >
                     {domain.httpsEnabled ? (
                       <LockIcon aria-hidden className="size-3.5" />
@@ -233,10 +233,10 @@ function ProjectOverviewPage() {
               {containers.map((container) => (
                 <li key={container.containerId} className="space-y-1 py-2">
                   <div className="flex flex-wrap items-center justify-between gap-2">
-                    <span className="font-mono text-sm break-all">{container.name}</span>
+                    <span className="font-mono text-[0.92rem] break-all">{container.name}</span>
                     <ContainerStateBadge state={container.state} health={container.health} />
                   </div>
-                  <p className="text-xs text-muted-foreground">
+                  <p className="text-[0.82rem] text-muted-foreground">
                     {container.state === "running"
                       ? `Em execução desde ${formatRelativeTime(container.startedAt, now)}`
                       : "Parado"}

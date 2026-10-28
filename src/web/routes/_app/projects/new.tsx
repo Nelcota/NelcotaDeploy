@@ -34,7 +34,7 @@ function NewProjectPage() {
         }
       />
       {isAdmin ? null : (
-        <p className="flex items-start gap-2 rounded-md border border-warning/40 bg-warning/10 p-3 text-sm">
+        <p className="flex items-start gap-2 rounded-md border border-warning/40 bg-warning/10 p-3 text-[0.92rem]">
           <InfoIcon aria-hidden className="mt-0.5 size-4 shrink-0 text-warning" />O build executa o
           Dockerfile do repositório. Por segurança, projetos criados por quem não é administrador
           precisam ser aprovados por um administrador antes do primeiro deploy.

@@ -48,7 +48,7 @@ function ProjectLayout() {
 
   if (query.isError) {
     return (
-      <div className="space-y-4">
+      <div className="space-y-6">
         <ErrorState error={query.error} onRetry={() => void query.refetch()} />
         <Button variant="outline" asChild>
           <Link to="/projects">Voltar para projetos</Link>
@@ -69,15 +69,18 @@ function ProjectLayout() {
     <>
       <ProjectHeader details={query.data} />
       <ProjectBanners details={query.data} />
-      <nav aria-label="Seções do projeto" className="-mx-1 overflow-x-auto border-b">
-        <ul className="flex min-w-max gap-1 px-1">
+      <nav
+        aria-label="Seções do projeto"
+        className="sticky top-0 z-30 -mx-1 overflow-x-auto bg-background/85 px-1 py-2 backdrop-blur md:top-0"
+      >
+        <ul className="flex w-fit min-w-max gap-1 rounded-2xl border border-border/70 bg-surface-sunken/70 p-1.5">
           {TABS.map((tab) => (
             <li key={tab.to}>
               <Link
                 to={tab.to}
                 params={{ projectId }}
                 activeOptions={{ exact: tab.exact }}
-                className="inline-block border-b-2 border-transparent px-3 py-2 text-sm text-muted-foreground transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none data-[status=active]:border-primary data-[status=active]:font-medium data-[status=active]:text-foreground"
+                className="inline-flex h-10 items-center rounded-xl px-4 text-[0.92rem] font-semibold text-muted-foreground transition-colors hover:bg-surface-raised/60 hover:text-foreground focus-visible:ring-4 focus-visible:ring-ring/30 focus-visible:outline-none data-[status=active]:bg-surface-raised data-[status=active]:text-foreground data-[status=active]:shadow-[0_1px_3px_rgb(0_0_0/0.2)]"
               >
                 {tab.label}
               </Link>
@@ -105,13 +108,15 @@ function ProjectHeader({ details }: { readonly details: ProjectDetails }) {
     <header className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
       <div className="min-w-0 space-y-2">
         <div className="flex flex-wrap items-center gap-3">
-          <h1 className="truncate text-2xl font-semibold tracking-tight">{project.name}</h1>
+          <h1 className="truncate text-[1.9rem] leading-tight font-bold tracking-tight">
+            {project.name}
+          </h1>
           <ContainerStateBadge
             state={container?.state ?? null}
             health={container?.health ?? null}
           />
         </div>
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">
+        <div className="flex flex-wrap items-center gap-x-5 gap-y-1 text-[0.95rem] text-muted-foreground">
           <a
             href={`https://github.com/${project.repositoryFullName}`}
             target="_blank"
@@ -258,9 +263,9 @@ function ProjectBanners({ details }: { readonly details: ProjectDetails }) {
       {project.deploymentsApproved ? null : (
         <div
           role="status"
-          className="flex flex-col gap-3 rounded-lg border border-warning/40 bg-warning/10 p-4 sm:flex-row sm:items-center sm:justify-between"
+          className="flex flex-col gap-3 rounded-2xl border border-warning/35 bg-warning/10 p-5 sm:flex-row sm:items-center sm:justify-between"
         >
-          <p className="flex items-start gap-2 text-sm">
+          <p className="flex items-start gap-2 text-[0.95rem]">
             <ShieldCheckIcon aria-hidden className="mt-0.5 size-4 shrink-0 text-warning" />
             Este projeto aguarda aprovação de um administrador. O build executa código do
             repositório, por isso nenhum deploy roda antes da aprovação.
@@ -275,7 +280,7 @@ function ProjectBanners({ details }: { readonly details: ProjectDetails }) {
       {workerOffline ? (
         <p
           role="alert"
-          className="flex items-start gap-2 rounded-lg border border-destructive/40 bg-destructive/10 p-4 text-sm"
+          className="flex items-start gap-2 rounded-2xl border border-destructive/35 bg-destructive/10 p-5 text-[0.95rem]"
         >
           <AlertTriangleIcon aria-hidden className="mt-0.5 size-4 shrink-0 text-destructive" />
           Worker offline: deploys, ações de contêiner e tasks ficam na fila até o worker voltar.

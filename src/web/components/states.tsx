@@ -16,14 +16,16 @@ export function EmptyState({
   readonly action?: ReactNode;
 }) {
   return (
-    <div className="flex flex-col items-center justify-center gap-3 rounded-lg border border-dashed px-6 py-12 text-center">
-      <div className="rounded-full bg-muted p-3">
-        <Icon aria-hidden className="size-5 text-muted-foreground" />
+    <div className="flex flex-col items-center justify-center gap-4 rounded-2xl border border-dashed border-border bg-surface-sunken/40 px-6 py-14 text-center">
+      <div className="rounded-2xl bg-accent p-3.5">
+        <Icon aria-hidden className="size-6 text-brand" />
       </div>
       <div className="space-y-1">
-        <p className="font-medium">{title}</p>
+        <p className="text-[1.05rem] font-semibold">{title}</p>
         {description == null ? null : (
-          <div className="max-w-md text-sm text-muted-foreground">{description}</div>
+          <div className="max-w-md text-[0.95rem] leading-relaxed text-muted-foreground">
+            {description}
+          </div>
         )}
       </div>
       {action}
@@ -42,10 +44,10 @@ export function ErrorState({
   return (
     <div
       role="alert"
-      className="flex flex-col items-center gap-3 rounded-lg border border-destructive/40 bg-destructive/5 px-6 py-10 text-center"
+      className="flex flex-col items-center gap-3 rounded-2xl border border-destructive/40 bg-destructive/8 px-6 py-10 text-center"
     >
       <AlertTriangleIcon aria-hidden className="size-6 text-destructive" />
-      <p className="text-sm">{message}</p>
+      <p className="text-[0.95rem]">{message}</p>
       {onRetry == null ? null : (
         <Button variant="outline" size="sm" onClick={onRetry}>
           <RefreshCwIcon aria-hidden />
@@ -60,7 +62,7 @@ export function ListSkeleton({ rows = 4 }: { readonly rows?: number }) {
   return (
     <div className="space-y-2" aria-busy="true" aria-label="Carregando">
       {Array.from({ length: rows }, (_, index) => (
-        <Skeleton key={index} className="h-12 w-full" />
+        <Skeleton key={index} className="h-14 w-full rounded-xl" />
       ))}
     </div>
   );

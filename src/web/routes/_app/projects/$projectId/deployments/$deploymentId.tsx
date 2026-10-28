@@ -41,8 +41,8 @@ function useNow(enabled: boolean): Date {
 function Detail({ label, children }: { readonly label: string; readonly children: ReactNode }) {
   return (
     <div className="min-w-0 space-y-1">
-      <dt className="text-xs text-muted-foreground">{label}</dt>
-      <dd className="truncate text-sm">{children}</dd>
+      <dt className="text-[0.82rem] text-muted-foreground">{label}</dt>
+      <dd className="truncate text-[0.92rem]">{children}</dd>
     </div>
   );
 }
@@ -131,7 +131,7 @@ function DeploymentDetailPage() {
         <CardContent className="space-y-4">
           <div className="flex flex-wrap items-center gap-3">
             <DeploymentStatusBadge status={data.status} />
-            <p className="min-w-0 truncate text-sm font-medium">
+            <p className="min-w-0 truncate text-[0.92rem] font-medium">
               {data.commitMessage ?? "sem mensagem de commit"}
             </p>
           </div>
@@ -156,10 +156,10 @@ function DeploymentDetailPage() {
             <Detail label="Iniciado">{formatDateTime(data.startedAt)}</Detail>
             <Detail label="Finalizado">{formatDateTime(data.finishedAt)}</Detail>
             <Detail label="Imagem">
-              <span className="font-mono text-xs">{data.imageTag ?? "—"}</span>
+              <span className="font-mono text-[0.82rem]">{data.imageTag ?? "—"}</span>
             </Detail>
             <Detail label="Contêiner">
-              <span className="font-mono text-xs">{data.containerName ?? "—"}</span>
+              <span className="font-mono text-[0.82rem]">{data.containerName ?? "—"}</span>
             </Detail>
             {data.sourceDeploymentId == null ? null : (
               <Detail label="Imagem reaproveitada de">
@@ -178,11 +178,11 @@ function DeploymentDetailPage() {
               role="alert"
               className="space-y-1 rounded-md border border-destructive/40 bg-destructive/5 p-3"
             >
-              <p className="text-sm font-medium text-destructive">
+              <p className="text-[0.92rem] font-medium text-destructive">
                 O deploy falhou. A versão anterior continua no ar.
               </p>
-              <p className="text-xs text-muted-foreground">Detalhe técnico</p>
-              <pre className="font-mono text-xs break-all whitespace-pre-wrap">
+              <p className="text-[0.82rem] text-muted-foreground">Detalhe técnico</p>
+              <pre className="font-mono text-[0.82rem] break-all whitespace-pre-wrap">
                 {data.errorMessage}
               </pre>
             </div>

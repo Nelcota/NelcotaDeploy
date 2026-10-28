@@ -182,7 +182,7 @@ function TasksPage() {
           ) : null
         }
       />
-      <p className="flex items-start gap-2 rounded-lg border bg-muted/40 p-4 text-sm">
+      <p className="flex items-start gap-2 rounded-lg border bg-muted/40 p-4 text-[0.92rem]">
         <InfoIcon aria-hidden className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
         Os comandos rodam dentro do contêiner atual do projeto via docker exec, como uma lista de
         argumentos: não passam por um shell e nunca executam no servidor host.
@@ -217,13 +217,15 @@ function TasksPage() {
                 <TableRow key={task.id}>
                   <TableCell className="font-medium">{task.name}</TableCell>
                   <TableCell
-                    className="max-w-xs truncate font-mono text-xs"
+                    className="max-w-xs truncate font-mono text-[0.82rem]"
                     title={formatCommandLine(task.command)}
                   >
                     {formatCommandLine(task.command)}
                   </TableCell>
-                  <TableCell className="font-mono text-xs">{task.schedule ?? "Manual"}</TableCell>
-                  <TableCell className="text-sm text-muted-foreground">
+                  <TableCell className="font-mono text-[0.82rem]">
+                    {task.schedule ?? "Manual"}
+                  </TableCell>
+                  <TableCell className="text-[0.92rem] text-muted-foreground">
                     {formatDateTime(task.nextRunAt)}
                   </TableCell>
                   <TableCell>
@@ -236,11 +238,11 @@ function TasksPage() {
                   </TableCell>
                   <TableCell>
                     {task.latestExecution == null ? (
-                      <span className="text-sm text-muted-foreground">Nunca executada</span>
+                      <span className="text-[0.92rem] text-muted-foreground">Nunca executada</span>
                     ) : (
                       <div className="flex flex-col items-start gap-1">
                         <TaskStatusBadge status={task.latestExecution.status} />
-                        <span className="text-xs text-muted-foreground">
+                        <span className="text-[0.82rem] text-muted-foreground">
                           {formatDuration(
                             durationBetween(
                               task.latestExecution.startedAt,
@@ -358,7 +360,7 @@ function ExecutionHistory({
     <Card>
       <CardHeader>
         <CardTitle className="text-base">Execuções de {task.name}</CardTitle>
-        <CardDescription className="font-mono text-xs">
+        <CardDescription className="font-mono text-[0.82rem]">
           {formatCommandLine(task.command)}
         </CardDescription>
       </CardHeader>
@@ -372,7 +374,7 @@ function ExecutionHistory({
         ) : null}
         {(executions.data ?? []).map((execution) => (
           <article key={execution.id} className="space-y-2 rounded-lg border p-3">
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[0.92rem]">
               <TaskStatusBadge status={execution.status} />
               <span>{TRIGGER_LABELS[execution.trigger] ?? execution.trigger}</span>
               <span className="text-muted-foreground">
@@ -390,10 +392,10 @@ function ExecutionHistory({
               </span>
             </div>
             {execution.errorMessage == null ? null : (
-              <p className="text-sm text-destructive">{execution.errorMessage}</p>
+              <p className="text-[0.92rem] text-destructive">{execution.errorMessage}</p>
             )}
             {execution.output === "" ? null : (
-              <pre className="max-h-64 overflow-auto rounded-md bg-black/90 p-3 font-mono text-xs whitespace-pre-wrap text-zinc-100 dark:bg-black/40">
+              <pre className="max-h-64 overflow-auto rounded-md bg-black/90 p-3 font-mono text-[0.82rem] whitespace-pre-wrap text-zinc-100 dark:bg-black/40">
                 {execution.output}
               </pre>
             )}

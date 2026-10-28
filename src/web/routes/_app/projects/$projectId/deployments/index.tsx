@@ -127,13 +127,13 @@ function ProjectDeploymentsPage() {
       }),
       helper.accessor("branch", {
         header: "Branch",
-        cell: (info) => <span className="font-mono text-xs">{info.getValue()}</span>,
+        cell: (info) => <span className="font-mono text-[0.82rem]">{info.getValue()}</span>,
       }),
       helper.display({
         id: "trigger",
         header: "Origem",
         cell: (info) => (
-          <div className="text-xs">
+          <div className="text-[0.82rem]">
             <p>{DEPLOYMENT_TRIGGER_LABELS[info.row.original.trigger]}</p>
             <p className="text-muted-foreground">{info.row.original.triggeredByLabel}</p>
           </div>
@@ -145,7 +145,7 @@ function ProjectDeploymentsPage() {
           <time
             dateTime={info.getValue()}
             title={formatDateTime(info.getValue())}
-            className="text-xs"
+            className="text-[0.82rem]"
           >
             {formatRelativeTime(info.getValue(), now)}
           </time>
@@ -155,7 +155,7 @@ function ProjectDeploymentsPage() {
         id: "duration",
         header: "Duração",
         cell: (info) => (
-          <span className="text-xs tabular-nums">
+          <span className="text-[0.82rem] tabular-nums">
             {formatDuration(
               durationBetween(info.row.original.startedAt, info.row.original.finishedAt),
             )}
@@ -254,7 +254,7 @@ function ProjectDeploymentsPage() {
 function CommitCell({ deployment }: { readonly deployment: Deployment }) {
   const sha = deployment.commitSha ?? deployment.requestedCommitSha;
   return (
-    <div className="max-w-72 min-w-0 text-xs">
+    <div className="max-w-72 min-w-0 text-[0.82rem]">
       <p className="font-mono">{sha == null ? "—" : sha.slice(0, SHORT_SHA_LENGTH)}</p>
       <p className="truncate text-muted-foreground" title={deployment.commitMessage ?? undefined}>
         {deployment.commitMessage ?? "sem mensagem"}

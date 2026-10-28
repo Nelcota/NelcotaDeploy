@@ -260,7 +260,7 @@ function OrganizationForm({
               Salvar
             </Button>
           ) : (
-            <p className="text-sm text-muted-foreground">
+            <p className="text-[0.92rem] text-muted-foreground">
               Somente administradores podem alterar estas configurações.
             </p>
           )}
@@ -363,7 +363,7 @@ function UsersTab() {
                         }
                       />
                     </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">
+                    <TableCell className="text-[0.92rem] text-muted-foreground">
                       {formatDateTime(user.createdAt)}
                     </TableCell>
                     <TableCell className="text-right">
@@ -578,8 +578,8 @@ function ResetPasswordDialog({
 function InfoRow({ label, children }: { readonly label: string; readonly children: ReactNode }) {
   return (
     <div className="flex flex-col gap-1 py-2 sm:flex-row sm:items-center sm:justify-between">
-      <dt className="text-sm text-muted-foreground">{label}</dt>
-      <dd className="text-sm font-medium">{children}</dd>
+      <dt className="text-[0.92rem] text-muted-foreground">{label}</dt>
+      <dd className="text-[0.92rem] font-medium">{children}</dd>
     </div>
   );
 }
@@ -681,7 +681,7 @@ function ServerTab() {
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex flex-wrap items-center gap-2">
-            <code className="rounded bg-muted px-2 py-1 font-mono text-sm break-all">
+            <code className="rounded bg-muted px-2 py-1 font-mono text-[0.92rem] break-all">
               {server.webhookUrl}
             </code>
             <CopyButton text={server.webhookUrl} label="Copiar URL" />
@@ -692,7 +692,7 @@ function ServerTab() {
               }
             />
           </div>
-          <ol className="list-decimal space-y-1 pl-5 text-sm text-muted-foreground">
+          <ol className="list-decimal space-y-1 pl-5 text-[0.92rem] text-muted-foreground">
             <li>No repositório, abra Settings → Webhooks → Add webhook.</li>
             <li>Payload URL: a URL acima. Content type: application/json.</li>
             <li>Secret: o mesmo valor de GITHUB_WEBHOOK_SECRET do servidor.</li>
@@ -766,10 +766,10 @@ function TokensTab() {
                           </Badge>
                         ))}
                       </TableCell>
-                      <TableCell className="text-sm text-muted-foreground">
+                      <TableCell className="text-[0.92rem] text-muted-foreground">
                         {formatRelativeTime(token.lastUsedAt, now)}
                       </TableCell>
-                      <TableCell className="text-sm text-muted-foreground">
+                      <TableCell className="text-[0.92rem] text-muted-foreground">
                         {token.expiresAt == null ? "Nunca" : formatDateTime(token.expiresAt)}
                       </TableCell>
                       <TableCell>
@@ -860,7 +860,7 @@ function CreateTokenCard({ onCreated }: { readonly onCreated: (token: string) =>
             )}
           </FormField>
           <fieldset className="space-y-2">
-            <legend className="text-sm font-medium">Escopos</legend>
+            <legend className="text-[0.92rem] font-medium">Escopos</legend>
             {(["read", "deploy"] as const).map((scope) => (
               <div key={scope} className="flex items-center gap-2">
                 <Checkbox
@@ -931,8 +931,8 @@ function CreatedTokenDialog({
             </div>
           </div>
           <div className="space-y-2">
-            <p className="text-sm font-medium">Exemplo para o Claude Code</p>
-            <pre className="overflow-x-auto rounded-md bg-muted p-3 font-mono text-xs whitespace-pre-wrap break-all">
+            <p className="text-[0.92rem] font-medium">Exemplo para o Claude Code</p>
+            <pre className="overflow-x-auto rounded-md bg-muted p-3 font-mono text-[0.82rem] whitespace-pre-wrap break-all">
               {command}
             </pre>
             <CopyButton text={command} label="Copiar comando" />
@@ -1020,22 +1020,22 @@ function AuditTab() {
                 <TableBody>
                   {events.map((event) => (
                     <TableRow key={event.id}>
-                      <TableCell className="text-sm whitespace-nowrap">
+                      <TableCell className="text-[0.92rem] whitespace-nowrap">
                         {formatDateTime(event.createdAt)}
                       </TableCell>
-                      <TableCell className="text-sm">
+                      <TableCell className="text-[0.92rem]">
                         <span className="text-muted-foreground">
                           {ACTOR_TYPE_LABELS[event.actorType] ?? event.actorType}:
                         </span>{" "}
                         {event.actorLabel}
                       </TableCell>
-                      <TableCell className="font-mono text-xs">{event.action}</TableCell>
-                      <TableCell className="font-mono text-xs">
+                      <TableCell className="font-mono text-[0.82rem]">{event.action}</TableCell>
+                      <TableCell className="font-mono text-[0.82rem]">
                         {event.targetType}
                         {event.targetId == null ? "" : ` ${event.targetId.slice(-SHORT_ID_LENGTH)}`}
                       </TableCell>
                       <TableCell
-                        className="max-w-sm truncate font-mono text-xs"
+                        className="max-w-sm truncate font-mono text-[0.82rem]"
                         title={event.details}
                       >
                         {event.details}
@@ -1094,15 +1094,15 @@ function WebhookDeliveriesCard() {
               <TableBody>
                 {deliveries.data.map((delivery) => (
                   <TableRow key={delivery.id}>
-                    <TableCell className="text-sm whitespace-nowrap">
+                    <TableCell className="text-[0.92rem] whitespace-nowrap">
                       {formatDateTime(delivery.receivedAt)}
                     </TableCell>
-                    <TableCell className="font-mono text-xs">{delivery.event}</TableCell>
-                    <TableCell className="text-sm">
+                    <TableCell className="font-mono text-[0.82rem]">{delivery.event}</TableCell>
+                    <TableCell className="text-[0.92rem]">
                       {delivery.repositoryFullName ?? "—"}
                       {delivery.ref == null ? "" : ` (${delivery.ref.replace("refs/heads/", "")})`}
                     </TableCell>
-                    <TableCell className="font-mono text-xs">
+                    <TableCell className="font-mono text-[0.82rem]">
                       {delivery.commitSha?.slice(0, SHORT_SHA_LENGTH) ?? "—"}
                     </TableCell>
                     <TableCell>
@@ -1115,7 +1115,9 @@ function WebhookDeliveriesCard() {
                               : "Ignorado"
                           }
                         />
-                        <span className="text-xs text-muted-foreground">{delivery.reason}</span>
+                        <span className="text-[0.82rem] text-muted-foreground">
+                          {delivery.reason}
+                        </span>
                       </div>
                     </TableCell>
                   </TableRow>

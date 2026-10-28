@@ -20,11 +20,11 @@ import { cn } from "./ui/class-names";
 type Tone = "success" | "danger" | "progress" | "neutral" | "warning";
 
 const TONE_CLASSES: Record<Tone, string> = {
-  success: "border-success/30 bg-success/10 text-success",
+  success: "border-success/25 bg-success/12 text-success",
   danger: "border-destructive/30 bg-destructive/10 text-destructive",
-  progress: "border-chart-1/30 bg-chart-1/10 text-chart-1",
+  progress: "border-primary/30 bg-primary/12 text-brand",
   warning: "border-warning/30 bg-warning/10 text-warning",
-  neutral: "border-border bg-muted text-muted-foreground",
+  neutral: "border-border bg-secondary text-muted-foreground",
 };
 
 const TONE_ICONS: Record<Tone, LucideIcon> = {
@@ -49,7 +49,7 @@ export function StatusPill({
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-xs font-medium whitespace-nowrap",
+        "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[0.8rem] leading-none font-semibold whitespace-nowrap",
         TONE_CLASSES[tone],
         className,
       )}

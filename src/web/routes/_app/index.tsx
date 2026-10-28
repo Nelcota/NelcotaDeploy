@@ -40,26 +40,41 @@ const HEALTH_PILLS = {
   unavailable: { tone: "danger", label: "Worker ou Docker indisponível" },
 } as const;
 
+const STAT_TONES = {
+  brand: "bg-accent text-brand",
+  success: "bg-success/12 text-success",
+  neutral: "bg-secondary text-muted-foreground",
+  danger: "bg-destructive/12 text-destructive",
+} as const;
+
 function StatCard({
   label,
   value,
   icon: Icon,
   hint,
+  tone,
 }: {
   readonly label: string;
   readonly value: number | string;
   readonly icon: LucideIcon;
   readonly hint?: string | undefined;
+  readonly tone: keyof typeof STAT_TONES;
 }) {
   return (
-    <Card className="gap-2 py-4">
-      <CardHeader className="flex flex-row items-center justify-between px-4">
-        <CardDescription>{label}</CardDescription>
-        <Icon aria-hidden className="size-4 text-muted-foreground" />
-      </CardHeader>
-      <CardContent className="px-4">
-        <p className="text-2xl font-semibold tabular-nums">{value}</p>
-        {hint == null ? null : <p className="text-xs text-muted-foreground">{hint}</p>}
+    <Card className="gap-0 py-5">
+      <CardContent className="flex items-start justify-between gap-4 px-5">
+        <div className="space-y-1.5">
+          <p className="text-[0.88rem] font-medium text-muted-foreground">{label}</p>
+          <p className="text-[2.1rem] leading-none font-bold tracking-tight tabular-nums">
+            {value}
+          </p>
+          <p className="min-h-5 text-[0.82rem] text-muted-foreground">{hint ?? ""}</p>
+        </div>
+        <span
+          className={`flex size-11 shrink-0 items-center justify-center rounded-xl ${STAT_TONES[tone]}`}
+        >
+          <Icon aria-hidden className="size-5" />
+        </span>
       </CardContent>
     </Card>
   );
@@ -101,26 +116,36 @@ function DashboardPage() {
 
       <section aria-label="Resumo" className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {data == null ? (
-          Array.from({ length: 4 }, (_, index) => <Skeleton key={index} className="h-28" />)
+          Array.from({ length: 4 }, (_, index) => (
+            <Skeleton key={index} className="h-[7.5rem] rounded-2xl" />
+          ))
         ) : (
           <>
             <StatCard
               label="Aplicações"
               value={data.projectCount}
               icon={BoxesIcon}
+              tone="brand"
               hint={`${data.neverDeployedCount} sem deploy`}
             />
-            <StatCard label="Online" value={data.onlineCount} icon={CircleCheckIcon} />
+            <StatCard
+              label="Online"
+              value={data.onlineCount}
+              icon={CircleCheckIcon}
+              tone="success"
+            />
             <StatCard
               label="Offline"
               value={data.offlineCount}
               icon={CircleOffIcon}
+              tone="neutral"
               hint={data.unhealthyCount > 0 ? `${data.unhealthyCount} sem saúde` : undefined}
             />
             <StatCard
               label="Falhas (24h)"
               value={data.recentFailures.length}
               icon={AlertTriangleIcon}
+              tone="danger"
             />
           </>
         )}
@@ -149,7 +174,7 @@ function DashboardPage() {
                   label="Memória"
                   percent={usagePercent(host?.memoryUsedBytes, host?.memoryTotalBytes)}
                   detail={
-                    host == null
+                    host?.memoryTotalBytes == null
                       ? undefined
                       : `${formatBytes(host.memoryUsedBytes)} de ${formatBytes(host.memoryTotalBytes)}`
                   }
@@ -158,12 +183,12 @@ function DashboardPage() {
                   label="Disco"
                   percent={usagePercent(host?.diskUsedBytes, host?.diskTotalBytes)}
                   detail={
-                    host == null
+                    host?.diskTotalBytes == null
                       ? undefined
                       : `${formatBytes(host.diskUsedBytes)} de ${formatBytes(host.diskTotalBytes)}`
                   }
                 />
-                <p className="text-xs text-muted-foreground">
+                <p className="text-[0.82rem] text-muted-foreground">
                   {host == null
                     ? "Nenhuma amostra coletada ainda."
                     : `Última amostra ${formatRelativeTime(host.createdAt, now)}`}
@@ -181,7 +206,7 @@ function DashboardPage() {
           </CardHeader>
           <CardContent>
             {hostMetrics.data == null ? (
-              <Skeleton className="h-48" />
+              <Skeleton className="h-64 rounded-xl" />
             ) : (
               <MetricChart
                 label="CPU"
@@ -262,15 +287,15 @@ function DeploymentList({
             className="flex items-center justify-between gap-3 rounded-md px-2 py-3 hover:bg-muted/50 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
           >
             <div className="min-w-0">
-              <p className="truncate text-sm font-medium">{deployment.projectName}</p>
-              <p className="truncate text-xs text-muted-foreground">
+              <p className="truncate text-[0.92rem] font-medium">{deployment.projectName}</p>
+              <p className="truncate text-[0.82rem] text-muted-foreground">
                 {deployment.commitSha?.slice(0, 7) ?? "—"} ·{" "}
                 {deployment.commitMessage ?? deployment.errorMessage ?? "sem mensagem"}
               </p>
             </div>
             <div className="flex shrink-0 flex-col items-end gap-1">
               <DeploymentStatusBadge status={deployment.status} />
-              <span className="text-xs text-muted-foreground">
+              <span className="text-[0.82rem] text-muted-foreground">
                 {formatRelativeTime(deployment.createdAt, now)} ·{" "}
                 {formatDuration(durationBetween(deployment.startedAt, deployment.finishedAt))}
               </span>

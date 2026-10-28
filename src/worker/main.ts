@@ -1,3 +1,4 @@
+import { mkdir } from "node:fs/promises";
 import { hostname } from "node:os";
 
 import { getConfig } from "@/config";
@@ -11,6 +12,8 @@ import { Worker } from "./worker";
 
 const logger = createLogger("worker");
 const config = getConfig();
+// Builds need it, and disk usage is measured on the filesystem that holds it.
+await mkdir(config.WORKSPACE_DIR, { recursive: true });
 const worker = new Worker({
   workerId: process.env["WORKER_ID"] ?? hostname(),
   database: getDatabase(),

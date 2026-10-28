@@ -21,8 +21,12 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { name: "viewport", content: "width=device-width, initial-scale=1" },
       { title: "Nelcota Deploy" },
       { name: "robots", content: "noindex, nofollow" },
+      { name: "theme-color", content: "#1e2229" },
     ],
-    links: [{ rel: "stylesheet", href: stylesUrl }],
+    links: [
+      { rel: "stylesheet", href: stylesUrl },
+      { rel: "icon", href: "/favicon.svg", type: "image/svg+xml" },
+    ],
   }),
   shellComponent: RootDocument,
   component: RootComponent,

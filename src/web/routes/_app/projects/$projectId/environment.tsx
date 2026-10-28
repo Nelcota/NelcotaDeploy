@@ -124,7 +124,7 @@ function EnvironmentPage() {
           ) : null
         }
       />
-      <div className="flex flex-col gap-3 rounded-lg border bg-muted/40 p-4 text-sm sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-col gap-3 rounded-lg border bg-muted/40 p-4 text-[0.92rem] sm:flex-row sm:items-center sm:justify-between">
         <p className="flex items-start gap-2">
           <InfoIcon aria-hidden className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
           As alterações valem a partir do próximo deploy. Use o redeploy para recriar o contêiner
@@ -212,14 +212,14 @@ function VariablesTable({
         <TableBody>
           {query.data.map((variable) => (
             <TableRow key={variable.id}>
-              <TableCell className="font-mono text-sm">{variable.key}</TableCell>
+              <TableCell className="font-mono text-[0.92rem]">{variable.key}</TableCell>
               <TableCell>
                 <Badge variant={variable.kind === "secret" ? "default" : "secondary"}>
                   {variable.kind === "secret" ? "Secret" : "Configuração"}
                 </Badge>
               </TableCell>
               <TableCell
-                className="max-w-xs truncate font-mono text-xs"
+                className="max-w-xs truncate font-mono text-[0.82rem]"
                 title={variable.value ?? undefined}
               >
                 {variable.kind === "secret" ? (
@@ -228,10 +228,10 @@ function VariablesTable({
                   (variable.value ?? "")
                 )}
               </TableCell>
-              <TableCell className="text-sm">
+              <TableCell className="text-[0.92rem]">
                 {variable.availableAtBuild ? "Disponível no build" : "—"}
               </TableCell>
-              <TableCell className="text-sm text-muted-foreground">
+              <TableCell className="text-[0.92rem] text-muted-foreground">
                 {formatDateTime(variable.updatedAt)}
               </TableCell>
               {canEdit ? (
@@ -369,7 +369,7 @@ function VariableDialog({
             {(props) => (
               <Textarea
                 {...props}
-                className="font-mono text-sm"
+                className="font-mono text-[0.92rem]"
                 autoComplete="off"
                 spellCheck={false}
                 placeholder={editingSecret ? MASKED_VALUE : undefined}
@@ -381,7 +381,7 @@ function VariableDialog({
           <div className="flex items-start justify-between gap-4 rounded-lg border p-3">
             <div className="space-y-1">
               <Label htmlFor="variable-build">Disponível no build</Label>
-              <p id="variable-build-hint" className="text-xs text-muted-foreground">
+              <p id="variable-build-hint" className="text-[0.82rem] text-muted-foreground">
                 O valor é passado ao docker build como build arg (ARG no Dockerfile), sem aparecer
                 na linha de comando.
               </p>

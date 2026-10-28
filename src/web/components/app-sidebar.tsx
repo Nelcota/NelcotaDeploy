@@ -15,6 +15,7 @@ import { toast } from "sonner";
 import type { SessionUser } from "@/web/functions/session.functions";
 
 import { authClient } from "./auth-client";
+import { NelcotaLogo } from "./brand-logo";
 import { ROLE_LABELS } from "./labels";
 import { useTheme } from "./theme";
 import { Button } from "./ui/button";
@@ -30,15 +31,21 @@ const NAVIGATION = [
 function NavigationLinks({ onNavigate }: { readonly onNavigate?: () => void }) {
   return (
     <nav aria-label="Principal" className="flex flex-col gap-1">
+      <p className="px-3.5 pb-2 text-[0.72rem] font-semibold tracking-[0.12em] text-muted-foreground/80 uppercase">
+        Plataforma
+      </p>
       {NAVIGATION.map((item) => (
         <Link
           key={item.to}
           to={item.to}
           activeOptions={{ exact: item.exact }}
           onClick={onNavigate}
-          className="flex items-center gap-3 rounded-md px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none data-[status=active]:bg-sidebar-accent data-[status=active]:font-medium data-[status=active]:text-foreground"
+          className="group relative flex h-11 items-center gap-3 rounded-xl px-3.5 text-[0.95rem] font-medium text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-foreground focus-visible:ring-4 focus-visible:ring-ring/30 focus-visible:outline-none data-[status=active]:bg-accent data-[status=active]:font-semibold data-[status=active]:text-accent-foreground"
         >
-          <item.icon aria-hidden className="size-4" />
+          <item.icon
+            aria-hidden
+            className="size-[1.15rem] transition-colors group-data-[status=active]:text-brand"
+          />
           {item.label}
         </Link>
       ))}
@@ -57,20 +64,38 @@ function UserFooter({ user }: { readonly user: SessionUser }) {
     }
     await router.navigate({ to: "/login" });
   };
+  const initials = user.name
+    .split(/\s+/)
+    .map((part) => part.charAt(0))
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
   return (
-    <div className="space-y-3 border-t border-sidebar-border pt-4">
-      <div className="min-w-0 px-1">
-        <p className="truncate text-sm font-medium">{user.name}</p>
-        <p className="truncate text-xs text-muted-foreground">
-          {user.email} · {ROLE_LABELS[user.role]}
-        </p>
+    <div className="space-y-3 rounded-2xl border border-sidebar-border bg-surface/70 p-3">
+      <div className="flex items-center gap-3">
+        <span
+          aria-hidden
+          className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-primary text-[0.92rem] font-bold text-primary-foreground"
+        >
+          {initials}
+        </span>
+        <div className="min-w-0">
+          <p className="truncate text-[0.92rem] font-semibold">{user.name}</p>
+          <p className="truncate text-[0.8rem] text-muted-foreground">{ROLE_LABELS[user.role]}</p>
+        </div>
       </div>
       <div className="flex gap-2">
         <Button variant="outline" size="sm" className="flex-1" onClick={toggleTheme}>
           {theme === "dark" ? <SunIcon aria-hidden /> : <MoonIcon aria-hidden />}
           {theme === "dark" ? "Tema claro" : "Tema escuro"}
         </Button>
-        <Button variant="outline" size="sm" onClick={() => void signOut()} aria-label="Sair">
+        <Button
+          variant="outline"
+          size="icon-sm"
+          onClick={() => void signOut()}
+          aria-label="Sair"
+          title="Sair"
+        >
           <LogOutIcon aria-hidden />
         </Button>
       </div>
@@ -80,11 +105,15 @@ function UserFooter({ user }: { readonly user: SessionUser }) {
 
 function Brand() {
   return (
-    <Link to="/" className="flex items-center gap-2 px-1 font-semibold tracking-tight">
-      <span className="flex size-7 items-center justify-center rounded-md bg-primary text-primary-foreground">
-        <RocketIcon aria-hidden className="size-4" />
+    <Link
+      to="/"
+      aria-label="Nelcota Deploy — Painel"
+      className="flex items-center gap-3 rounded-xl px-2 py-1 focus-visible:ring-4 focus-visible:ring-ring/30 focus-visible:outline-none"
+    >
+      <NelcotaLogo className="h-7 w-auto text-foreground" />
+      <span className="rounded-md bg-accent px-2 py-0.5 text-[0.7rem] font-bold tracking-[0.14em] text-accent-foreground uppercase">
+        Deploy
       </span>
-      Nelcota Deploy
     </Link>
   );
 }
@@ -94,14 +123,14 @@ export function AppSidebar({ user }: { readonly user: SessionUser }) {
   const [open, setOpen] = useState(false);
   return (
     <>
-      <aside className="hidden w-60 shrink-0 flex-col justify-between border-r border-sidebar-border bg-sidebar p-4 md:flex">
-        <div className="space-y-6">
+      <aside className="sticky top-0 hidden h-svh w-72 shrink-0 flex-col justify-between border-r border-sidebar-border bg-sidebar px-4 py-6 md:flex">
+        <div className="space-y-9">
           <Brand />
           <NavigationLinks />
         </div>
         <UserFooter user={user} />
       </aside>
-      <header className="flex items-center justify-between border-b px-4 py-3 md:hidden">
+      <header className="sticky top-0 z-40 flex items-center justify-between border-b bg-sidebar/95 px-4 py-3 backdrop-blur md:hidden">
         <Brand />
         <Sheet open={open} onOpenChange={setOpen}>
           <SheetTrigger asChild>
@@ -109,8 +138,11 @@ export function AppSidebar({ user }: { readonly user: SessionUser }) {
               <MenuIcon aria-hidden />
             </Button>
           </SheetTrigger>
-          <SheetContent side="left" className="flex w-72 flex-col justify-between bg-sidebar p-4">
-            <div className="space-y-6">
+          <SheetContent
+            side="left"
+            className="flex w-80 flex-col justify-between bg-sidebar px-4 py-6"
+          >
+            <div className="space-y-9">
               <SheetTitle className="sr-only">Menu</SheetTitle>
               <Brand />
               <NavigationLinks onNavigate={() => setOpen(false)} />

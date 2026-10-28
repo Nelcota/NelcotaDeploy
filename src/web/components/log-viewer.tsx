@@ -24,9 +24,9 @@ const MAX_LINES = 5000;
 const SCROLL_BOTTOM_TOLERANCE_IN_PX = 24;
 
 const LEVEL_CLASSES: Record<LogLevel, string> = {
-  info: "text-foreground/90",
-  warn: "text-warning",
-  error: "text-destructive",
+  info: "text-console-foreground",
+  warn: "text-[#f2b544]",
+  error: "text-[#ff6b7a]",
 };
 
 const LEVEL_PREFIX: Record<LogLevel, string> = { info: "", warn: "AVISO", error: "ERRO" };
@@ -120,10 +120,10 @@ export function LogViewer({
 
   const pill = STATE_PILLS[state];
   return (
-    <div className="overflow-hidden rounded-lg border bg-card">
-      <div className="flex flex-wrap items-center gap-2 border-b px-3 py-2">
+    <div className="overflow-hidden rounded-2xl border bg-card">
+      <div className="flex flex-wrap items-center gap-3 border-b px-4 py-3">
         <StatusPill tone={pill.tone} label={pill.label} />
-        <span className="text-xs text-muted-foreground">{lines.length} linhas</span>
+        <span className="text-[0.85rem] text-muted-foreground">{lines.length} linhas</span>
         <div className="relative ml-auto w-full sm:w-64">
           <SearchIcon
             aria-hidden
@@ -134,7 +134,7 @@ export function LogViewer({
             placeholder="Filtrar"
             value={filter}
             onChange={(event) => setFilter(event.target.value)}
-            className="h-9 pl-8"
+            className="h-10 pl-9"
           />
         </div>
       </div>
@@ -152,12 +152,12 @@ export function LogViewer({
           );
         }}
         className={cn(
-          "overflow-auto bg-black/90 p-3 font-mono text-xs leading-relaxed text-zinc-100 dark:bg-black/40",
+          "overflow-auto bg-console px-4 py-3 font-mono text-[0.82rem] leading-[1.7] text-console-foreground",
           heightClass,
         )}
       >
         {visible.length === 0 ? (
-          <p className="flex items-center gap-2 text-zinc-400">
+          <p className="flex items-center gap-2 text-console-foreground/60">
             <RadioIcon aria-hidden className="size-3.5" />
             {emptyMessage}
           </p>
@@ -173,7 +173,10 @@ export function LogViewer({
                   line.stream === "system" ? "font-semibold" : "",
                 )}
               >
-                <time className="shrink-0 text-zinc-500 select-none" dateTime={line.createdAt}>
+                <time
+                  className="shrink-0 text-console-foreground/40 tabular-nums select-none"
+                  dateTime={line.createdAt}
+                >
                   {formatTime(line.createdAt)}
                 </time>
                 {LEVEL_PREFIX[level] === "" ? null : (
@@ -186,7 +189,7 @@ export function LogViewer({
         )}
       </div>
       {following ? null : (
-        <div className="flex justify-end border-t px-3 py-2">
+        <div className="flex justify-end border-t px-4 py-3">
           <Button size="sm" variant="secondary" onClick={() => setFollowing(true)}>
             <ArrowDownIcon aria-hidden />
             Acompanhar novas linhas
