@@ -154,9 +154,7 @@ function ScheduleCell({ task, now }: { readonly task: TaskRow; readonly now: Dat
         <p className="truncate text-muted-foreground" title={formatDateTime(task.nextRunAt)}>
           próxima {formatRelativeTime(task.nextRunAt, now)}
         </p>
-      ) : (
-        <p className="truncate text-muted-foreground">{task.enabled ? "" : "pausada"}</p>
-      )}
+      ) : null}
     </div>
   );
 }

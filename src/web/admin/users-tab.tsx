@@ -99,7 +99,8 @@ export function UsersTab() {
               className="flex-wrap md:flex-nowrap"
             >
               <UserAvatar name={user.name} image={user.image} />
-              <div className="min-w-0 flex-1 space-y-0.5 md:basis-auto">
+              {/* On phones the person fills the first line and the controls wrap below. */}
+              <div className="min-w-0 flex-1 basis-[calc(100%-3.25rem)] space-y-0.5 md:basis-auto">
                 <p className="flex min-w-0 items-center gap-2 text-sm font-medium">
                   <span className="truncate">{user.name}</span>
                   {user.id === currentUser.id ? (
@@ -107,7 +108,9 @@ export function UsersTab() {
                   ) : null}
                   {user.disabled ? <StatusPill tone="neutral" label="Desativado" /> : null}
                 </p>
-                <p className="text-sm break-all text-muted-foreground">{user.email}</p>
+                <p className="truncate text-sm text-muted-foreground" title={user.email}>
+                  {user.email}
+                </p>
               </div>
               <span className="hidden shrink-0 text-xs text-muted-foreground lg:block">
                 desde {formatDateTime(user.createdAt)}

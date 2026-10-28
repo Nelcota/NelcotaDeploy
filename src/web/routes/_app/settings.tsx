@@ -71,7 +71,10 @@ function SettingsPage() {
         }}
         className="gap-8"
       >
-        <TabsList aria-label="Seções da administração">
+        <TabsList
+          aria-label="Seções da administração"
+          className="[scrollbar-width:none] max-sm:[mask-image:linear-gradient(to_right,black_calc(100%-2rem),transparent)]"
+        >
           {SETTINGS_SECTIONS.filter((section) => canSee(section)).map((section) => (
             <TabsTrigger key={section} value={section}>
               <SettingsTabIcon tab={section} />
