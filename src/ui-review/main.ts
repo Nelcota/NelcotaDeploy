@@ -106,7 +106,7 @@ async function signIn(page: Page, email: string, password: string): Promise<void
   // Typing before React hydrates the form leaves its state empty, so wait for the page to settle.
   await page.waitForLoadState("networkidle");
   await page.getByLabel("Seu e-mail").fill(email);
-  await page.getByLabel("Senha").fill(password);
+  await page.getByLabel("Senha", { exact: true }).fill(password);
   await page.getByRole("button", { name: "Entrar" }).click();
   try {
     await page.waitForURL(`${BASE_URL}/`);

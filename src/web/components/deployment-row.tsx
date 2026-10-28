@@ -92,17 +92,20 @@ export function DeploymentTimingColumn({ timing }: { readonly timing: Deployment
   );
 }
 
-/** Commit, time and duration on one line, for phones where the columns are hidden. */
+/**
+ * Time and duration on one line, plus the commit when the row does not show it already, for
+ * phones where the columns are hidden.
+ */
 export function DeploymentMobileMeta({
   shortSha,
   timing,
 }: {
-  readonly shortSha: string;
+  readonly shortSha?: string;
   readonly timing: DeploymentTiming;
 }) {
   return (
     <p className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-muted-foreground sm:hidden">
-      <span className="font-mono">{shortSha}</span>
+      {shortSha == null ? null : <span className="font-mono">{shortSha}</span>}
       <span className="inline-flex items-center gap-1 tabular-nums">
         <ClockIcon aria-hidden className="size-3.5" />
         <time dateTime={timing.createdAt}>{formatShortTime(timing.createdAt)}</time>

@@ -236,12 +236,7 @@ function CommitCell({
       >
         {deployment.commitMessage ?? "sem mensagem"}
       </p>
-      <DeploymentMobileMeta
-        shortSha={
-          sha == null ? deployment.id.slice(-SHORT_SHA_LENGTH) : sha.slice(0, SHORT_SHA_LENGTH)
-        }
-        timing={deployment}
-      />
+      <DeploymentMobileMeta timing={deployment} />
     </div>
   );
 }
