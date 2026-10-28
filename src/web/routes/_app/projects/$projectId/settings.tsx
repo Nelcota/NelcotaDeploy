@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { GitBranchIcon, KeyRoundIcon, Trash2Icon } from "lucide-react";
+import { GitBranchIcon, KeyRoundIcon, SettingsIcon, Trash2Icon } from "lucide-react";
 import { type FormEvent, useState } from "react";
 import { toast } from "sonner";
 
@@ -45,6 +45,7 @@ function ProjectSettingsPage() {
   return (
     <div className="space-y-8">
       <TabHeader
+        icon={SettingsIcon}
         title="Ajustes do projeto"
         description="Repositório, build e porta. As mudanças valem no próximo deploy."
       />

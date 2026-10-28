@@ -1,7 +1,7 @@
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { RotateCcwIcon } from "lucide-react";
-import { useMemo } from "react";
+import { RocketIcon, RotateCcwIcon } from "lucide-react";
+import { useMemo, useState } from "react";
 
 import type { Deployment } from "@/deployments";
 import {
@@ -14,6 +14,7 @@ import { ConfirmDialog } from "@/web/components/confirm-dialog";
 import { DeploymentListRow } from "@/web/components/deployment-row";
 import { ACTIVE_DEPLOYMENT_STATUSES, DEPLOYMENT_TRIGGER_LABELS } from "@/web/components/labels";
 import { List, ListRow } from "@/web/components/layout";
+import { SegmentedControl } from "@/web/components/overview";
 import { TabHeader } from "@/web/components/project-header";
 import { projectQueryOptions } from "@/web/components/project-query";
 import { ErrorState, ListSkeleton } from "@/web/components/states";
@@ -71,6 +72,14 @@ function RollbackButton({ deployment }: { readonly deployment: Deployment }) {
   );
 }
 
+const STATUS_FILTERS = [
+  { value: "all", label: "Todos" },
+  { value: "succeeded", label: "Concluídos" },
+  { value: "failed", label: "Falharam" },
+] as const;
+
+type StatusFilter = (typeof STATUS_FILTERS)[number]["value"];
+
 function ProjectDeploymentsPage() {
   const { projectId } = Route.useParams();
   const can = useCan();
@@ -79,11 +88,18 @@ function ProjectDeploymentsPage() {
     queryKey: ["rollback-candidates", projectId],
     queryFn: () => listRollbackCandidatesFn({ data: { projectId } }),
   });
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const deployments = useInfiniteQuery({
-    queryKey: ["deployments", projectId],
+    // The prefix stays ["deployments", projectId] so invalidations elsewhere still reach it.
+    queryKey: ["deployments", projectId, statusFilter],
     queryFn: ({ pageParam }) =>
       listDeploymentsFn({
-        data: { projectId, limit: PAGE_SIZE, ...(pageParam == null ? {} : { before: pageParam }) },
+        data: {
+          projectId,
+          limit: PAGE_SIZE,
+          ...(statusFilter === "all" ? {} : { status: statusFilter }),
+          ...(pageParam == null ? {} : { before: pageParam }),
+        },
       }),
     initialPageParam: null as string | null,
     getNextPageParam: (lastPage) =>
@@ -110,8 +126,17 @@ function ProjectDeploymentsPage() {
 
   const header = (
     <TabHeader
+      icon={RocketIcon}
       title="Deploys"
       description="Histórico de builds e publicações. Abra um deploy para ver as etapas e os logs."
+      actions={
+        <SegmentedControl
+          label="Filtrar deploys por status"
+          options={STATUS_FILTERS}
+          value={statusFilter}
+          onChange={setStatusFilter}
+        />
+      }
     />
   );
   if (deployments.isError) {
@@ -139,7 +164,9 @@ function ProjectDeploymentsPage() {
         {rows.length === 0 ? (
           <ListRow>
             <p className="text-sm text-muted-foreground">
-              Nenhum deploy ainda. Use o botão Deploy acima para publicar a primeira versão.
+              {statusFilter === "all"
+                ? "Nenhum deploy ainda. Use o botão Deploy acima para publicar a primeira versão."
+                : "Nenhum deploy com este status."}
             </p>
           </ListRow>
         ) : null}

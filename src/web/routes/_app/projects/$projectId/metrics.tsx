@@ -78,6 +78,7 @@ function ProjectMetricsPage() {
   return (
     <section aria-label="Métricas" className="space-y-6">
       <TabHeader
+        icon={ActivityIcon}
         title="Métricas"
         description="CPU e memória do contêiner atual, coletadas pelo worker."
         actions={

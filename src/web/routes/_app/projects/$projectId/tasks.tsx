@@ -2,6 +2,9 @@ import { useForm } from "@tanstack/react-form";
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import {
+  CalendarClockIcon,
+  ClockIcon,
+  HandIcon,
   HistoryIcon,
   ListChecksIcon,
   PencilIcon,
@@ -13,7 +16,12 @@ import { useState } from "react";
 import { z } from "zod";
 
 import { formatCommandLine } from "@/shared/command-line";
-import { durationBetween, formatDateTime, formatDuration } from "@/shared/format";
+import {
+  durationBetween,
+  formatDateTime,
+  formatDuration,
+  formatRelativeTime,
+} from "@/shared/format";
 import { DEFAULT_TASK_TIMEOUT_IN_SECONDS, taskInputSchema } from "@/shared/task.schema";
 import type { Task } from "@/tasks";
 import { ConfirmDialog } from "@/web/components/confirm-dialog";
@@ -158,12 +166,15 @@ function TasksPage() {
 
   const timeZone = tasksQuery.data?.timeZone ?? "UTC";
   const tasks: readonly TaskRow[] = tasksQuery.data?.tasks ?? [];
+  const now = new Date();
   const historyTask = tasks.find((task) => task.id === historyTaskId) ?? null;
 
   return (
     <>
       <TabHeader
+        icon={ClockIcon}
         title="Tasks"
+        count={tasksQuery.data == null ? null : tasks.length}
         description="Comandos que rodam dentro do contêiner da aplicação, sob demanda ou agendados."
         actions={
           canWrite ? (
@@ -219,26 +230,38 @@ function TasksPage() {
                   </p>
                 </div>
                 <div className="hidden min-w-0 shrink-0 space-y-1 text-right text-xs md:block">
-                  <p className="font-mono text-muted-foreground">{task.schedule ?? "manual"}</p>
-                  <p className="text-faint">
-                    {task.nextRunAt == null
-                      ? "sem agendamento"
-                      : `próxima ${formatDateTime(task.nextRunAt)}`}
-                  </p>
+                  {task.schedule == null ? (
+                    <span className={TASK_TAG}>
+                      <HandIcon aria-hidden className="size-3.5" />
+                      Manual
+                    </span>
+                  ) : (
+                    <span className={TASK_TAG}>
+                      <CalendarClockIcon aria-hidden className="size-3.5" />
+                      <span className="font-mono">{task.schedule}</span>
+                    </span>
+                  )}
+                  {task.nextRunAt == null ? null : (
+                    <p className="text-faint" title={formatDateTime(task.nextRunAt)}>
+                      próxima {formatRelativeTime(task.nextRunAt, now)}
+                    </p>
+                  )}
                 </div>
                 <div className="w-36 shrink-0">
                   {task.latestExecution == null ? (
-                    <span className="text-xs text-faint">nunca executada</span>
+                    <span className="text-xs text-faint">Nunca executada</span>
                   ) : (
                     <div className="space-y-0.5">
                       <TaskStatusBadge status={task.latestExecution.status} />
                       <p className="text-xs text-faint">
-                        {formatDuration(
-                          durationBetween(
-                            task.latestExecution.startedAt,
-                            task.latestExecution.finishedAt,
-                          ),
-                        )}
+                        {task.latestExecution.startedAt == null
+                          ? "na fila"
+                          : `${formatRelativeTime(task.latestExecution.startedAt, now)} · ${formatDuration(
+                              durationBetween(
+                                task.latestExecution.startedAt,
+                                task.latestExecution.finishedAt,
+                              ),
+                            )}`}
                       </p>
                     </div>
                   )}
@@ -248,12 +271,17 @@ function TasksPage() {
                   onClick={stopRowClick}
                   onKeyDown={stopRowClick}
                 >
-                  <Switch
-                    aria-label={`Ativar ${task.name}`}
-                    checked={task.enabled}
-                    disabled={canWrite === false || toggle.isPending}
-                    onCheckedChange={(enabled) => toggle.mutate({ task, enabled })}
-                  />
+                  <label className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <Switch
+                      aria-label={`Ativar ${task.name}`}
+                      checked={task.enabled}
+                      disabled={canWrite === false || toggle.isPending}
+                      onCheckedChange={(enabled) => toggle.mutate({ task, enabled })}
+                    />
+                    <span aria-hidden className="w-14">
+                      {task.enabled ? "Ativa" : "Pausada"}
+                    </span>
+                  </label>
                   <TaskActions
                     task={task}
                     canRun={canRun}
@@ -314,6 +342,9 @@ function executionAccent(status: string | null): "success" | "danger" | "progres
 }
 
 /** Keeps clicks on controls inside a row from also opening the row. */
+const TASK_TAG =
+  "inline-flex items-center gap-1.5 rounded-md bg-well px-2 py-0.5 text-muted-foreground ring-1 ring-border/60";
+
 function stopRowClick(event: { stopPropagation: () => void }): void {
   event.stopPropagation();
 }

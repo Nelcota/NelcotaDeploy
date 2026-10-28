@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
+import { ScrollTextIcon } from "lucide-react";
 import { useState } from "react";
 
 import { formatDateTime } from "@/shared/format";
@@ -43,6 +44,7 @@ function RuntimeLogsPage() {
   return (
     <section aria-label="Logs de execução" className="space-y-6">
       <TabHeader
+        icon={ScrollTextIcon}
         title="Logs"
         description="Saída dos contêineres em tempo real. Valores de secrets são ocultados."
         actions={

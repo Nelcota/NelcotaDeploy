@@ -3,6 +3,7 @@ import {
   EllipsisIcon,
   ExternalLinkIcon,
   GitBranchIcon,
+  type LucideIcon,
   PlayIcon,
   RefreshCwIcon,
   RocketIcon,
@@ -127,23 +128,43 @@ function ProjectTabs({ projectId }: { readonly projectId: string }) {
   );
 }
 
-/** Title row of a project tab: small heading, one line, actions on the right. */
+/**
+ * Title row of a project tab: the tab's icon, a heading with an optional count, one line of
+ * description and the actions on the right.
+ */
 export function TabHeader({
+  icon: Icon,
   title,
+  count,
   description,
   actions,
 }: {
+  readonly icon: LucideIcon;
   readonly title: ReactNode;
+  /** Number of items listed in the tab; omitted while loading. */
+  readonly count?: number | null;
   readonly description?: ReactNode;
   readonly actions?: ReactNode;
 }) {
   return (
-    <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-      <div className="min-w-0 space-y-1">
-        <h2 className="text-xl font-semibold tracking-tight">{title}</h2>
-        {description == null ? null : (
-          <p className="text-sm text-muted-foreground">{description}</p>
-        )}
+    <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex min-w-0 items-start gap-3.5">
+        <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-card text-muted-foreground ring-1 ring-border/70">
+          <Icon aria-hidden className="size-[1.15rem]" />
+        </span>
+        <div className="min-w-0 space-y-0.5">
+          <h2 className="flex items-center gap-2.5 text-xl leading-tight font-semibold tracking-tight">
+            {title}
+            {count == null ? null : (
+              <span className="rounded-md bg-well px-1.5 py-0.5 text-xs font-medium text-muted-foreground tabular-nums">
+                {count}
+              </span>
+            )}
+          </h2>
+          {description == null ? null : (
+            <p className="text-sm text-muted-foreground">{description}</p>
+          )}
+        </div>
       </div>
       {actions == null ? null : <div className="flex flex-wrap items-center gap-2">{actions}</div>}
     </div>

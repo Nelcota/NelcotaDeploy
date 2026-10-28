@@ -1,13 +1,22 @@
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
-import { EyeIcon, KeyRoundIcon, LockIcon, PencilIcon, PlusIcon, Trash2Icon } from "lucide-react";
+import {
+  EyeIcon,
+  HammerIcon,
+  KeyRoundIcon,
+  LockIcon,
+  PencilIcon,
+  PlusIcon,
+  Trash2Icon,
+  VariableIcon,
+} from "lucide-react";
 import { useState } from "react";
 import { z } from "zod";
 
 import type { EnvironmentVariableView } from "@/environments";
 import { normalizeVariableKey } from "@/shared/dotenv";
 import { environmentVariableInputSchema } from "@/shared/environment-variable.schema";
-import { formatDateTime } from "@/shared/format";
+import { formatDateTime, formatRelativeTime } from "@/shared/format";
 import { ConfirmDialog } from "@/web/components/confirm-dialog";
 import { EnvImportDialog } from "@/web/components/env-import-dialog";
 import { type VariableKind, VariableKindToggle } from "@/web/components/env-kind-toggle";
@@ -92,7 +101,9 @@ function EnvironmentPage() {
   return (
     <>
       <TabHeader
+        icon={VariableIcon}
         title="Variáveis"
+        count={variables.data?.length ?? null}
         description={
           <span>
             Configurações e secrets entregues ao contêiner. As mudanças valem no próximo deploy
@@ -150,6 +161,9 @@ function EnvironmentPage() {
   );
 }
 
+const VARIABLE_TAG =
+  "inline-flex items-center gap-1.5 rounded-md bg-well px-2 py-0.5 text-muted-foreground ring-1 ring-border/60";
+
 function VariablesList({
   query,
   canEdit,
@@ -176,6 +190,7 @@ function VariablesList({
       />
     );
   }
+  const now = new Date();
   return (
     <List>
       {query.data.map((variable) => (
@@ -193,8 +208,8 @@ function VariablesList({
               )}
             </p>
           </div>
-          <div className="flex shrink-0 items-center gap-4 text-xs text-faint">
-            <span className="inline-flex items-center gap-1.5">
+          <div className="flex shrink-0 flex-wrap items-center gap-2 text-xs">
+            <span className={VARIABLE_TAG}>
               {variable.kind === "secret" ? (
                 <LockIcon aria-hidden className="size-3.5" />
               ) : (
@@ -202,8 +217,19 @@ function VariablesList({
               )}
               {variable.kind === "secret" ? "Secret" : "Configuração"}
             </span>
-            {variable.availableAtBuild ? <span>no build</span> : null}
-            <span className="hidden md:inline">{formatDateTime(variable.updatedAt)}</span>
+            {variable.availableAtBuild ? (
+              <span className={VARIABLE_TAG}>
+                <HammerIcon aria-hidden className="size-3.5" />
+                No build
+              </span>
+            ) : null}
+            <time
+              dateTime={variable.updatedAt}
+              title={`Alterada em ${formatDateTime(variable.updatedAt)}`}
+              className="hidden w-28 text-right text-faint md:inline"
+            >
+              {formatRelativeTime(variable.updatedAt, now)}
+            </time>
           </div>
           {canEdit ? (
             <div className="flex shrink-0 gap-1">

@@ -59,7 +59,9 @@ function DomainsPage() {
   return (
     <>
       <TabHeader
+        icon={GlobeIcon}
         title="Domínios"
+        count={details?.domains.length ?? null}
         description={
           <span>
             Endereços públicos da aplicação
