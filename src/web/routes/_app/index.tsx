@@ -18,20 +18,23 @@ import {
 import { useState } from "react";
 
 import { formatPercent, formatRelativeTime } from "@/shared/format";
-import { CardTitleRow, List, StatusTile, TEXT_LINK } from "@/web/components/layout";
-import { MetricChart } from "@/web/components/metric-chart";
-import { SegmentedControl } from "@/web/components/overview";
-import { type ApplicationFilter, matchesApplicationFilter } from "@/web/components/project-accent";
-import { ProjectListRow } from "@/web/components/project-list-row";
-import { EmptyState, ErrorState, ListSkeleton } from "@/web/components/states";
-import { DeploymentStatusBadge } from "@/web/components/status-badge";
-import { describeSystemStatus, SYSTEM_STATUS_DOTS } from "@/web/components/system-status";
+import { CardTitleRow, List, StatusTile, TEXT_LINK } from "@/web/components/layout/layout";
+import { SegmentedControl } from "@/web/components/layout/overview";
+import { EmptyState, ErrorState, ListSkeleton } from "@/web/components/layout/states";
+import { DeploymentStatusBadge } from "@/web/components/layout/status-badge";
+import { MetricChart } from "@/web/components/monitoring/metric-chart";
+import { usagePercent } from "@/web/components/monitoring/usage-meter";
+import {
+  type ApplicationFilter,
+  matchesApplicationFilter,
+} from "@/web/components/projects/project-accent";
+import { ProjectListRow } from "@/web/components/projects/project-list-row";
+import { describeSystemStatus, SYSTEM_STATUS_DOTS } from "@/web/components/shell/system-status";
+import { useCan } from "@/web/components/shell/use-permissions";
 import { Button } from "@/web/components/ui/button";
 import { Card } from "@/web/components/ui/card";
 import { cn } from "@/web/components/ui/class-names";
 import { Skeleton } from "@/web/components/ui/skeleton";
-import { usagePercent } from "@/web/components/usage-meter";
-import { useCan } from "@/web/components/use-permissions";
 import {
   getDashboardFn,
   getHostMetricsFn,

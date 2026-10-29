@@ -2,14 +2,14 @@ import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, Link, Outlet } from "@tanstack/react-router";
 import { AlertTriangleIcon, LoaderCircleIcon, ShieldCheckIcon } from "lucide-react";
 
-import { ConfirmDialog } from "@/web/components/confirm-dialog";
-import { ProjectBand } from "@/web/components/project-header";
-import { type ProjectDetails, projectQueryOptions } from "@/web/components/project-query";
-import { ErrorState } from "@/web/components/states";
+import { ConfirmDialog } from "@/web/components/layout/confirm-dialog";
+import { ErrorState } from "@/web/components/layout/states";
+import { useAction } from "@/web/components/layout/use-action";
+import { ProjectBand } from "@/web/components/projects/project-header";
+import { type ProjectDetails, projectQueryOptions } from "@/web/components/projects/project-query";
+import { useCan } from "@/web/components/shell/use-permissions";
 import { Button } from "@/web/components/ui/button";
 import { Skeleton } from "@/web/components/ui/skeleton";
-import { useAction } from "@/web/components/use-action";
-import { useCan } from "@/web/components/use-permissions";
 import { approveProjectFn } from "@/web/functions/projects.functions";
 
 export const Route = createFileRoute("/_app/projects/$projectId")({

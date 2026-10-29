@@ -2,11 +2,11 @@ import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { ChevronLeftIcon, InfoIcon } from "lucide-react";
 import { toast } from "sonner";
 
-import { toUserMessage } from "@/web/components/error-message";
-import { PageHeader } from "@/web/components/page-header";
-import { EMPTY_PROJECT_FORM, ProjectForm } from "@/web/components/project-form";
+import { EMPTY_PROJECT_FORM, ProjectForm } from "@/web/components/forms/project-form";
+import { toUserMessage } from "@/web/components/layout/error-message";
+import { PageHeader } from "@/web/components/shell/page-header";
+import { useCan } from "@/web/components/shell/use-permissions";
 import { Card, CardContent } from "@/web/components/ui/card";
-import { useCan } from "@/web/components/use-permissions";
 import { createProjectFn } from "@/web/functions/projects.functions";
 
 export const Route = createFileRoute("/_app/projects/new")({

@@ -3,15 +3,15 @@ import { Building2Icon, LoaderCircleIcon, TriangleAlertIcon } from "lucide-react
 import type { z } from "zod";
 
 import { type SystemSettings, systemSettingsSchema } from "@/shared/settings.schema";
-import { FormField, visibleErrors } from "@/web/components/form-field";
-import { Section } from "@/web/components/layout";
-import { ErrorState, ListSkeleton } from "@/web/components/states";
+import { FormField, visibleErrors } from "@/web/components/forms/form-field";
+import { Section } from "@/web/components/layout/layout";
+import { ErrorState, ListSkeleton } from "@/web/components/layout/states";
+import { useAction } from "@/web/components/layout/use-action";
 import { Button } from "@/web/components/ui/button";
 import { Card } from "@/web/components/ui/card";
 import { Input } from "@/web/components/ui/input";
 import { Label } from "@/web/components/ui/label";
 import { Switch } from "@/web/components/ui/switch";
-import { useAction } from "@/web/components/use-action";
 import { saveSettingsFn } from "@/web/functions/settings.functions";
 
 import { useSettings } from "./use-settings";

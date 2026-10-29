@@ -3,7 +3,7 @@ import { EyeIcon, EyeOffIcon, LoaderCircleIcon } from "lucide-react";
 import { type FormEvent, useState } from "react";
 import { z } from "zod";
 
-import { authClient } from "@/web/components/auth-client";
+import { authClient } from "@/web/components/shell/auth-client";
 import { Button } from "@/web/components/ui/button";
 import { Input } from "@/web/components/ui/input";
 import { Label } from "@/web/components/ui/label";

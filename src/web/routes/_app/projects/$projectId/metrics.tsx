@@ -18,12 +18,12 @@ import {
   formatRelativeTime,
   formatShortTime,
 } from "@/shared/format";
-import { CardTitleRow, type Stat, StatRow } from "@/web/components/layout";
-import { MetricChart } from "@/web/components/metric-chart";
-import { SegmentedControl } from "@/web/components/overview";
-import { currentContainer, TabHeader } from "@/web/components/project-header";
-import { projectQueryOptions } from "@/web/components/project-query";
-import { EmptyState, ErrorState } from "@/web/components/states";
+import { CardTitleRow, type Stat, StatRow } from "@/web/components/layout/layout";
+import { SegmentedControl } from "@/web/components/layout/overview";
+import { EmptyState, ErrorState } from "@/web/components/layout/states";
+import { MetricChart } from "@/web/components/monitoring/metric-chart";
+import { currentContainer, TabHeader } from "@/web/components/projects/project-header";
+import { projectQueryOptions } from "@/web/components/projects/project-query";
 import { Button } from "@/web/components/ui/button";
 import { Card } from "@/web/components/ui/card";
 import { Skeleton } from "@/web/components/ui/skeleton";

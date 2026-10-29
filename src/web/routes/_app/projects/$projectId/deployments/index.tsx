@@ -10,17 +10,20 @@ import {
   DeploymentMobileMeta,
   DeploymentOriginColumn,
   DeploymentTimingColumn,
-} from "@/web/components/deployment-row";
-import { ACTIVE_DEPLOYMENT_STATUSES, DEPLOYMENT_STATUS_LABELS } from "@/web/components/labels";
-import { DayHeading, List, LiveBadge } from "@/web/components/layout";
-import { SegmentedControl } from "@/web/components/overview";
-import { TabHeader } from "@/web/components/project-header";
-import { projectQueryOptions } from "@/web/components/project-query";
-import { RollbackButton } from "@/web/components/rollback-button";
-import { EmptyState, ErrorState, ListSkeleton } from "@/web/components/states";
-import { DeploymentStatusBadge } from "@/web/components/status-badge";
+} from "@/web/components/deployments/deployment-row";
+import { RollbackButton } from "@/web/components/deployments/rollback-button";
+import {
+  ACTIVE_DEPLOYMENT_STATUSES,
+  DEPLOYMENT_STATUS_LABELS,
+} from "@/web/components/layout/labels";
+import { DayHeading, List, LiveBadge } from "@/web/components/layout/layout";
+import { SegmentedControl } from "@/web/components/layout/overview";
+import { EmptyState, ErrorState, ListSkeleton } from "@/web/components/layout/states";
+import { DeploymentStatusBadge } from "@/web/components/layout/status-badge";
+import { TabHeader } from "@/web/components/projects/project-header";
+import { projectQueryOptions } from "@/web/components/projects/project-query";
+import { useCan } from "@/web/components/shell/use-permissions";
 import { Button } from "@/web/components/ui/button";
-import { useCan } from "@/web/components/use-permissions";
 import { listDeploymentsFn, listRollbackCandidatesFn } from "@/web/functions/deployments.functions";
 
 const PAGE_SIZE = 25;

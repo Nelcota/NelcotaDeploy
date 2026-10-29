@@ -20,9 +20,12 @@ import {
   DeploymentMobileMeta,
   DeploymentOriginColumn,
   DeploymentTimingColumn,
-} from "@/web/components/deployment-row";
-import { DeploymentsChart } from "@/web/components/deployments-chart";
-import { ACTIVE_DEPLOYMENT_STATUSES, DEPLOYMENT_STATUS_LABELS } from "@/web/components/labels";
+} from "@/web/components/deployments/deployment-row";
+import { DeploymentsChart } from "@/web/components/deployments/deployments-chart";
+import {
+  ACTIVE_DEPLOYMENT_STATUSES,
+  DEPLOYMENT_STATUS_LABELS,
+} from "@/web/components/layout/labels";
 import {
   CardTitleRow,
   DayHeading,
@@ -30,11 +33,11 @@ import {
   LiveBadge,
   type Stat,
   StatRow,
-} from "@/web/components/layout";
-import { SegmentedControl } from "@/web/components/overview";
-import { PageHeader } from "@/web/components/page-header";
-import { EmptyState, ErrorState, ListSkeleton } from "@/web/components/states";
-import { DeploymentStatusBadge } from "@/web/components/status-badge";
+} from "@/web/components/layout/layout";
+import { SegmentedControl } from "@/web/components/layout/overview";
+import { EmptyState, ErrorState, ListSkeleton } from "@/web/components/layout/states";
+import { DeploymentStatusBadge } from "@/web/components/layout/status-badge";
+import { PageHeader } from "@/web/components/shell/page-header";
 import { Button } from "@/web/components/ui/button";
 import { Card } from "@/web/components/ui/card";
 import {

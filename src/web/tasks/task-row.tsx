@@ -16,10 +16,10 @@ import {
   formatRelativeTime,
 } from "@/shared/format";
 import type { Task } from "@/tasks";
-import { ConfirmDialog } from "@/web/components/confirm-dialog";
-import { describeCronSchedule } from "@/web/components/cron-description";
-import { ListRow } from "@/web/components/layout";
-import { TaskStatusBadge } from "@/web/components/status-badge";
+import { ConfirmDialog } from "@/web/components/layout/confirm-dialog";
+import { ListRow } from "@/web/components/layout/layout";
+import { TaskStatusBadge } from "@/web/components/layout/status-badge";
+import { describeCronSchedule } from "@/web/components/projects/cron-description";
 import { Button } from "@/web/components/ui/button";
 import { Switch } from "@/web/components/ui/switch";
 

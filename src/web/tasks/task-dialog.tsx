@@ -2,8 +2,9 @@ import { useForm } from "@tanstack/react-form";
 import { LoaderCircleIcon } from "lucide-react";
 
 import type { Task } from "@/tasks";
-import { describeCronSchedule } from "@/web/components/cron-description";
-import { FormField } from "@/web/components/form-field";
+import { FormField } from "@/web/components/forms/form-field";
+import { useAction } from "@/web/components/layout/use-action";
+import { describeCronSchedule } from "@/web/components/projects/cron-description";
 import { Button } from "@/web/components/ui/button";
 import {
   Dialog,
@@ -16,7 +17,6 @@ import {
 import { Input } from "@/web/components/ui/input";
 import { Label } from "@/web/components/ui/label";
 import { Switch } from "@/web/components/ui/switch";
-import { useAction } from "@/web/components/use-action";
 import { createTaskFn, updateTaskFn } from "@/web/functions/tasks.functions";
 
 import { type TaskFormValues, toTaskFormValues, validateTaskForm } from "./task-form-values";

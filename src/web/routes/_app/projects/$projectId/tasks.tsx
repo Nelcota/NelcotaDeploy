@@ -4,13 +4,13 @@ import { InfoIcon, ListChecksIcon, PlusIcon } from "lucide-react";
 import { useState } from "react";
 
 import type { Task } from "@/tasks";
-import { List } from "@/web/components/layout";
-import { TabHeader } from "@/web/components/project-header";
-import { EmptyState, ErrorState, ListSkeleton } from "@/web/components/states";
+import { List } from "@/web/components/layout/layout";
+import { EmptyState, ErrorState, ListSkeleton } from "@/web/components/layout/states";
+import { useAction } from "@/web/components/layout/use-action";
+import { TabHeader } from "@/web/components/projects/project-header";
+import { useCan } from "@/web/components/shell/use-permissions";
 import { Button } from "@/web/components/ui/button";
 import { Sheet, SheetContent } from "@/web/components/ui/sheet";
-import { useAction } from "@/web/components/use-action";
-import { useCan } from "@/web/components/use-permissions";
 import {
   deleteTaskFn,
   listTasksFn,

@@ -4,10 +4,10 @@ import { ClockIcon, ContainerIcon, RotateCwIcon } from "lucide-react";
 import { useState } from "react";
 
 import { formatDateTime, formatRelativeTime, pluralize } from "@/shared/format";
-import { LogViewer } from "@/web/components/log-viewer";
-import { currentContainer, TabHeader } from "@/web/components/project-header";
-import { type ProjectDetails, projectQueryOptions } from "@/web/components/project-query";
-import { EmptyState, ErrorState } from "@/web/components/states";
+import { EmptyState, ErrorState } from "@/web/components/layout/states";
+import { LogViewer } from "@/web/components/monitoring/log-viewer";
+import { currentContainer, TabHeader } from "@/web/components/projects/project-header";
+import { type ProjectDetails, projectQueryOptions } from "@/web/components/projects/project-query";
 import { Button } from "@/web/components/ui/button";
 import {
   Select,

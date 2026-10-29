@@ -23,25 +23,25 @@ import { type ReactNode, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { durationBetween, formatDateTime, formatDuration } from "@/shared/format";
-import { ConfirmDialog } from "@/web/components/confirm-dialog";
-import { DeploymentStages } from "@/web/components/deployment-stages";
+import { DeploymentStages } from "@/web/components/deployments/deployment-stages";
+import { RollbackButton } from "@/web/components/deployments/rollback-button";
+import { ConfirmDialog } from "@/web/components/layout/confirm-dialog";
 import {
   ACTIVE_DEPLOYMENT_STATUSES,
   DEPLOYMENT_TRIGGER_ICONS,
   DEPLOYMENT_TRIGGER_LABELS,
-} from "@/web/components/labels";
-import { CardTitleRow } from "@/web/components/layout";
-import { LogViewer } from "@/web/components/log-viewer";
-import { TabHeader } from "@/web/components/project-header";
-import { projectQueryOptions } from "@/web/components/project-query";
-import { RollbackButton } from "@/web/components/rollback-button";
-import { ErrorState } from "@/web/components/states";
-import { DeploymentStatusBadge } from "@/web/components/status-badge";
+} from "@/web/components/layout/labels";
+import { CardTitleRow } from "@/web/components/layout/layout";
+import { ErrorState } from "@/web/components/layout/states";
+import { DeploymentStatusBadge } from "@/web/components/layout/status-badge";
+import { useAction } from "@/web/components/layout/use-action";
+import { LogViewer } from "@/web/components/monitoring/log-viewer";
+import { TabHeader } from "@/web/components/projects/project-header";
+import { projectQueryOptions } from "@/web/components/projects/project-query";
+import { useCan } from "@/web/components/shell/use-permissions";
 import { Button } from "@/web/components/ui/button";
 import { Card } from "@/web/components/ui/card";
 import { Skeleton } from "@/web/components/ui/skeleton";
-import { useAction } from "@/web/components/use-action";
-import { useCan } from "@/web/components/use-permissions";
 import {
   cancelDeploymentFn,
   getDeploymentFn,

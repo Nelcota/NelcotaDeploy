@@ -1,6 +1,6 @@
 import { createFileRoute, Outlet, redirect } from "@tanstack/react-router";
 
-import { AppShell, PageBody } from "@/web/components/app-shell";
+import { AppShell, PageBody } from "@/web/components/shell/app-shell";
 import { getSessionFn } from "@/web/functions/session.functions";
 
 export const Route = createFileRoute("/_app")({

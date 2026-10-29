@@ -19,12 +19,12 @@ import {
 import { type ReactNode } from "react";
 
 import { formatBytes, formatRelativeTime, formatTimeAgo } from "@/shared/format";
-import { CopyButton } from "@/web/components/copy-button";
-import { Section, StatRow } from "@/web/components/layout";
-import { ErrorState, ListSkeleton } from "@/web/components/states";
-import { StatusPill } from "@/web/components/status-badge";
+import { CopyButton } from "@/web/components/layout/copy-button";
+import { Section, StatRow } from "@/web/components/layout/layout";
+import { ErrorState, ListSkeleton } from "@/web/components/layout/states";
+import { StatusPill } from "@/web/components/layout/status-badge";
+import { usagePercent } from "@/web/components/monitoring/usage-meter";
 import { Input } from "@/web/components/ui/input";
-import { usagePercent } from "@/web/components/usage-meter";
 
 import { isUnreachableFromInternet } from "./public-url";
 import { useSettings } from "./use-settings";

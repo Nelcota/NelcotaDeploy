@@ -34,17 +34,17 @@ import {
   DEPLOYMENT_STATUS_LABELS,
   DEPLOYMENT_TRIGGER_ICONS,
   DEPLOYMENT_TRIGGER_LABELS,
-} from "@/web/components/labels";
-import { CardTitleRow, StatusTile, Tag, TEXT_LINK } from "@/web/components/layout";
-import { MetricChart } from "@/web/components/metric-chart";
-import { SegmentedControl } from "@/web/components/overview";
-import { currentContainer } from "@/web/components/project-header";
-import { type ProjectDetails, projectQueryOptions } from "@/web/components/project-query";
-import { ListSkeleton } from "@/web/components/states";
-import { DeploymentStatusBadge } from "@/web/components/status-badge";
+} from "@/web/components/layout/labels";
+import { CardTitleRow, StatusTile, Tag, TEXT_LINK } from "@/web/components/layout/layout";
+import { SegmentedControl } from "@/web/components/layout/overview";
+import { ListSkeleton } from "@/web/components/layout/states";
+import { DeploymentStatusBadge } from "@/web/components/layout/status-badge";
+import { MetricChart } from "@/web/components/monitoring/metric-chart";
+import { currentContainer } from "@/web/components/projects/project-header";
+import { type ProjectDetails, projectQueryOptions } from "@/web/components/projects/project-query";
+import { useCan } from "@/web/components/shell/use-permissions";
 import { Card } from "@/web/components/ui/card";
 import { Skeleton } from "@/web/components/ui/skeleton";
-import { useCan } from "@/web/components/use-permissions";
 import { getDeploymentFn, listDeploymentsFn } from "@/web/functions/deployments.functions";
 import { getProjectMetricsFn } from "@/web/functions/monitoring.functions";
 

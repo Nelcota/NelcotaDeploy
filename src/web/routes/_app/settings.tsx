@@ -3,10 +3,10 @@ import { useEffect, useRef } from "react";
 import { z } from "zod";
 
 import { AuditTab, OrganizationTab, ServerTab, TokensTab, UsersTab } from "@/web/admin";
-import { SETTINGS_SECTIONS as SETTINGS_NAVIGATION } from "@/web/components/navigation";
-import { PageHeader } from "@/web/components/page-header";
+import { SETTINGS_SECTIONS as SETTINGS_NAVIGATION } from "@/web/components/shell/navigation";
+import { PageHeader } from "@/web/components/shell/page-header";
+import { useCan } from "@/web/components/shell/use-permissions";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/web/components/ui/tabs";
-import { useCan } from "@/web/components/use-permissions";
 
 /** Sections of the settings page, also linked from the context sidebar. */
 const SETTINGS_SECTIONS = ["organization", "users", "server", "tokens", "audit"] as const;

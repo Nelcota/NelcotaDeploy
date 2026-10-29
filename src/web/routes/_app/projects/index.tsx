@@ -4,11 +4,12 @@ import { BoxesIcon, PlusIcon, SearchIcon } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { z } from "zod";
 
-import { List } from "@/web/components/layout";
-import { PageHeader } from "@/web/components/page-header";
-import { matchesApplicationFilter } from "@/web/components/project-accent";
-import { ProjectListRow } from "@/web/components/project-list-row";
-import { EmptyState, ErrorState, ListSkeleton } from "@/web/components/states";
+import { List } from "@/web/components/layout/layout";
+import { EmptyState, ErrorState, ListSkeleton } from "@/web/components/layout/states";
+import { matchesApplicationFilter } from "@/web/components/projects/project-accent";
+import { ProjectListRow } from "@/web/components/projects/project-list-row";
+import { PageHeader } from "@/web/components/shell/page-header";
+import { useCan } from "@/web/components/shell/use-permissions";
 import { Button } from "@/web/components/ui/button";
 import { Input } from "@/web/components/ui/input";
 import { Label } from "@/web/components/ui/label";
@@ -19,7 +20,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/web/components/ui/select";
-import { useCan } from "@/web/components/use-permissions";
 import { listProjectsFn } from "@/web/functions/projects.functions";
 
 const SEARCH_DEBOUNCE_IN_MS = 300;

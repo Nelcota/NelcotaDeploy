@@ -20,15 +20,21 @@ import type { EnvironmentVariableView } from "@/environments";
 import { normalizeVariableKey } from "@/shared/dotenv";
 import { environmentVariableInputSchema } from "@/shared/environment-variable.schema";
 import { formatDateTime, formatRelativeTime, pluralize } from "@/shared/format";
-import { ApplyChangesBanner, useApplyChanges } from "@/web/components/apply-changes-banner";
-import { ConfirmDialog } from "@/web/components/confirm-dialog";
-import { EnvImportDialog } from "@/web/components/env-import-dialog";
-import { type VariableKind, VariableKindToggle } from "@/web/components/env-kind-toggle";
-import { FormField, visibleErrors } from "@/web/components/form-field";
-import { List, ListRow, Tag } from "@/web/components/layout";
-import { TabHeader } from "@/web/components/project-header";
-import { projectQueryOptions } from "@/web/components/project-query";
-import { EmptyState, ErrorState, ListSkeleton } from "@/web/components/states";
+import {
+  ApplyChangesBanner,
+  useApplyChanges,
+} from "@/web/components/deployments/apply-changes-banner";
+import { EnvImportDialog } from "@/web/components/forms/env-import-dialog";
+import { type VariableKind, VariableKindToggle } from "@/web/components/forms/env-kind-toggle";
+import { FormField, visibleErrors } from "@/web/components/forms/form-field";
+import { filterVariablesByKey } from "@/web/components/forms/variable-filter";
+import { ConfirmDialog } from "@/web/components/layout/confirm-dialog";
+import { List, ListRow, Tag } from "@/web/components/layout/layout";
+import { EmptyState, ErrorState, ListSkeleton } from "@/web/components/layout/states";
+import { useAction } from "@/web/components/layout/use-action";
+import { TabHeader } from "@/web/components/projects/project-header";
+import { projectQueryOptions } from "@/web/components/projects/project-query";
+import { useCan } from "@/web/components/shell/use-permissions";
 import { Button } from "@/web/components/ui/button";
 import {
   Dialog,
@@ -42,9 +48,6 @@ import { Input } from "@/web/components/ui/input";
 import { Label } from "@/web/components/ui/label";
 import { Switch } from "@/web/components/ui/switch";
 import { Textarea } from "@/web/components/ui/textarea";
-import { useAction } from "@/web/components/use-action";
-import { useCan } from "@/web/components/use-permissions";
-import { filterVariablesByKey } from "@/web/components/variable-filter";
 import {
   deleteEnvironmentVariableFn,
   listEnvironmentVariablesFn,

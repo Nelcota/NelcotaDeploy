@@ -17,9 +17,6 @@ import {
 import { type FormEvent, type ReactNode, useState } from "react";
 import { toast } from "sonner";
 
-import { ConfirmDialog } from "@/web/components/confirm-dialog";
-import { toUserMessage } from "@/web/components/error-message";
-import { Tag } from "@/web/components/layout";
 import {
   AutoDeployField,
   BuildFields,
@@ -29,15 +26,18 @@ import {
   projectToFormValues,
   RepositoryFields,
   useProjectForm,
-} from "@/web/components/project-form";
-import { TabHeader } from "@/web/components/project-header";
-import { projectQueryOptions } from "@/web/components/project-query";
-import { ErrorState, ListSkeleton } from "@/web/components/states";
+} from "@/web/components/forms/project-form";
+import { ConfirmDialog } from "@/web/components/layout/confirm-dialog";
+import { toUserMessage } from "@/web/components/layout/error-message";
+import { Tag } from "@/web/components/layout/layout";
+import { ErrorState, ListSkeleton } from "@/web/components/layout/states";
+import { useAction } from "@/web/components/layout/use-action";
+import { TabHeader } from "@/web/components/projects/project-header";
+import { projectQueryOptions } from "@/web/components/projects/project-query";
+import { useCan } from "@/web/components/shell/use-permissions";
 import { Button } from "@/web/components/ui/button";
 import { Input } from "@/web/components/ui/input";
 import { Label } from "@/web/components/ui/label";
-import { useAction } from "@/web/components/use-action";
-import { useCan } from "@/web/components/use-permissions";
 import {
   deleteProjectFn,
   setRepositoryTokenFn,

@@ -8,7 +8,7 @@ import {
 } from "@tanstack/react-router";
 import type { ReactNode } from "react";
 
-import { THEME_INIT_SCRIPT, ThemeProvider } from "@/web/components/theme";
+import { THEME_INIT_SCRIPT, ThemeProvider } from "@/web/components/shell/theme";
 import { Toaster } from "@/web/components/ui/sonner";
 import { TooltipProvider } from "@/web/components/ui/tooltip";
 

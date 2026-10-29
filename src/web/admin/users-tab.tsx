@@ -15,13 +15,15 @@ import { z } from "zod";
 import { formatDate } from "@/shared/format";
 import { type Role, ROLES } from "@/shared/roles";
 import { newUserSchema, PASSWORD_MIN_LENGTH, passwordSchema } from "@/shared/user.schema";
-import { ConfirmDialog } from "@/web/components/confirm-dialog";
-import { CopyButton } from "@/web/components/copy-button";
-import { FormField, visibleErrors } from "@/web/components/form-field";
-import { ROLE_LABELS } from "@/web/components/labels";
-import { List, ListRow, Section, Tag } from "@/web/components/layout";
-import { EmptyState, ErrorState, ListSkeleton } from "@/web/components/states";
-import { StatusPill } from "@/web/components/status-badge";
+import { UserAvatar } from "@/web/components/account/user-avatar";
+import { FormField, visibleErrors } from "@/web/components/forms/form-field";
+import { ConfirmDialog } from "@/web/components/layout/confirm-dialog";
+import { CopyButton } from "@/web/components/layout/copy-button";
+import { ROLE_LABELS } from "@/web/components/layout/labels";
+import { List, ListRow, Section, Tag } from "@/web/components/layout/layout";
+import { EmptyState, ErrorState, ListSkeleton } from "@/web/components/layout/states";
+import { StatusPill } from "@/web/components/layout/status-badge";
+import { useAction } from "@/web/components/layout/use-action";
 import { Button } from "@/web/components/ui/button";
 import {
   Dialog,
@@ -41,8 +43,6 @@ import {
   SelectValue,
 } from "@/web/components/ui/select";
 import { Switch } from "@/web/components/ui/switch";
-import { useAction } from "@/web/components/use-action";
-import { UserAvatar } from "@/web/components/user-avatar";
 import {
   createUserFn,
   listUsersFn,

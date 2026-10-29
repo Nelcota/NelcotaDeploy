@@ -15,21 +15,24 @@ import {
 import type { z } from "zod";
 
 import { domainInputSchema } from "@/shared/domain.schema";
-import { ApplyChangesBanner, useApplyChanges } from "@/web/components/apply-changes-banner";
-import { ConfirmDialog } from "@/web/components/confirm-dialog";
-import { CopyButton } from "@/web/components/copy-button";
-import { errorMessages, visibleErrors } from "@/web/components/form-field";
-import { CardTitleRow, List, ListRow, Tag } from "@/web/components/layout";
-import { TabHeader } from "@/web/components/project-header";
-import { projectQueryOptions } from "@/web/components/project-query";
-import { ErrorState, ListSkeleton } from "@/web/components/states";
+import {
+  ApplyChangesBanner,
+  useApplyChanges,
+} from "@/web/components/deployments/apply-changes-banner";
+import { errorMessages, visibleErrors } from "@/web/components/forms/form-field";
+import { ConfirmDialog } from "@/web/components/layout/confirm-dialog";
+import { CopyButton } from "@/web/components/layout/copy-button";
+import { CardTitleRow, List, ListRow, Tag } from "@/web/components/layout/layout";
+import { ErrorState, ListSkeleton } from "@/web/components/layout/states";
+import { useAction } from "@/web/components/layout/use-action";
+import { TabHeader } from "@/web/components/projects/project-header";
+import { projectQueryOptions } from "@/web/components/projects/project-query";
+import { useCan } from "@/web/components/shell/use-permissions";
 import { Button } from "@/web/components/ui/button";
 import { Card } from "@/web/components/ui/card";
 import { cn } from "@/web/components/ui/class-names";
 import { Input } from "@/web/components/ui/input";
 import { Switch } from "@/web/components/ui/switch";
-import { useAction } from "@/web/components/use-action";
-import { useCan } from "@/web/components/use-permissions";
 import { addDomainFn, getServerAddressFn, removeDomainFn } from "@/web/functions/domains.functions";
 
 export const Route = createFileRoute("/_app/projects/$projectId/domains")({

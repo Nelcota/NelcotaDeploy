@@ -20,11 +20,11 @@ import { Fragment, useState } from "react";
 import { toast } from "sonner";
 
 import { dayKey, formatDateTime, formatDayHeading, formatTime, pluralize } from "@/shared/format";
-import { toUserMessage } from "@/web/components/error-message";
-import { AUDIT_ACTION_LABELS, WEBHOOK_REASON_LABELS } from "@/web/components/labels";
-import { DayHeading, List, ListRow, Section } from "@/web/components/layout";
-import { EmptyState, ErrorState, ListSkeleton } from "@/web/components/states";
-import { StatusPill } from "@/web/components/status-badge";
+import { toUserMessage } from "@/web/components/layout/error-message";
+import { AUDIT_ACTION_LABELS, WEBHOOK_REASON_LABELS } from "@/web/components/layout/labels";
+import { DayHeading, List, ListRow, Section } from "@/web/components/layout/layout";
+import { EmptyState, ErrorState, ListSkeleton } from "@/web/components/layout/states";
+import { StatusPill } from "@/web/components/layout/status-badge";
 import { Button } from "@/web/components/ui/button";
 import { listAuditEventsFn, listWebhookDeliveriesFn } from "@/web/functions/settings.functions";
 
