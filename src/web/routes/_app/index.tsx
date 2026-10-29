@@ -157,7 +157,7 @@ function OverviewCard({ data }: { readonly data: DashboardSummary | null }) {
           <StatusTile value={data.neverDeployedCount} label="Sem deploy" icon={CircleDashedIcon} />
           <StatusTile
             value={data.deploymentsLastDayCount}
-            label="Deploys em 24 h"
+            label="Deploys em 24\u00a0h"
             icon={RocketIcon}
           />
           <StatusTile
@@ -169,7 +169,7 @@ function OverviewCard({ data }: { readonly data: DashboardSummary | null }) {
           />
           <StatusTile
             value={data.failuresLastDayCount}
-            label="Falhas em 24 h"
+            label="Falhas em 24\u00a0h"
             icon={CircleXIcon}
             iconClassName={data.failuresLastDayCount > 0 ? "text-destructive" : ""}
             tone={data.failuresLastDayCount > 0 ? "danger" : "default"}
@@ -299,7 +299,9 @@ function ActivityCard({
           {
             value: "failed",
             label:
-              data == null ? "Falhas em 24 h" : `Falhas em 24 h (${data.failuresLastDayCount})`,
+              data == null
+                ? "Falhas em 24\u00a0h"
+                : `Falhas em 24\u00a0h (${data.failuresLastDayCount})`,
           },
         ]}
         value={view}
