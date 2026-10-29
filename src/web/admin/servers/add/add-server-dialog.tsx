@@ -1,11 +1,14 @@
-import { ChevronRightIcon, ServerIcon } from "lucide-react";
+import { LoaderCircleIcon } from "lucide-react";
+import { useState } from "react";
 
-import { DialogFormFooter } from "@/web/admin/dialog-form-footer";
 import { FormField, visibleErrors } from "@/web/components/forms/form-field";
+import { Button } from "@/web/components/ui/button";
+import { cn } from "@/web/components/ui/class-names";
 import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/web/components/ui/dialog";
@@ -22,6 +25,7 @@ function TextField({
   hint,
   placeholder,
   inputMode,
+  monospace = false,
 }: {
   readonly form: AddServerFormApi;
   readonly name: TextFieldName;
@@ -29,6 +33,7 @@ function TextField({
   readonly hint?: string;
   readonly placeholder?: string;
   readonly inputMode?: "numeric";
+  readonly monospace?: boolean;
 }) {
   return (
     <form.Field name={name}>
@@ -42,9 +47,11 @@ function TextField({
           {(props) => (
             <Input
               {...props}
+              className={cn(monospace && "font-mono")}
               placeholder={placeholder}
               inputMode={inputMode}
               autoComplete="off"
+              spellCheck={false}
               value={field.state.value}
               onBlur={field.handleBlur}
               onChange={(event) => field.handleChange(event.target.value)}
@@ -56,27 +63,76 @@ function TextField({
   );
 }
 
-/** Port and account, which rarely change from the defaults. */
-function AdvancedFields({ form }: { readonly form: AddServerFormApi }) {
+/**
+ * Port and account, which rarely change: a summary of the current values that opens into
+ * their fields.
+ */
+function SshSettings({ form }: { readonly form: AddServerFormApi }) {
+  const [editing, setEditing] = useState(false);
   return (
-    <details className="group">
-      <summary className="flex w-fit cursor-pointer list-none items-center gap-1.5 rounded-md text-sm font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring [&::-webkit-details-marker]:hidden">
-        <ChevronRightIcon
-          aria-hidden
-          className="size-4 transition-transform group-open:rotate-90 motion-reduce:transition-none"
-        />
-        Avançado: porta e usuário SSH
-      </summary>
-      <div className="mt-4 grid gap-4 sm:grid-cols-2">
-        <TextField form={form} name="port" label="Porta SSH" inputMode="numeric" />
-        <TextField
-          form={form}
-          name="username"
-          label="Usuário"
-          hint="Conta que o comando de instalação cria e que o painel usa."
-        />
+    <div className="rounded-xl ring-1 ring-border/70 ring-inset">
+      <div className="flex items-center justify-between gap-6 px-4 py-3.5">
+        <div className="min-w-0 space-y-0.5">
+          <p className="text-sm font-medium">Conexão SSH</p>
+          <form.Subscribe selector={(state) => [state.values.port, state.values.username] as const}>
+            {([port, username]) => (
+              <p className="truncate text-xs text-muted-foreground">
+                Porta <span className="font-mono">{port}</span> · usuário{" "}
+                <span className="font-mono">{username}</span>
+              </p>
+            )}
+          </form.Subscribe>
+        </div>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          aria-expanded={editing}
+          aria-controls="server-ssh-fields"
+          onClick={() => setEditing((open) => open === false)}
+        >
+          {editing ? "Fechar" : "Alterar"}
+        </Button>
       </div>
-    </details>
+      {editing ? (
+        <div
+          id="server-ssh-fields"
+          className="grid gap-4 border-t border-border/70 px-4 py-4 sm:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]"
+        >
+          <TextField form={form} name="port" label="Porta" inputMode="numeric" monospace />
+          <TextField
+            form={form}
+            name="username"
+            label="Usuário"
+            hint="Conta que o comando de instalação cria e o painel usa."
+            monospace
+          />
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function AddServerFooter({
+  isPending,
+  onCancel,
+}: {
+  readonly isPending: boolean;
+  readonly onCancel: () => void;
+}) {
+  return (
+    <DialogFooter>
+      <p className="mr-auto hidden self-center text-xs text-muted-foreground sm:block">
+        Ubuntu ou Debian, com acesso root.
+      </p>
+      <Button type="button" variant="outline" onClick={onCancel}>
+        Cancelar
+      </Button>
+      <Button type="submit" disabled={isPending}>
+        {isPending ? <LoaderCircleIcon aria-hidden className="animate-spin" /> : null}
+        Adicionar servidor
+      </Button>
+    </DialogFooter>
   );
 }
 
@@ -85,37 +141,41 @@ export function AddServerDialog({ onClose }: { readonly onClose: () => void }) {
   const { form, isPending } = useAddServerForm(onClose);
   return (
     <Dialog open onOpenChange={(open) => (open ? undefined : onClose())}>
-      <DialogContent>
-        <DialogHeader icon={<ServerIcon />}>
+      <DialogContent className="sm:max-w-2xl">
+        <DialogHeader>
           <DialogTitle>Adicionar servidor</DialogTitle>
           <DialogDescription>
-            Uma VPS Linux (Ubuntu ou Debian) para rodar aplicações. Depois de adicionar, rode o
-            comando de instalação nela uma vez; o painel faz o resto sozinho.
+            Uma VPS Linux para rodar aplicações. Em seguida você recebe um comando para colar nela
+            uma única vez.
           </DialogDescription>
         </DialogHeader>
         <form
           noValidate
-          className="space-y-4"
+          className="space-y-6"
           onSubmit={(event) => {
             event.preventDefault();
             void form.handleSubmit();
           }}
         >
-          <TextField form={form} name="name" label="Nome" placeholder="aplicacoes-1" />
-          <TextField
-            form={form}
-            name="host"
-            label="IP ou domínio"
-            hint="O endereço que você usa para acessar a VPS por SSH."
-            placeholder="203.0.113.10"
-          />
-          <AdvancedFields form={form} />
-          <DialogFormFooter
-            submitLabel="Adicionar"
-            isPending={isPending}
-            onCancel={onClose}
-            idleIcon={<ServerIcon aria-hidden />}
-          />
+          <div className="grid items-start gap-4 sm:grid-cols-2">
+            <TextField
+              form={form}
+              name="name"
+              label="Nome"
+              hint="Só para você reconhecer."
+              placeholder="aplicacoes-1"
+            />
+            <TextField
+              form={form}
+              name="host"
+              label="IP ou domínio"
+              hint="Por onde você acessa a VPS via SSH."
+              placeholder="203.0.113.10"
+              monospace
+            />
+          </div>
+          <SshSettings form={form} />
+          <AddServerFooter isPending={isPending} onCancel={onClose} />
         </form>
       </DialogContent>
     </Dialog>
