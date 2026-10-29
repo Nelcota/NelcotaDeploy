@@ -29,18 +29,18 @@ file. No Kubernetes, no external database, no agents to install.
 
 ## Features
 
-| Area        | What it does                                                                                                         |
-| ----------- | -------------------------------------------------------------------------------------------------------------------- |
-| **Deploys** | Build the exact commit from GitHub, on push or by hand. Health check before switching, rollback, redeploy and retry. |
-| **GitHub**  | One-click GitHub App: pick repositories from a list, clone private ones and get pushes without per-repo webhooks.    |
-| **Logs**    | Live build and runtime logs with search, level filter and jump to the first error.                                   |
-| **Metrics** | CPU and memory per container and for the host, with history.                                                         |
-| **Config**  | Variables and secrets (AES-256-GCM), applied to the running app as soon as they are saved.                           |
-| **Domains** | Automatic and custom domains, HTTPS by Let's Encrypt through Traefik, and a live check of each domain's DNS.         |
-| **Ops**     | Daily database backups and Discord or Slack alerts for failed deploys and unreachable servers.                       |
-| **Servers** | Add a VPS with one pasted command; builds and apps run there over a persistent SSH connection, moves keep sites up.  |
-| **Tasks**   | Commands that run inside the app container, on demand or on a cron schedule.                                         |
-| **Team**    | Admin, developer and viewer roles, API tokens, an MCP server for AI clients and an audit log.                        |
+| Area        | What it does                                                                                                           |
+| ----------- | ---------------------------------------------------------------------------------------------------------------------- |
+| **Deploys** | Build the exact commit from GitHub, on push or by hand. Zero-downtime switch after a health check, rollback and retry. |
+| **GitHub**  | One-click GitHub App: pick repositories from a list, clone private ones and get pushes without per-repo webhooks.      |
+| **Logs**    | Live build and runtime logs with search, level filter and jump to the first error.                                     |
+| **Metrics** | CPU and memory per container and for the host, with history.                                                           |
+| **Config**  | Variables and secrets (AES-256-GCM), applied to the running app as soon as they are saved.                             |
+| **Domains** | Automatic and custom domains, HTTPS by Let's Encrypt through Traefik, and a live check of each domain's DNS.           |
+| **Ops**     | Daily database backups and Discord or Slack alerts for failed deploys and unreachable servers.                         |
+| **Servers** | Add a VPS with one pasted command; builds and apps run there over a persistent SSH connection, moves keep sites up.    |
+| **Tasks**   | Commands that run inside the app container, on demand or on a cron schedule.                                           |
+| **Team**    | Admin, developer and viewer roles, API tokens, an MCP server for AI clients and an audit log.                          |
 
 <table>
   <tr>
