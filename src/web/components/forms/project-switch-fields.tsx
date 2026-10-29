@@ -1,6 +1,17 @@
+import type { ReactNode } from "react";
+
 import type { ProjectFormApi } from "@/web/components/forms/project-form";
 import { cn } from "@/web/components/ui/class-names";
 import { Switch } from "@/web/components/ui/switch";
+
+/** A bordered list of switches, one row each, divided by hairlines. */
+export function SwitchGroup({ children }: { readonly children: ReactNode }) {
+  return (
+    <div className="divide-y divide-border/70 rounded-xl ring-1 ring-border/70 ring-inset">
+      {children}
+    </div>
+  );
+}
 
 function SwitchRow({
   form,
@@ -19,12 +30,7 @@ function SwitchRow({
   return (
     <form.Field name={name}>
       {(field) => (
-        <div
-          className={cn(
-            "flex items-center justify-between gap-6 rounded-xl px-4 py-3.5 ring-1 ring-border/70 ring-inset",
-            className,
-          )}
-        >
+        <div className={cn("flex items-center justify-between gap-6 px-4 py-3.5", className)}>
           <div className="min-w-0 space-y-0.5">
             <label htmlFor={id} className="text-sm font-medium">
               {label}

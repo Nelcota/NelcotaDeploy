@@ -26,11 +26,8 @@ export function DangerZone({
     },
   });
   return (
-    <SettingsSection
-      icon={TriangleAlertIcon}
-      title={<span className="text-destructive">Zona de perigo</span>}
-    >
-      <div className="flex flex-col gap-4 rounded-lg p-4 ring-1 ring-destructive/40 sm:flex-row sm:items-center sm:justify-between">
+    <SettingsSection icon={TriangleAlertIcon} title="Zona de perigo" tone="danger">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="space-y-1">
           <p className="text-sm font-medium">Excluir projeto</p>
           <p className="text-sm text-muted-foreground">

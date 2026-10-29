@@ -131,7 +131,7 @@ function FormActions({
   readonly disabled: boolean;
 }) {
   return (
-    <div className="flex flex-col-reverse gap-3 border-t border-border/70 bg-muted/30 px-5 py-4 sm:flex-row sm:items-center sm:justify-between md:px-6">
+    <div className="flex flex-col-reverse gap-3 rounded-2xl bg-card px-5 py-4 ring-1 ring-border/70 sm:flex-row sm:items-center sm:justify-between md:px-6">
       <p className="text-xs text-muted-foreground">Dá para mudar tudo depois em Ajustes.</p>
       <div className="flex justify-end gap-2">
         <Button variant="ghost" asChild>
@@ -170,13 +170,13 @@ export function ProjectForm({
   return (
     <form
       noValidate
-      className="overflow-hidden rounded-2xl bg-card ring-1 ring-border/70"
+      className="space-y-6"
       onSubmit={(event) => {
         event.preventDefault();
         void form.handleSubmit();
       }}
     >
-      <fieldset disabled={disabled} className="divide-y divide-border/70">
+      <fieldset disabled={disabled} className="min-w-0 space-y-6">
         <ProjectFormSections form={form} />
       </fieldset>
       <FormActions form={form} submitLabel={submitLabel} disabled={disabled} />

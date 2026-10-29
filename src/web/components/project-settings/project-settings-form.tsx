@@ -1,15 +1,20 @@
 import type { ReactNode } from "react";
 
-import { BuildSection, GeneralSection, RepositorySection } from "./project-settings-sections";
+import {
+  AutomationSection,
+  BuildSection,
+  GeneralSection,
+  RepositorySection,
+} from "./project-settings-sections";
 import { UnsavedChangesBar } from "./unsaved-changes-bar";
 import { type SettingsProject, useProjectSettingsForm } from "./use-project-settings-form";
 
 const SETTINGS_FORM_ID = "project-settings-form";
 
 /**
- * The project fields split into sections, saved together from a bar that appears once
- * something changes. `children` adds more sections to the same panel, outside the form
- * element because forms cannot nest.
+ * The project fields split into cards, saved together from a bar that appears once something
+ * changes. `children` adds more cards below, outside the form element because forms cannot
+ * nest.
  */
 export function ProjectSettingsForm({
   projectId,
@@ -25,7 +30,7 @@ export function ProjectSettingsForm({
   const form = useProjectSettingsForm(projectId, project);
   return (
     <>
-      <div className="divide-y divide-border/70 rounded-xl bg-card ring-1 ring-border/70">
+      <div className="space-y-6">
         <form
           id={SETTINGS_FORM_ID}
           noValidate
@@ -34,10 +39,11 @@ export function ProjectSettingsForm({
             void form.handleSubmit();
           }}
         >
-          <fieldset disabled={canEdit === false} className="min-w-0 divide-y divide-border/70">
+          <fieldset disabled={canEdit === false} className="min-w-0 space-y-6">
             <GeneralSection form={form} />
             <RepositorySection form={form} savedRepositoryUrl={project.repositoryUrl} />
             <BuildSection form={form} />
+            <AutomationSection form={form} />
           </fieldset>
         </form>
         {children}

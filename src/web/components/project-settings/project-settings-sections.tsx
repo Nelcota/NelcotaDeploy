@@ -1,4 +1,4 @@
-import { GitBranchIcon, HammerIcon, IdCardIcon, TriangleAlertIcon } from "lucide-react";
+import { GitBranchIcon, HammerIcon, IdCardIcon, TriangleAlertIcon, ZapIcon } from "lucide-react";
 
 import type { ProjectFormApi } from "@/web/components/forms/project-form";
 import {
@@ -12,15 +12,20 @@ import {
   AutoApplyField,
   AutoDeployField,
   PreviewsField,
+  SwitchGroup,
 } from "@/web/components/forms/project-switch-fields";
 
 import { SettingsSection } from "./settings-section";
 
-const FIELD_GRID = "grid gap-x-6 gap-y-5 sm:grid-cols-2";
+const FIELD_GRID = "grid items-start gap-x-6 gap-y-5 sm:grid-cols-2";
 
 export function GeneralSection({ form }: { readonly form: ProjectFormApi }) {
   return (
-    <SettingsSection icon={IdCardIcon} title="Geral">
+    <SettingsSection
+      icon={IdCardIcon}
+      title="Geral"
+      description="Como o projeto aparece no painel e no endereço automático."
+    >
       <div className={FIELD_GRID}>
         <IdentityFields form={form} />
       </div>
@@ -36,11 +41,13 @@ export function RepositorySection({
   readonly savedRepositoryUrl: string;
 }) {
   return (
-    <SettingsSection icon={GitBranchIcon} title="Repositório">
-      <div className={FIELD_GRID}>
+    <SettingsSection
+      icon={GitBranchIcon}
+      title="Repositório"
+      description="De onde vem o código. Precisa ter um Dockerfile."
+    >
+      <div className="grid items-start gap-x-6 gap-y-5 sm:grid-cols-[minmax(0,1fr)_minmax(0,14rem)]">
         <RepositoryFields form={form} />
-        <AutoDeployField form={form} className="sm:col-span-2" />
-        <PreviewsField form={form} className="sm:col-span-2" />
         <form.Subscribe selector={(state) => state.values.repositoryUrl !== savedRepositoryUrl}>
           {(repositoryChanged) => (repositoryChanged ? <ReapprovalWarning /> : null)}
         </form.Subscribe>
@@ -60,13 +67,28 @@ function ReapprovalWarning() {
 
 export function BuildSection({ form }: { readonly form: ProjectFormApi }) {
   return (
-    <SettingsSection icon={HammerIcon} title="Build e execução">
+    <SettingsSection
+      icon={HammerIcon}
+      title="Build e execução"
+      description="Como a imagem é construída e como o painel sabe que a aplicação está no ar."
+    >
       <div className={FIELD_GRID}>
         <PortField form={form} />
         <HealthCheckField form={form} />
         <BuildFields form={form} />
-        <AutoApplyField form={form} className="sm:col-span-2" />
       </div>
+    </SettingsSection>
+  );
+}
+
+export function AutomationSection({ form }: { readonly form: ProjectFormApi }) {
+  return (
+    <SettingsSection icon={ZapIcon} title="Automação" description="O que o painel faz sozinho.">
+      <SwitchGroup>
+        <AutoDeployField form={form} />
+        <AutoApplyField form={form} />
+        <PreviewsField form={form} />
+      </SwitchGroup>
     </SettingsSection>
   );
 }
