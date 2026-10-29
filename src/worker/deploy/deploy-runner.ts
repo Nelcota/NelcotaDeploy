@@ -102,8 +102,13 @@ async function finishDeployment(
   await removePreviousContainers(dependencies, logs, {
     projectId: project.id,
     currentDeploymentId: deployment.id,
+    previewId: deployment.previewId,
   });
-  await pruneOldImages(dependencies, project.id, logs);
+  await pruneOldImages(
+    dependencies,
+    { projectId: project.id, previewId: deployment.previewId },
+    logs,
+  );
 }
 
 async function recordFailure(

@@ -120,7 +120,7 @@ async function saveVariable(
 ): Promise<void> {
   await saveEnvironmentVariable(database, await createTestSecretBox(), {
     projectId,
-    input: { ...variable, kind: "plain", value: "x" },
+    input: { ...variable, kind: "plain", value: "x", excludeFromPreviews: false },
     actor: TEST_ACTOR,
   });
 }

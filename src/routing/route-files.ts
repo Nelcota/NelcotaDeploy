@@ -76,6 +76,27 @@ export class RouteFiles {
   }
 
   /**
+   * Removes every route file whose name starts with a prefix, such as all the previews of a
+   * project that no longer exists.
+   *
+   * @param prefix - Start of the names, such as "<project id>-pr-".
+   * @throws {InvalidRouteError} When the prefix could leave the directory.
+   * @throws {RouteFileError} When the files cannot be removed.
+   */
+  async removePrefixed(prefix: string): Promise<void> {
+    if (FILE_NAME_PATTERN.test(prefix) === false) {
+      throw new InvalidRouteError(`Invalid route file prefix: ${JSON.stringify(prefix)}`);
+    }
+    const result = await this.#runner(
+      ["sh", "-c", REMOVE_PREFIXED_SCRIPT, "sh", this.#directory, prefix],
+      { timeoutInMs: COMMAND_TIMEOUT_IN_MS },
+    );
+    if (result.exitCode !== 0) {
+      throw new RouteFileError(`Could not remove routes ${prefix}*: ${failureReason(result)}`);
+    }
+  }
+
+  /**
    * Removes the routes stored under a name; nothing happens when there are none.
    *
    * @param name - File name without extension.
@@ -91,6 +112,9 @@ export class RouteFiles {
     }
   }
 }
+
+// The prefix is a quoted argument; only the "*" after it is a glob, so nothing else expands.
+const REMOVE_PREFIXED_SCRIPT = 'rm -f -- "$1"/"$2"*.yml';
 
 function fileName(name: string): string {
   if (FILE_NAME_PATTERN.test(name) === false) {

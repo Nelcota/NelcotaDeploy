@@ -5,6 +5,7 @@ import { projectQueryOptions } from "@/web/components/projects/project-query";
 import { useCan } from "@/web/components/shell/use-permissions";
 
 import { ConfigurationCard, ContainerCard } from "./fact-cards";
+import { PreviewsCard } from "./previews-card";
 import { RecentDeploymentsCard } from "./recent-deployments-card";
 import { ResourcesCard } from "./resources/resources-card";
 import { SituationCard } from "./situation/situation-card";
@@ -38,6 +39,11 @@ export function ProjectOverview({ projectId }: { readonly projectId: string }) {
           canDeploy={can("deployment:create") && data.project.deploymentsApproved}
         />
       </div>
+      <PreviewsCard
+        projectId={projectId}
+        branch={data.project.branch}
+        enabled={data.project.previewsEnabled}
+      />
       {/* Domains, repository and branch are already in the project header. */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <ContainerCard details={data} />

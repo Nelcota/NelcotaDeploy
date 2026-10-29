@@ -23,6 +23,7 @@ describe("environment variable storage", () => {
         kind: "secret",
         value: "hunter2-secret",
         availableAtBuild: false,
+        excludeFromPreviews: false,
       },
       actor: TEST_ACTOR,
     });
@@ -31,7 +32,9 @@ describe("environment variable storage", () => {
     expect(JSON.stringify(stored)).not.toContain("hunter2-secret");
     expect(listEnvironmentVariables(database, project.id)[0]?.value).toBeNull();
   });
+});
 
+describe("environment variable secrets", () => {
   test("keeps the stored secret when saved again with an empty value", async () => {
     const database = openMemoryDatabase();
     const box = await createTestSecretBox();
@@ -41,6 +44,7 @@ describe("environment variable storage", () => {
       kind: "secret" as const,
       value: "first-value",
       availableAtBuild: false,
+      excludeFromPreviews: false,
     };
     await saveEnvironmentVariable(database, box, {
       projectId: project.id,
@@ -50,11 +54,11 @@ describe("environment variable storage", () => {
 
     await saveEnvironmentVariable(database, box, {
       projectId: project.id,
-      input: { ...secret, value: "", availableAtBuild: true },
+      input: { ...secret, value: "", availableAtBuild: true, excludeFromPreviews: false },
       actor: TEST_ACTOR,
     });
 
-    const resolved = await resolveEnvironment(database, box, project.id);
+    const resolved = await resolveEnvironment(database, box, { projectId: project.id });
     expect(resolved.runtime["TOKEN"]).toBe("first-value");
     expect(resolved.build["TOKEN"]).toBe("first-value");
   });
@@ -67,16 +71,28 @@ describe("environment variable resolution", () => {
     const project = createTestProject(database);
     await saveEnvironmentVariable(database, box, {
       projectId: project.id,
-      input: { key: "MODE", kind: "plain", value: "prod", availableAtBuild: false },
+      input: {
+        key: "MODE",
+        kind: "plain",
+        value: "prod",
+        availableAtBuild: false,
+        excludeFromPreviews: false,
+      },
       actor: TEST_ACTOR,
     });
     await saveEnvironmentVariable(database, box, {
       projectId: project.id,
-      input: { key: "KEY", kind: "secret", value: "abc123", availableAtBuild: false },
+      input: {
+        key: "KEY",
+        kind: "secret",
+        value: "abc123",
+        availableAtBuild: false,
+        excludeFromPreviews: false,
+      },
       actor: TEST_ACTOR,
     });
 
-    const resolved = await resolveEnvironment(database, box, project.id);
+    const resolved = await resolveEnvironment(database, box, { projectId: project.id });
 
     expect(resolved.runtime).toEqual({ MODE: "prod", KEY: "abc123" });
     expect(resolved.build).toEqual({});
@@ -92,7 +108,13 @@ describe("environment variable audit and deletion", () => {
 
     await saveEnvironmentVariable(database, box, {
       projectId: project.id,
-      input: { key: "KEY", kind: "secret", value: "do-not-log-me", availableAtBuild: false },
+      input: {
+        key: "KEY",
+        kind: "secret",
+        value: "do-not-log-me",
+        availableAtBuild: false,
+        excludeFromPreviews: false,
+      },
       actor: TEST_ACTOR,
     });
 
@@ -106,7 +128,13 @@ describe("environment variable audit and deletion", () => {
     const project = createTestProject(database);
     await saveEnvironmentVariable(database, box, {
       projectId: project.id,
-      input: { key: "MODE", kind: "plain", value: "x", availableAtBuild: false },
+      input: {
+        key: "MODE",
+        kind: "plain",
+        value: "x",
+        availableAtBuild: false,
+        excludeFromPreviews: false,
+      },
       actor: TEST_ACTOR,
     });
     const [variable] = listEnvironmentVariables(database, project.id);
@@ -118,5 +146,31 @@ describe("environment variable audit and deletion", () => {
     });
 
     expect(listEnvironmentVariables(database, project.id)).toEqual([]);
+  });
+});
+
+describe("resolveEnvironment for previews", () => {
+  test("leaves out the variables kept out of previews", async () => {
+    const database = openMemoryDatabase();
+    const box = await createTestSecretBox();
+    const project = createTestProject(database);
+    const save = async (key: string, excludeFromPreviews: boolean) => {
+      await saveEnvironmentVariable(database, box, {
+        projectId: project.id,
+        input: { key, kind: "plain", value: "x", availableAtBuild: false, excludeFromPreviews },
+        actor: TEST_ACTOR,
+      });
+    };
+    await save("DATABASE_URL", true);
+    await save("API_URL", false);
+
+    const preview = await resolveEnvironment(database, box, {
+      projectId: project.id,
+      forPreview: true,
+    });
+    const production = await resolveEnvironment(database, box, { projectId: project.id });
+
+    expect(Object.keys(preview.runtime)).toEqual(["API_URL"]);
+    expect(Object.keys(production.runtime).toSorted()).toEqual(["API_URL", "DATABASE_URL"]);
   });
 });

@@ -1,9 +1,9 @@
 import { type CommandRunner, type OutputStream, type ProcessResult, runProcess } from "@/process";
 
+import { DockerImages, type DockerImageStore } from "./docker-images";
 import { DockerVolumes, type DockerVolumeStore } from "./docker-volumes";
 import {
   assertContainerReference,
-  assertImageReference,
   buildImageArgs,
   type BuildImageOptions,
   LABELS,
@@ -48,6 +48,8 @@ export class DockerCli {
   readonly #runner: CommandRunner;
   /** The platform's named volumes on the same host. */
   readonly volumes: DockerVolumeStore;
+  /** The platform's images on the same host. */
+  readonly images: DockerImageStore;
 
   /**
    * Reaches the Docker of one host.
@@ -59,6 +61,7 @@ export class DockerCli {
     this.#binary = binary;
     this.#runner = runner;
     this.volumes = new DockerVolumes(binary, runner);
+    this.images = new DockerImages(binary, runner);
   }
 
   async #run(args: readonly string[], options: CommandOptions = {}): Promise<ProcessResult> {
@@ -120,67 +123,6 @@ export class DockerCli {
       onLine: run.onLine,
       cwd: run.cwd,
     });
-  }
-
-  /**
-   * Tells whether an image exists locally.
-   *
-   * @param imageTag - Image reference.
-   */
-  async imageExists(imageTag: string): Promise<boolean> {
-    const result = await this.#run([
-      "image",
-      "inspect",
-      "--format",
-      "{{.Id}}",
-      assertImageReference(imageTag),
-    ]);
-    return result.exitCode === 0;
-  }
-
-  /**
-   * Lists platform images of a project, newest first.
-   *
-   * @param projectId - Owning project.
-   * @returns Image references.
-   */
-  async listProjectImages(projectId: string): Promise<string[]> {
-    const output = await this.#runChecked(
-      [
-        "image",
-        "ls",
-        "--filter",
-        `label=${LABELS.managed}=true`,
-        "--filter",
-        `label=${LABELS.projectId}=${projectId}`,
-        "--format",
-        "{{.Repository}}:{{.Tag}}",
-      ],
-      "image ls",
-    );
-    return output
-      .split("\n")
-      .map((line) => line.trim())
-      .filter((line) => line !== "" && line.includes("<none>") === false);
-  }
-
-  /**
-   * Removes a platform image. Images without the platform label are refused.
-   *
-   * @param imageTag - Image reference.
-   * @throws {UnmanagedResourceError} When the image is not managed by the platform.
-   * @throws {DockerCommandError} When docker fails, for example because a container uses it.
-   */
-  async removeImage(imageTag: string): Promise<void> {
-    const reference = assertImageReference(imageTag);
-    const labels = await this.#runChecked(
-      ["image", "inspect", "--format", `{{index .Config.Labels "${LABELS.managed}"}}`, reference],
-      "image inspect",
-    );
-    if (labels.trim() !== "true") {
-      throw new UnmanagedResourceError(`image ${reference}`);
-    }
-    await this.#runChecked(["image", "rm", reference], "image rm");
   }
 
   /**

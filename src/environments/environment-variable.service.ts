@@ -16,6 +16,8 @@ export type EnvironmentVariableView = {
   /** Plain values only; always null for secrets. */
   readonly value: string | null;
   readonly availableAtBuild: boolean;
+  /** Kept out of pull request previews. */
+  readonly excludeFromPreviews: boolean;
   readonly updatedAt: string;
 };
 
@@ -69,6 +71,7 @@ export function listEnvironmentVariables(
       kind: tables.environmentVariables.kind,
       plainValue: tables.environmentVariables.plainValue,
       availableAtBuild: tables.environmentVariables.availableAtBuild,
+      excludeFromPreviews: tables.environmentVariables.excludeFromPreviews,
       updatedAt: tables.environmentVariables.updatedAt,
     })
     .from(tables.environmentVariables)
@@ -81,6 +84,7 @@ export function listEnvironmentVariables(
       kind: row.kind,
       value: row.kind === "plain" ? row.plainValue : null,
       availableAtBuild: row.availableAtBuild,
+      excludeFromPreviews: row.excludeFromPreviews,
       updatedAt: row.updatedAt,
     }));
 }
@@ -124,6 +128,7 @@ export async function saveEnvironmentVariable(
       plainValue: input.kind === "plain" ? input.value : null,
       encryptedValue: keepExistingSecret ? (existing?.encryptedValue ?? null) : encryptedValue,
       availableAtBuild: input.availableAtBuild,
+      excludeFromPreviews: input.excludeFromPreviews,
       updatedAt: now,
     };
     if (input.kind === "secret" && values.encryptedValue == null) {
@@ -145,6 +150,7 @@ type VariableValues = {
   readonly plainValue: string | null;
   readonly encryptedValue: string | null;
   readonly availableAtBuild: boolean;
+  readonly excludeFromPreviews: boolean;
   readonly updatedAt: string;
 };
 
@@ -236,20 +242,21 @@ export function deleteEnvironmentVariable(
 }
 
 /**
- * Decrypts every variable of a project for a deployment.
+ * Decrypts the variables a deployment needs.
  *
  * @param database - Database.
  * @param secretBox - Encryption box.
- * @param projectId - Project id.
+ * @param scope - The `projectId`, and `forPreview` to leave out the variables kept out of pull
+ *   request previews.
  * @returns Runtime variables, build-time variables and secret plaintexts for redaction.
  * @throws {SecretDecryptionError} When a stored secret cannot be decrypted with the current key.
  */
 export async function resolveEnvironment(
   database: Database,
   secretBox: SecretBox,
-  projectId: string,
+  scope: { readonly projectId: string; readonly forPreview?: boolean },
 ): Promise<ResolvedEnvironment> {
-  const environmentId = productionEnvironmentId(database, projectId);
+  const environmentId = productionEnvironmentId(database, scope.projectId);
   const rows = database
     .select({
       key: tables.environmentVariables.key,
@@ -259,7 +266,14 @@ export async function resolveEnvironment(
       availableAtBuild: tables.environmentVariables.availableAtBuild,
     })
     .from(tables.environmentVariables)
-    .where(eq(tables.environmentVariables.environmentId, environmentId))
+    .where(
+      and(
+        eq(tables.environmentVariables.environmentId, environmentId),
+        scope.forPreview === true
+          ? eq(tables.environmentVariables.excludeFromPreviews, false)
+          : undefined,
+      ),
+    )
     .all();
   const decrypted = await Promise.all(
     rows.map(async (row) => ({
@@ -275,17 +289,30 @@ export async function resolveEnvironment(
           : (row.plainValue ?? ""),
     })),
   );
+  return splitEnvironment(decrypted);
+}
+
+function splitEnvironment(
+  variables: readonly {
+    readonly key: string;
+    readonly kind: "plain" | "secret";
+    readonly availableAtBuild: boolean;
+    readonly value: string;
+  }[],
+): ResolvedEnvironment {
   const runtime: Record<string, string> = {};
   const build: Record<string, string> = {};
-  for (const row of decrypted) {
-    runtime[row.key] = row.value;
-    if (row.availableAtBuild) {
-      build[row.key] = row.value;
+  for (const variable of variables) {
+    runtime[variable.key] = variable.value;
+    if (variable.availableAtBuild) {
+      build[variable.key] = variable.value;
     }
   }
   return {
     runtime,
     build,
-    secretValues: decrypted.filter((row) => row.kind === "secret").map((row) => row.value),
+    secretValues: variables
+      .filter((variable) => variable.kind === "secret")
+      .map((variable) => variable.value),
   };
 }

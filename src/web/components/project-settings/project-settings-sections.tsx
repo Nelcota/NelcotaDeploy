@@ -2,14 +2,17 @@ import { GitBranchIcon, HammerIcon, IdCardIcon, TriangleAlertIcon } from "lucide
 
 import type { ProjectFormApi } from "@/web/components/forms/project-form";
 import {
-  AutoApplyField,
-  AutoDeployField,
   BuildFields,
   HealthCheckField,
   IdentityFields,
   PortField,
   RepositoryFields,
 } from "@/web/components/forms/project-form-fields";
+import {
+  AutoApplyField,
+  AutoDeployField,
+  PreviewsField,
+} from "@/web/components/forms/project-switch-fields";
 
 import { SettingsSection } from "./settings-section";
 
@@ -37,6 +40,7 @@ export function RepositorySection({
       <div className={FIELD_GRID}>
         <RepositoryFields form={form} />
         <AutoDeployField form={form} className="sm:col-span-2" />
+        <PreviewsField form={form} className="sm:col-span-2" />
         <form.Subscribe selector={(state) => state.values.repositoryUrl !== savedRepositoryUrl}>
           {(repositoryChanged) => (repositoryChanged ? <ReapprovalWarning /> : null)}
         </form.Subscribe>

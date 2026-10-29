@@ -87,11 +87,14 @@ export class ContainerObserver implements Disposable {
    */
   async refresh(): Promise<ContainerInfo[]> {
     const containers = await this.#docker.listManagedContainers();
+    // Pull request previews are short-lived: their state is their deployment's, and their usage
+    // and logs stay out of the project's, which describe production.
+    const production = containers.filter((container) => container.labels[LABELS.previewId] == null);
     const observedAt = new Date().toISOString();
     replaceContainerSnapshots(
       this.#database,
       this.#serverId,
-      containers
+      production
         .filter((container) => container.labels[LABELS.projectId] != null)
         .map((container) => ({
           containerId: container.id,
@@ -106,7 +109,7 @@ export class ContainerObserver implements Disposable {
           observedAt,
         })),
     );
-    this.#running = containers.filter((container) => container.running);
+    this.#running = production.filter((container) => container.running);
     const runningIds = new Set(this.#running.map((container) => container.id));
     for (const [containerId, follower] of this.#followers) {
       if (runningIds.has(containerId) === false) {
@@ -218,7 +221,7 @@ export class ContainerObserver implements Disposable {
 
   async #loadRedactor(projectId: string): Promise<((text: string) => string) | null> {
     try {
-      const environment = await resolveEnvironment(this.#database, this.#secretBox, projectId);
+      const environment = await resolveEnvironment(this.#database, this.#secretBox, { projectId });
       return createRedactor(environment.secretValues);
     } catch (error) {
       // Without the secrets we cannot redact, so the logs are not collected at all.

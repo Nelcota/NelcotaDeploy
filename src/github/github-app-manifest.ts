@@ -31,10 +31,12 @@ export function buildAppManifest(publicUrl: string) {
       contents: "read",
       metadata: "read",
       statuses: "write",
+      // Pull requests: each one to the project's branch can get a preview deployment.
+      pull_requests: "read",
       email_addresses: "read",
     },
     callback_urls: [`${publicUrl}/api/auth/callback/github`],
-    default_events: ["push"],
+    default_events: ["push", "pull_request"],
   };
 }
 

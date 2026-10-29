@@ -107,7 +107,37 @@ function OptionRow({
   );
 }
 
-/** Whether the value is a secret, and whether the build receives it too. */
+/** A yes/no option of the variable, as a switch with its explanation. */
+function BooleanOption({
+  form,
+  name,
+  id,
+  label,
+  hint,
+}: {
+  readonly form: VariableFormApi;
+  readonly name: "availableAtBuild" | "excludeFromPreviews";
+  readonly id: string;
+  readonly label: string;
+  readonly hint: string;
+}) {
+  return (
+    <OptionRow id={id} label={label} hint={hint}>
+      <form.Field name={name}>
+        {(field) => (
+          <Switch
+            id={id}
+            aria-describedby={`${id}-hint`}
+            checked={field.state.value}
+            onCheckedChange={field.handleChange}
+          />
+        )}
+      </form.Field>
+    </OptionRow>
+  );
+}
+
+/** Whether the value is a secret, whether the build receives it, and whether previews do. */
 export function VariableOptions({ form }: { readonly form: VariableFormApi }) {
   return (
     <div className="divide-y divide-border/70 rounded-xl ring-1 ring-border/70 ring-inset">
@@ -127,22 +157,20 @@ export function VariableOptions({ form }: { readonly form: VariableFormApi }) {
           )}
         </form.Field>
       </OptionRow>
-      <OptionRow
+      <BooleanOption
+        form={form}
+        name="availableAtBuild"
         id="variable-build"
         label="Disponível no build"
         hint="Também enviada ao build da imagem, como ARG no Dockerfile."
-      >
-        <form.Field name="availableAtBuild">
-          {(field) => (
-            <Switch
-              id="variable-build"
-              aria-describedby="variable-build-hint"
-              checked={field.state.value}
-              onCheckedChange={field.handleChange}
-            />
-          )}
-        </form.Field>
-      </OptionRow>
+      />
+      <BooleanOption
+        form={form}
+        name="excludeFromPreviews"
+        id="variable-previews"
+        label="Não enviar para previews"
+        hint="Previews de pull request recebem as variáveis de produção, menos esta."
+      />
     </div>
   );
 }

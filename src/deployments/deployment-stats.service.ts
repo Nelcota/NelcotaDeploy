@@ -1,4 +1,4 @@
-import { gte } from "drizzle-orm";
+import { and, gte, isNull } from "drizzle-orm";
 
 import { type Database, tables } from "@/db";
 import { dayKey, durationBetween } from "@/shared/format";
@@ -94,20 +94,28 @@ function listWindowDeployments(
   const { firstDay } = window;
   // A generous lower bound; rows from before the first local day are dropped below.
   const since = new Date(window.now.getTime() - (window.days + 1) * MILLISECONDS_PER_DAY);
-  return database
-    .select({
-      status: tables.deployments.status,
-      createdAt: tables.deployments.createdAt,
-      startedAt: tables.deployments.startedAt,
-      finishedAt: tables.deployments.finishedAt,
-    })
-    .from(tables.deployments)
-    .where(gte(tables.deployments.createdAt, since.toISOString()))
-    .all()
-    .filter((row) => {
-      const day = dayKey(row.createdAt);
-      return day != null && firstDay != null && day >= firstDay;
-    });
+  return (
+    database
+      .select({
+        status: tables.deployments.status,
+        createdAt: tables.deployments.createdAt,
+        startedAt: tables.deployments.startedAt,
+        finishedAt: tables.deployments.finishedAt,
+      })
+      .from(tables.deployments)
+      // Production only: previews come and go with pull requests and would skew the figures.
+      .where(
+        and(
+          gte(tables.deployments.createdAt, since.toISOString()),
+          isNull(tables.deployments.previewId),
+        ),
+      )
+      .all()
+      .filter((row) => {
+        const day = dayKey(row.createdAt);
+        return day != null && firstDay != null && day >= firstDay;
+      })
+  );
 }
 
 function countByDay(

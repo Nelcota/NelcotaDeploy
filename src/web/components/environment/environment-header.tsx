@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { PlusIcon } from "lucide-react";
 
 import type { EnvironmentVariableView } from "@/environments";
-import { EnvImportDialog } from "@/web/components/forms/env-import-dialog";
+import { EnvImportDialog } from "@/web/components/forms/env-import/env-import-dialog";
 import { TabHeader } from "@/web/components/projects/project-header";
 import { projectQueryOptions } from "@/web/components/projects/project-query";
 import { Button } from "@/web/components/ui/button";

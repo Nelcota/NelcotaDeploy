@@ -30,6 +30,8 @@ export const environmentVariableInputSchema = z.object({
     .max(MAX_VALUE_LENGTH, "Valor muito longo")
     .refine((value) => value.includes("\0") === false, { message: "Valor inválido" }),
   availableAtBuild: z.boolean(),
+  /** Kept out of pull request previews, such as the production database URL. */
+  excludeFromPreviews: z.boolean(),
 });
 
 export type EnvironmentVariableInput = z.infer<typeof environmentVariableInputSchema>;

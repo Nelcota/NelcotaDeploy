@@ -45,6 +45,28 @@ describe("RouteFiles", () => {
   });
 });
 
+describe("RouteFiles.removePrefixed", () => {
+  test("removes the files that start with the prefix and keeps the others", async () => {
+    const directory = await routeDirectory();
+    const files = new RouteFiles(runProcess, directory);
+    await files.write("project-1", CONFIG);
+    await files.write("project-1-pr-12", CONFIG);
+    await files.write("project-1-pr-13", CONFIG);
+
+    await files.removePrefixed("project-1-pr-");
+
+    expect(await readdir(directory)).toEqual(["project-1.yml"]);
+  });
+
+  test("throws InvalidRouteError for a prefix that could leave the directory", async () => {
+    const files = new RouteFiles(runProcess, await routeDirectory());
+
+    const error = await files.removePrefixed("../").catch((failure: unknown) => failure);
+
+    expect(error).toBeInstanceOf(InvalidRouteError);
+  });
+});
+
 describe("RouteFiles validation", () => {
   test.each([["../escape"], ["a/b"], [""], ["UPPER"]])(
     "throws InvalidRouteError for the file name %p",

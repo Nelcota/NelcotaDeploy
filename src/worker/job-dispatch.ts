@@ -1,4 +1,3 @@
-import type { AppConfig } from "@/config";
 import {
   applyRuntimeChanges,
   getDeployment,
@@ -16,6 +15,7 @@ import {
 } from "./container-action-runner";
 import type { DeployRunnerConfig, DeployRunnerDependencies } from "./deploy/deploy-context";
 import { runDeployment } from "./deploy/deploy-runner";
+import { runPreviewCleanupJob } from "./maintenance/preview-cleanup";
 import {
   notifyFailedDeployment,
   reportDeploymentStatus,
@@ -36,7 +36,10 @@ export type JobRun = {
   readonly refreshContainers: (serverId: string) => Promise<void>;
 };
 
-function deployRunnerConfig(config: AppConfig, host: ServerHost): DeployRunnerConfig {
+function deployRunnerConfig(
+  config: WorkerDependencies["config"],
+  host: ServerHost,
+): DeployRunnerConfig {
   return {
     workspaceDir: host.workspaceDir,
     network: config.DOCKER_NETWORK,
@@ -128,17 +131,14 @@ async function runDeployJob(
     await notifyFailedDeployment(dependencies, deployment);
     throw new Error(deployment.errorMessage ?? "Deployment failed");
   }
-  if (status === "succeeded") {
-    // Variables or domains saved while this deploy ran were left for now; apply them. Only after
-    // a success, so a configuration that keeps failing is never retried in a loop.
-    applyRuntimeChanges(
-      dependencies.database,
-      getDeployment(dependencies.database, deploymentId).projectId,
-      {
-        actor: AUTO_APPLY_ACTOR,
-        triggeredByUserId: null,
-      },
-    );
+  const deployment = getDeployment(dependencies.database, deploymentId);
+  // Variables or domains saved while this deploy ran were left for now; apply them. Only after
+  // a production success, so a configuration that keeps failing is never retried in a loop.
+  if (status === "succeeded" && deployment.previewId == null) {
+    applyRuntimeChanges(dependencies.database, deployment.projectId, {
+      actor: AUTO_APPLY_ACTOR,
+      triggeredByUserId: null,
+    });
   }
 }
 
@@ -224,6 +224,10 @@ export async function dispatchJob(
     }
     case "volume_delete": {
       await runVolumeDeleteJob(dependencies, job);
+      return;
+    }
+    case "preview_cleanup": {
+      await runPreviewCleanupJob(dependencies, job);
     }
   }
 }

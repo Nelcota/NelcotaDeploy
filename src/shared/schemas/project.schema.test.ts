@@ -19,6 +19,7 @@ const validInput = {
   healthCheckPath: "",
   autoDeploy: false,
   autoApplyChanges: true,
+  previewsEnabled: false,
 };
 
 describe("projectInputSchema", () => {

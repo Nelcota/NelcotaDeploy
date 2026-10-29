@@ -7,8 +7,8 @@ import { getGitHubPermissionGapsFn } from "@/web/functions/admin/github.function
 const PERMISSION_STALE_IN_MS = 300_000;
 
 /**
- * Warns when an installation of the app has not accepted the commit status permission yet,
- * which apps created before it was requested need to do once.
+ * Warns when an installation of the app has not accepted the permissions for commit statuses
+ * and pull request previews yet, which apps created before them need to do once.
  */
 export function GitHubPermissionNotice({ appUrl }: { readonly appUrl: string }) {
   const gaps = useQuery({
@@ -32,12 +32,13 @@ export function GitHubPermissionNotice({ appUrl }: { readonly appUrl: string }) 
     <p role="status" className="flex items-start gap-1.5 text-sm text-warning">
       <TriangleAlertIcon aria-hidden className="mt-0.5 size-4 shrink-0" />
       <span>
-        {accounts.join(", ")} ainda não liberou o status dos deploys nos commits. No GitHub, abra as
-        configurações do{" "}
+        {accounts.join(", ")} ainda não liberou o status dos deploys e os previews de pull request.
+        No GitHub, abra as configurações do{" "}
         <a href={appUrl} target="_blank" rel="noreferrer" className="underline underline-offset-2">
           app
         </a>{" "}
-        → Permissions, marque “Commit statuses: Read and write” e aceite a mudança na instalação.
+        → Permissions & events, marque “Commit statuses: Read and write”, “Pull requests: Read-only”
+        e o evento “Pull request”, e aceite a mudança na instalação.
       </span>
     </p>
   );

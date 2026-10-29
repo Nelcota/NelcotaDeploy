@@ -15,6 +15,7 @@ export { applyPendingChanges, applyRuntimeChanges } from "./runtime-apply.servic
 export {
   DeploymentNotFoundError,
   NoActiveContainerError,
+  PreviewNotActiveError,
   ProjectNotApprovedError,
   RetryUnavailableError,
   RollbackUnavailableError,

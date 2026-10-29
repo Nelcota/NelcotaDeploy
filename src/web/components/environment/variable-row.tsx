@@ -1,4 +1,4 @@
-import { EyeIcon, HammerIcon, LockIcon, PencilIcon, Trash2Icon } from "lucide-react";
+import { EyeIcon, EyeOffIcon, HammerIcon, LockIcon, PencilIcon, Trash2Icon } from "lucide-react";
 
 import type { EnvironmentVariableView } from "@/environments";
 import { formatDateTime, formatRelativeTime } from "@/shared/format";
@@ -39,6 +39,7 @@ export function VariableRow({
           {secret ? "Secret" : "Configuração"}
         </Tag>
         {variable.availableAtBuild ? <Tag icon={HammerIcon}>No build</Tag> : null}
+        {variable.excludeFromPreviews ? <Tag icon={EyeOffIcon}>Fora dos previews</Tag> : null}
         <time
           dateTime={variable.updatedAt}
           title={`Alterada em ${formatDateTime(variable.updatedAt)}`}

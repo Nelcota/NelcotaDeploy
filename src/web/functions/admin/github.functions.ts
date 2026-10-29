@@ -2,7 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 
 import { userActor } from "@/auth";
 import { getDatabase } from "@/db";
-import { accountsMissingStatusPermission, removeGitHubApp } from "@/github";
+import { accountsMissingPermissions, removeGitHubApp } from "@/github";
 import { getSecretBox } from "@/secrets";
 import { authorize } from "@/web/server/authorization";
 import { refreshGitHubLogin } from "@/web/server/github-login";
@@ -14,8 +14,8 @@ export const disconnectGitHubAppFn = createServerFn({ method: "POST" }).handler(
   await refreshGitHubLogin();
 });
 
-/** Accounts whose installation of the app has not accepted the commit status permission. */
+/** Accounts whose installation of the app has not accepted the newer permissions. */
 export const getGitHubPermissionGapsFn = createServerFn({ method: "GET" }).handler(async () => {
   await authorize("settings:write");
-  return await accountsMissingStatusPermission(getDatabase(), await getSecretBox());
+  return await accountsMissingPermissions(getDatabase(), await getSecretBox());
 });

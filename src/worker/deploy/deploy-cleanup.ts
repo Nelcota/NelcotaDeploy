@@ -6,6 +6,8 @@ import type { DeploymentLogWriter } from "./deployment-log-writer";
 const FAILED_CONTAINER_LOG_LINES = 50;
 /** Time an old container gets to finish in-flight requests after SIGTERM. */
 const STOP_GRACE_IN_SECONDS = 30;
+/** A preview has no rollback: only its running image is kept. */
+const PREVIEW_IMAGES_KEPT = 1;
 
 /**
  * Copies the last lines of a failed container into the deployment log, then removes it.
@@ -86,40 +88,50 @@ export async function removePreviousContainers(
   {
     projectId,
     currentDeploymentId,
-  }: { readonly projectId: string; readonly currentDeploymentId: string },
+    previewId,
+  }: {
+    readonly projectId: string;
+    readonly currentDeploymentId: string;
+    /** Preview of the new deployment; null for production. Other scopes are left alone. */
+    readonly previewId: string | null;
+  },
 ): Promise<void> {
   const containers = await dependencies.docker.listManagedContainers();
   const previous = containers.filter(
     (container) =>
       container.labels[LABELS.projectId] === projectId &&
+      (container.labels[LABELS.previewId] ?? null) === previewId &&
       container.labels[LABELS.deploymentId] !== currentDeploymentId,
   );
   await removeContainersInOrder(dependencies.docker, previous, logs);
 }
 
 /**
- * Removes the project's images beyond the newest ones kept for rollback.
+ * Removes the images beyond the newest ones kept for rollback, within one scope: production's
+ * images, or one preview's, which keeps only its running image.
  *
  * @param dependencies - Docker access and the number of images to keep.
- * @param projectId - Owning project.
+ * @param scope - Owning project and preview (null for production).
  * @param logs - Deployment log.
  */
 export async function pruneOldImages(
   dependencies: DeployRunnerDependencies,
-  projectId: string,
+  scope: { readonly projectId: string; readonly previewId: string | null },
   logs: DeploymentLogWriter,
 ): Promise<void> {
   try {
-    const images = await dependencies.docker.listProjectImages(projectId);
-    const stale = images.slice(dependencies.config.imagesKeptPerProject);
+    const images = await dependencies.docker.images.listForProject(scope.projectId, {
+      previewId: scope.previewId,
+    });
+    const kept =
+      scope.previewId == null ? dependencies.config.imagesKeptPerProject : PREVIEW_IMAGES_KEPT;
+    const stale = images.slice(kept);
     const results = await Promise.allSettled(
-      stale.map(async (image) => await dependencies.docker.removeImage(image)),
+      stale.map(async (image) => await dependencies.docker.images.remove(image)),
     );
     const removed = results.filter((result) => result.status === "fulfilled").length;
     if (removed > 0) {
-      logs.system(
-        `Removed ${removed} old image(s); kept the ${dependencies.config.imagesKeptPerProject} newest for rollback`,
-      );
+      logs.system(`Removed ${removed} old image(s); kept the ${kept} newest`);
     }
   } catch (error) {
     logs.system(`Could not prune old images: ${errorMessageOf(error)}`, "warn");

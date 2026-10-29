@@ -113,6 +113,9 @@ const recentColumns = {
   finishedAt: tables.deployments.finishedAt,
 };
 
+// The dashboard is about production; previews appear on their project's page.
+const PRODUCTION = isNull(tables.deployments.previewId);
+
 /** Latest deployments, last-day counts per status and last-day failures. */
 function listRecentActivity(database: Database, now: Date) {
   const lastDayStart = new Date(now.getTime() - RECENT_FAILURE_WINDOW_IN_MS).toISOString();
@@ -120,6 +123,7 @@ function listRecentActivity(database: Database, now: Date) {
     .select(recentColumns)
     .from(tables.deployments)
     .innerJoin(tables.projects, eq(tables.projects.id, tables.deployments.projectId))
+    .where(PRODUCTION)
     .orderBy(desc(tables.deployments.createdAt))
     .limit(RECENT_DEPLOYMENTS)
     .all();
@@ -127,7 +131,7 @@ function listRecentActivity(database: Database, now: Date) {
   const lastDayCounts = database
     .select({ status: tables.deployments.status, total: count() })
     .from(tables.deployments)
-    .where(gte(tables.deployments.createdAt, lastDayStart))
+    .where(and(gte(tables.deployments.createdAt, lastDayStart), PRODUCTION))
     .groupBy(tables.deployments.status)
     .all();
   const recentFailures = database
@@ -135,7 +139,11 @@ function listRecentActivity(database: Database, now: Date) {
     .from(tables.deployments)
     .innerJoin(tables.projects, eq(tables.projects.id, tables.deployments.projectId))
     .where(
-      and(eq(tables.deployments.status, "failed"), gte(tables.deployments.createdAt, lastDayStart)),
+      and(
+        eq(tables.deployments.status, "failed"),
+        gte(tables.deployments.createdAt, lastDayStart),
+        PRODUCTION,
+      ),
     )
     .orderBy(desc(tables.deployments.createdAt))
     .limit(RECENT_DEPLOYMENTS)

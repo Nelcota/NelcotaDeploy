@@ -6,6 +6,7 @@ import { getProject } from "@/projects";
 
 import { requestDeployment } from "./deployment-request.service";
 import { ACTIVE_STATUSES } from "./deployment-status";
+import { deploymentScope } from "./preview-scope";
 import { buildConfigFingerprint, hasPendingRuntimeChanges } from "./runtime-config";
 
 type ApplyContext = { readonly actor: Actor; readonly triggeredByUserId: string | null };
@@ -17,6 +18,8 @@ function hasActiveDeployment(database: Database, projectId: string): boolean {
     .where(
       and(
         eq(tables.deployments.projectId, projectId),
+        // Previews run their own containers; they never hold back production changes.
+        deploymentScope(null),
         inArray(tables.deployments.status, ACTIVE_STATUSES),
       ),
     )

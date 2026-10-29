@@ -12,6 +12,7 @@ import {
   RollbackUnavailableError,
 } from "./deployment.errors";
 import { type DeploymentTrigger, getDeployment } from "./deployment.service";
+import { activePreviewBranch, deploymentScope } from "./preview-scope";
 
 /** Total runs of a deploy job; the second only happens when a worker crashed mid-deploy. */
 const DEPLOY_MAX_ATTEMPTS = 2;
@@ -27,6 +28,8 @@ export type DeploymentRequest = {
   readonly commitMessage?: string | null;
   /** Deployment whose image is reused instead of building (redeploy and rollback). */
   readonly sourceDeploymentId?: string | null;
+  /** Pull request preview to deploy; production when null. */
+  readonly previewId?: string | null;
 };
 
 type ReusableImage = ReturnType<typeof findReusableImage>;
@@ -49,7 +52,7 @@ type RequestIdentity = {
 
 function findReusableImage(
   transaction: Transaction,
-  projectId: string,
+  scope: { readonly projectId: string; readonly previewId: string | null },
   sourceDeploymentId: string,
 ) {
   const source = transaction
@@ -65,7 +68,9 @@ function findReusableImage(
     .where(
       and(
         eq(tables.deployments.id, sourceDeploymentId),
-        eq(tables.deployments.projectId, projectId),
+        eq(tables.deployments.projectId, scope.projectId),
+        // A preview image never goes to production, nor production's to a preview.
+        deploymentScope(scope.previewId),
       ),
     )
     .get();
@@ -78,7 +83,11 @@ function findReusableImage(
   return source;
 }
 
-function listPendingDeployments(transaction: Transaction, projectId: string): PendingDeployment[] {
+function listPendingDeployments(
+  transaction: Transaction,
+  projectId: string,
+  previewId: string | null,
+): PendingDeployment[] {
   return transaction
     .select({
       id: tables.deployments.id,
@@ -91,6 +100,7 @@ function listPendingDeployments(transaction: Transaction, projectId: string): Pe
     .where(
       and(
         eq(tables.deployments.projectId, projectId),
+        deploymentScope(previewId),
         inArray(tables.deployments.status, ACTIVE_STATUSES),
       ),
     )
@@ -201,6 +211,7 @@ function insertQueuedDeployment(
       ...revisionOf(request, { branch, source }),
       requestedCommitSha: request.commitSha ?? null,
       sourceDeploymentId: request.sourceDeploymentId ?? null,
+      previewId: request.previewId ?? null,
       serverId,
       createdAt: now.toISOString(),
     })
@@ -251,6 +262,7 @@ function queueDeployment(
  * @throws {ProjectNotFoundError} When the project does not exist.
  * @throws {ProjectNotApprovedError} When an admin has not approved the project.
  * @throws {RollbackUnavailableError} When the source deployment has no reusable image.
+ * @throws {PreviewNotActiveError} When the preview does not exist or was closed.
  */
 export function requestDeployment(
   database: Database,
@@ -261,13 +273,16 @@ export function requestDeployment(
     if (project.deploymentsApproved === false) {
       throw new ProjectNotApprovedError(project.id);
     }
+    const previewId = request.previewId ?? null;
+    const branch =
+      previewId == null ? project.branch : activePreviewBranch(transaction, project.id, previewId);
     const sourceDeploymentId = request.sourceDeploymentId ?? null;
     const source =
       sourceDeploymentId == null
         ? null
-        : findReusableImage(transaction, project.id, sourceDeploymentId);
+        : findReusableImage(transaction, { projectId: project.id, previewId }, sourceDeploymentId);
 
-    const pending = listPendingDeployments(transaction, project.id);
+    const pending = listPendingDeployments(transaction, project.id, previewId);
     const duplicate = findDuplicateRequest(pending, {
       sourceDeploymentId,
       requestedCommitSha: request.commitSha ?? null,
@@ -280,7 +295,7 @@ export function requestDeployment(
     const now = new Date();
     cancelSupersededDeployments(transaction, pending, now);
     const deploymentId = insertQueuedDeployment(transaction, request, {
-      branch: project.branch,
+      branch,
       serverId: project.serverId,
       source,
       now,
@@ -316,5 +331,6 @@ export function retryDeployment(
     triggeredByUserId: context.triggeredByUserId,
     commitSha: deployment.commitSha ?? deployment.requestedCommitSha,
     commitMessage: deployment.commitMessage,
+    previewId: deployment.previewId,
   });
 }

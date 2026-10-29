@@ -7,7 +7,7 @@ import {
   type EnvImportResult,
   summarizeEnvImport,
   type VariableSaveOutcome,
-} from "@/web/components/forms/env-import-result";
+} from "@/web/components/forms/env-import/env-import-result";
 import type { VariableKind } from "@/web/components/forms/env-kind-toggle";
 import { saveEnvironmentVariableFn } from "@/web/functions/environment.functions";
 
@@ -41,7 +41,13 @@ export function useEnvImport(projectId: string) {
       await saveEnvironmentVariableFn({
         data: {
           projectId,
-          variable: { key: entry.key, kind, value: entry.value, availableAtBuild: false },
+          variable: {
+            key: entry.key,
+            kind,
+            value: entry.value,
+            availableAtBuild: false,
+            excludeFromPreviews: false,
+          },
         },
       });
       return { entry, saved: true };

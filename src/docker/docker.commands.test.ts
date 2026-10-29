@@ -75,7 +75,12 @@ describe("runContainerArgs", () => {
       containerName: "nelcota-api-abc",
       imageTag: "nelcota/api:abc",
       network: "nelcota",
-      labels: managedLabels({ projectId: "p1", projectSlug: "api", deploymentId: "d1" }),
+      labels: managedLabels({
+        projectId: "p1",
+        projectSlug: "api",
+        deploymentId: "d1",
+        previewId: null,
+      }),
       environmentKeys: ["SECRET_TOKEN"],
       volumes: [],
     });

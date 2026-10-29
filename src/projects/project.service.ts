@@ -31,6 +31,7 @@ export const projectColumns = {
   healthCheckPath: tables.projects.healthCheckPath,
   autoDeploy: tables.projects.autoDeploy,
   autoApplyChanges: tables.projects.autoApplyChanges,
+  previewsEnabled: tables.projects.previewsEnabled,
   deploymentsApproved: tables.projects.deploymentsApproved,
   currentDeploymentId: tables.projects.currentDeploymentId,
   hasRepositoryToken: sql<boolean>`${tables.projects.encryptedRepositoryToken} IS NOT NULL`.mapWith(
@@ -57,6 +58,8 @@ export type Project = {
   readonly healthCheckPath: string | null;
   readonly autoDeploy: boolean;
   readonly autoApplyChanges: boolean;
+  /** Pull requests to the project's branch get a temporary deployment of their own. */
+  readonly previewsEnabled: boolean;
   readonly deploymentsApproved: boolean;
   readonly currentDeploymentId: string | null;
   readonly hasRepositoryToken: boolean;

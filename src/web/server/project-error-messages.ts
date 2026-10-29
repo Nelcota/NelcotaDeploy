@@ -2,6 +2,7 @@ import {
   DeploymentNotFoundError,
   InvalidDeploymentTransitionError,
   NoActiveContainerError,
+  PreviewNotActiveError,
   ProjectNotApprovedError,
   RetryUnavailableError,
   RollbackUnavailableError,
@@ -25,6 +26,7 @@ export const PROJECT_ERROR_MESSAGES: readonly (readonly [
   string,
 ])[] = [
   [ProjectNotFoundError, "Projeto não encontrado."],
+  [PreviewNotActiveError, "Este preview foi encerrado com o pull request."],
   [VolumeNotFoundError, "Volume não encontrado."],
   [VolumeLimitError, "Cada projeto pode ter no máximo 10 volumes."],
   [VolumePathOverlapError, "Esse caminho coincide com o de outro volume do projeto."],
