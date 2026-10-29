@@ -1,7 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 
 import { getConfig } from "@/config";
-import { getDatabase } from "@/db";
+import { getDatabase, listBackups } from "@/db";
 import { getWorkerStatus } from "@/monitoring";
 import { getSystemSettings, saveSystemSettings } from "@/settings";
 import { systemSettingsSchema } from "@/shared/schemas/settings.schema";
@@ -11,6 +11,7 @@ export const getSettingsFn = createServerFn({ method: "GET" }).handler(async () 
   await authorize("project:read");
   const config = getConfig();
   const database = getDatabase();
+  const backups = config.BACKUP_DIR == null ? [] : await listBackups(config.BACKUP_DIR);
   return {
     settings: getSystemSettings(database),
     server: {
@@ -25,6 +26,11 @@ export const getSettingsFn = createServerFn({ method: "GET" }).handler(async () 
       metricsRetentionInHours: config.METRICS_RETENTION_HOURS,
       scheduleTimeZone: config.SCHEDULE_TIME_ZONE,
       worker: getWorkerStatus(database),
+      backup: {
+        newestAt: backups[0]?.createdAt ?? null,
+        count: backups.length,
+        kept: config.BACKUPS_KEPT,
+      },
     },
   };
 });

@@ -1,3 +1,4 @@
+export { backupDatabase, listBackups } from "./backup";
 export {
   type Database,
   getDatabase,

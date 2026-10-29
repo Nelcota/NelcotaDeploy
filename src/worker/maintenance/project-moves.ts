@@ -3,8 +3,8 @@ import { listMoveLeftovers, type MoveLeftover } from "@/monitoring";
 import { listServers } from "@/servers";
 import { getSystemSettings } from "@/settings";
 
-import { removeProjectResources } from "./container-action-runner";
-import type { WorkerDependencies } from "./worker.types";
+import { removeProjectResources } from "../container-action-runner";
+import type { WorkerDependencies } from "../worker.types";
 
 /** After this long on the new server, the old container goes even if DNS never changed. */
 const MAX_OVERLAP_IN_MS = 86_400_000;

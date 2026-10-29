@@ -1,4 +1,4 @@
-import { resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 
 import { z } from "zod";
 
@@ -18,6 +18,7 @@ const METRICS_RETENTION_HOURS_RANGE: IntegerRange = { min: 1, max: 720, fallback
 const RUNTIME_LOG_RETENTION_LINES_RANGE: IntegerRange = { min: 100, max: 100_000, fallback: 5000 };
 const DEPLOYMENT_LOG_RETENTION_DAYS_RANGE: IntegerRange = { min: 1, max: 365, fallback: 30 };
 const IMAGES_KEPT_PER_PROJECT_RANGE: IntegerRange = { min: 1, max: 50, fallback: 5 };
+const BACKUPS_KEPT_RANGE: IntegerRange = { min: 1, max: 365, fallback: 7 };
 
 function boundedInteger(range: IntegerRange) {
   return z.coerce.number().int().min(range.min).max(range.max).default(range.fallback);
@@ -75,6 +76,9 @@ const configSchema = z.object({
   RUNTIME_LOG_RETENTION_LINES: boundedInteger(RUNTIME_LOG_RETENTION_LINES_RANGE),
   DEPLOYMENT_LOG_RETENTION_DAYS: boundedInteger(DEPLOYMENT_LOG_RETENTION_DAYS_RANGE),
   IMAGES_KEPT_PER_PROJECT: boundedInteger(IMAGES_KEPT_PER_PROJECT_RANGE),
+  // Daily database copies; the directory defaults to "backups" next to the database file.
+  BACKUP_DIR: z.string().trim().min(1).optional(),
+  BACKUPS_KEPT: boundedInteger(BACKUPS_KEPT_RANGE),
   NELCOTA_MCP_TOKEN: z.string().min(1).optional(),
   SCHEDULE_TIME_ZONE: z
     .string()
@@ -114,7 +118,16 @@ export function parseConfig(environment: Record<string, string | undefined>): Ap
     ...result.data,
     DATABASE_PATH: resolveDatabasePath(result.data.DATABASE_PATH),
     WORKSPACE_DIR: resolve(result.data.WORKSPACE_DIR),
+    BACKUP_DIR: resolveBackupDirectory(result.data.BACKUP_DIR, result.data.DATABASE_PATH),
   };
+}
+
+/** An in-memory database has nothing to back up, so it gets no directory. */
+function resolveBackupDirectory(directory: string | undefined, databasePath: string) {
+  if (directory != null) {
+    return resolve(directory);
+  }
+  return databasePath === ":memory:" ? undefined : join(dirname(resolve(databasePath)), "backups");
 }
 
 function resolveDatabasePath(path: string): string {
