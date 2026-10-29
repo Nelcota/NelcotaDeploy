@@ -1,0 +1,31 @@
+# Keeps every dependency on its newest release. Each update opens a pull request that merges
+# itself once CI passes (see dependabot-auto-merge.yml).
+version: 2
+updates:
+  - package-ecosystem: bun
+    directory: /
+    schedule:
+      interval: daily
+    # package.json pins exact versions; keep them exact.
+    versioning-strategy: increase
+    groups:
+      dependencies:
+        patterns: ["*"]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: daily
+    groups:
+      actions:
+        patterns: ["*"]
+
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: daily
+
+  - package-ecosystem: docker-compose
+    directory: /
+    schedule:
+      interval: daily
