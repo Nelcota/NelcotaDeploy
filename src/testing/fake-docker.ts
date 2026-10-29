@@ -1,11 +1,21 @@
 import type { ContainerInfo, DockerEngine, OutputHandler } from "@/docker";
 import type { ProcessResult } from "@/process";
 
+import { FakeVolumes } from "./fake-volumes";
+
 /** In-memory Docker double that records calls and simulates containers. */
 export class FakeDocker implements DockerEngine {
   readonly calls: string[] = [];
   readonly containers = new Map<string, ContainerInfo>();
   readonly images = new Set<string>();
+  readonly volumes = new FakeVolumes(this.calls, (name) =>
+    [...this.mounts.entries()].some(
+      ([container, volumes]) =>
+        this.containers.has(container) && volumes.some((volume) => volume.name === name),
+    ),
+  );
+  /** Volumes each container mounts, by container name. */
+  readonly mounts = new Map<string, readonly { name: string; target: string }[]>();
   /** When set, `buildImage` prints this line and fails. */
   buildFailure: string | null = null;
   /** When false, started containers exit immediately. */
@@ -57,6 +67,7 @@ export class FakeDocker implements DockerEngine {
     environmentValues: Readonly<Record<string, string>>,
   ): Promise<string> {
     this.calls.push(`run ${options.containerName} env=${Object.keys(environmentValues).join(",")}`);
+    this.mounts.set(options.containerName, options.volumes);
     const id = `id-${options.containerName}`;
     this.containers.set(options.containerName, {
       id,

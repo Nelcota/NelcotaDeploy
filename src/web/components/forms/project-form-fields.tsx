@@ -200,7 +200,7 @@ export function AutoApplyField({
       form={form}
       name="autoApplyChanges"
       label="Aplicar mudanças automaticamente"
-      hint="Recria o contêiner ao salvar variáveis ou domínios."
+      hint="Recria o contêiner ao salvar variáveis, domínios ou volumes."
       className={className}
     />
   );

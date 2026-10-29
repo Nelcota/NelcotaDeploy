@@ -7,18 +7,7 @@ import {
   UserOperationError,
 } from "@/auth";
 import { InvalidConfigError } from "@/config";
-import {
-  DeploymentNotFoundError,
-  InvalidDeploymentTransitionError,
-  NoActiveContainerError,
-  ProjectNotApprovedError,
-  RetryUnavailableError,
-  RollbackUnavailableError,
-} from "@/deployments";
-import { DomainNotFoundError, DomainTakenError } from "@/domains";
-import { EnvironmentVariableNotFoundError } from "@/environments";
 import { GitHubApiError } from "@/github";
-import { ProjectNotFoundError, ProjectSlugTakenError } from "@/projects";
 import {
   NoServerAvailableError,
   ServerInUseError,
@@ -26,7 +15,8 @@ import {
   ServerNotReadyError,
   ServerTakenError,
 } from "@/servers";
-import { InvalidScheduleError, TaskNameTakenError, TaskNotFoundError } from "@/tasks";
+
+import { PROJECT_ERROR_MESSAGES } from "./project-error-messages";
 
 const GENERIC_MESSAGE = "Ocorreu um erro inesperado. Tente novamente em instantes.";
 
@@ -38,26 +28,6 @@ const MESSAGES: readonly (readonly [ErrorClass, string])[] = [
   [GitHubApiError, "Não foi possível falar com o GitHub. Tente novamente em instantes."],
   [SetupAlreadyDoneError, "O painel já tem um administrador. Entre com a sua conta."],
   [InvalidAvatarError, "Imagem inválida. Use uma foto PNG, JPEG ou WebP de até 512 KB."],
-  [ProjectNotFoundError, "Projeto não encontrado."],
-  [ProjectSlugTakenError, "Já existe um projeto com este identificador."],
-  [
-    ProjectNotApprovedError,
-    "Este projeto precisa ser aprovado por um administrador antes do primeiro deploy.",
-  ],
-  [
-    RollbackUnavailableError,
-    "Rollback indisponível: o deploy escolhido não tem uma imagem reutilizável.",
-  ],
-  [RetryUnavailableError, "Só é possível tentar de novo um deploy que falhou ou foi cancelado."],
-  [NoActiveContainerError, "O projeto ainda não tem um contêiner implantado."],
-  [DeploymentNotFoundError, "Deploy não encontrado."],
-  [InvalidDeploymentTransitionError, "O deploy mudou de estado. Atualize a página."],
-  [DomainTakenError, "Este domínio já está em uso por outro projeto."],
-  [DomainNotFoundError, "Domínio não encontrado."],
-  [EnvironmentVariableNotFoundError, "Variável não encontrada."],
-  [TaskNotFoundError, "Task não encontrada."],
-  [TaskNameTakenError, "Já existe uma task com este nome neste projeto."],
-  [InvalidScheduleError, "Expressão cron inválida. Use 5 campos, como */5 * * * *."],
   [AlertDeliveryError, "O webhook de alertas não aceitou a mensagem. Confira a URL."],
   [ServerNotFoundError, "Servidor não encontrado."],
   [ServerTakenError, "Já existe um servidor com este nome ou endereço."],
@@ -70,6 +40,7 @@ const MESSAGES: readonly (readonly [ErrorClass, string])[] = [
     NoServerAvailableError,
     "Nenhum servidor aceita novas aplicações. Ative um em Administração → Servidores.",
   ],
+  ...PROJECT_ERROR_MESSAGES,
 ];
 
 const USER_OPERATION_MESSAGES: Readonly<Record<string, string>> = {

@@ -6,6 +6,7 @@ import { type Database, openMemoryDatabase, tables } from "@/db";
 import { addDomain } from "@/domains";
 import { saveEnvironmentVariable } from "@/environments";
 import { createTestProject, createTestSecretBox, TEST_ACTOR } from "@/testing";
+import { addProjectVolume } from "@/volumes";
 
 import { requestDeployment } from "./deployment-request.service";
 import { completeDeployment, transitionDeployment } from "./deployment.service";
@@ -61,6 +62,20 @@ describe("runtimeConfigFingerprint", () => {
     addDomain(database, {
       projectId: project.id,
       input: { hostname: "app.example.com", httpsEnabled: true },
+      actor: TEST_ACTOR,
+    });
+
+    expect(runtimeConfigFingerprint(database, project.id)).not.toBe(before);
+  });
+
+  test("changes when a volume is added", () => {
+    const database = openMemoryDatabase();
+    const project = createTestProject(database);
+    const before = runtimeConfigFingerprint(database, project.id);
+
+    addProjectVolume(database, {
+      projectId: project.id,
+      input: { mountPath: "/app/data" },
       actor: TEST_ACTOR,
     });
 

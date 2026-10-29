@@ -34,7 +34,7 @@ export function DangerZone({
         <div className="space-y-1">
           <p className="text-sm font-medium">Excluir projeto</p>
           <p className="text-sm text-muted-foreground">
-            Remove o projeto, seus contêineres, imagens, variáveis, tasks e histórico.
+            Remove o projeto, seus contêineres, imagens, volumes, variáveis, tasks e histórico.
           </p>
         </div>
         <DeleteProjectButton

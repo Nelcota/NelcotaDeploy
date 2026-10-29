@@ -1,8 +1,9 @@
 import { transitionDeployment } from "@/deployments";
-import { containerNameFor, managedLabels } from "@/docker";
+import { containerNameFor, managedLabels, volumeNameFor } from "@/docker";
 import { listProjectDomains } from "@/domains";
 import { projectRouteConfig } from "@/routing";
 import { getSystemSettings } from "@/settings";
+import { listMountedVolumes } from "@/volumes";
 
 import type { DeployContext, DeployRunnerConfig, DeployRunnerDependencies } from "./deploy-context";
 
@@ -66,8 +67,10 @@ export async function routeTrafficTo(
  * @returns The new container name.
  */
 export async function startContainer(
-  dependencies: DeployRunnerDependencies,
-  context: DeployContext,
+  dependencies: Pick<DeployRunnerDependencies, "database" | "docker"> & {
+    readonly config: Pick<DeployRunnerConfig, "network">;
+  },
+  context: Pick<DeployContext, "deployment" | "project" | "logs" | "state">,
   release: {
     readonly imageTag: string;
     readonly runtimeValues: Readonly<Record<string, string>>;
@@ -93,6 +96,7 @@ export async function startContainer(
     // Left behind by a previous attempt of this same deployment that crashed.
     await docker.removeContainer(containerName);
   }
+  const volumes = await prepareVolumes(dependencies, context);
   context.state.useContainer(containerName);
   await docker.runContainer(
     {
@@ -105,8 +109,27 @@ export async function startContainer(
         deploymentId: deployment.id,
       }),
       environmentKeys: Object.keys(release.runtimeValues),
+      volumes,
     },
     release.runtimeValues,
   );
   return containerName;
+}
+
+/** Creates the project's attached volumes on the server when missing and lists their mounts. */
+async function prepareVolumes(
+  { database, docker }: Pick<DeployRunnerDependencies, "database" | "docker">,
+  { project, logs }: Pick<DeployContext, "project" | "logs">,
+): Promise<{ name: string; target: string }[]> {
+  const mounts = listMountedVolumes(database, project.id).map((volume) => ({
+    name: volumeNameFor(volume.id),
+    target: volume.mountPath,
+  }));
+  await Promise.all(
+    mounts.map(async (mount) => await docker.volumes.ensure(mount.name, project.id)),
+  );
+  for (const mount of mounts) {
+    logs.system(`Mounting volume ${mount.name} at ${mount.target}`);
+  }
+  return mounts;
 }

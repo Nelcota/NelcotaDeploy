@@ -9,6 +9,7 @@ import { DangerZone } from "./danger-zone";
 import { ProjectSettingsForm } from "./project-settings-form";
 import { RepositoryTokenSection } from "./repository-token-section";
 import { ServerSection } from "./server-section";
+import { VolumesSection } from "./volumes/volumes-section";
 
 /** Repository, build and runtime settings of one project, plus its token and deletion. */
 export function ProjectSettingsPage({ projectId }: { readonly projectId: string }) {
@@ -37,6 +38,11 @@ export function ProjectSettingsPage({ projectId }: { readonly projectId: string 
         project={project}
         canEdit={can("project:write")}
       >
+        <VolumesSection
+          projectId={projectId}
+          canEdit={can("project:write")}
+          canDeleteData={can("project:delete")}
+        />
         {can("project:approve") ? (
           <RepositoryTokenSection projectId={projectId} hasToken={project.hasRepositoryToken} />
         ) : null}

@@ -102,6 +102,24 @@ export const domains = sqliteTable(
   (table) => [index("domains_project_id_idx").on(table.projectId)],
 );
 
+// Directories of a project kept between deployments, each a Docker named volume on the
+// project's server. A detached volume is no longer mounted but keeps its data until deleted.
+export const projectVolumes = sqliteTable(
+  "project_volumes",
+  {
+    id: text("id").primaryKey(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    mountPath: text("mount_path").notNull(),
+    attached: integer("attached", { mode: "boolean" }).notNull().default(true),
+    deletionRequestedAt: text("deletion_requested_at"),
+    deletionError: text("deletion_error"),
+    createdAt: createdAt(),
+  },
+  (table) => [uniqueIndex("project_volumes_project_path_idx").on(table.projectId, table.mountPath)],
+);
+
 export const deployments = sqliteTable(
   "deployments",
   {
@@ -193,7 +211,7 @@ export const jobs = sqliteTable(
   {
     id: text("id").primaryKey(),
     kind: text("kind", {
-      enum: ["deploy", "container_action", "task_run", "project_cleanup"],
+      enum: ["deploy", "container_action", "task_run", "project_cleanup", "volume_delete"],
     }).notNull(),
     status: text("status", {
       enum: ["queued", "running", "succeeded", "failed", "cancelled"],

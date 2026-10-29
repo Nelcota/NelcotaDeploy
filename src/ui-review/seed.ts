@@ -9,7 +9,7 @@ import { createProject } from "@/projects";
 import { getSecretBox } from "@/secrets";
 import { saveSystemSettings } from "@/settings";
 
-import { seedServers, seedTasks } from "./seed-extras";
+import { seedServers, seedTasks, seedVolumes } from "./seed-extras";
 
 const ACTOR = { type: "system", label: "ui-review" } as const;
 const MINUTE_IN_MS = 60_000;
@@ -136,6 +136,7 @@ addDomain(database, {
 });
 
 seedTasks(database, api.id);
+seedVolumes(database, api.id);
 
 const startedAt = new Date(now - CONTAINER_UPTIME_IN_MINUTES * MINUTE_IN_MS).toISOString();
 database

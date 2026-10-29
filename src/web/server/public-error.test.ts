@@ -2,12 +2,19 @@ import { describe, expect, test } from "bun:test";
 
 import { ForbiddenError, UserOperationError } from "@/auth";
 import { ProjectNotFoundError } from "@/projects";
+import { ProjectHasVolumesError } from "@/volumes";
 
 import { PublicError, toPublicError } from "./public-error";
 
 describe("toPublicError", () => {
   test("translates known domain errors to Portuguese", () => {
     expect(toPublicError(new ProjectNotFoundError("x"))?.message).toBe("Projeto não encontrado.");
+  });
+
+  test("explains why a project with volumes cannot move", () => {
+    expect(toPublicError(new ProjectHasVolumesError("x"))?.message).toContain(
+      "não podem mudar de servidor",
+    );
   });
 
   test("does not leak the permission name of a forbidden action", () => {

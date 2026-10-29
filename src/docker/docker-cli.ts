@@ -1,5 +1,6 @@
 import { type CommandRunner, type OutputStream, type ProcessResult, runProcess } from "@/process";
 
+import { DockerVolumes, type DockerVolumeStore } from "./docker-volumes";
 import {
   assertContainerReference,
   assertImageReference,
@@ -45,14 +46,19 @@ type CommandOptions = {
 export class DockerCli {
   readonly #binary: string;
   readonly #runner: CommandRunner;
+  /** The platform's named volumes on the same host. */
+  readonly volumes: DockerVolumeStore;
 
   /**
+   * Reaches the Docker of one host.
+   *
    * @param binary - Docker CLI executable on the host the runner reaches.
    * @param runner - Where commands run; this host by default.
    */
   constructor(binary: string, runner: CommandRunner = runProcess) {
     this.#binary = binary;
     this.#runner = runner;
+    this.volumes = new DockerVolumes(binary, runner);
   }
 
   async #run(args: readonly string[], options: CommandOptions = {}): Promise<ProcessResult> {
