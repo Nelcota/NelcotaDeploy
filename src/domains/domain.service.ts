@@ -58,7 +58,12 @@ export function listProjectDomains(
     return custom;
   }
   return [
-    { id: null, hostname: automatic, httpsEnabled: settings.httpsByDefault, automatic: true },
+    {
+      id: null,
+      hostname: automatic,
+      httpsEnabled: settings.httpsByDefault,
+      automatic: true,
+    },
     ...custom,
   ];
 }
@@ -77,7 +82,11 @@ export function addDomain(
     projectId,
     input,
     actor,
-  }: { readonly projectId: string; readonly input: DomainInput; readonly actor: Actor },
+  }: {
+    readonly projectId: string;
+    readonly input: DomainInput;
+    readonly actor: Actor;
+  },
 ): void {
   getProject(database, projectId);
   database.transaction((transaction) => {
@@ -122,7 +131,11 @@ export function removeDomain(
     projectId,
     domainId,
     actor,
-  }: { readonly projectId: string; readonly domainId: string; readonly actor: Actor },
+  }: {
+    readonly projectId: string;
+    readonly domainId: string;
+    readonly actor: Actor;
+  },
 ): void {
   database.transaction((transaction) => {
     const removed = transaction

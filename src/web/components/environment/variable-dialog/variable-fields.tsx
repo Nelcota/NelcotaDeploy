@@ -6,8 +6,8 @@ import { Label } from "@/web/components/ui/label";
 import { Switch } from "@/web/components/ui/switch";
 import { Textarea } from "@/web/components/ui/textarea";
 
+import { MASKED_VALUE } from "../variable-draft";
 import type { VariableFormApi } from "./use-variable-form";
-import { MASKED_VALUE } from "./variable-draft";
 
 /** Variable name, upper-cased as it is typed; locked once the variable exists. */
 export function KeyField({

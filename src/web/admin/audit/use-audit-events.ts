@@ -3,7 +3,7 @@ import { useState } from "react";
 import { toast } from "sonner";
 
 import { toUserMessage } from "@/web/components/layout/error-message";
-import { listAuditEventsFn } from "@/web/functions/settings.functions";
+import { listAuditEventsFn } from "@/web/functions/admin/audit.functions";
 
 import type { AuditEvent } from "./audit-row";
 

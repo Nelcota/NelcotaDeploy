@@ -5,7 +5,7 @@ import { useNow } from "@/web/components/clock/use-now";
 import { List } from "@/web/components/layout/layout";
 import { EmptyState, ErrorState, ListSkeleton } from "@/web/components/layout/states";
 import { useAction } from "@/web/components/layout/use-action";
-import { listApiTokensFn, revokeApiTokenFn } from "@/web/functions/settings.functions";
+import { listApiTokensFn, revokeApiTokenFn } from "@/web/functions/admin/api-tokens.functions";
 
 import { TokenRow, type TokenView } from "./token-row";
 

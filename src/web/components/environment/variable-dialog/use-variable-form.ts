@@ -6,7 +6,7 @@ import { environmentVariableInputSchema } from "@/shared/schemas/environment-var
 import { useAction } from "@/web/components/layout/use-action";
 import { saveEnvironmentVariableFn } from "@/web/functions/environment.functions";
 
-import { draftFromVariable } from "./variable-draft";
+import { draftFromVariable } from "../variable-draft";
 
 /**
  * Form state and save action of the variable dialog.

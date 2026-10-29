@@ -5,7 +5,7 @@ import { ConfirmDialog } from "@/web/components/layout/confirm-dialog";
 import { ListRow, Tag } from "@/web/components/layout/layout";
 import { StatusPill } from "@/web/components/layout/status-badge";
 import { Button } from "@/web/components/ui/button";
-import type { listApiTokensFn } from "@/web/functions/settings.functions";
+import type { listApiTokensFn } from "@/web/functions/admin/api-tokens.functions";
 
 import { SCOPES } from "./token-scopes";
 import { tokenState } from "./token-state";

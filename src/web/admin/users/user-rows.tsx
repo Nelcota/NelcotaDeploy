@@ -5,7 +5,7 @@ import type { Role } from "@/shared/roles";
 import { ConfirmDialog } from "@/web/components/layout/confirm-dialog";
 import { List } from "@/web/components/layout/layout";
 import { useAction } from "@/web/components/layout/use-action";
-import { setUserDisabledFn, updateUserRoleFn } from "@/web/functions/settings.functions";
+import { setUserDisabledFn, updateUserRoleFn } from "@/web/functions/admin/users.functions";
 
 import { ResetPasswordDialog } from "./reset-password-dialog";
 import { UserRow, type UserView } from "./user-row";

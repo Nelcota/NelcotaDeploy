@@ -7,7 +7,7 @@ import { ROLE_LABELS } from "@/web/components/layout/labels";
 import { ListRow, Tag } from "@/web/components/layout/layout";
 import { StatusPill } from "@/web/components/layout/status-badge";
 import { Button } from "@/web/components/ui/button";
-import type { listUsersFn } from "@/web/functions/settings.functions";
+import type { listUsersFn } from "@/web/functions/admin/users.functions";
 
 import { UserAccessControls } from "./user-access-controls";
 

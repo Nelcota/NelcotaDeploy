@@ -1,7 +1,7 @@
 import { formatDateTime, formatTime } from "@/shared/format";
 import { AUDIT_ACTION_LABELS } from "@/web/components/layout/labels";
 import { ListRow } from "@/web/components/layout/layout";
-import type { listAuditEventsFn } from "@/web/functions/settings.functions";
+import type { listAuditEventsFn } from "@/web/functions/admin/audit.functions";
 
 import { actorOf, areaOf, targetTypeLabelOf } from "./audit-labels";
 

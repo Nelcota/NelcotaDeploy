@@ -40,12 +40,7 @@ export function VariableDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
-        <DialogHeader>
-          <DialogTitle>{variable == null ? "Nova variável" : `Editar ${variable.key}`}</DialogTitle>
-          <DialogDescription>
-            O nome vira maiúsculo automaticamente; use letras, números e _.
-          </DialogDescription>
-        </DialogHeader>
+        <VariableDialogHeader variable={variable} />
         <form
           noValidate
           className="space-y-4"
@@ -58,17 +53,40 @@ export function VariableDialog({
           <KindField form={form} />
           <ValueField form={form} savedSecret={variable?.kind === "secret"} />
           <BuildSwitch form={form} />
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-              Cancelar
-            </Button>
-            <Button type="submit" disabled={save.isPending}>
-              {save.isPending ? <LoaderCircleIcon aria-hidden className="animate-spin" /> : null}
-              Salvar
-            </Button>
-          </DialogFooter>
+          <VariableDialogFooter isPending={save.isPending} onCancel={() => onOpenChange(false)} />
         </form>
       </DialogContent>
     </Dialog>
+  );
+}
+
+function VariableDialogHeader({ variable }: { readonly variable: EnvironmentVariableView | null }) {
+  return (
+    <DialogHeader>
+      <DialogTitle>{variable == null ? "Nova variável" : `Editar ${variable.key}`}</DialogTitle>
+      <DialogDescription>
+        O nome vira maiúsculo automaticamente; use letras, números e _.
+      </DialogDescription>
+    </DialogHeader>
+  );
+}
+
+function VariableDialogFooter({
+  isPending,
+  onCancel,
+}: {
+  readonly isPending: boolean;
+  readonly onCancel: () => void;
+}) {
+  return (
+    <DialogFooter>
+      <Button type="button" variant="outline" onClick={onCancel}>
+        Cancelar
+      </Button>
+      <Button type="submit" disabled={isPending}>
+        {isPending ? <LoaderCircleIcon aria-hidden className="animate-spin" /> : null}
+        Salvar
+      </Button>
+    </DialogFooter>
   );
 }

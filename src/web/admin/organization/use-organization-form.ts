@@ -3,7 +3,7 @@ import type { z } from "zod";
 
 import { type SystemSettings, systemSettingsSchema } from "@/shared/schemas/settings.schema";
 import { useAction } from "@/web/components/layout/use-action";
-import { saveSettingsFn } from "@/web/functions/settings.functions";
+import { saveSettingsFn } from "@/web/functions/admin/settings.functions";
 
 /** Form state of the organization settings and the action that saves them. */
 export function useOrganizationForm(initial: SystemSettings) {

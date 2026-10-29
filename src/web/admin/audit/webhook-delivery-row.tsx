@@ -2,7 +2,7 @@ import { formatDateTime, pluralize } from "@/shared/format";
 import { WEBHOOK_REASON_LABELS } from "@/web/components/layout/labels";
 import { ListRow } from "@/web/components/layout/layout";
 import { StatusPill } from "@/web/components/layout/status-badge";
-import type { listWebhookDeliveriesFn } from "@/web/functions/settings.functions";
+import type { listWebhookDeliveriesFn } from "@/web/functions/admin/audit.functions";
 
 export type WebhookDelivery = Awaited<ReturnType<typeof listWebhookDeliveriesFn>>[number];
 

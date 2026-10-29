@@ -2,7 +2,7 @@ import { useForm } from "@tanstack/react-form";
 import { z } from "zod";
 
 import { useAction } from "@/web/components/layout/use-action";
-import { createApiTokenFn } from "@/web/functions/settings.functions";
+import { createApiTokenFn } from "@/web/functions/admin/api-tokens.functions";
 
 import type { TokenScope } from "./token-scopes";
 import { expiryFor } from "./token-state";

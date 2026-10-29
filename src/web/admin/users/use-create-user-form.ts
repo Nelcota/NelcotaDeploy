@@ -4,7 +4,7 @@ import type { z } from "zod";
 import type { Role } from "@/shared/roles";
 import { newUserSchema } from "@/shared/schemas/user.schema";
 import { useAction } from "@/web/components/layout/use-action";
-import { createUserFn } from "@/web/functions/settings.functions";
+import { createUserFn } from "@/web/functions/admin/users.functions";
 
 type NewUserForm = { name: string; email: string; role: Role; password: string };
 

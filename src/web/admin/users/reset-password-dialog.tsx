@@ -11,7 +11,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/web/components/ui/dialog";
-import { resetUserPasswordFn } from "@/web/functions/settings.functions";
+import { resetUserPasswordFn } from "@/web/functions/admin/users.functions";
 
 import { DialogFormFooter } from "../dialog-form-footer";
 import { PasswordInput } from "./password-input";

@@ -3,20 +3,15 @@ import { z } from "zod";
 
 import { userActor } from "@/auth";
 import { getDatabase } from "@/db";
-import { hasPendingRuntimeChanges } from "@/deployments";
-import { listProjectDomains } from "@/domains";
-import { listProjectContainers, getWorkerStatus } from "@/monitoring";
 import {
   approveProject,
   createProject,
-  getProject,
   listProjects,
   requestProjectDeletion,
   setRepositoryToken,
   updateProject,
 } from "@/projects";
 import { getSecretBox } from "@/secrets";
-import { getSystemSettings } from "@/settings";
 import { projectInputSchema, repositoryTokenSchema } from "@/shared/schemas/project.schema";
 import { authorize } from "@/web/server/authorization";
 
@@ -29,22 +24,6 @@ export const listProjectsFn = createServerFn({ method: "GET" })
   .handler(async ({ data }) => {
     await authorize("project:read");
     return listProjects(getDatabase(), { search: data.search ?? "" });
-  });
-
-export const getProjectFn = createServerFn({ method: "GET" })
-  .validator(projectIdInput)
-  .handler(async ({ data }) => {
-    await authorize("project:read");
-    const database = getDatabase();
-    const project = getProject(database, data.projectId);
-    return {
-      project,
-      domains: listProjectDomains(database, project.id, getSystemSettings(database)),
-      containers: listProjectContainers(database, project.id),
-      worker: getWorkerStatus(database),
-      /** Variables or domains changed since the live container started. */
-      pendingRuntimeChanges: hasPendingRuntimeChanges(database, project.id),
-    };
   });
 
 export const createProjectFn = createServerFn({ method: "POST" })

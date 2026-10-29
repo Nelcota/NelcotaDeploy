@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { UsersIcon } from "lucide-react";
 
 import { EmptyState, ErrorState, ListSkeleton } from "@/web/components/layout/states";
-import { listUsersFn } from "@/web/functions/settings.functions";
+import { listUsersFn } from "@/web/functions/admin/users.functions";
 
 import type { UserView } from "./user-row";
 import { UserRows } from "./user-rows";

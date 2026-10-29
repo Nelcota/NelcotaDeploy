@@ -3,7 +3,7 @@ import { WebhookIcon } from "lucide-react";
 
 import { List, Section } from "@/web/components/layout/layout";
 import { EmptyState, ErrorState, ListSkeleton } from "@/web/components/layout/states";
-import { listWebhookDeliveriesFn } from "@/web/functions/settings.functions";
+import { listWebhookDeliveriesFn } from "@/web/functions/admin/audit.functions";
 
 import { type WebhookDelivery, WebhookDeliveryRow } from "./webhook-delivery-row";
 

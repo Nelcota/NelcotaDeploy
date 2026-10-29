@@ -61,13 +61,7 @@ function SettingsPage() {
   };
   // A link to a section this user cannot open falls back to the first one instead of a blank page.
   const activeTab = canSee(tab) ? tab : "organization";
-  const tabListRef = useRef<HTMLDivElement>(null);
-  // On phones the tabs scroll sideways; keep the open one in view, also when opened by a link.
-  useEffect(() => {
-    tabListRef.current
-      ?.querySelector("[data-state=active]")
-      ?.scrollIntoView({ inline: "nearest", block: "nearest" });
-  }, [activeTab]);
+  const tabListRef = useActiveTabInView(activeTab);
   return (
     <>
       <PageHeader title="Administração" description={SETTINGS_DESCRIPTIONS[activeTab]} />
@@ -91,28 +85,48 @@ function SettingsPage() {
             </TabsTrigger>
           ))}
         </TabsList>
-        <TabsContent value="organization">
-          <OrganizationTab canEdit={can("settings:write")} />
-        </TabsContent>
-        {can("user:manage") ? (
-          <TabsContent value="users">
-            <UsersTab />
-          </TabsContent>
-        ) : null}
-        <TabsContent value="server">
-          <ServerTab />
-        </TabsContent>
-        {can("token:manage") ? (
-          <TabsContent value="tokens">
-            <TokensTab />
-          </TabsContent>
-        ) : null}
-        {can("audit:read") ? (
-          <TabsContent value="audit">
-            <AuditTab />
-          </TabsContent>
-        ) : null}
+        <SettingsTabPanels />
       </Tabs>
+    </>
+  );
+}
+
+/** Keeps the open tab in view when the tab list scrolls sideways on phones, also after a link. */
+function useActiveTabInView(activeTab: string) {
+  const tabListRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    tabListRef.current
+      ?.querySelector("[data-state=active]")
+      ?.scrollIntoView({ inline: "nearest", block: "nearest" });
+  }, [activeTab]);
+  return tabListRef;
+}
+
+function SettingsTabPanels() {
+  const can = useCan();
+  return (
+    <>
+      <TabsContent value="organization">
+        <OrganizationTab canEdit={can("settings:write")} />
+      </TabsContent>
+      {can("user:manage") ? (
+        <TabsContent value="users">
+          <UsersTab />
+        </TabsContent>
+      ) : null}
+      <TabsContent value="server">
+        <ServerTab />
+      </TabsContent>
+      {can("token:manage") ? (
+        <TabsContent value="tokens">
+          <TokensTab />
+        </TabsContent>
+      ) : null}
+      {can("audit:read") ? (
+        <TabsContent value="audit">
+          <AuditTab />
+        </TabsContent>
+      ) : null}
     </>
   );
 }
