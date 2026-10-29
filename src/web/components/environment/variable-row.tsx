@@ -35,7 +35,9 @@ export function VariableRow({
         </p>
       </div>
       <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2 text-xs sm:flex-none">
-        <Tag icon={secret ? LockIcon : EyeIcon}>{secret ? "Secret" : "Configuração"}</Tag>
+        <Tag icon={secret ? LockIcon : EyeIcon} tone={secret ? "warning" : "neutral"}>
+          {secret ? "Secret" : "Configuração"}
+        </Tag>
         {variable.availableAtBuild ? <Tag icon={HammerIcon}>No build</Tag> : null}
         <time
           dateTime={variable.updatedAt}

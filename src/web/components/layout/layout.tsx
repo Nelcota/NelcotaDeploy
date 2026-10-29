@@ -264,13 +264,23 @@ export function StatusTile({
 /** Small neutral label beside a name, such as "Secret", "HTTPS" or "Pausada". */
 export function Tag({
   icon: Icon,
+  tone = "neutral",
   children,
 }: {
   readonly icon?: LucideIcon;
+  /** "warning" draws the eye to something sensitive, like a secret; the text still says it. */
+  readonly tone?: "neutral" | "warning";
   readonly children: ReactNode;
 }) {
   return (
-    <span className="inline-flex shrink-0 items-center gap-1.5 rounded-md bg-well px-2 py-0.5 text-xs text-muted-foreground ring-1 ring-border/60">
+    <span
+      className={cn(
+        "inline-flex shrink-0 items-center gap-1.5 rounded-md px-2 py-0.5 text-xs ring-1",
+        tone === "warning"
+          ? "bg-warning/10 text-warning ring-warning/25"
+          : "bg-well text-muted-foreground ring-border/60",
+      )}
+    >
       {Icon == null ? null : <Icon aria-hidden className="size-3.5" />}
       {children}
     </span>
