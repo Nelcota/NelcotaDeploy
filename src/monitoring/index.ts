@@ -1,16 +1,18 @@
 export {
   cpuPercentBetween,
   type CpuTimes,
-  readCpuTimes,
-  readDiskUsage,
-  readMemoryUsage,
+  parseDiskUsage,
+  parseMeminfo,
+  parseProcStat,
 } from "./host-metrics";
 export {
   type ContainerSample,
-  getDashboardSummary,
   getLatestHostSample,
   getWorkerStatus,
   listHostSamples,
+  listLatestHostSamples,
+  listMoveLeftovers,
+  type MoveLeftover,
   listProjectContainers,
   listProjectSamples,
   pruneMetricSamples,
@@ -19,3 +21,4 @@ export {
   recordWorkerHeartbeat,
   replaceContainerSnapshots,
 } from "./monitoring.service";
+export { getDashboardSummary } from "./dashboard.service";

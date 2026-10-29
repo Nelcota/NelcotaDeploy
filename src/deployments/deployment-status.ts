@@ -12,6 +12,15 @@ export const DEPLOYMENT_STATUSES = [
 
 export type DeploymentStatus = (typeof DEPLOYMENT_STATUSES)[number];
 
+/** Statuses of deployments waiting in the queue or running right now. */
+export const ACTIVE_STATUSES: readonly DeploymentStatus[] = [
+  "queued",
+  "cloning",
+  "building",
+  "starting",
+  "health_checking",
+];
+
 const TERMINAL_STATUSES: ReadonlySet<DeploymentStatus> = new Set([
   "succeeded",
   "failed",

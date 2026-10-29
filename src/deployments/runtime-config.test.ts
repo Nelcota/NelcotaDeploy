@@ -7,7 +7,8 @@ import { addDomain } from "@/domains";
 import { saveEnvironmentVariable } from "@/environments";
 import { createTestProject, createTestSecretBox, TEST_ACTOR } from "@/testing";
 
-import { completeDeployment, requestDeployment, transitionDeployment } from "./deployment.service";
+import { requestDeployment } from "./deployment-request.service";
+import { completeDeployment, transitionDeployment } from "./deployment.service";
 import { hasPendingRuntimeChanges, runtimeConfigFingerprint } from "./runtime-config";
 
 const manual = { trigger: "manual" as const, actor: TEST_ACTOR, triggeredByUserId: null };
@@ -15,27 +16,26 @@ const manual = { trigger: "manual" as const, actor: TEST_ACTOR, triggeredByUserI
 /** Runs a deploy to the end, recording the fingerprint as the worker does. */
 function deployLive(database: Database, projectId: string): string {
   const { deploymentId } = requestDeployment(database, { projectId, ...manual });
-  transitionDeployment(database, deploymentId, "cloning");
-  transitionDeployment(database, deploymentId, "building");
-  transitionDeployment(database, deploymentId, "starting", {
+  transitionDeployment(database, deploymentId, { to: "cloning" });
+  transitionDeployment(database, deploymentId, { to: "building" });
+  transitionDeployment(database, deploymentId, {
+    to: "starting",
     imageTag: "nelcota/api:abc",
     containerName: "nelcota-api-abc",
     runtimeConfigHash: runtimeConfigFingerprint(database, projectId),
   });
-  transitionDeployment(database, deploymentId, "health_checking");
+  transitionDeployment(database, deploymentId, { to: "health_checking" });
   completeDeployment(database, deploymentId);
   return deploymentId;
 }
 
 async function saveVariable(database: Database, projectId: string, value: string): Promise<void> {
   const box = await createTestSecretBox();
-  await saveEnvironmentVariable(
-    database,
-    box,
+  await saveEnvironmentVariable(database, box, {
     projectId,
-    { key: "API_URL", kind: "plain", value, availableAtBuild: false },
-    TEST_ACTOR,
-  );
+    input: { key: "API_URL", kind: "plain", value, availableAtBuild: false },
+    actor: TEST_ACTOR,
+  });
 }
 
 describe("runtimeConfigFingerprint", () => {
@@ -54,12 +54,11 @@ describe("runtimeConfigFingerprint", () => {
     const project = createTestProject(database);
     const before = runtimeConfigFingerprint(database, project.id);
 
-    addDomain(
-      database,
-      project.id,
-      { hostname: "app.example.com", httpsEnabled: true },
-      TEST_ACTOR,
-    );
+    addDomain(database, {
+      projectId: project.id,
+      input: { hostname: "app.example.com", httpsEnabled: true },
+      actor: TEST_ACTOR,
+    });
 
     expect(runtimeConfigFingerprint(database, project.id)).not.toBe(before);
   });
@@ -90,7 +89,9 @@ describe("hasPendingRuntimeChanges", () => {
 
     expect(hasPendingRuntimeChanges(database, project.id)).toBe(true);
   });
+});
 
+describe("hasPendingRuntimeChanges after a new deploy", () => {
   test("is false again after a new deploy applies the change", async () => {
     const database = openMemoryDatabase();
     const project = createTestProject(database);
@@ -111,12 +112,11 @@ describe("hasPendingRuntimeChanges", () => {
       .set({ runtimeConfigHash: null })
       .where(eq(tables.deployments.id, deploymentId))
       .run();
-    addDomain(
-      database,
-      project.id,
-      { hostname: "app.example.com", httpsEnabled: true },
-      TEST_ACTOR,
-    );
+    addDomain(database, {
+      projectId: project.id,
+      input: { hostname: "app.example.com", httpsEnabled: true },
+      actor: TEST_ACTOR,
+    });
 
     expect(hasPendingRuntimeChanges(database, project.id)).toBe(false);
   });

@@ -1,11 +1,10 @@
-import { useQueryClient } from "@tanstack/react-query";
 import { FileUpIcon, LoaderCircleIcon } from "lucide-react";
 import { useMemo, useState } from "react";
-import { toast } from "sonner";
 
 import { parseDotenv } from "@/shared/dotenv";
-import { pluralize } from "@/shared/format";
+import { EnvImportSummary } from "@/web/components/forms/env-import-summary";
 import { type VariableKind, VariableKindToggle } from "@/web/components/forms/env-kind-toggle";
+import { useEnvImport } from "@/web/components/forms/use-env-import";
 import { Button } from "@/web/components/ui/button";
 import {
   Dialog,
@@ -18,140 +17,139 @@ import {
 } from "@/web/components/ui/dialog";
 import { Label } from "@/web/components/ui/label";
 import { Textarea } from "@/web/components/ui/textarea";
-import { saveEnvironmentVariableFn } from "@/web/functions/environment.functions";
 
-const MAX_PROBLEMS_SHOWN = 5;
+function importButtonLabel(saving: boolean, readyCount: number): string {
+  if (saving) {
+    return "Importando…";
+  }
+  return `Importar ${readyCount > 0 ? readyCount : ""}`;
+}
 
-/** Pastes a `.env` file and saves every valid line as a variable of the chosen kind. */
-export function EnvImportDialog({
-  projectId,
-  onImported,
+function ImportForm({
+  text,
+  kind,
+  onTextChange,
+  onKindChange,
 }: {
+  readonly text: string;
+  readonly kind: VariableKind;
+  readonly onTextChange: (text: string) => void;
+  readonly onKindChange: (kind: VariableKind) => void;
+}) {
+  return (
+    <>
+      <DialogHeader>
+        <DialogTitle>Importar variáveis</DialogTitle>
+        <DialogDescription>
+          Cole o conteúdo de um arquivo .env. Nomes já existentes são substituídos.
+        </DialogDescription>
+      </DialogHeader>
+      <div className="space-y-2">
+        <Label htmlFor="env-import-text">Conteúdo</Label>
+        <Textarea
+          id="env-import-text"
+          aria-describedby="env-import-summary"
+          className="min-h-48 bg-surface-sunken font-mono text-sm"
+          spellCheck={false}
+          autoComplete="off"
+          placeholder={"NODE_ENV=production\nDATABASE_URL=postgres://..."}
+          value={text}
+          onChange={(event) => onTextChange(event.target.value)}
+        />
+      </div>
+      <div className="space-y-2">
+        <Label id="env-import-kind-label" htmlFor="env-import-kind">
+          Importar como
+        </Label>
+        <VariableKindToggle id="env-import-kind" value={kind} onChange={onKindChange} />
+      </div>
+    </>
+  );
+}
+
+function ImportFooter({
+  saving,
+  readyCount,
+  onCancel,
+  onImport,
+}: {
+  readonly saving: boolean;
+  readonly readyCount: number;
+  readonly onCancel: () => void;
+  readonly onImport: () => void;
+}) {
+  return (
+    <DialogFooter>
+      <Button type="button" variant="outline" disabled={saving} onClick={onCancel}>
+        Cancelar
+      </Button>
+      <Button type="button" disabled={saving || readyCount === 0} onClick={onImport}>
+        {saving ? <LoaderCircleIcon aria-hidden className="animate-spin" /> : null}
+        {importButtonLabel(saving, readyCount)}
+      </Button>
+    </DialogFooter>
+  );
+}
+
+function ImportTrigger() {
+  return (
+    <DialogTrigger asChild>
+      <Button variant="outline">
+        <FileUpIcon aria-hidden />
+        Importar .env
+      </Button>
+    </DialogTrigger>
+  );
+}
+
+type EnvImportDialogProps = {
   readonly projectId: string;
   /** Called after at least one variable was saved. */
   readonly onImported: () => void;
-}) {
-  const queryClient = useQueryClient();
+};
+
+/** Pastes a `.env` file and saves every valid line as a variable of the chosen kind. */
+export function EnvImportDialog({ projectId, onImported }: EnvImportDialogProps) {
   const [open, setOpen] = useState(false);
   const [text, setText] = useState("");
   const [kind, setKind] = useState<VariableKind>("plain");
-  const [saving, setSaving] = useState(false);
   const parsed = useMemo(() => parseDotenv(text), [text]);
+  const { saving, importEntries } = useEnvImport(projectId);
 
-  const importAll = async () => {
-    setSaving(true);
-    let saved = 0;
-    const failed: string[] = [];
-    const failedLines: string[] = [];
-    for (const entry of parsed.entries) {
-      try {
-        // Sequential on purpose: each save is an audited write and the list is small.
-        await saveEnvironmentVariableFn({
-          data: {
-            projectId,
-            variable: { key: entry.key, kind, value: entry.value, availableAtBuild: false },
-          },
-        });
-        saved += 1;
-      } catch (error) {
-        console.error("failed to import variable", entry.key, error);
-        failed.push(entry.key);
-        failedLines.push(`${entry.key}=${entry.value}`);
-      }
-    }
-    setSaving(false);
-    await queryClient.invalidateQueries({ queryKey: ["environment", projectId] });
-    if (saved > 0) {
-      onImported();
-    }
-    if (failed.length > 0) {
-      // Only the lines that failed stay in the field, so importing again does not repeat the rest.
-      setText(failedLines.join("\n"));
-      toast.error(
-        `${saved} importadas. Não foi possível salvar: ${failed.join(", ")}. As linhas com erro ficaram no campo.`,
-      );
+  const changeOpen = (next: boolean) => {
+    if (saving) {
       return;
     }
-    toast.success(saved === 1 ? "1 variável importada" : `${saved} variáveis importadas`);
-    setText("");
-    setOpen(false);
+    setOpen(next);
+  };
+
+  const importAll = async () => {
+    const result = await importEntries(parsed.entries, kind);
+    if (result.savedCount > 0) {
+      onImported();
+    }
+    setText(result.remainingText);
+    if (result.failedKeys.length === 0) {
+      setOpen(false);
+    }
   };
 
   return (
-    <Dialog
-      open={open}
-      onOpenChange={(next) => {
-        if (saving === false) {
-          setOpen(next);
-        }
-      }}
-    >
-      <DialogTrigger asChild>
-        <Button variant="outline">
-          <FileUpIcon aria-hidden />
-          Importar .env
-        </Button>
-      </DialogTrigger>
+    <Dialog open={open} onOpenChange={changeOpen}>
+      <ImportTrigger />
       <DialogContent className="sm:max-w-2xl">
-        <DialogHeader>
-          <DialogTitle>Importar variáveis</DialogTitle>
-          <DialogDescription>
-            Cole o conteúdo de um arquivo .env. Nomes já existentes são substituídos.
-          </DialogDescription>
-        </DialogHeader>
-        <div className="space-y-2">
-          <Label htmlFor="env-import-text">Conteúdo</Label>
-          <Textarea
-            id="env-import-text"
-            aria-describedby="env-import-summary"
-            className="min-h-48 bg-surface-sunken font-mono text-sm"
-            spellCheck={false}
-            autoComplete="off"
-            placeholder={"NODE_ENV=production\nDATABASE_URL=postgres://..."}
-            value={text}
-            onChange={(event) => setText(event.target.value)}
-          />
-        </div>
-        <div className="space-y-2">
-          <Label id="env-import-kind-label" htmlFor="env-import-kind">
-            Importar como
-          </Label>
-          <VariableKindToggle id="env-import-kind" value={kind} onChange={setKind} />
-        </div>
-        <div
+        <ImportForm text={text} kind={kind} onTextChange={setText} onKindChange={setKind} />
+        <EnvImportSummary
           id="env-import-summary"
-          aria-live="polite"
-          className="space-y-1 rounded-lg bg-card px-3 py-2.5 text-sm ring-1 ring-border ring-inset"
-        >
-          <p>
-            {parsed.entries.length === 1
-              ? "1 variável pronta"
-              : `${parsed.entries.length} variáveis prontas`}
-            {parsed.problems.length > 0
-              ? ` · ${pluralize(parsed.problems.length, "linha ignorada", "linhas ignoradas")}`
-              : ""}
-          </p>
-          {parsed.problems.slice(0, MAX_PROBLEMS_SHOWN).map((problem) => (
-            <p key={problem.line} className="text-xs text-destructive">
-              Linha {problem.line}: {problem.reason}
-            </p>
-          ))}
-        </div>
-        <DialogFooter>
-          <Button type="button" variant="outline" disabled={saving} onClick={() => setOpen(false)}>
-            Cancelar
-          </Button>
-          <Button
-            type="button"
-            disabled={saving || parsed.entries.length === 0}
-            onClick={() => void importAll()}
-          >
-            {saving ? <LoaderCircleIcon aria-hidden className="animate-spin" /> : null}
-            {saving
-              ? "Importando…"
-              : `Importar ${parsed.entries.length > 0 ? parsed.entries.length : ""}`}
-          </Button>
-        </DialogFooter>
+          entries={parsed.entries}
+          problems={parsed.problems}
+        />
+        <ImportFooter
+          saving={saving}
+          readyCount={parsed.entries.length}
+          onCancel={() => setOpen(false)}
+          onImport={() => void importAll()}
+        />
       </DialogContent>
     </Dialog>
   );

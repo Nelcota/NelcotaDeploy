@@ -58,7 +58,8 @@
 }
 
 .dark {
-  --brand: #5b84ff;
+  /* Light enough for brand text on its own tinted pills (5.2:1), above WCAG AA. */
+  --brand: #7398ff;
   --background: #111113;
   --panel: #161618;
   --foreground: #f1f1f3;

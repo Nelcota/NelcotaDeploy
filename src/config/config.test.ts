@@ -25,6 +25,14 @@ describe("parseConfig", () => {
     expect(() => parseConfig({ SCHEDULE_TIME_ZONE: "Mars/Olympus" })).toThrow(InvalidConfigError);
   });
 
+  test("treats an empty ACME_EMAIL as not set", () => {
+    expect(parseConfig({ ACME_EMAIL: "" }).ACME_EMAIL).toBeUndefined();
+  });
+
+  test("throws InvalidConfigError for a malformed ACME_EMAIL", () => {
+    expect(() => parseConfig({ ACME_EMAIL: "not-an-email" })).toThrow(InvalidConfigError);
+  });
+
   test("keeps the in-memory database path unchanged", () => {
     expect(parseConfig({ DATABASE_PATH: ":memory:" }).DATABASE_PATH).toBe(":memory:");
   });

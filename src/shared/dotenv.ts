@@ -1,4 +1,4 @@
-import { environmentVariableInputSchema } from "./environment-variable.schema";
+import { environmentVariableInputSchema } from "./schemas/environment-variable.schema";
 
 /** One `KEY=value` pair read from pasted `.env` text. */
 export type DotenvEntry = { readonly key: string; readonly value: string };

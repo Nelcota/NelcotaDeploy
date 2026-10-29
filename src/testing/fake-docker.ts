@@ -48,6 +48,10 @@ export class FakeDocker implements DockerEngine {
     await Promise.resolve();
   }
 
+  async followContainerEvents(): Promise<void> {
+    await Promise.resolve();
+  }
+
   async runContainer(
     options: Parameters<DockerEngine["runContainer"]>[0],
     environmentValues: Readonly<Record<string, string>>,

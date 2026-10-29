@@ -31,5 +31,5 @@
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true
   },
-  "include": ["src", "vite.config.ts", "drizzle.config.ts"]
+  "include": ["src", "lint", "vite.config.ts", "drizzle.config.ts"]
 }

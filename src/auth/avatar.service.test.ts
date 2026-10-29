@@ -72,7 +72,7 @@ describe("saveUserAvatar", () => {
     const database = openMemoryDatabase();
     const userId = createUser(database);
 
-    const url = saveUserAvatar(database, userId, WEBP, NOW);
+    const url = saveUserAvatar(database, { userId, bytes: WEBP, now: NOW });
 
     expect(url).toBe(`/api/avatars/user-1?v=${NOW.getTime()}`);
     expect(imageOf(database, userId)).toBe(url);
@@ -82,20 +82,22 @@ describe("saveUserAvatar", () => {
   test("replaces the previous photo", () => {
     const database = openMemoryDatabase();
     const userId = createUser(database);
-    saveUserAvatar(database, userId, WEBP, NOW);
+    saveUserAvatar(database, { userId, bytes: WEBP, now: NOW });
 
-    saveUserAvatar(database, userId, PNG, new Date("2026-10-28T13:00:00.000Z"));
+    saveUserAvatar(database, { userId, bytes: PNG, now: new Date("2026-10-28T13:00:00.000Z") });
 
     const avatar = getUserAvatar(database, userId);
     expect(avatar?.contentType).toBe("image/png");
     expect(avatar?.updatedAt).toBe("2026-10-28T13:00:00.000Z");
   });
+});
 
+describe("saveUserAvatar validation", () => {
   test("throws InvalidAvatarError for an empty file", () => {
     const database = openMemoryDatabase();
     const userId = createUser(database);
 
-    expect(() => saveUserAvatar(database, userId, new Uint8Array(), NOW)).toThrow(
+    expect(() => saveUserAvatar(database, { userId, bytes: new Uint8Array(), now: NOW })).toThrow(
       InvalidAvatarError,
     );
   });
@@ -106,7 +108,9 @@ describe("saveUserAvatar", () => {
     const tooLarge = new Uint8Array(MAX_AVATAR_BYTES + 1);
     tooLarge.set(PNG);
 
-    expect(() => saveUserAvatar(database, userId, tooLarge, NOW)).toThrow(InvalidAvatarError);
+    expect(() => saveUserAvatar(database, { userId, bytes: tooLarge, now: NOW })).toThrow(
+      InvalidAvatarError,
+    );
   });
 
   test("accepts a photo exactly at the size limit", () => {
@@ -115,7 +119,7 @@ describe("saveUserAvatar", () => {
     const atLimit = new Uint8Array(MAX_AVATAR_BYTES);
     atLimit.set(PNG);
 
-    const url = saveUserAvatar(database, userId, atLimit, NOW);
+    const url = saveUserAvatar(database, { userId, bytes: atLimit, now: NOW });
 
     expect(url).toContain("/api/avatars/user-1");
   });
@@ -125,7 +129,11 @@ describe("saveUserAvatar", () => {
     const userId = createUser(database);
 
     expect(() =>
-      saveUserAvatar(database, userId, new TextEncoder().encode("not an image"), NOW),
+      saveUserAvatar(database, {
+        userId,
+        bytes: new TextEncoder().encode("not an image"),
+        now: NOW,
+      }),
     ).toThrow(InvalidAvatarError);
     expect(getUserAvatar(database, userId)).toBeNull();
   });
@@ -135,7 +143,7 @@ describe("removeUserAvatar", () => {
   test("deletes the photo and clears the user's image", () => {
     const database = openMemoryDatabase();
     const userId = createUser(database);
-    saveUserAvatar(database, userId, WEBP, NOW);
+    saveUserAvatar(database, { userId, bytes: WEBP, now: NOW });
 
     removeUserAvatar(database, userId, NOW);
 

@@ -39,15 +39,13 @@ const password =
       )
     : providedPassword;
 
-await createUser(
-  getAuth(),
-  database,
-  { email, name, role: "admin", password },
-  {
+await createUser(getAuth(), database, {
+  newUser: { email, name, role: "admin", password },
+  actor: {
     type: "system",
     label: "bootstrap-admin",
   },
-);
+});
 
 logger.info({ email }, "admin account created");
 if (providedPassword === "") {

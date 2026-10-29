@@ -13,15 +13,18 @@ const EVENT_PATTERN = /^[a-z_]{1,64}$/;
 const ZERO_SHA = /^0+$/;
 const BRANCH_REF_PREFIX = "refs/heads/";
 const MAX_LIST_SIZE = 100;
+const MAX_REF_LENGTH = 300;
+const MAX_GITHUB_NAME_LENGTH = 200;
+const MAX_COMMIT_SUBJECT_LENGTH = 500;
 const logger = createLogger("github-webhook");
 
 const pushPayloadSchema = z.object({
-  ref: z.string().max(300),
+  ref: z.string().max(MAX_REF_LENGTH),
   after: z.string().regex(/^[a-f0-9]{40}$/),
   deleted: z.boolean().optional(),
-  repository: z.object({ full_name: z.string().max(200) }),
+  repository: z.object({ full_name: z.string().max(MAX_GITHUB_NAME_LENGTH) }),
   head_commit: z.object({ message: z.string() }).nullable().optional(),
-  pusher: z.object({ name: z.string().max(200) }).optional(),
+  pusher: z.object({ name: z.string().max(MAX_GITHUB_NAME_LENGTH) }).optional(),
 });
 
 /** Raw webhook request as received over HTTP. */
@@ -60,6 +63,20 @@ export async function handleGitHubDelivery(
   delivery: GitHubDelivery,
   secret: string,
 ): Promise<WebhookOutcome> {
+  const { deliveryId, event } = await verifyDelivery(delivery, secret);
+  const claimed = claimDelivery(database, deliveryId, event);
+  if (claimed === false) {
+    return { status: "duplicate" };
+  }
+  const outcome = processEvent(database, event, delivery.rawBody);
+  recordOutcome(database, deliveryId, outcome);
+  return outcome.result;
+}
+
+async function verifyDelivery(
+  delivery: GitHubDelivery,
+  secret: string,
+): Promise<{ readonly deliveryId: string; readonly event: string }> {
   if (delivery.signature == null || delivery.signature === "") {
     throw new InvalidWebhookSignatureError();
   }
@@ -73,12 +90,17 @@ export async function handleGitHubDelivery(
   if (delivery.event == null || EVENT_PATTERN.test(delivery.event) === false) {
     throw new InvalidWebhookRequestError("Missing or malformed X-GitHub-Event header");
   }
-  const deliveryId = delivery.deliveryId;
+  return { deliveryId: delivery.deliveryId, event: delivery.event };
+}
+
+/** Stores the delivery id first; returns false when GitHub already sent this delivery. */
+function claimDelivery(database: Database, deliveryId: string, event: string): boolean {
+  // A skipped or unmatched write returns no row, which `.get()` does not admit in its type.
   const claimed = database
     .insert(tables.webhookDeliveries)
     .values({
       id: deliveryId,
-      event: delivery.event,
+      event,
       status: "ignored",
       reason: "processing",
       deploymentIds: [],
@@ -86,24 +108,25 @@ export async function handleGitHubDelivery(
     })
     .onConflictDoNothing()
     .returning({ id: tables.webhookDeliveries.id })
-    .get();
-  if (claimed == null) {
-    return { status: "duplicate" };
-  }
-  const outcome = processEvent(database, delivery.event, delivery.rawBody);
+    .all()
+    .at(0);
+  return claimed != null;
+}
+
+function recordOutcome(database: Database, deliveryId: string, outcome: ProcessedEvent): void {
+  const { result } = outcome;
   database
     .update(tables.webhookDeliveries)
     .set({
-      status: outcome.result.status === "accepted" ? "accepted" : "ignored",
-      reason: outcome.result.status === "ignored" ? outcome.result.reason : "deployments queued",
-      deploymentIds: outcome.result.status === "accepted" ? [...outcome.result.deploymentIds] : [],
+      status: result.status === "accepted" ? "accepted" : "ignored",
+      reason: result.status === "ignored" ? result.reason : "deployments queued",
+      deploymentIds: result.status === "accepted" ? [...result.deploymentIds] : [],
       repositoryFullName: outcome.repositoryFullName,
       ref: outcome.ref,
       commitSha: outcome.commitSha,
     })
     .where(eq(tables.webhookDeliveries.id, deliveryId))
     .run();
-  return outcome.result;
 }
 
 type ProcessedEvent = {
@@ -112,6 +135,8 @@ type ProcessedEvent = {
   readonly ref: string | null;
   readonly commitSha: string | null;
 };
+
+type PushPayload = z.infer<typeof pushPayloadSchema>;
 
 function ignored(reason: string, details: Partial<ProcessedEvent> = {}): ProcessedEvent {
   return {
@@ -129,17 +154,29 @@ function processEvent(database: Database, event: string, rawBody: string): Proce
   if (event !== "push") {
     return ignored(`event ${event} is not handled`);
   }
+  const payload = parsePushPayload(rawBody);
+  if (typeof payload === "string") {
+    return ignored(payload);
+  }
+  return processPush(database, payload);
+}
+
+/** Returns the parsed push payload, or the reason it was rejected. */
+function parsePushPayload(rawBody: string): PushPayload | string {
   let json: unknown;
   try {
     json = JSON.parse(rawBody);
   } catch {
-    return ignored("payload is not valid JSON");
+    return "payload is not valid JSON";
   }
   const parsed = pushPayloadSchema.safeParse(json);
   if (parsed.success === false) {
-    return ignored("push payload is missing required fields");
+    return "push payload is missing required fields";
   }
-  const payload = parsed.data;
+  return parsed.data;
+}
+
+function processPush(database: Database, payload: PushPayload): ProcessedEvent {
   const details = {
     repositoryFullName: payload.repository.full_name.toLowerCase(),
     ref: payload.ref,
@@ -152,37 +189,11 @@ function processEvent(database: Database, event: string, rawBody: string): Proce
     return ignored("not a branch push", details);
   }
   const branch = payload.ref.slice(BRANCH_REF_PREFIX.length);
-  const projects = database
-    .select({ id: tables.projects.id, deploymentsApproved: tables.projects.deploymentsApproved })
-    .from(tables.projects)
-    .where(
-      and(
-        eq(tables.projects.repositoryFullName, details.repositoryFullName),
-        eq(tables.projects.branch, branch),
-        eq(tables.projects.autoDeploy, true),
-        isNull(tables.projects.deletionRequestedAt),
-      ),
-    )
-    .all();
-  const approved = projects.filter((project) => project.deploymentsApproved);
-  if (approved.length === 0) {
+  const projectIds = findAutoDeployProjects(database, details.repositoryFullName, branch);
+  if (projectIds.length === 0) {
     return ignored("no approved project with auto-deploy for this repository and branch", details);
   }
-  const pusher = payload.pusher?.name ?? "unknown";
-  // Like `git log --format=%s`: only the subject line is kept.
-  const commitMessage =
-    (payload.head_commit?.message ?? "").split("\n")[0]?.trim().slice(0, 500) ?? "";
-  const deploymentIds = approved.map(
-    (project) =>
-      requestDeployment(database, {
-        projectId: project.id,
-        trigger: "webhook",
-        actor: { type: "webhook", label: `github:${pusher}` },
-        triggeredByUserId: null,
-        commitSha: payload.after,
-        commitMessage,
-      }).deploymentId,
-  );
+  const deploymentIds = queueDeployments(database, projectIds, payload);
   logger.info(
     {
       repository: details.repositoryFullName,
@@ -192,6 +203,52 @@ function processEvent(database: Database, event: string, rawBody: string): Proce
     "push webhook queued deployments",
   );
   return { result: { status: "accepted", deploymentIds }, ...details };
+}
+
+/** Ids of the approved, auto-deploying projects that follow this repository and branch. */
+function findAutoDeployProjects(
+  database: Database,
+  repositoryFullName: string,
+  branch: string,
+): string[] {
+  const projects = database
+    .select({ id: tables.projects.id, deploymentsApproved: tables.projects.deploymentsApproved })
+    .from(tables.projects)
+    .where(
+      and(
+        eq(tables.projects.repositoryFullName, repositoryFullName),
+        eq(tables.projects.branch, branch),
+        eq(tables.projects.autoDeploy, true),
+        isNull(tables.projects.deletionRequestedAt),
+      ),
+    )
+    .all();
+  return projects.filter((project) => project.deploymentsApproved).map((project) => project.id);
+}
+
+function queueDeployments(
+  database: Database,
+  projectIds: readonly string[],
+  payload: PushPayload,
+): string[] {
+  const pusher = payload.pusher?.name ?? "unknown";
+  const commitMessage = commitSubject(payload.head_commit?.message ?? "");
+  return projectIds.map(
+    (projectId) =>
+      requestDeployment(database, {
+        projectId,
+        trigger: "webhook",
+        actor: { type: "webhook", label: `github:${pusher}` },
+        triggeredByUserId: null,
+        commitSha: payload.after,
+        commitMessage,
+      }).deploymentId,
+  );
+}
+
+/** Like `git log --format=%s`: only the subject line is kept. */
+function commitSubject(message: string): string {
+  return (message.split("\n")[0] ?? "").trim().slice(0, MAX_COMMIT_SUBJECT_LENGTH);
 }
 
 /**

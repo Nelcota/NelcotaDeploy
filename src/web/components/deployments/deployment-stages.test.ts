@@ -33,7 +33,9 @@ describe("stageStates", () => {
 
     expect(states).toEqual(["done", "skipped", "skipped", "current", "pending", "pending"]);
   });
+});
 
+describe("stageStates failures", () => {
   test("places a failure without commit at the clone stage", () => {
     expect(stageStates({ ...base, status: "failed" })[1]).toBe("failed");
   });

@@ -22,26 +22,12 @@ function NewProjectPage() {
   return (
     <>
       <PageHeader
-        eyebrow={
-          <Link
-            to="/projects"
-            className="inline-flex items-center gap-1 transition-colors hover:text-foreground focus-visible:underline focus-visible:outline-none"
-          >
-            <ChevronLeftIcon aria-hidden className="size-4" />
-            Projetos
-          </Link>
-        }
+        eyebrow={<BackToProjectsLink />}
         title="Novo projeto"
         description="Informe o repositório; o Dockerfile e a porta já vêm com valores padrão."
       />
       <div className="max-w-3xl space-y-4">
-        {isAdmin ? null : (
-          <p className="flex items-start gap-2.5 text-sm text-muted-foreground">
-            <InfoIcon aria-hidden className="mt-0.5 size-4 shrink-0 text-warning" />O build executa
-            o Dockerfile do repositório. Por segurança, projetos criados por quem não é
-            administrador precisam ser aprovados por um administrador antes do primeiro deploy.
-          </p>
-        )}
+        {isAdmin ? null : <ApprovalNotice />}
         <Card className="py-6">
           <CardContent className="px-6">
             <ProjectForm
@@ -65,5 +51,27 @@ function NewProjectPage() {
         </Card>
       </div>
     </>
+  );
+}
+
+function BackToProjectsLink() {
+  return (
+    <Link
+      to="/projects"
+      className="inline-flex items-center gap-1 transition-colors hover:text-foreground focus-visible:underline focus-visible:outline-none"
+    >
+      <ChevronLeftIcon aria-hidden className="size-4" />
+      Projetos
+    </Link>
+  );
+}
+
+function ApprovalNotice() {
+  return (
+    <p className="flex items-start gap-2.5 text-sm text-muted-foreground">
+      <InfoIcon aria-hidden className="mt-0.5 size-4 shrink-0 text-warning" />O build executa o
+      Dockerfile do repositório. Por segurança, projetos criados por quem não é administrador
+      precisam ser aprovados por um administrador antes do primeiro deploy.
+    </p>
   );
 }

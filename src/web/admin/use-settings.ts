@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 
-import { getSettingsFn } from "@/web/functions/settings.functions";
+import { getSettingsFn } from "@/web/functions/admin/settings.functions";
 
 const SERVER_REFRESH_INTERVAL_IN_MS = 15_000;
 

@@ -1,10 +1,10 @@
 import { and, asc, eq } from "drizzle-orm";
 
 import { type Actor, recordAuditEvent } from "@/audit";
-import { type Database, tables } from "@/db";
+import { type Database, tables, type Transaction } from "@/db";
 import { getProject, PRODUCTION_ENVIRONMENT } from "@/projects";
 import type { SecretBox } from "@/secrets";
-import type { EnvironmentVariableInput } from "@/shared/environment-variable.schema";
+import type { EnvironmentVariableInput } from "@/shared/schemas/environment-variable.schema";
 
 import { EnvironmentVariableNotFoundError } from "./environment.errors";
 
@@ -94,17 +94,21 @@ export function listEnvironmentVariables(
  *
  * @param database - Database.
  * @param secretBox - Encryption box.
- * @param projectId - Project id.
- * @param input - Validated variable.
- * @param actor - Who changes it.
+ * @param change - Project id, validated variable and who changes it.
  * @throws {ProjectNotFoundError} When the project does not exist.
  */
 export async function saveEnvironmentVariable(
   database: Database,
   secretBox: SecretBox,
-  projectId: string,
-  input: EnvironmentVariableInput,
-  actor: Actor,
+  {
+    projectId,
+    input,
+    actor,
+  }: {
+    readonly projectId: string;
+    readonly input: EnvironmentVariableInput;
+    readonly actor: Actor;
+  },
 ): Promise<void> {
   const environmentId = productionEnvironmentId(database, projectId);
   const keepExistingSecret = input.kind === "secret" && input.value === "";
@@ -114,19 +118,7 @@ export async function saveEnvironmentVariable(
       : null;
   const now = new Date().toISOString();
   database.transaction((transaction) => {
-    const existing = transaction
-      .select({
-        id: tables.environmentVariables.id,
-        encryptedValue: tables.environmentVariables.encryptedValue,
-      })
-      .from(tables.environmentVariables)
-      .where(
-        and(
-          eq(tables.environmentVariables.environmentId, environmentId),
-          eq(tables.environmentVariables.key, input.key),
-        ),
-      )
-      .get();
+    const existing = findVariable(transaction, environmentId, input.key);
     const values = {
       kind: input.kind,
       plainValue: input.kind === "plain" ? input.value : null,
@@ -137,24 +129,7 @@ export async function saveEnvironmentVariable(
     if (input.kind === "secret" && values.encryptedValue == null) {
       throw new Error(`Secret ${input.key} needs a value`);
     }
-    if (existing == null) {
-      transaction
-        .insert(tables.environmentVariables)
-        .values({
-          id: Bun.randomUUIDv7(),
-          environmentId,
-          key: input.key,
-          createdAt: now,
-          ...values,
-        })
-        .run();
-    } else {
-      transaction
-        .update(tables.environmentVariables)
-        .set(values)
-        .where(eq(tables.environmentVariables.id, existing.id))
-        .run();
-    }
+    writeVariable(transaction, { existingId: existing?.id, environmentId, key: input.key, values });
     recordAuditEvent(transaction, {
       actor,
       action: existing == null ? "environment_variable.create" : "environment_variable.update",
@@ -165,20 +140,75 @@ export async function saveEnvironmentVariable(
   });
 }
 
+type VariableValues = {
+  readonly kind: "plain" | "secret";
+  readonly plainValue: string | null;
+  readonly encryptedValue: string | null;
+  readonly availableAtBuild: boolean;
+  readonly updatedAt: string;
+};
+
+/** Inserts the variable, or updates it in place when it already exists. */
+function writeVariable(
+  transaction: Transaction,
+  target: {
+    readonly existingId: string | undefined;
+    readonly environmentId: string;
+    readonly key: string;
+    readonly values: VariableValues;
+  },
+): void {
+  const { existingId, environmentId, key, values } = target;
+  if (existingId == null) {
+    transaction
+      .insert(tables.environmentVariables)
+      .values({
+        id: Bun.randomUUIDv7(),
+        environmentId,
+        key,
+        createdAt: values.updatedAt,
+        ...values,
+      })
+      .run();
+    return;
+  }
+  transaction
+    .update(tables.environmentVariables)
+    .set(values)
+    .where(eq(tables.environmentVariables.id, existingId))
+    .run();
+}
+
+function findVariable(transaction: Transaction, environmentId: string, key: string) {
+  return transaction
+    .select({
+      id: tables.environmentVariables.id,
+      encryptedValue: tables.environmentVariables.encryptedValue,
+    })
+    .from(tables.environmentVariables)
+    .where(
+      and(
+        eq(tables.environmentVariables.environmentId, environmentId),
+        eq(tables.environmentVariables.key, key),
+      ),
+    )
+    .get();
+}
+
 /**
  * Deletes a variable.
  *
  * @param database - Database.
- * @param projectId - Owning project.
- * @param variableId - Variable id.
- * @param actor - Who deletes it.
+ * @param removal - Owning project, variable id and who deletes it.
  * @throws {EnvironmentVariableNotFoundError} When the variable is not in this project.
  */
 export function deleteEnvironmentVariable(
   database: Database,
-  projectId: string,
-  variableId: string,
-  actor: Actor,
+  {
+    projectId,
+    variableId,
+    actor,
+  }: { readonly projectId: string; readonly variableId: string; readonly actor: Actor },
 ): void {
   const environmentId = productionEnvironmentId(database, projectId);
   database.transaction((transaction) => {

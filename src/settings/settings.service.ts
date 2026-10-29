@@ -1,7 +1,7 @@
 import { inArray } from "drizzle-orm";
 
 import { type Database, tables } from "@/db";
-import { DEFAULT_SYSTEM_SETTINGS, type SystemSettings } from "@/shared/settings.schema";
+import { DEFAULT_SYSTEM_SETTINGS, type SystemSettings } from "@/shared/schemas/settings.schema";
 
 const SETTING_KEYS = Object.keys(DEFAULT_SYSTEM_SETTINGS) as (keyof SystemSettings)[];
 

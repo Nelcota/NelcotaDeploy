@@ -1,21 +1,16 @@
-import { chmod, writeFile } from "node:fs/promises";
-import { join } from "node:path";
-
-import { type OutputStream, type ProcessResult, runProcess } from "@/process";
+import { type CommandRunner, type OutputStream, type ProcessResult, runProcess } from "@/process";
 
 import { GitCommandError } from "./git.errors";
 
 const CLONE_DEPTH = 50;
 const COMMIT_SHA_PATTERN = /^[a-f0-9]{7,40}$/;
-const ASKPASS_FILE_MODE = 0o700;
-/** Credentials go in this variable for the askpass helper, never in arguments or URLs. */
+/** Credentials go in this variable for the credential helper, never in arguments or URLs. */
 const PASSWORD_VARIABLE = "NELCOTA_GIT_PASSWORD";
-const ASKPASS_SCRIPT = `#!/bin/sh
-case "$1" in
-  Username*) printf '%s\\n' "x-access-token" ;;
-  *) printf '%s\\n' "$${PASSWORD_VARIABLE}" ;;
-esac
-`;
+/**
+ * Inline credential helper: git runs it through a shell and it prints the token from the
+ * environment. Nothing is written to disk, which matters on servers reached over SSH.
+ */
+const CREDENTIAL_HELPER = `!f() { test "$1" = get || exit 0; echo username=x-access-token; echo "password=$${PASSWORD_VARIABLE}"; }; f`;
 
 /** Commit checked out in a workspace. */
 export type CheckedOutCommit = { readonly sha: string; readonly message: string };
@@ -28,8 +23,6 @@ export type CloneOptions = {
   readonly commitSha: string | null;
   /** Empty directory to clone into. */
   readonly directory: string;
-  /** Directory for the askpass helper, outside the cloned tree. */
-  readonly scratchDirectory: string;
   /** Read token for private repositories. */
   readonly token: string | null;
   readonly timeoutInMs: number;
@@ -52,29 +45,37 @@ export function isCommitSha(value: string): boolean {
  *
  * @remarks
  * Uses a shallow single-branch clone. When the requested commit is older than the shallow
- * history, it is fetched directly. Tokens reach git only through `GIT_ASKPASS`.
+ * history, it is fetched directly. Tokens reach git only through an environment variable
+ * read by a credential helper.
  */
 export class GitClient {
   readonly #binary: string;
+  readonly #runner: CommandRunner;
 
-  constructor(binary: string) {
+  /**
+   * @param binary - Git executable on the host the runner reaches.
+   * @param runner - Where commands run; this host by default.
+   */
+  constructor(binary: string, runner: CommandRunner = runProcess) {
     this.#binary = binary;
+    this.#runner = runner;
   }
 
   /**
-   * Clones and checks out the requested revision.
+   * Checks out the requested revision into a fresh shallow clone.
    *
    * @param options - Repository, revision, target directory and credentials.
    * @returns The commit now checked out.
    * @throws {GitCommandError} When cloning or checkout fails, or the SHA is malformed.
    */
-  async cloneAndCheckout(options: CloneOptions): Promise<CheckedOutCommit> {
+  async checkoutRevision(options: CloneOptions): Promise<CheckedOutCommit> {
     if (options.commitSha != null && isCommitSha(options.commitSha) === false) {
       throw new GitCommandError(`Invalid commit SHA: ${JSON.stringify(options.commitSha)}`);
     }
-    const environment = await this.#environment(options);
+    const environment = gitEnvironment(options.token);
+    const credentials = credentialArgs(options.token);
     const run = async (args: string[], cwd?: string): Promise<ProcessResult> =>
-      await runProcess([this.#binary, ...args], {
+      await this.#runner([this.#binary, ...credentials, ...args], {
         env: environment,
         timeoutInMs: options.timeoutInMs,
         ...(cwd == null ? {} : { cwd }),
@@ -118,21 +119,43 @@ export class GitClient {
     assertSucceeded(fetch, "fetch");
     assertSucceeded(await run(["checkout", "--detach", "FETCH_HEAD"], directory), "checkout");
   }
+}
 
-  async #environment(options: CloneOptions): Promise<Record<string, string>> {
-    const environment: Record<string, string> = {
-      GIT_TERMINAL_PROMPT: "0",
-      GIT_CONFIG_NOSYSTEM: "1",
-      GIT_LFS_SKIP_SMUDGE: "1",
-    };
-    if (options.token == null || options.token === "") {
-      return environment;
-    }
-    const askpassPath = join(options.scratchDirectory, "git-askpass.sh");
-    await writeFile(askpassPath, ASKPASS_SCRIPT);
-    await chmod(askpassPath, ASKPASS_FILE_MODE);
-    return { ...environment, GIT_ASKPASS: askpassPath, [PASSWORD_VARIABLE]: options.token };
+function hasToken(token: string | null): token is string {
+  return token != null && token.trim() !== "";
+}
+
+/**
+ * Builds the environment of every git command: no prompts, no system config, no LFS
+ * downloads, and the token when the repository is private.
+ *
+ * @param token - Read token, or null for a public repository.
+ * @returns Variables for the git process.
+ */
+export function gitEnvironment(token: string | null): Record<string, string> {
+  const environment: Record<string, string> = {
+    GIT_TERMINAL_PROMPT: "0",
+    GIT_CONFIG_NOSYSTEM: "1",
+    GIT_LFS_SKIP_SMUDGE: "1",
+  };
+  if (hasToken(token) === false) {
+    return environment;
   }
+  return { ...environment, [PASSWORD_VARIABLE]: token };
+}
+
+/**
+ * Builds the `-c` options that make git ask the inline credential helper, and only it.
+ *
+ * @param token - Read token, or null for a public repository.
+ * @returns Options placed before the git subcommand; none without a token.
+ */
+export function credentialArgs(token: string | null): string[] {
+  if (hasToken(token) === false) {
+    return [];
+  }
+  // The empty value clears helpers from the user's config, so the token goes nowhere else.
+  return ["-c", "credential.helper=", "-c", `credential.helper=${CREDENTIAL_HELPER}`];
 }
 
 function assertSucceeded(result: ProcessResult, step: string): void {

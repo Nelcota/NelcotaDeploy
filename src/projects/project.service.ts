@@ -1,18 +1,19 @@
-import { and, asc, desc, eq, inArray, isNull, like, or, sql } from "drizzle-orm";
+import { and, eq, isNull, or, sql } from "drizzle-orm";
 
 import { type Actor, recordAuditEvent } from "@/audit";
 import { type Database, tables, type Transaction } from "@/db";
 import { enqueueJob } from "@/jobs";
 import type { SecretBox } from "@/secrets";
-import { parseGitHubRepository, type ProjectInput } from "@/shared/project.schema";
+import { chooseServerForNewProject } from "@/servers";
+import { parseGitHubRepository, type ProjectInput } from "@/shared/schemas/project.schema";
 
 import { ProjectNotFoundError, ProjectSlugTakenError } from "./project.errors";
 
 /** Name of the single environment every project has today. */
 export const PRODUCTION_ENVIRONMENT = "production";
-const MAX_SEARCH_LENGTH = 100;
 
-const projectColumns = {
+/** Columns that make up a {@link Project}; shared with the listing query. */
+export const projectColumns = {
   id: tables.projects.id,
   name: tables.projects.name,
   slug: tables.projects.slug,
@@ -85,13 +86,15 @@ function repositoryFullNameOf(repositoryUrl: string): { fullName: string; cloneU
  *
  * @remarks
  * Building a repository runs its Dockerfile, so projects created by non-admins start
- * unapproved and cannot deploy until an admin approves them.
+ * unapproved and cannot deploy until an admin approves them. The project goes to the server
+ * chosen by {@link chooseServerForNewProject}.
  *
  * @param database - Database.
  * @param input - Validated project fields.
  * @param creator - Creating user and whether they are an admin.
  * @returns The new project.
  * @throws {ProjectSlugTakenError} When the slug is already used.
+ * @throws {NoServerAvailableError} When no server accepts new applications.
  */
 export function createProject(
   database: Database,
@@ -101,6 +104,7 @@ export function createProject(
   const repository = repositoryFullNameOf(input.repositoryUrl);
   const projectId = Bun.randomUUIDv7();
   const now = new Date().toISOString();
+  const serverId = chooseServerForNewProject(database);
   database.transaction((transaction) => {
     if (isSlugTaken(transaction, input.slug)) {
       throw new ProjectSlugTakenError(input.slug);
@@ -112,6 +116,7 @@ export function createProject(
         ...input,
         repositoryUrl: repository.cloneUrl,
         repositoryFullName: repository.fullName,
+        serverId,
         deploymentsApproved: creator.isAdmin,
         createdByUserId: creator.userId,
         createdAt: now,
@@ -137,18 +142,23 @@ export function createProject(
  * Updates a project's configuration. Changes apply on the next deployment.
  *
  * @param database - Database.
- * @param projectId - Project to update.
- * @param input - Validated project fields.
- * @param editor - Editing actor and whether they are an admin.
+ * @param change - Project to update, validated fields and the editor (actor and whether they
+ *   are an admin).
  * @returns The updated project.
  * @throws {ProjectNotFoundError} When the project does not exist.
  * @throws {ProjectSlugTakenError} When the new slug is used by another project.
  */
 export function updateProject(
   database: Database,
-  projectId: string,
-  input: ProjectInput,
-  editor: { readonly actor: Actor; readonly isAdmin: boolean },
+  {
+    projectId,
+    input,
+    editor,
+  }: {
+    readonly projectId: string;
+    readonly input: ProjectInput;
+    readonly editor: { readonly actor: Actor; readonly isAdmin: boolean };
+  },
 ): Project {
   const repository = repositoryFullNameOf(input.repositoryUrl);
   database.transaction((transaction) => {
@@ -249,17 +259,17 @@ export function requestProjectDeletion(database: Database, projectId: string, ac
  *
  * @param database - Database.
  * @param secretBox - Encryption box.
- * @param projectId - Project to update.
- * @param token - Token, or null to remove it.
- * @param actor - Who changes it.
+ * @param change - Project to update, the token (or null to remove it) and who changes it.
  * @throws {ProjectNotFoundError} When the project does not exist.
  */
 export async function setRepositoryToken(
   database: Database,
   secretBox: SecretBox,
-  projectId: string,
-  token: string | null,
-  actor: Actor,
+  {
+    projectId,
+    token,
+    actor,
+  }: { readonly projectId: string; readonly token: string | null; readonly actor: Actor },
 ): Promise<void> {
   const encrypted =
     token == null || token === ""
@@ -367,101 +377,18 @@ export function findProject(database: Database, idOrSlug: string): Project {
   return project;
 }
 
-/** Project row in listings, with its latest deployment and container state. */
-export type ProjectSummary = Project & {
-  readonly latestDeployment: {
-    readonly id: string;
-    readonly status: string;
-    readonly commitSha: string | null;
-    readonly createdAt: string;
-    readonly finishedAt: string | null;
-  } | null;
-  readonly containerState: string | null;
-  readonly containerHealth: string | null;
-};
-
 /**
- * Lists projects with their latest deployment and container state, without N+1 queries.
+ * Lists the ids of every project that exists, including ones being deleted.
  *
  * @param database - Database.
- * @param options - Optional name, slug or repository search.
- * @returns Projects sorted by name.
+ * @returns Project ids.
  */
-export function listProjects(
-  database: Database,
-  options: { readonly search?: string } = {},
-): ProjectSummary[] {
-  const search = (options.search ?? "").trim().slice(0, MAX_SEARCH_LENGTH);
-  const pattern = `%${search.replaceAll(/[%_\\]/g, (character) => `\\${character}`)}%`;
-  const searchCondition =
-    search === ""
-      ? undefined
-      : or(
-          sql`${tables.projects.name} LIKE ${pattern} ESCAPE '\\'`,
-          sql`${tables.projects.slug} LIKE ${pattern} ESCAPE '\\'`,
-          like(tables.projects.repositoryFullName, pattern),
-        );
-  const projects = database
-    .select(projectColumns)
-    .from(tables.projects)
-    .where(and(isNull(tables.projects.deletionRequestedAt), searchCondition))
-    .orderBy(asc(tables.projects.name))
-    .all();
-  if (projects.length === 0) {
-    return [];
-  }
-  const projectIds = projects.map((project) => project.id);
-  const latestDeployments = database
-    .select({
-      id: tables.deployments.id,
-      projectId: tables.deployments.projectId,
-      status: tables.deployments.status,
-      commitSha: tables.deployments.commitSha,
-      createdAt: tables.deployments.createdAt,
-      finishedAt: tables.deployments.finishedAt,
-    })
-    .from(tables.deployments)
-    .where(
-      and(
-        inArray(tables.deployments.projectId, projectIds),
-        eq(
-          tables.deployments.id,
-          sql`(
-            SELECT latest.id FROM deployments AS latest
-            WHERE latest.project_id = ${tables.deployments.projectId}
-            ORDER BY latest.created_at DESC, latest.id DESC
-            LIMIT 1
-          )`,
-        ),
-      ),
-    )
-    .all();
-  const latestByProject = new Map(
-    latestDeployments.map((deployment) => [deployment.projectId, deployment]),
+export function listProjectIds(database: Database): Set<string> {
+  return new Set(
+    database
+      .select({ id: tables.projects.id })
+      .from(tables.projects)
+      .all()
+      .map((project) => project.id),
   );
-  const snapshots = database
-    .select({
-      projectId: tables.containerSnapshots.projectId,
-      deploymentId: tables.containerSnapshots.deploymentId,
-      state: tables.containerSnapshots.state,
-      health: tables.containerSnapshots.health,
-    })
-    .from(tables.containerSnapshots)
-    .where(inArray(tables.containerSnapshots.projectId, projectIds))
-    .orderBy(desc(tables.containerSnapshots.observedAt))
-    .all();
-  const snapshotByDeployment = new Map(
-    snapshots
-      .toReversed()
-      .map((snapshot) => [`${snapshot.projectId}:${snapshot.deploymentId}`, snapshot]),
-  );
-  return projects.map((project) => {
-    const snapshot =
-      snapshotByDeployment.get(`${project.id}:${project.currentDeploymentId}`) ?? null;
-    return Object.assign(project, {
-      latestDeployment: latestByProject.get(project.id) ?? null,
-      containerState: snapshot?.state ?? null,
-      containerHealth: snapshot?.health ?? null,
-    });
-  });
 }

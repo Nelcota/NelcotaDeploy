@@ -1,19 +1,13 @@
-import { and, asc, desc, eq, inArray, isNotNull, lte, ne, sql } from "drizzle-orm";
+import { and, asc, eq, ne, sql } from "drizzle-orm";
 
 import { type Actor, recordAuditEvent } from "@/audit";
 import { type Database, tables, type Transaction } from "@/db";
-import { enqueueJob } from "@/jobs";
 import { getProject } from "@/projects";
-import type { TaskInput } from "@/shared/task.schema";
+import type { TaskInput } from "@/shared/schemas/task.schema";
 
 import { nextScheduledRun } from "./schedule";
+import { enqueueExecution } from "./task-execution.service";
 import { TaskNameTakenError, TaskNotFoundError } from "./task.errors";
-
-const MAX_EXECUTIONS_PAGE = 100;
-const MAX_OUTPUT_LENGTH = 65_536;
-
-type TaskExecutionTrigger = (typeof tables.taskExecutions.$inferSelect)["trigger"];
-export type TaskExecutionStatus = (typeof tables.taskExecutions.$inferSelect)["status"];
 
 const taskColumns = {
   id: tables.tasks.id,
@@ -26,21 +20,6 @@ const taskColumns = {
   nextRunAt: tables.tasks.nextRunAt,
   createdAt: tables.tasks.createdAt,
   updatedAt: tables.tasks.updatedAt,
-};
-
-const executionColumns = {
-  id: tables.taskExecutions.id,
-  taskId: tables.taskExecutions.taskId,
-  projectId: tables.taskExecutions.projectId,
-  trigger: tables.taskExecutions.trigger,
-  scheduledFor: tables.taskExecutions.scheduledFor,
-  status: tables.taskExecutions.status,
-  exitCode: tables.taskExecutions.exitCode,
-  output: tables.taskExecutions.output,
-  errorMessage: tables.taskExecutions.errorMessage,
-  createdAt: tables.taskExecutions.createdAt,
-  startedAt: tables.taskExecutions.startedAt,
-  finishedAt: tables.taskExecutions.finishedAt,
 };
 
 export type Task = {
@@ -56,21 +35,6 @@ export type Task = {
   readonly updatedAt: string;
 };
 
-export type TaskExecution = {
-  readonly id: string;
-  readonly taskId: string;
-  readonly projectId: string;
-  readonly trigger: TaskExecutionTrigger;
-  readonly scheduledFor: string | null;
-  readonly status: TaskExecutionStatus;
-  readonly exitCode: number | null;
-  readonly output: string;
-  readonly errorMessage: string | null;
-  readonly createdAt: string;
-  readonly startedAt: string | null;
-  readonly finishedAt: string | null;
-};
-
 function computeNextRunAt(input: TaskInput, now: Date, timeZone: string): string | null {
   if (input.schedule == null || input.enabled === false) {
     return null;
@@ -81,8 +45,7 @@ function computeNextRunAt(input: TaskInput, now: Date, timeZone: string): string
 function assertNameAvailable(
   transaction: Transaction,
   projectId: string,
-  name: string,
-  exceptTaskId?: string,
+  { name, exceptTaskId }: { readonly name: string; readonly exceptTaskId?: string },
 ): void {
   const existing = transaction
     .select({ id: tables.tasks.id })
@@ -104,9 +67,8 @@ function assertNameAvailable(
  * Creates a task for a project.
  *
  * @param database - Database.
- * @param projectId - Owning project.
- * @param input - Validated task with its argument vector.
- * @param context - Actor, creating user and the time zone schedules are written in.
+ * @param request - Owning `projectId`, the validated task `input` with its argument vector,
+ *   the actor, the creating user and the time zone schedules are written in.
  * @returns The task id.
  * @throws {ProjectNotFoundError} When the project does not exist.
  * @throws {InvalidScheduleError} When the cron expression is invalid.
@@ -114,9 +76,13 @@ function assertNameAvailable(
  */
 export function createTask(
   database: Database,
-  projectId: string,
-  input: TaskInput,
-  context: {
+  {
+    projectId,
+    input,
+    ...context
+  }: {
+    readonly projectId: string;
+    readonly input: TaskInput;
     readonly actor: Actor;
     readonly userId: string | null;
     readonly timeZone: string;
@@ -128,7 +94,7 @@ export function createTask(
   const taskId = Bun.randomUUIDv7();
   database.transaction((transaction) => {
     getProject(transaction, projectId);
-    assertNameAvailable(transaction, projectId, input.name);
+    assertNameAvailable(transaction, projectId, { name: input.name });
     transaction
       .insert(tables.tasks)
       .values({
@@ -156,26 +122,33 @@ export function createTask(
  * Updates a task and recomputes its next scheduled run.
  *
  * @param database - Database.
- * @param projectId - Owning project.
- * @param taskId - Task id.
- * @param input - Validated task.
- * @param context - Actor and schedule time zone.
+ * @param request - Owning `projectId`, the `taskId`, the validated task `input`, the actor and
+ *   the schedule time zone.
  * @throws {TaskNotFoundError} When the task is not in this project.
  * @throws {InvalidScheduleError} When the cron expression is invalid.
  * @throws {TaskNameTakenError} When the name is already used in the project.
  */
 export function updateTask(
   database: Database,
-  projectId: string,
-  taskId: string,
-  input: TaskInput,
-  context: { readonly actor: Actor; readonly timeZone: string; readonly now?: Date },
+  {
+    projectId,
+    taskId,
+    input,
+    ...context
+  }: {
+    readonly projectId: string;
+    readonly taskId: string;
+    readonly input: TaskInput;
+    readonly actor: Actor;
+    readonly timeZone: string;
+    readonly now?: Date;
+  },
 ): void {
   const now = context.now ?? new Date();
   const nextRunAt = computeNextRunAt(input, now, context.timeZone);
   database.transaction((transaction) => {
     findTaskRow(transaction, projectId, taskId);
-    assertNameAvailable(transaction, projectId, input.name, taskId);
+    assertNameAvailable(transaction, projectId, { name: input.name, exceptTaskId: taskId });
     transaction
       .update(tables.tasks)
       .set({ ...input, nextRunAt, updatedAt: now.toISOString() })
@@ -201,16 +174,16 @@ export function updateTask(
  * Deletes a task and its history.
  *
  * @param database - Database.
- * @param projectId - Owning project.
- * @param taskId - Task id.
- * @param actor - Who deletes it.
+ * @param removal - Owning project, task id and who deletes it.
  * @throws {TaskNotFoundError} When the task is not in this project.
  */
 export function deleteTask(
   database: Database,
-  projectId: string,
-  taskId: string,
-  actor: Actor,
+  {
+    projectId,
+    taskId,
+    actor,
+  }: { readonly projectId: string; readonly taskId: string; readonly actor: Actor },
 ): void {
   database.transaction((transaction) => {
     const task = findTaskRow(transaction, projectId, taskId);
@@ -284,43 +257,6 @@ export function listTasks(database: Database, projectId: string) {
   );
 }
 
-function enqueueExecution(
-  transaction: Transaction,
-  input: {
-    readonly task: Pick<Task, "id" | "projectId">;
-    readonly trigger: TaskExecutionTrigger;
-    readonly scheduledFor: string | null;
-    readonly userId: string | null;
-    readonly now: Date;
-  },
-): string | null {
-  const executionId = Bun.randomUUIDv7();
-  const inserted = transaction
-    .insert(tables.taskExecutions)
-    .values({
-      id: executionId,
-      taskId: input.task.id,
-      projectId: input.task.projectId,
-      trigger: input.trigger,
-      scheduledFor: input.scheduledFor,
-      status: "queued",
-      triggeredByUserId: input.userId,
-      createdAt: input.now.toISOString(),
-    })
-    .onConflictDoNothing()
-    .returning({ id: tables.taskExecutions.id })
-    .get();
-  if (inserted == null) {
-    return null;
-  }
-  enqueueJob(
-    transaction,
-    { kind: "task_run", projectId: input.task.projectId, taskExecutionId: executionId },
-    input.now,
-  );
-  return executionId;
-}
-
 /**
  * Queues a manual run of a task.
  *
@@ -361,165 +297,4 @@ export function runTask(
     });
     return executionId;
   });
-}
-
-/**
- * Queues every scheduled task whose next run is due, then advances its schedule.
- *
- * @remarks
- * Each due slot is recorded with a unique (task, scheduledFor) pair, so a restart or a
- * second scheduler cannot run the same slot twice. Slots missed while the worker was down
- * run once, not once per missed slot.
- *
- * @param database - Database.
- * @param now - Current time.
- * @param timeZone - Time zone of the cron expressions.
- * @returns Ids of the executions queued.
- */
-export function scheduleDueTasks(database: Database, now: Date, timeZone: string): string[] {
-  return database.transaction((transaction) => {
-    const due = transaction
-      .select({
-        id: tables.tasks.id,
-        projectId: tables.tasks.projectId,
-        schedule: tables.tasks.schedule,
-        nextRunAt: tables.tasks.nextRunAt,
-      })
-      .from(tables.tasks)
-      .innerJoin(tables.projects, eq(tables.projects.id, tables.tasks.projectId))
-      .where(
-        and(
-          eq(tables.tasks.enabled, true),
-          isNotNull(tables.tasks.schedule),
-          lte(tables.tasks.nextRunAt, now.toISOString()),
-          sql`${tables.projects.deletionRequestedAt} IS NULL`,
-        ),
-      )
-      .all();
-    const queued: string[] = [];
-    for (const task of due) {
-      const executionId = enqueueExecution(transaction, {
-        task,
-        trigger: "schedule",
-        scheduledFor: task.nextRunAt,
-        userId: null,
-        now,
-      });
-      if (executionId != null) {
-        queued.push(executionId);
-      }
-      transaction
-        .update(tables.tasks)
-        .set({ nextRunAt: nextScheduledRun(task.schedule ?? "", now, timeZone).toISOString() })
-        .where(eq(tables.tasks.id, task.id))
-        .run();
-    }
-    return queued;
-  });
-}
-
-/**
- * Lists a task's executions, newest first.
- *
- * @param database - Database.
- * @param projectId - Owning project.
- * @param taskId - Task id.
- * @param limit - Page size, at most 100.
- * @returns Executions with their output.
- */
-export function listTaskExecutions(
-  database: Database,
-  projectId: string,
-  taskId: string,
-  limit: number,
-): TaskExecution[] {
-  return database
-    .select(executionColumns)
-    .from(tables.taskExecutions)
-    .where(
-      and(eq(tables.taskExecutions.taskId, taskId), eq(tables.taskExecutions.projectId, projectId)),
-    )
-    .orderBy(desc(tables.taskExecutions.createdAt))
-    .limit(Math.min(Math.max(Math.trunc(limit), 1), MAX_EXECUTIONS_PAGE))
-    .all();
-}
-
-/**
- * Reads the execution context the worker needs.
- *
- * @param database - Database.
- * @param executionId - Execution id.
- * @returns Execution, task command and timeout, or null when it no longer exists.
- */
-export function getExecutionForRun(database: Database, executionId: string) {
-  return (
-    database
-      .select({
-        id: tables.taskExecutions.id,
-        status: tables.taskExecutions.status,
-        projectId: tables.taskExecutions.projectId,
-        command: tables.tasks.command,
-        timeoutInSeconds: tables.tasks.timeoutInSeconds,
-        taskName: tables.tasks.name,
-      })
-      .from(tables.taskExecutions)
-      .innerJoin(tables.tasks, eq(tables.tasks.id, tables.taskExecutions.taskId))
-      .where(eq(tables.taskExecutions.id, executionId))
-      .get() ?? null
-  );
-}
-
-/**
- * Records the progress or result of an execution.
- *
- * @param database - Database.
- * @param executionId - Execution id.
- * @param update - New status and, when finished, exit code and output (truncated to 64 KB).
- */
-export function updateTaskExecution(
-  database: Database,
-  executionId: string,
-  update: {
-    readonly status: TaskExecutionStatus;
-    readonly exitCode?: number | null;
-    readonly output?: string;
-    readonly errorMessage?: string | null;
-  },
-): void {
-  const now = new Date().toISOString();
-  const finished = update.status === "succeeded" || update.status === "failed";
-  database
-    .update(tables.taskExecutions)
-    .set({
-      status: update.status,
-      ...(update.exitCode === undefined ? {} : { exitCode: update.exitCode }),
-      ...(update.output === undefined ? {} : { output: update.output.slice(-MAX_OUTPUT_LENGTH) }),
-      ...(update.errorMessage === undefined ? {} : { errorMessage: update.errorMessage }),
-      ...(update.status === "running" ? { startedAt: now } : {}),
-      ...(finished ? { finishedAt: now } : {}),
-    })
-    .where(eq(tables.taskExecutions.id, executionId))
-    .run();
-}
-
-/**
- * Marks executions as failed when their job was abandoned, for example after a crash.
- *
- * @param database - Database.
- * @param executionIds - Executions to fail.
- * @param reason - Error message.
- */
-export function failTaskExecutions(
-  database: Database,
-  executionIds: readonly string[],
-  reason: string,
-): void {
-  if (executionIds.length === 0) {
-    return;
-  }
-  database
-    .update(tables.taskExecutions)
-    .set({ status: "failed", errorMessage: reason, finishedAt: new Date().toISOString() })
-    .where(inArray(tables.taskExecutions.id, [...executionIds]))
-    .run();
 }

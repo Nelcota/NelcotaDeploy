@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
-import { CommandLineParseError, formatCommandLine, parseCommandLine } from "./command-line";
+import { formatCommandLine, parseCommandLine } from "./command-line";
+import { CommandLineParseError } from "./command-line.errors";
 
 describe("parseCommandLine", () => {
   test("splits words on whitespace", () => {

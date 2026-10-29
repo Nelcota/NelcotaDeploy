@@ -1,6 +1,4 @@
-import { z } from "zod";
-
-import { type OutputStream, type ProcessResult, runProcess } from "@/process";
+import { type CommandRunner, type OutputStream, type ProcessResult, runProcess } from "@/process";
 
 import {
   assertContainerReference,
@@ -12,43 +10,15 @@ import {
   type RunContainerOptions,
 } from "./docker.commands";
 import { DockerCommandError, UnmanagedResourceError } from "./docker.errors";
+import {
+  type ContainerInfo,
+  type ContainerStats,
+  parseInspectOutput,
+  parseStatsOutput,
+} from "./docker.output";
 
 const QUICK_COMMAND_TIMEOUT_IN_MS = 30_000;
 const STOP_TIMEOUT_IN_MS = 60_000;
-const BYTES_PER_UNIT: Record<string, number> = {
-  B: 1,
-  KB: 1e3,
-  MB: 1e6,
-  GB: 1e9,
-  TB: 1e12,
-  KIB: 1024,
-  MIB: 1024 ** 2,
-  GIB: 1024 ** 3,
-  TIB: 1024 ** 4,
-};
-
-/** State of a container as reported by `docker inspect`. */
-export type ContainerInfo = {
-  readonly id: string;
-  readonly name: string;
-  readonly image: string;
-  readonly status: string;
-  readonly running: boolean;
-  readonly health: string | null;
-  readonly restartCount: number;
-  readonly startedAt: string | null;
-  readonly labels: Readonly<Record<string, string>>;
-  /** IP address per attached network. */
-  readonly networkAddresses: Readonly<Record<string, string>>;
-};
-
-/** Resource usage of one container from `docker stats`. */
-export type ContainerStats = {
-  readonly name: string;
-  readonly cpuPercent: number | null;
-  readonly memoryUsedBytes: number | null;
-  readonly memoryLimitBytes: number | null;
-};
 
 /** Callback for streamed command output. */
 export type OutputHandler = (line: string, stream: OutputStream) => void;
@@ -65,19 +35,26 @@ type CommandOptions = {
  * Docker Engine access through the docker CLI.
  *
  * @remarks
- * Every argument goes through `Bun.spawn` as a vector. Mutating operations on an existing
- * container or image first verify the platform label, so containers created by anything
- * else on the host are never started, stopped or removed.
+ * Every argument goes to the runner as a vector: `Bun.spawn` on this host, or an SSH channel
+ * to another server, where the CLI talks to that server's own Docker. Mutating operations on
+ * an existing container or image first verify the platform label, so containers created by
+ * anything else on the host are never started, stopped or removed.
  */
 export class DockerCli {
   readonly #binary: string;
+  readonly #runner: CommandRunner;
 
-  constructor(binary: string) {
+  /**
+   * @param binary - Docker CLI executable on the host the runner reaches.
+   * @param runner - Where commands run; this host by default.
+   */
+  constructor(binary: string, runner: CommandRunner = runProcess) {
     this.#binary = binary;
+    this.#runner = runner;
   }
 
   async #run(args: readonly string[], options: CommandOptions = {}): Promise<ProcessResult> {
-    return await runProcess([this.#binary, ...args], {
+    return await this.#runner([this.#binary, ...args], {
       timeoutInMs: options.timeoutInMs ?? QUICK_COMMAND_TIMEOUT_IN_MS,
       ...(options.env == null ? {} : { env: options.env }),
       ...(options.signal == null ? {} : { signal: options.signal }),
@@ -380,15 +357,14 @@ export class DockerCli {
    * Follows a container's output until it stops or the signal aborts.
    *
    * @param reference - Name or id.
-   * @param since - Only lines after this UTC ISO time.
    * @param onLine - Receives each line with its docker timestamp prefix.
-   * @param signal - Stops following when aborted.
+   * @param window - `since`, only lines after this UTC ISO time, and the `signal` that stops
+   *   following when aborted.
    */
   async followContainerLogs(
     reference: string,
-    since: string,
     onLine: OutputHandler,
-    signal: AbortSignal,
+    { since, signal }: { readonly since: string; readonly signal: AbortSignal },
   ): Promise<void> {
     await this.#run(
       [
@@ -429,6 +405,25 @@ export class DockerCli {
   }
 
   /**
+   * Calls `onEvent` for each Docker event of a platform container, until `signal` aborts or
+   * the stream ends.
+   */
+  async followContainerEvents(onEvent: () => void, signal: AbortSignal): Promise<void> {
+    await this.#run(
+      [
+        "events",
+        "--filter",
+        "type=container",
+        "--filter",
+        `label=${LABELS.managed}=true`,
+        "--format",
+        "{{.Action}}",
+      ],
+      { timeoutInMs: Number.MAX_SAFE_INTEGER, signal, onLine: () => onEvent() },
+    );
+  }
+
+  /**
    * Runs a command inside a platform container, without a shell.
    *
    * @param reference - Name or id.
@@ -459,124 +454,3 @@ export class DockerCli {
 export type DockerEngine = {
   [K in keyof DockerCli]: DockerCli[K];
 };
-
-const ZERO_DATE_PREFIX = "0001-01-01";
-
-// Docker's JSON is trusted but loosely shaped: missing or odd fields fall back to empty values
-// instead of failing the whole read.
-const text = z.string().optional().catch(undefined);
-
-const inspectSchema = z.array(
-  z.object({
-    Id: text,
-    Name: text,
-    RestartCount: z.number().optional().catch(undefined),
-    State: z
-      .object({
-        Status: text,
-        Running: z.boolean().optional().catch(undefined),
-        StartedAt: text,
-        Health: z.object({ Status: text }).nullish().catch(undefined),
-      })
-      .optional()
-      .catch(undefined),
-    Config: z
-      .object({
-        Image: text,
-        Labels: z.record(z.string(), z.unknown()).nullish().catch(undefined),
-      })
-      .optional()
-      .catch(undefined),
-    NetworkSettings: z
-      .object({
-        Networks: z
-          .record(z.string(), z.object({ IPAddress: text }))
-          .nullish()
-          .catch(undefined),
-      })
-      .optional()
-      .catch(undefined),
-  }),
-);
-
-const statsLineSchema = z.object({ Name: text, CPUPerc: text, MemUsage: text });
-
-function nonEmpty(value: string | undefined): string | null {
-  return value == null || value === "" ? null : value;
-}
-
-/**
- * Parses the JSON array printed by `docker container inspect`.
- *
- * @param output - Raw stdout.
- * @returns Parsed container information; nothing when the output is not a list.
- */
-export function parseInspectOutput(output: string): ContainerInfo[] {
-  const parsed = inspectSchema.safeParse(JSON.parse(output));
-  if (parsed.success === false) {
-    return [];
-  }
-  return parsed.data.map((container) => {
-    const startedAt = nonEmpty(container.State?.StartedAt);
-    const labels = Object.entries(container.Config?.Labels ?? {}).filter(
-      (entry): entry is [string, string] => typeof entry[1] === "string",
-    );
-    const networkAddresses = Object.entries(container.NetworkSettings?.Networks ?? {}).flatMap(
-      ([name, network]) => {
-        const address = nonEmpty(network.IPAddress);
-        return address == null ? [] : [[name, address] as const];
-      },
-    );
-    return {
-      id: container.Id ?? "",
-      name: (container.Name ?? "").replace(/^\//, ""),
-      image: container.Config?.Image ?? "",
-      status: nonEmpty(container.State?.Status) ?? "unknown",
-      running: container.State?.Running === true,
-      health: nonEmpty(container.State?.Health?.Status),
-      restartCount: container.RestartCount ?? 0,
-      startedAt: startedAt == null || startedAt.startsWith(ZERO_DATE_PREFIX) ? null : startedAt,
-      labels: Object.fromEntries(labels),
-      networkAddresses: Object.fromEntries(networkAddresses),
-    };
-  });
-}
-
-/**
- * Parses a docker size such as "12.5MiB" into bytes.
- *
- * @param text - Size with unit.
- * @returns Bytes, or null when the text is not a size.
- */
-export function parseDockerSize(text: string): number | null {
-  const match = /^([\d.]+)\s*([A-Za-z]+)$/.exec(text.trim());
-  const amount = Number(match?.[1]);
-  const multiplier = BYTES_PER_UNIT[(match?.[2] ?? "").toUpperCase()];
-  if (multiplier == null || Number.isFinite(amount) === false) {
-    return null;
-  }
-  return Math.round(amount * multiplier);
-}
-
-/**
- * Parses `docker stats --format '{{json .}}'` output, one JSON object per line.
- *
- * @param output - Raw stdout.
- * @returns Parsed stats; unparseable values are null, never guessed.
- */
-export function parseStatsOutput(output: string): ContainerStats[] {
-  return output
-    .split("\n")
-    .filter((line) => line.trim() !== "")
-    .map((line) => {
-      const row = statsLineSchema.parse(JSON.parse(line));
-      const cpuPercent = Number.parseFloat((row.CPUPerc ?? "").replace("%", ""));
-      const [usedText = "", limitText = ""] = (row.MemUsage ?? "").split("/");
-      return {
-        name: row.Name ?? "",
-        cpuPercent: Number.isFinite(cpuPercent) ? cpuPercent : null,
-        memoryUsedBytes: parseDockerSize(usedText),
-        memoryLimitBytes: parseDockerSize(limitText),
-      };
-    });
-}

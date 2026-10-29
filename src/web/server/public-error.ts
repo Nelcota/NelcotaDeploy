@@ -16,6 +16,13 @@ import {
 import { DomainNotFoundError, DomainTakenError } from "@/domains";
 import { EnvironmentVariableNotFoundError } from "@/environments";
 import { ProjectNotFoundError, ProjectSlugTakenError } from "@/projects";
+import {
+  NoServerAvailableError,
+  ServerInUseError,
+  ServerNotFoundError,
+  ServerNotReadyError,
+  ServerTakenError,
+} from "@/servers";
 import { InvalidScheduleError, TaskNameTakenError, TaskNotFoundError } from "@/tasks";
 
 const GENERIC_MESSAGE = "Ocorreu um erro inesperado. Tente novamente em instantes.";
@@ -46,6 +53,17 @@ const MESSAGES: readonly (readonly [ErrorClass, string])[] = [
   [TaskNotFoundError, "Task não encontrada."],
   [TaskNameTakenError, "Já existe uma task com este nome neste projeto."],
   [InvalidScheduleError, "Expressão cron inválida. Use 5 campos, como */5 * * * *."],
+  [ServerNotFoundError, "Servidor não encontrado."],
+  [ServerTakenError, "Já existe um servidor com este nome ou endereço."],
+  [ServerNotReadyError, "Este servidor ainda não está conectado. Escolha um servidor pronto."],
+  [
+    ServerInUseError,
+    "Este servidor não pode ser removido: ainda há projetos nele ou ele é o servidor do painel.",
+  ],
+  [
+    NoServerAvailableError,
+    "Nenhum servidor aceita novas aplicações. Ative um em Administração → Servidores.",
+  ],
 ];
 
 const USER_OPERATION_MESSAGES: Readonly<Record<string, string>> = {

@@ -11,7 +11,8 @@ type ServerEntry = { readonly fetch: (request: Request) => Promise<Response> | R
 
 const CLIENT_DIRECTORY = resolve("dist/client");
 const SERVER_ENTRY = resolve("dist/server/server.js");
-const MAX_REQUEST_BODY_BYTES = 2 * 1024 * 1024;
+// 2 MiB.
+const MAX_REQUEST_BODY_BYTES = 2_097_152;
 /** SSE streams send a heartbeat every 15 s, well within this idle limit. */
 const IDLE_TIMEOUT_IN_SECONDS = 60;
 const IMMUTABLE_CACHE = "public, max-age=31536000, immutable";

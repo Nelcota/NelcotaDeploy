@@ -1,6 +1,6 @@
 import { queryOptions } from "@tanstack/react-query";
 
-import { getProjectFn } from "@/web/functions/projects.functions";
+import { getProjectFn } from "@/web/functions/project-detail.functions";
 
 const PROJECT_REFRESH_INTERVAL_IN_MS = 5000;
 

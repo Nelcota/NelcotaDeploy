@@ -50,31 +50,8 @@ export function summarizeDeployments(
   }
   const now = options.now ?? new Date();
   const dayKeys = windowDays(now, options.days);
-  const firstDay = dayKeys[0];
-  // A generous lower bound; rows from before the first local day are dropped below.
-  const since = new Date(now.getTime() - (options.days + 1) * MILLISECONDS_PER_DAY);
-  const rows = database
-    .select({
-      status: tables.deployments.status,
-      createdAt: tables.deployments.createdAt,
-      startedAt: tables.deployments.startedAt,
-      finishedAt: tables.deployments.finishedAt,
-    })
-    .from(tables.deployments)
-    .where(gte(tables.deployments.createdAt, since.toISOString()))
-    .all()
-    .filter((row) => {
-      const day = dayKey(row.createdAt);
-      return day != null && firstDay != null && day >= firstDay;
-    });
-
-  const byDay = new Map(dayKeys.map((day) => [day, { succeeded: 0, failed: 0, other: 0 }]));
-  for (const row of rows) {
-    const bucket = byDay.get(dayKey(row.createdAt) ?? "");
-    if (bucket != null) {
-      bucket[outcomeOf(row.status)] += 1;
-    }
-  }
+  const rows = listWindowDeployments(database, { now, days: options.days, firstDay: dayKeys[0] });
+  const byDay = countByDay(rows, dayKeys);
   const durations = rows
     .filter((row) => row.status === "succeeded")
     .map((row) => durationBetween(row.startedAt, row.finishedAt))
@@ -99,6 +76,52 @@ export function summarizeDeployments(
         : durations.reduce((sum, duration) => sum + duration, 0) / durations.length,
     days,
   };
+}
+
+type DeploymentRow = {
+  readonly status: string;
+  readonly createdAt: string;
+  readonly startedAt: string | null;
+  readonly finishedAt: string | null;
+};
+
+type DayCounts = { succeeded: number; failed: number; other: number };
+
+function listWindowDeployments(
+  database: Database,
+  window: { readonly now: Date; readonly days: number; readonly firstDay: string | undefined },
+): DeploymentRow[] {
+  const { firstDay } = window;
+  // A generous lower bound; rows from before the first local day are dropped below.
+  const since = new Date(window.now.getTime() - (window.days + 1) * MILLISECONDS_PER_DAY);
+  return database
+    .select({
+      status: tables.deployments.status,
+      createdAt: tables.deployments.createdAt,
+      startedAt: tables.deployments.startedAt,
+      finishedAt: tables.deployments.finishedAt,
+    })
+    .from(tables.deployments)
+    .where(gte(tables.deployments.createdAt, since.toISOString()))
+    .all()
+    .filter((row) => {
+      const day = dayKey(row.createdAt);
+      return day != null && firstDay != null && day >= firstDay;
+    });
+}
+
+function countByDay(
+  rows: readonly DeploymentRow[],
+  dayKeys: readonly string[],
+): Map<string, DayCounts> {
+  const byDay = new Map(dayKeys.map((day) => [day, { succeeded: 0, failed: 0, other: 0 }]));
+  for (const row of rows) {
+    const bucket = byDay.get(dayKey(row.createdAt) ?? "");
+    if (bucket != null) {
+      bucket[outcomeOf(row.status)] += 1;
+    }
+  }
+  return byDay;
 }
 
 function outcomeOf(status: string): "succeeded" | "failed" | "other" {

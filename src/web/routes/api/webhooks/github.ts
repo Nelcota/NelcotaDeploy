@@ -11,6 +11,9 @@ import {
 
 /** GitHub caps payloads at 25 MB; pushes are far smaller, so 1 MB is plenty. */
 const MAX_BODY_BYTES = 1_048_576;
+/** Accepted deliveries queue a deploy; ignored ones (other branches, pings) just succeed. */
+const HTTP_ACCEPTED = 202;
+const HTTP_OK = 200;
 
 export const Route = createFileRoute("/api/webhooks/github")({
   server: {
@@ -39,7 +42,9 @@ export const Route = createFileRoute("/api/webhooks/github")({
             },
             secret,
           );
-          return Response.json(outcome, { status: outcome.status === "accepted" ? 202 : 200 });
+          return Response.json(outcome, {
+            status: outcome.status === "accepted" ? HTTP_ACCEPTED : HTTP_OK,
+          });
         } catch (error) {
           if (error instanceof InvalidWebhookSignatureError) {
             return Response.json({ error: "invalid signature" }, { status: 401 });

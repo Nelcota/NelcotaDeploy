@@ -7,6 +7,8 @@ import { join, resolve } from "node:path";
 import { AxeBuilder } from "@axe-core/playwright";
 import { type Browser, chromium, type Page } from "playwright";
 
+import { mapInSequence } from "./sequence";
+
 const PORT = Number(process.env["UI_REVIEW_PORT"] ?? "3199");
 const BASE_URL = `http://localhost:${PORT}`;
 const OUTPUT_DIRECTORY = resolve("ui-review-output");
@@ -21,6 +23,7 @@ const VIEWPORTS = [
 ] as const;
 const THEMES = ["light", "dark"] as const;
 const BLOCKING_IMPACTS = new Set(["serious", "critical"]);
+const MAX_SEED_OUTPUT_IN_ERROR = 200;
 
 type Theme = (typeof THEMES)[number];
 type Finding = {
@@ -55,7 +58,8 @@ function pagesFor(projectId: string, deploymentId: string) {
     { name: "projeto-ajustes", path: `${project}/settings`, signedIn: true },
     { name: "admin-organizacao", path: "/settings?tab=organization", signedIn: true },
     { name: "admin-usuarios", path: "/settings?tab=users", signedIn: true },
-    { name: "admin-servidor", path: "/settings?tab=server", signedIn: true },
+    { name: "admin-servidores", path: "/settings?tab=servers", signedIn: true },
+    { name: "admin-sistema", path: "/settings?tab=server", signedIn: true },
     { name: "admin-tokens", path: "/settings?tab=tokens", signedIn: true },
     { name: "admin-auditoria", path: "/settings?tab=audit", signedIn: true },
   ];
@@ -81,24 +85,24 @@ async function seed(environment: Record<string, string>) {
     typeof parsed.projectId !== "string" ||
     typeof parsed.deploymentId !== "string"
   ) {
-    throw new Error(`unexpected seed output: ${lastLine.slice(0, 200)}`);
+    throw new Error(`unexpected seed output: ${lastLine.slice(0, MAX_SEED_OUTPUT_IN_ERROR)}`);
   }
   return { projectId: parsed.projectId, deploymentId: parsed.deploymentId };
 }
 
-async function waitForServer(): Promise<void> {
-  const deadline = Date.now() + SERVER_START_TIMEOUT_IN_MS;
-  while (Date.now() < deadline) {
-    const response = await fetch(`${BASE_URL}/api/health`, {
-      signal: AbortSignal.timeout(REQUEST_TIMEOUT_IN_MS),
-    }).catch(() => null);
-    if (response?.ok === true) {
-      return;
-    }
-    // Each attempt depends on the server having started since the last one.
-    await Bun.sleep(POLL_INTERVAL_IN_MS);
+// Each attempt depends on the server having started since the last one, so attempts never overlap.
+async function waitForServer(deadline = Date.now() + SERVER_START_TIMEOUT_IN_MS): Promise<void> {
+  if (Date.now() >= deadline) {
+    throw new Error(`the review server did not answer on ${BASE_URL} in time`);
   }
-  throw new Error(`the review server did not answer on ${BASE_URL} in time`);
+  const response = await fetch(`${BASE_URL}/api/health`, {
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_IN_MS),
+  }).catch(() => null);
+  if (response?.ok === true) {
+    return;
+  }
+  await Bun.sleep(POLL_INTERVAL_IN_MS);
+  await waitForServer(deadline);
 }
 
 async function signIn(page: Page, email: string, password: string): Promise<void> {
@@ -165,43 +169,47 @@ async function newReviewPage(browser: Browser, theme: Theme, viewport: (typeof V
   return { context, page: await context.newPage() };
 }
 
+/** What stays the same across every theme and viewport of one review. */
+type ReviewRun = {
+  readonly browser: Browser;
+  readonly pages: readonly PageEntry[];
+  readonly credentials: { readonly email: string; readonly password: string };
+};
+
 async function reviewViewport(
-  browser: Browser,
+  { browser, pages, credentials }: ReviewRun,
   theme: Theme,
   viewport: (typeof VIEWPORTS)[number],
-  pages: readonly PageEntry[],
-  credentials: { readonly email: string; readonly password: string },
 ): Promise<Finding[]> {
   const { context, page } = await newReviewPage(browser, theme, viewport);
   await using _context = { [Symbol.asyncDispose]: async () => await context.close() };
   const directory = join(OUTPUT_DIRECTORY, `${theme}-${viewport.name}`);
   await mkdir(directory, { recursive: true });
-  const findings: Finding[] = [];
   // Pages are visited one by one: they share the signed-in browser tab.
-  for (const entry of pages.filter((item) => item.signedIn === false)) {
-    await capture(page, directory, entry);
-  }
+  await mapInSequence(
+    pages.filter((item) => item.signedIn === false),
+    async (entry) => await capture(page, directory, entry),
+  );
   await signIn(page, credentials.email, credentials.password);
-  for (const entry of pages.filter((item) => item.signedIn)) {
-    await capture(page, directory, entry);
-    if (viewport.name === "desktop") {
-      findings.push(...(await accessibilityFindings(page, entry, theme)));
-    }
-  }
-  return findings;
+  const findings = await mapInSequence(
+    pages.filter((item) => item.signedIn),
+    async (entry) => {
+      await capture(page, directory, entry);
+      if (viewport.name !== "desktop") {
+        return [];
+      }
+      return await accessibilityFindings(page, entry, theme);
+    },
+  );
+  return findings.flat();
 }
 
-async function reviewTheme(
-  browser: Browser,
-  theme: Theme,
-  pages: readonly PageEntry[],
-  credentials: { readonly email: string; readonly password: string },
-): Promise<Finding[]> {
-  const findings: Finding[] = [];
-  for (const viewport of VIEWPORTS) {
-    findings.push(...(await reviewViewport(browser, theme, viewport, pages, credentials)));
-  }
-  return findings;
+async function reviewTheme(run: ReviewRun, theme: Theme): Promise<Finding[]> {
+  const findings = await mapInSequence(
+    VIEWPORTS,
+    async (viewport) => await reviewViewport(run, theme, viewport),
+  );
+  return findings.flat();
 }
 
 function reportOf(findings: readonly Finding[]): string {
@@ -257,11 +265,10 @@ const browser = await chromium.launch();
 await using _browser = { [Symbol.asyncDispose]: async () => await browser.close() };
 await rm(OUTPUT_DIRECTORY, { recursive: true, force: true });
 const pages = pagesFor(ids.projectId, ids.deploymentId);
-const findings: Finding[] = [];
-for (const theme of THEMES) {
-  // One theme at a time keeps the dev server from compiling the same pages twice at once.
-  findings.push(...(await reviewTheme(browser, theme, pages, credentials)));
-}
+const run: ReviewRun = { browser, pages, credentials };
+// One theme at a time keeps the dev server from compiling the same pages twice at once.
+const findingsByTheme = await mapInSequence(THEMES, async (theme) => await reviewTheme(run, theme));
+const findings = findingsByTheme.flat();
 await writeFile(join(OUTPUT_DIRECTORY, "report.md"), reportOf(findings));
 
 const blocking = findings.filter((finding) => BLOCKING_IMPACTS.has(finding.impact));

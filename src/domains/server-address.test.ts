@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { isPublicIpAddress, resolvePublicAddress } from "./server-address";
+import { isPublicIpAddress, lookupAllWithTimeout, resolvePublicAddress } from "./server-address";
 
 describe("isPublicIpAddress", () => {
   test.each(["8.8.8.8", "1.1.1.1", "172.32.0.1", "100.128.0.1", "2606:4700::1"])(
@@ -67,5 +67,17 @@ describe("resolvePublicAddress", () => {
     const address = await resolvePublicAddress("not a url", resolvesTo("1.1.1.1"));
 
     expect(address).toBeNull();
+  });
+});
+
+describe("lookupAllWithTimeout", () => {
+  test("resolves every address of a name", async () => {
+    const addresses = await lookupAllWithTimeout("localhost");
+
+    expect(addresses.some((address) => address === "127.0.0.1" || address === "::1")).toBe(true);
+  });
+
+  test("returns no address for a name that cannot exist", async () => {
+    expect(await lookupAllWithTimeout("nelcota.invalid")).toEqual([]);
   });
 });

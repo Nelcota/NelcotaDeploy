@@ -1,6 +1,10 @@
 import { describe, expect, test } from "bun:test";
 
-import { bytesToBase64, centerSquareCrop } from "@/web/components/account/avatar-image";
+import {
+  bytesToBase64,
+  centerSquareCrop,
+  photoFileProblem,
+} from "@/web/components/account/avatar-image";
 
 describe("centerSquareCrop", () => {
   test("keeps the middle of a landscape photo", () => {
@@ -57,5 +61,39 @@ describe("bytesToBase64", () => {
     const encoded = bytesToBase64(new Uint8Array());
 
     expect(encoded).toBe("");
+  });
+});
+
+describe("photoFileProblem", () => {
+  test("accepts an image within the size limit", () => {
+    const file = { type: "image/png", size: 1_000 };
+
+    const problem = photoFileProblem(file);
+
+    expect(problem).toBeNull();
+  });
+
+  test("refuses a file that is not an image", () => {
+    const file = { type: "application/pdf", size: 1_000 };
+
+    const problem = photoFileProblem(file);
+
+    expect(problem).toBe("Escolha um arquivo de imagem.");
+  });
+
+  test("accepts an image exactly at 20 MiB", () => {
+    const file = { type: "image/jpeg", size: 20_971_520 };
+
+    const problem = photoFileProblem(file);
+
+    expect(problem).toBeNull();
+  });
+
+  test("refuses an image above 20 MiB", () => {
+    const file = { type: "image/jpeg", size: 20_971_521 };
+
+    const problem = photoFileProblem(file);
+
+    expect(problem).toBe("A imagem passa de 20 MB. Escolha uma foto menor.");
   });
 });

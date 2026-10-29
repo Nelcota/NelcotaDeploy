@@ -1,6 +1,7 @@
 import { type CallToolResult, McpServer } from "@modelcontextprotocol/server";
 
-import { type McpToolContext, tools, toolSchemas } from "./mcp-tools";
+import type { McpToolContext } from "./mcp-authorization";
+import { tools, toolSchemas } from "./mcp-tools";
 
 function result(run: () => unknown): CallToolResult {
   try {
@@ -19,16 +20,7 @@ const mutating = {
   openWorldHint: false,
 };
 
-/**
- * Builds the MCP server exposing platform tools. There is deliberately no tool that runs
- * arbitrary commands on the host.
- *
- * @param context - Database and token used by every tool call.
- * @returns The server, ready to connect to a transport.
- */
-export function createMcpServer(context: McpToolContext): McpServer {
-  const server = new McpServer({ name: "nelcota-deploy", version: "1.0.0" });
-
+function registerProjectTools(server: McpServer, context: McpToolContext): void {
   server.registerTool(
     "list_projects",
     {
@@ -47,6 +39,28 @@ export function createMcpServer(context: McpToolContext): McpServer {
     },
     (input) => result(() => tools.getProject(context, input)),
   );
+  server.registerTool(
+    "get_project_metrics",
+    {
+      description:
+        "Get CPU and memory samples of a project's container and the latest host sample.",
+      inputSchema: toolSchemas.getProjectMetrics,
+      annotations: readOnly,
+    },
+    (input) => result(() => tools.getProjectMetrics(context, input)),
+  );
+  server.registerTool(
+    "get_container_status",
+    {
+      description: "Get the containers of a project as last observed by the worker.",
+      inputSchema: toolSchemas.getContainerStatus,
+      annotations: readOnly,
+    },
+    (input) => result(() => tools.getContainerStatus(context, input)),
+  );
+}
+
+function registerDeploymentTools(server: McpServer, context: McpToolContext): void {
   server.registerTool(
     "list_deployments",
     {
@@ -74,25 +88,9 @@ export function createMcpServer(context: McpToolContext): McpServer {
     },
     (input) => result(() => tools.getDeploymentLogs(context, input)),
   );
-  server.registerTool(
-    "get_project_metrics",
-    {
-      description:
-        "Get CPU and memory samples of a project's container and the latest host sample.",
-      inputSchema: toolSchemas.getProjectMetrics,
-      annotations: readOnly,
-    },
-    (input) => result(() => tools.getProjectMetrics(context, input)),
-  );
-  server.registerTool(
-    "get_container_status",
-    {
-      description: "Get the containers of a project as last observed by the worker.",
-      inputSchema: toolSchemas.getContainerStatus,
-      annotations: readOnly,
-    },
-    (input) => result(() => tools.getContainerStatus(context, input)),
-  );
+}
+
+function registerActionTools(server: McpServer, context: McpToolContext): void {
   server.registerTool(
     "deploy_project",
     {
@@ -112,5 +110,19 @@ export function createMcpServer(context: McpToolContext): McpServer {
     },
     (input) => result(() => tools.restartProject(context, input)),
   );
+}
+
+/**
+ * Builds the MCP server exposing platform tools. There is deliberately no tool that runs
+ * arbitrary commands on the host.
+ *
+ * @param context - Database and token used by every tool call.
+ * @returns The server, ready to connect to a transport.
+ */
+export function createMcpServer(context: McpToolContext): McpServer {
+  const server = new McpServer({ name: "nelcota-deploy", version: "1.0.0" });
+  registerProjectTools(server, context);
+  registerDeploymentTools(server, context);
+  registerActionTools(server, context);
   return server;
 }

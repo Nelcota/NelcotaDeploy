@@ -2,14 +2,21 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useRef } from "react";
 import { z } from "zod";
 
-import { AuditTab, OrganizationTab, ServerTab, TokensTab, UsersTab } from "@/web/admin";
+import { AuditTab, OrganizationTab, ServersTab, ServerTab, TokensTab, UsersTab } from "@/web/admin";
 import { SETTINGS_SECTIONS as SETTINGS_NAVIGATION } from "@/web/components/shell/navigation";
 import { PageHeader } from "@/web/components/shell/page-header";
 import { useCan } from "@/web/components/shell/use-permissions";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/web/components/ui/tabs";
 
 /** Sections of the settings page, also linked from the context sidebar. */
-const SETTINGS_SECTIONS = ["organization", "users", "server", "tokens", "audit"] as const;
+const SETTINGS_SECTIONS = [
+  "organization",
+  "users",
+  "servers",
+  "server",
+  "tokens",
+  "audit",
+] as const;
 
 export const Route = createFileRoute("/_app/settings")({
   validateSearch: z.object({ tab: z.enum(SETTINGS_SECTIONS).optional() }),
@@ -26,7 +33,8 @@ function SettingsTabIcon({ tab }: { readonly tab: (typeof SETTINGS_SECTIONS)[num
 const SETTINGS_TITLES: Record<(typeof SETTINGS_SECTIONS)[number], string> = {
   organization: "Organização",
   users: "Usuários",
-  server: "Servidor",
+  servers: "Servidores",
+  server: "Sistema",
   tokens: "Tokens de API",
   audit: "Auditoria",
 };
@@ -38,6 +46,7 @@ const SECTION_PERMISSIONS: Record<
 > = {
   organization: null,
   users: "user:manage",
+  servers: null,
   server: null,
   tokens: "token:manage",
   audit: "audit:read",
@@ -46,7 +55,8 @@ const SECTION_PERMISSIONS: Record<
 const SETTINGS_DESCRIPTIONS: Record<(typeof SETTINGS_SECTIONS)[number], string> = {
   organization: "Nome da organização e domínio base dos projetos.",
   users: "Quem acessa o painel e o que cada pessoa pode fazer.",
-  server: "Recursos da VPS, estado do worker e configuração do webhook.",
+  servers: "As VPSs onde as aplicações rodam, com uso de recursos e estado da conexão.",
+  server: "Estado do worker e configuração do webhook.",
   tokens: "Tokens para o servidor MCP e outras integrações.",
   audit: "Registro de quem fez o quê, e webhooks recebidos.",
 };
@@ -61,13 +71,7 @@ function SettingsPage() {
   };
   // A link to a section this user cannot open falls back to the first one instead of a blank page.
   const activeTab = canSee(tab) ? tab : "organization";
-  const tabListRef = useRef<HTMLDivElement>(null);
-  // On phones the tabs scroll sideways; keep the open one in view, also when opened by a link.
-  useEffect(() => {
-    tabListRef.current
-      ?.querySelector("[data-state=active]")
-      ?.scrollIntoView({ inline: "nearest", block: "nearest" });
-  }, [activeTab]);
+  const tabListRef = useActiveTabInView(activeTab);
   return (
     <>
       <PageHeader title="Administração" description={SETTINGS_DESCRIPTIONS[activeTab]} />
@@ -91,28 +95,51 @@ function SettingsPage() {
             </TabsTrigger>
           ))}
         </TabsList>
-        <TabsContent value="organization">
-          <OrganizationTab canEdit={can("settings:write")} />
-        </TabsContent>
-        {can("user:manage") ? (
-          <TabsContent value="users">
-            <UsersTab />
-          </TabsContent>
-        ) : null}
-        <TabsContent value="server">
-          <ServerTab />
-        </TabsContent>
-        {can("token:manage") ? (
-          <TabsContent value="tokens">
-            <TokensTab />
-          </TabsContent>
-        ) : null}
-        {can("audit:read") ? (
-          <TabsContent value="audit">
-            <AuditTab />
-          </TabsContent>
-        ) : null}
+        <SettingsTabPanels />
       </Tabs>
+    </>
+  );
+}
+
+/** Keeps the open tab in view when the tab list scrolls sideways on phones, also after a link. */
+function useActiveTabInView(activeTab: string) {
+  const tabListRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    tabListRef.current
+      ?.querySelector("[data-state=active]")
+      ?.scrollIntoView({ inline: "nearest", block: "nearest" });
+  }, [activeTab]);
+  return tabListRef;
+}
+
+function SettingsTabPanels() {
+  const can = useCan();
+  return (
+    <>
+      <TabsContent value="organization">
+        <OrganizationTab canEdit={can("settings:write")} />
+      </TabsContent>
+      {can("user:manage") ? (
+        <TabsContent value="users">
+          <UsersTab />
+        </TabsContent>
+      ) : null}
+      <TabsContent value="servers">
+        <ServersTab canEdit={can("settings:write")} />
+      </TabsContent>
+      <TabsContent value="server">
+        <ServerTab />
+      </TabsContent>
+      {can("token:manage") ? (
+        <TabsContent value="tokens">
+          <TokensTab />
+        </TabsContent>
+      ) : null}
+      {can("audit:read") ? (
+        <TabsContent value="audit">
+          <AuditTab />
+        </TabsContent>
+      ) : null}
     </>
   );
 }

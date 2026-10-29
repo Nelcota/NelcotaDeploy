@@ -2,13 +2,15 @@ import type { Actor } from "@/audit";
 import type { Database } from "@/db";
 import { createProject, type Project } from "@/projects";
 import { SecretBox } from "@/secrets";
-import type { ProjectInput } from "@/shared/project.schema";
+import type { ProjectInput } from "@/shared/schemas/project.schema";
 
 /** Actor used by tests for audited operations. */
 export const TEST_ACTOR: Actor = { type: "system", label: "test" };
 
 /** A valid 32-byte key (base64) for tests only. */
-const TEST_ENCRYPTION_KEY = Buffer.alloc(32, 7).toString("base64");
+const ENCRYPTION_KEY_BYTES = 32;
+const KEY_FILL_BYTE = 7;
+const TEST_ENCRYPTION_KEY = Buffer.alloc(ENCRYPTION_KEY_BYTES, KEY_FILL_BYTE).toString("base64");
 
 /**
  * Creates an approved project through the real service.

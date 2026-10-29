@@ -5,6 +5,7 @@ import {
   containerNameFor,
   imageTagFor,
   managedLabels,
+  proxyContainerArgs,
   runContainerArgs,
   traefikLabels,
 } from "./docker.commands";
@@ -100,15 +101,18 @@ describe("runContainerArgs", () => {
   });
 });
 
-describe("traefikLabels", () => {
-  const base = {
-    projectSlug: "api",
-    internalPort: 8080,
-    network: "nelcota",
-    httpEntrypoint: "web",
-    httpsEntrypoint: "websecure",
-    certResolver: "letsencrypt",
-  };
+const TRAEFIK_BASE = {
+  projectSlug: "api",
+  internalPort: 8080,
+  network: "nelcota",
+  httpEntrypoint: "web",
+  httpsEntrypoint: "websecure",
+  certResolver: "letsencrypt",
+  compress: false,
+};
+
+describe("traefikLabels routing", () => {
+  const base = TRAEFIK_BASE;
 
   test("returns no labels when the project has no domains", () => {
     expect(traefikLabels({ ...base, domains: [] })).toEqual({});
@@ -137,6 +141,75 @@ describe("traefikLabels", () => {
     expect(labels["traefik.http.routers.nelcota-api-0.entrypoints"]).toBe("web");
     expect(labels["traefik.http.routers.nelcota-api-0.tls"]).toBeUndefined();
   });
+});
+
+describe("traefikLabels compression", () => {
+  const base = TRAEFIK_BASE;
+
+  test("compresses responses through its own middleware when asked to", () => {
+    const labels = traefikLabels({
+      ...base,
+      compress: true,
+      domains: [{ hostname: "api.example.com", httpsEnabled: true }],
+    });
+
+    expect(labels["traefik.http.routers.nelcota-api-0.middlewares"]).toBe("nelcota-compress");
+    expect(labels["traefik.http.middlewares.nelcota-compress.compress"]).toBe("true");
+    expect(labels["traefik.http.routers.nelcota-api-0-http.middlewares"]).toBe(
+      "nelcota-https-redirect",
+    );
+  });
+
+  test("leaves compression to the proxy entrypoint when not asked to", () => {
+    const labels = traefikLabels({
+      ...base,
+      domains: [{ hostname: "api.example.com", httpsEnabled: true }],
+    });
+
+    expect(labels["traefik.http.middlewares.nelcota-compress.compress"]).toBeUndefined();
+  });
+});
+
+const PROXY_BASE = {
+  network: "nelcota",
+  httpEntrypoint: "web",
+  httpsEntrypoint: "websecure",
+  certResolver: "letsencrypt",
+  acmeEmail: "ops@example.com",
+};
+
+describe("proxyContainerArgs", () => {
+  test("publishes ports 80 and 443 and routes only platform containers", () => {
+    const args = proxyContainerArgs(PROXY_BASE);
+
+    expect(args).toContain("80:80");
+    expect(args).toContain("443:443");
+    expect(args).toContain("io.nelcota.proxy=true");
+    expect(args).toContain("--providers.docker.constraints=Label(`io.nelcota.managed`,`true`)");
+    expect(args).toContain("--certificatesresolvers.letsencrypt.acme.email=ops@example.com");
+  });
+
+  test("creates the certificate account without an e-mail when none is set", () => {
+    const args = proxyContainerArgs({ ...PROXY_BASE, acmeEmail: null });
+
+    expect(args.some((arg) => arg.includes("acme.email"))).toBe(false);
+  });
+
+  test("throws InvalidDockerArgumentError for an e-mail that could inject a flag", () => {
+    const args = () => proxyContainerArgs({ ...PROXY_BASE, acmeEmail: "a@b.c --api.insecure" });
+
+    expect(args).toThrow(InvalidDockerArgumentError);
+  });
+
+  test("throws InvalidDockerArgumentError for a malformed entrypoint name", () => {
+    const args = () => proxyContainerArgs({ ...PROXY_BASE, httpEntrypoint: "web.address=:81" });
+
+    expect(args).toThrow(InvalidDockerArgumentError);
+  });
+});
+
+describe("traefikLabels validation", () => {
+  const base = TRAEFIK_BASE;
 
   test("throws InvalidDockerArgumentError for a hostname that could break the rule", () => {
     const labels = () =>

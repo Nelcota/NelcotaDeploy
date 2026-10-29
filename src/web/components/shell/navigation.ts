@@ -47,14 +47,15 @@ export const PROJECT_SECTIONS = [
 
 /** Sections of the settings page; each is a `?tab=` value. */
 export const SETTINGS_SECTIONS: readonly {
-  readonly tab: "organization" | "users" | "server" | "tokens" | "audit";
+  readonly tab: "organization" | "users" | "servers" | "server" | "tokens" | "audit";
   readonly label: string;
   readonly icon: LucideIcon;
   readonly permission?: Permission;
 }[] = [
   { tab: "organization", label: "Organização", icon: Building2Icon },
   { tab: "users", label: "Usuários", icon: UsersIcon, permission: "user:manage" },
-  { tab: "server", label: "Servidor", icon: ServerIcon },
+  { tab: "servers", label: "Servidores", icon: ServerIcon },
+  { tab: "server", label: "Sistema", icon: ActivityIcon },
   { tab: "tokens", label: "Tokens de API", icon: KeyRoundIcon, permission: "token:manage" },
   { tab: "audit", label: "Auditoria", icon: ShieldIcon, permission: "audit:read" },
 ];

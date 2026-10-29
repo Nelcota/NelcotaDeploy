@@ -7,7 +7,7 @@
 
 <h3>Nelcota Deploy</h3>
 
-<p>Self-hosted deploy panel for a single Linux VPS with Docker.<br />
+<p>Self-hosted deploy panel for Linux VPSs with Docker: one server or many over SSH.<br />
 Push to GitHub, get a running container with logs, metrics and HTTPS.</p>
 
 <p>
@@ -36,6 +36,7 @@ file. No Kubernetes, no external database, no agents to install.
 | **Metrics** | CPU and memory per container and for the host, with history.                                                         |
 | **Config**  | Variables and secrets (AES-256-GCM), with a warning when saved changes are not live yet.                             |
 | **Domains** | Automatic and custom domains, HTTPS by Let's Encrypt through Traefik.                                                |
+| **Servers** | Add a VPS with one pasted command; builds and apps run there over a persistent SSH connection, moves keep sites up.  |
 | **Tasks**   | Commands that run inside the app container, on demand or on a cron schedule.                                         |
 | **Team**    | Admin, developer and viewer roles, API tokens, an MCP server for AI clients and an audit log.                        |
 

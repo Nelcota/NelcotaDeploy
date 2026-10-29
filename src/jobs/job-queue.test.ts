@@ -77,7 +77,9 @@ describe("job queue", () => {
 
     expect(forceSecondRunning).toThrow(/UNIQUE constraint failed/);
   });
+});
 
+describe("job queue deduplication", () => {
   test("returns the active job instead of creating a duplicate for the same dedupe key", () => {
     const database = openMemoryDatabase();
     const projectId = insertProject(database, "api");
@@ -115,14 +117,20 @@ describe("job queue", () => {
 
     expect(second.created).toBe(true);
   });
+});
 
+describe("job queue failures", () => {
   test("requeues a retryable failure while attempts remain", () => {
     const database = openMemoryDatabase();
     const projectId = insertProject(database, "api");
     enqueueJob(database, { kind: "deploy", projectId, maxAttempts: 2 }, T0);
     const job = claimNextJob(database, "worker-1", T0);
 
-    const outcome = failJob(database, job?.id ?? "", "boom", { retryable: true, now: T0 });
+    const outcome = failJob(database, job?.id ?? "", {
+      errorMessage: "boom",
+      retryable: true,
+      now: T0,
+    });
 
     expect(outcome).toBe("requeued");
   });
@@ -133,11 +141,17 @@ describe("job queue", () => {
     enqueueJob(database, { kind: "deploy", projectId, maxAttempts: 1 }, T0);
     const job = claimNextJob(database, "worker-1", T0);
 
-    const outcome = failJob(database, job?.id ?? "", "boom", { retryable: true, now: T0 });
+    const outcome = failJob(database, job?.id ?? "", {
+      errorMessage: "boom",
+      retryable: true,
+      now: T0,
+    });
 
     expect(outcome).toBe("failed");
   });
+});
 
+describe("job queue lease recovery", () => {
   test("recovers a job whose worker stopped renewing the lease", () => {
     const database = openMemoryDatabase();
     const projectId = insertProject(database, "api");

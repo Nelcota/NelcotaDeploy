@@ -1,12 +1,11 @@
-import { and, asc, count, desc, eq, gte, inArray, isNull, lt, notInArray } from "drizzle-orm";
+import { and, asc, desc, eq, gte, lt, max, ne, notExists, notInArray } from "drizzle-orm";
+import { alias } from "drizzle-orm/sqlite-core";
 
 import { type Database, tables } from "@/db";
 
 /** A worker is considered offline after this long without a heartbeat. */
 const WORKER_OFFLINE_AFTER_IN_MS = 30_000;
 const MAX_SERIES_POINTS = 2000;
-const RECENT_DEPLOYMENTS = 8;
-const RECENT_FAILURE_WINDOW_IN_MS = 86_400_000;
 
 /** One host reading. Any field may be null when it could not be measured. */
 export type HostSample = {
@@ -32,12 +31,12 @@ export type ContainerSnapshot = typeof tables.containerSnapshots.$inferInsert;
  * Stores a host reading.
  *
  * @param database - Database.
- * @param sample - Reading; unavailable values stay null.
+ * @param sample - Reading of the server `serverId`; unavailable values stay null.
  * @param now - Sample time.
  */
 export function recordHostSample(
   database: Database,
-  sample: HostSample,
+  sample: HostSample & { readonly serverId: string },
   now: Date = new Date(),
 ): void {
   database
@@ -50,12 +49,16 @@ export function recordHostSample(
  * Stores container readings in one transaction.
  *
  * @param database - Database.
- * @param samples - One reading per running project container.
+ * @param readings - The `serverId` the containers run on and one of the `samples` per
+ *   running project container.
  * @param now - Sample time.
  */
 export function recordContainerSamples(
   database: Database,
-  samples: readonly ContainerSample[],
+  {
+    serverId,
+    samples,
+  }: { readonly serverId: string; readonly samples: readonly ContainerSample[] },
   now: Date = new Date(),
 ): void {
   if (samples.length === 0) {
@@ -66,6 +69,7 @@ export function recordContainerSamples(
     .values(
       samples.map((sample) => ({
         scope: "container" as const,
+        serverId,
         ...sample,
         diskUsedBytes: null,
         diskTotalBytes: null,
@@ -76,14 +80,17 @@ export function recordContainerSamples(
 }
 
 /**
- * Replaces the stored view of platform containers with what docker reports now.
+ * Replaces the stored view of one server's platform containers with what its Docker
+ * reports now. Other servers' containers are left alone.
  *
  * @param database - Database.
- * @param snapshots - Every platform container that exists.
+ * @param serverId - Server the containers were listed on.
+ * @param snapshots - Every platform container that exists on that server.
  */
 export function replaceContainerSnapshots(
   database: Database,
-  snapshots: readonly ContainerSnapshot[],
+  serverId: string,
+  snapshots: readonly Omit<ContainerSnapshot, "serverId">[],
 ): void {
   database.transaction((transaction) => {
     const knownProjects = new Set(
@@ -94,14 +101,22 @@ export function replaceContainerSnapshots(
         .map((project) => project.id),
     );
     // Containers of deleted projects would violate the foreign key; they are cleaned up separately.
-    const kept = snapshots.filter((snapshot) => knownProjects.has(snapshot.projectId));
+    const kept: ContainerSnapshot[] = [];
+    for (const snapshot of snapshots) {
+      if (knownProjects.has(snapshot.projectId)) {
+        kept.push({ ...snapshot, serverId });
+      }
+    }
     const keptIds = kept.map((snapshot) => snapshot.containerId);
     transaction
       .delete(tables.containerSnapshots)
       .where(
-        keptIds.length === 0
-          ? undefined
-          : notInArray(tables.containerSnapshots.containerId, keptIds),
+        and(
+          eq(tables.containerSnapshots.serverId, serverId),
+          keptIds.length === 0
+            ? undefined
+            : notInArray(tables.containerSnapshots.containerId, keptIds),
+        ),
       )
       .run();
     for (const snapshot of kept) {
@@ -181,18 +196,20 @@ const sampleColumns = {
 };
 
 /**
- * Lists host samples since a time, oldest first.
+ * Lists host samples of a server since a time, oldest first.
  *
  * @param database - Database.
+ * @param serverId - Server id.
  * @param since - Start of the window.
  * @returns Up to 2000 samples.
  */
-export function listHostSamples(database: Database, since: Date) {
+export function listHostSamples(database: Database, serverId: string, since: Date) {
   return database
     .select(sampleColumns)
     .from(tables.metricSamples)
     .where(
       and(
+        eq(tables.metricSamples.serverId, serverId),
         eq(tables.metricSamples.scope, "host"),
         gte(tables.metricSamples.createdAt, since.toISOString()),
       ),
@@ -203,21 +220,57 @@ export function listHostSamples(database: Database, since: Date) {
 }
 
 /**
- * Returns the newest host sample.
+ * Returns the newest host sample of a server.
  *
  * @param database - Database.
+ * @param serverId - Server id.
  * @returns The sample, or null when none was collected.
  */
-export function getLatestHostSample(database: Database) {
+export function getLatestHostSample(database: Database, serverId: string) {
   return (
     database
       .select(sampleColumns)
       .from(tables.metricSamples)
-      .where(eq(tables.metricSamples.scope, "host"))
+      .where(
+        and(eq(tables.metricSamples.serverId, serverId), eq(tables.metricSamples.scope, "host")),
+      )
       .orderBy(desc(tables.metricSamples.createdAt))
       .limit(1)
       .get() ?? null
   );
+}
+
+type HostSampleRow = ReturnType<typeof getLatestHostSample>;
+
+/**
+ * Returns the newest host sample of every server, in one query.
+ *
+ * @param database - Database.
+ * @returns Samples keyed by server id; servers without samples are missing.
+ */
+export function listLatestHostSamples(database: Database): Map<string, NonNullable<HostSampleRow>> {
+  const newest = database
+    .select({
+      serverId: tables.metricSamples.serverId,
+      createdAt: max(tables.metricSamples.createdAt).as("newest_created_at"),
+    })
+    .from(tables.metricSamples)
+    .where(eq(tables.metricSamples.scope, "host"))
+    .groupBy(tables.metricSamples.serverId)
+    .as("newest");
+  const rows = database
+    .select({ serverId: tables.metricSamples.serverId, ...sampleColumns })
+    .from(tables.metricSamples)
+    .innerJoin(
+      newest,
+      and(
+        eq(tables.metricSamples.serverId, newest.serverId),
+        eq(tables.metricSamples.createdAt, newest.createdAt),
+      ),
+    )
+    .where(eq(tables.metricSamples.scope, "host"))
+    .all();
+  return new Map(rows.map(({ serverId, ...sample }) => [serverId, sample]));
 }
 
 /**
@@ -270,6 +323,58 @@ export function listProjectContainers(database: Database, projectId: string) {
     .all();
 }
 
+/** A project whose live container runs on one server but still has containers on another. */
+export type MoveLeftover = {
+  readonly projectId: string;
+  readonly currentServerId: string;
+  readonly otherServerId: string;
+  /** When the live deployment finished, in UTC ISO 8601. */
+  readonly liveSince: string | null;
+};
+
+/**
+ * Lists containers left on a project's previous server after it moved, in one query.
+ *
+ * @remarks
+ * A project is skipped while any of its deployments is still in progress, and a server is
+ * never "previous" while it is where the project is placed: in both cases its container may
+ * be the one being deployed right now.
+ *
+ * @param database - Database.
+ * @returns One entry per project and previous server.
+ */
+export function listMoveLeftovers(database: Database): MoveLeftover[] {
+  const inProgress = alias(tables.deployments, "in_progress");
+  return database
+    .selectDistinct({
+      projectId: tables.containerSnapshots.projectId,
+      currentServerId: tables.deployments.serverId,
+      otherServerId: tables.containerSnapshots.serverId,
+      liveSince: tables.deployments.finishedAt,
+    })
+    .from(tables.containerSnapshots)
+    .innerJoin(tables.projects, eq(tables.projects.id, tables.containerSnapshots.projectId))
+    .innerJoin(tables.deployments, eq(tables.deployments.id, tables.projects.currentDeploymentId))
+    .where(
+      and(
+        ne(tables.containerSnapshots.serverId, tables.deployments.serverId),
+        ne(tables.containerSnapshots.serverId, tables.projects.serverId),
+        notExists(
+          database
+            .select({ id: inProgress.id })
+            .from(inProgress)
+            .where(
+              and(
+                eq(inProgress.projectId, tables.projects.id),
+                notInArray(inProgress.status, ["succeeded", "failed", "cancelled"]),
+              ),
+            ),
+        ),
+      ),
+    )
+    .all();
+}
+
 /**
  * Deletes metric samples older than the retention window.
  *
@@ -281,111 +386,4 @@ export function pruneMetricSamples(database: Database, before: Date): void {
     .delete(tables.metricSamples)
     .where(lt(tables.metricSamples.createdAt, before.toISOString()))
     .run();
-}
-
-/** Overall state shown on the dashboard. */
-type EnvironmentHealth = "healthy" | "degraded" | "unavailable";
-
-/**
- * Builds the dashboard summary in a fixed number of queries.
- *
- * @param database - Database.
- * @param now - Current time.
- * @returns Counts, recent activity, latest host sample and overall health.
- */
-export function getDashboardSummary(database: Database, now: Date = new Date()) {
-  const projects = database
-    .select({ id: tables.projects.id, currentDeploymentId: tables.projects.currentDeploymentId })
-    .from(tables.projects)
-    .where(isNull(tables.projects.deletionRequestedAt))
-    .all();
-  const currentDeploymentIds = projects
-    .map((project) => project.currentDeploymentId)
-    .filter((id): id is string => id != null);
-  const runningCurrent =
-    currentDeploymentIds.length === 0
-      ? []
-      : database
-          .select({
-            deploymentId: tables.containerSnapshots.deploymentId,
-            health: tables.containerSnapshots.health,
-          })
-          .from(tables.containerSnapshots)
-          .where(
-            and(
-              inArray(tables.containerSnapshots.deploymentId, currentDeploymentIds),
-              eq(tables.containerSnapshots.state, "running"),
-            ),
-          )
-          .all();
-  const onlineDeployments = new Set(runningCurrent.map((snapshot) => snapshot.deploymentId));
-  const online = projects.filter(
-    (project) =>
-      project.currentDeploymentId != null && onlineDeployments.has(project.currentDeploymentId),
-  ).length;
-  const deployedProjects = projects.filter((project) => project.currentDeploymentId != null).length;
-  const unhealthy = runningCurrent.filter((snapshot) => snapshot.health === "unhealthy").length;
-
-  const recentColumns = {
-    id: tables.deployments.id,
-    projectId: tables.deployments.projectId,
-    projectName: tables.projects.name,
-    status: tables.deployments.status,
-    trigger: tables.deployments.trigger,
-    commitSha: tables.deployments.commitSha,
-    commitMessage: tables.deployments.commitMessage,
-    errorMessage: tables.deployments.errorMessage,
-    createdAt: tables.deployments.createdAt,
-    startedAt: tables.deployments.startedAt,
-    finishedAt: tables.deployments.finishedAt,
-  };
-  const recentDeployments = database
-    .select(recentColumns)
-    .from(tables.deployments)
-    .innerJoin(tables.projects, eq(tables.projects.id, tables.deployments.projectId))
-    .orderBy(desc(tables.deployments.createdAt))
-    .limit(RECENT_DEPLOYMENTS)
-    .all();
-  const lastDayStart = new Date(now.getTime() - RECENT_FAILURE_WINDOW_IN_MS).toISOString();
-  // The lists above are capped for display; the dashboard figures need the real totals.
-  const lastDayCounts = database
-    .select({ status: tables.deployments.status, total: count() })
-    .from(tables.deployments)
-    .where(gte(tables.deployments.createdAt, lastDayStart))
-    .groupBy(tables.deployments.status)
-    .all();
-  const recentFailures = database
-    .select(recentColumns)
-    .from(tables.deployments)
-    .innerJoin(tables.projects, eq(tables.projects.id, tables.deployments.projectId))
-    .where(
-      and(eq(tables.deployments.status, "failed"), gte(tables.deployments.createdAt, lastDayStart)),
-    )
-    .orderBy(desc(tables.deployments.createdAt))
-    .limit(RECENT_DEPLOYMENTS)
-    .all();
-
-  const worker = getWorkerStatus(database, now);
-  const offline = deployedProjects - online;
-  let health: EnvironmentHealth = "healthy";
-  if (worker == null || worker.online === false || worker.dockerAvailable === false) {
-    health = "unavailable";
-  } else if (offline > 0 || unhealthy > 0) {
-    health = "degraded";
-  }
-
-  return {
-    projectCount: projects.length,
-    onlineCount: online,
-    offlineCount: offline,
-    neverDeployedCount: projects.length - deployedProjects,
-    unhealthyCount: unhealthy,
-    deploymentsLastDayCount: lastDayCounts.reduce((sum, row) => sum + row.total, 0),
-    failuresLastDayCount: lastDayCounts.find((row) => row.status === "failed")?.total ?? 0,
-    recentDeployments,
-    recentFailures,
-    hostSample: getLatestHostSample(database),
-    worker,
-    health,
-  };
 }

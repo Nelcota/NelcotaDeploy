@@ -3,7 +3,7 @@ import { and, asc, eq, ne } from "drizzle-orm";
 import { type Actor, recordAuditEvent } from "@/audit";
 import { type Database, tables } from "@/db";
 import type { Role } from "@/shared/roles";
-import { PASSWORD_MIN_LENGTH } from "@/shared/user.schema";
+import { PASSWORD_MIN_LENGTH } from "@/shared/schemas/user.schema";
 
 import type { Auth } from "./auth";
 import { UserOperationError } from "./auth.errors";
@@ -69,16 +69,15 @@ export function hasAdmin(database: Database): boolean {
  *
  * @param auth - Auth instance whose hasher and adapter store the account.
  * @param database - Database for the duplicate check and audit trail.
- * @param newUser - Account fields; the email is normalized to lowercase.
- * @param actor - Who is creating the account.
+ * @param request - `newUser` fields (the email is normalized to lowercase) and the `actor`
+ *   creating the account.
  * @returns The new user id.
  * @throws {UserOperationError} When the email is taken or the password is too short.
  */
 export async function createUser(
   auth: Auth,
   database: Database,
-  newUser: NewUser,
-  actor: Actor,
+  { newUser, actor }: { readonly newUser: NewUser; readonly actor: Actor },
 ): Promise<string> {
   const email = newUser.email.trim().toLowerCase();
   if (newUser.password.length < PASSWORD_MIN_LENGTH) {
@@ -123,12 +122,13 @@ export async function createUser(
  * Changes a user's role.
  *
  * @param database - Database.
- * @param userId - User to change.
- * @param role - New role.
- * @param actor - Who is changing it.
+ * @param change - User to change, the new role and who is changing it.
  * @throws {UserOperationError} When the change would leave no active admin.
  */
-export function updateUserRole(database: Database, userId: string, role: Role, actor: Actor): void {
+export function updateUserRole(
+  database: Database,
+  { userId, role, actor }: { readonly userId: string; readonly role: Role; readonly actor: Actor },
+): void {
   database.transaction((transaction) => {
     if (role !== "admin") {
       assertAnotherActiveAdminExists(transaction, userId);
@@ -152,16 +152,16 @@ export function updateUserRole(database: Database, userId: string, role: Role, a
  * Enables or disables a user. Disabling also ends the user's sessions.
  *
  * @param database - Database.
- * @param userId - User to change.
- * @param disabled - True to block sign-in.
- * @param actor - Who is changing it.
+ * @param change - User to change, `disabled` true to block sign-in, and who is changing it.
  * @throws {UserOperationError} When disabling would leave no active admin.
  */
 export function setUserDisabled(
   database: Database,
-  userId: string,
-  disabled: boolean,
-  actor: Actor,
+  {
+    userId,
+    disabled,
+    actor,
+  }: { readonly userId: string; readonly disabled: boolean; readonly actor: Actor },
 ): void {
   database.transaction((transaction) => {
     if (disabled) {
@@ -187,17 +187,17 @@ export function setUserDisabled(
  *
  * @param auth - Auth instance whose hasher stores the password.
  * @param database - Database for the audit trail.
- * @param userId - User whose password changes.
- * @param password - New password.
- * @param actor - Who is changing it.
+ * @param change - User whose password changes, the new password and who is changing it.
  * @throws {UserOperationError} When the password is too short.
  */
 export async function resetUserPassword(
   auth: Auth,
   database: Database,
-  userId: string,
-  password: string,
-  actor: Actor,
+  {
+    userId,
+    password,
+    actor,
+  }: { readonly userId: string; readonly password: string; readonly actor: Actor },
 ): Promise<void> {
   if (password.length < PASSWORD_MIN_LENGTH) {
     throw new UserOperationError(`Password must have at least ${PASSWORD_MIN_LENGTH} characters`);
