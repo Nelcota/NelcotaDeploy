@@ -30,6 +30,7 @@ export const projectColumns = {
   internalPortAuto: tables.projects.internalPortAuto,
   healthCheckPath: tables.projects.healthCheckPath,
   autoDeploy: tables.projects.autoDeploy,
+  autoApplyChanges: tables.projects.autoApplyChanges,
   deploymentsApproved: tables.projects.deploymentsApproved,
   currentDeploymentId: tables.projects.currentDeploymentId,
   hasRepositoryToken: sql<boolean>`${tables.projects.encryptedRepositoryToken} IS NOT NULL`.mapWith(
@@ -55,6 +56,7 @@ export type Project = {
   readonly internalPortAuto: boolean;
   readonly healthCheckPath: string | null;
   readonly autoDeploy: boolean;
+  readonly autoApplyChanges: boolean;
   readonly deploymentsApproved: boolean;
   readonly currentDeploymentId: string | null;
   readonly hasRepositoryToken: boolean;

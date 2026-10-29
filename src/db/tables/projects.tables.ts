@@ -30,6 +30,8 @@ export const projects = sqliteTable(
     internalPortAuto: integer("internal_port_auto", { mode: "boolean" }).notNull().default(false),
     healthCheckPath: text("health_check_path"),
     autoDeploy: integer("auto_deploy", { mode: "boolean" }).notNull().default(false),
+    // When set, saving variables or domains recreates the live container with them.
+    autoApplyChanges: integer("auto_apply_changes", { mode: "boolean" }).notNull().default(true),
     deploymentsApproved: integer("deployments_approved", { mode: "boolean" })
       .notNull()
       .default(false),

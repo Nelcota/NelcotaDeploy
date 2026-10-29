@@ -112,6 +112,7 @@ describe("requestDeployment validation", () => {
         internalPort: 80,
         healthCheckPath: null,
         autoDeploy: false,
+        autoApplyChanges: true,
       },
       { actor: TEST_ACTOR, userId: null, isAdmin: false },
     );

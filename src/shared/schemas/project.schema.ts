@@ -170,6 +170,7 @@ export const projectInputSchema = z.object({
   ]),
   healthCheckPath: healthCheckPathSchema,
   autoDeploy: z.boolean(),
+  autoApplyChanges: z.boolean(),
 });
 
 export type ProjectInput = z.infer<typeof projectInputSchema>;

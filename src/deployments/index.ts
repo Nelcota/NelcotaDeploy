@@ -7,6 +7,7 @@ export {
 export { requestDeployment, retryDeployment } from "./deployment-request.service";
 export { summarizeDeployments } from "./deployment-stats.service";
 export { hasPendingRuntimeChanges, runtimeConfigFingerprint } from "./runtime-config";
+export { applyRuntimeChanges } from "./runtime-apply.service";
 export {
   DeploymentNotFoundError,
   NoActiveContainerError,

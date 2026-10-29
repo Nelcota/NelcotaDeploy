@@ -36,6 +36,13 @@
       "when": 1793289746266,
       "tag": "0004_port_auto",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1793290853809,
+      "tag": "0005_auto_apply",
+      "breakpoints": true
     }
   ]
 }

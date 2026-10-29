@@ -1,6 +1,7 @@
 import { notify } from "@/alerts";
 import type { AppConfig } from "@/config";
 import {
+  applyRuntimeChanges,
   getDeployment,
   isContainerAction,
   isTerminalStatus,
@@ -85,6 +86,7 @@ function hostOfDeployment(dependencies: WorkerDependencies, deploymentId: string
 }
 
 const SHORT_SHA_LENGTH = 7;
+const AUTO_APPLY_ACTOR = { type: "system", label: "auto-apply" } as const;
 
 async function notifyFailedDeployment(
   dependencies: WorkerDependencies,
@@ -116,6 +118,18 @@ async function runDeployJob(
     const deployment = getDeployment(dependencies.database, deploymentId);
     await notifyFailedDeployment(dependencies, deployment);
     throw new Error(deployment.errorMessage ?? "Deployment failed");
+  }
+  if (status === "succeeded") {
+    // Variables or domains saved while this deploy ran were left for now; apply them. Only after
+    // a success, so a configuration that keeps failing is never retried in a loop.
+    applyRuntimeChanges(
+      dependencies.database,
+      getDeployment(dependencies.database, deploymentId).projectId,
+      {
+        actor: AUTO_APPLY_ACTOR,
+        triggeredByUserId: null,
+      },
+    );
   }
 }
 

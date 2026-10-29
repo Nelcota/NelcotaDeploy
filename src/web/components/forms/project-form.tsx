@@ -34,6 +34,7 @@ export type ProjectFormValues = {
   readonly internalPort: string;
   readonly healthCheckPath: string;
   readonly autoDeploy: boolean;
+  readonly autoApplyChanges: boolean;
 };
 
 /** Input accepted by the project server functions. */
@@ -70,6 +71,7 @@ export const EMPTY_PROJECT_FORM: ProjectFormValues = {
   internalPort: "",
   healthCheckPath: "",
   autoDeploy: true,
+  autoApplyChanges: true,
 };
 
 /**
@@ -89,6 +91,7 @@ export function projectToFormValues(project: {
   readonly internalPortAuto: boolean;
   readonly healthCheckPath: string | null;
   readonly autoDeploy: boolean;
+  readonly autoApplyChanges: boolean;
 }): ProjectFormValues {
   return {
     name: project.name,
@@ -100,6 +103,7 @@ export function projectToFormValues(project: {
     internalPort: project.internalPortAuto ? "" : String(project.internalPort),
     healthCheckPath: project.healthCheckPath ?? "",
     autoDeploy: project.autoDeploy,
+    autoApplyChanges: project.autoApplyChanges,
   };
 }
 

@@ -55,6 +55,7 @@ const api = createProject(
     internalPort: 3000,
     healthCheckPath: "/health",
     autoDeploy: true,
+    autoApplyChanges: true,
   },
   { actor: ACTOR, userId: null, isAdmin: true },
 );
@@ -70,6 +71,7 @@ createProject(
     internalPort: 8080,
     healthCheckPath: null,
     autoDeploy: false,
+    autoApplyChanges: true,
   },
   { actor: ACTOR, userId: null, isAdmin: false },
 );

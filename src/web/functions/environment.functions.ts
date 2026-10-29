@@ -3,6 +3,7 @@ import { z } from "zod";
 
 import { userActor } from "@/auth";
 import { getDatabase } from "@/db";
+import { applyRuntimeChanges } from "@/deployments";
 import {
   deleteEnvironmentVariable,
   listEnvironmentVariables,
@@ -25,10 +26,15 @@ export const saveEnvironmentVariableFn = createServerFn({ method: "POST" })
   .validator(z.object({ projectId: idSchema, variable: environmentVariableInputSchema }))
   .handler(async ({ data }) => {
     const user = await authorize("environment:write");
-    await saveEnvironmentVariable(getDatabase(), await getSecretBox(), {
+    const database = getDatabase();
+    await saveEnvironmentVariable(database, await getSecretBox(), {
       projectId: data.projectId,
       input: data.variable,
       actor: userActor(user),
+    });
+    applyRuntimeChanges(database, data.projectId, {
+      actor: userActor(user),
+      triggeredByUserId: user.id,
     });
   });
 
@@ -36,9 +42,14 @@ export const deleteEnvironmentVariableFn = createServerFn({ method: "POST" })
   .validator(z.object({ projectId: idSchema, variableId: idSchema }))
   .handler(async ({ data }) => {
     const user = await authorize("environment:write");
-    deleteEnvironmentVariable(getDatabase(), {
+    const database = getDatabase();
+    deleteEnvironmentVariable(database, {
       projectId: data.projectId,
       variableId: data.variableId,
       actor: userActor(user),
+    });
+    applyRuntimeChanges(database, data.projectId, {
+      actor: userActor(user),
+      triggeredByUserId: user.id,
     });
   });

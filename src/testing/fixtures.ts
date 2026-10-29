@@ -35,6 +35,7 @@ export function createTestProject(
       internalPort: 3000,
       healthCheckPath: null,
       autoDeploy: true,
+      autoApplyChanges: true,
       ...overrides,
     },
     { actor: TEST_ACTOR, userId: null, isAdmin: true },
