@@ -5,6 +5,7 @@ import { eq } from "drizzle-orm";
 import { openMemoryDatabase, tables } from "@/db";
 import { DockerCli } from "@/docker";
 import { GitClient } from "@/git";
+import { runProcess } from "@/process";
 import { createTestProject, createTestSecretBox, TEST_ACTOR } from "@/testing";
 
 import { runProjectCleanup } from "../container-action-runner";
@@ -49,12 +50,13 @@ export async function createFixtureEnvironment(network: string, cleanups: Cleanu
     .where(eq(tables.projects.id, project.id))
     .run();
   cleanups.push(async () => {
-    await runProjectCleanup(database, docker, project.id);
+    await runProjectCleanup(database, [docker], project.id);
     await removeDockerNetwork(network);
   });
   const workspaceDir = await createTemporaryDirectory("nelcota-workspaces-", cleanups);
   const dependencies = {
     database,
+    runner: runProcess,
     docker,
     git: new GitClient("git"),
     secretBox,
@@ -69,6 +71,7 @@ export async function createFixtureEnvironment(network: string, cleanups: Cleanu
         httpEntrypoint: "web",
         httpsEntrypoint: "websecure",
         certResolver: "le",
+        compress: false,
       },
     },
   };

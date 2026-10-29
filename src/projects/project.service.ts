@@ -4,6 +4,7 @@ import { type Actor, recordAuditEvent } from "@/audit";
 import { type Database, tables, type Transaction } from "@/db";
 import { enqueueJob } from "@/jobs";
 import type { SecretBox } from "@/secrets";
+import { chooseServerForNewProject } from "@/servers";
 import { parseGitHubRepository, type ProjectInput } from "@/shared/schemas/project.schema";
 
 import { ProjectNotFoundError, ProjectSlugTakenError } from "./project.errors";
@@ -85,13 +86,15 @@ function repositoryFullNameOf(repositoryUrl: string): { fullName: string; cloneU
  *
  * @remarks
  * Building a repository runs its Dockerfile, so projects created by non-admins start
- * unapproved and cannot deploy until an admin approves them.
+ * unapproved and cannot deploy until an admin approves them. The project goes to the server
+ * chosen by {@link chooseServerForNewProject}.
  *
  * @param database - Database.
  * @param input - Validated project fields.
  * @param creator - Creating user and whether they are an admin.
  * @returns The new project.
  * @throws {ProjectSlugTakenError} When the slug is already used.
+ * @throws {NoServerAvailableError} When no server accepts new applications.
  */
 export function createProject(
   database: Database,
@@ -101,6 +104,7 @@ export function createProject(
   const repository = repositoryFullNameOf(input.repositoryUrl);
   const projectId = Bun.randomUUIDv7();
   const now = new Date().toISOString();
+  const serverId = chooseServerForNewProject(database);
   database.transaction((transaction) => {
     if (isSlugTaken(transaction, input.slug)) {
       throw new ProjectSlugTakenError(input.slug);
@@ -112,6 +116,7 @@ export function createProject(
         ...input,
         repositoryUrl: repository.cloneUrl,
         repositoryFullName: repository.fullName,
+        serverId,
         deploymentsApproved: creator.isAdmin,
         createdByUserId: creator.userId,
         createdAt: now,

@@ -11,7 +11,8 @@ const MAX_OUTPUT_LENGTH = 65_536;
 
 type TaskRunnerDependencies = {
   readonly database: Database;
-  readonly docker: DockerEngine;
+  /** Docker of a server; the task runs where the project's current container is. */
+  readonly dockerOf: (serverId: string) => DockerEngine;
   readonly secretBox: SecretBox;
 };
 
@@ -44,8 +45,8 @@ export async function runTaskExecution(
     return "skipped";
   }
   const project = getProject(database, execution.projectId);
-  const containerName = currentContainerName(database, project.currentDeploymentId);
-  if (containerName == null) {
+  const container = currentContainer(database, project.currentDeploymentId);
+  if (container == null) {
     updateTaskExecution(database, executionId, {
       status: "failed",
       errorMessage: "The project has no deployed container to run the task in",
@@ -54,16 +55,19 @@ export async function runTaskExecution(
   }
   const environment = await resolveEnvironment(database, dependencies.secretBox, project.id);
   updateTaskExecution(database, executionId, { status: "running" });
-  return await executeInContainer(dependencies, {
-    execution: { ...execution, id: executionId },
-    containerName,
-    redact: createRedactor(environment.secretValues),
-    signal,
-  });
+  return await executeInContainer(
+    { database, docker: dependencies.dockerOf(container.serverId) },
+    {
+      execution: { ...execution, id: executionId },
+      containerName: container.containerName,
+      redact: createRedactor(environment.secretValues),
+      signal,
+    },
+  );
 }
 
 async function executeInContainer(
-  { database, docker }: TaskRunnerDependencies,
+  { database, docker }: { readonly database: Database; readonly docker: DockerEngine },
   run: {
     readonly execution: QueuedExecution;
     readonly containerName: string;
@@ -99,14 +103,18 @@ async function executeInContainer(
   }
 }
 
-function currentContainerName(
+function currentContainer(
   database: Database,
   currentDeploymentId: string | null,
-): string | null {
+): { readonly containerName: string; readonly serverId: string } | null {
   if (currentDeploymentId == null) {
     return null;
   }
-  return getDeployment(database, currentDeploymentId).containerName;
+  const deployment = getDeployment(database, currentDeploymentId);
+  if (deployment.containerName == null) {
+    return null;
+  }
+  return { containerName: deployment.containerName, serverId: deployment.serverId };
 }
 
 function describeFailure(

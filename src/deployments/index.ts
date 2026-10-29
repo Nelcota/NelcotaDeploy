@@ -23,6 +23,7 @@ export {
   getDeployment,
   isCancellationRequested,
   listDeployments,
+  listDeploymentServerIds,
   listRollbackCandidates,
   transitionDeployment,
 } from "./deployment.service";

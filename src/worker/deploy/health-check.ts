@@ -1,9 +1,9 @@
 import type { ContainerInfo, DockerEngine } from "@/docker";
 
+import { networkProbes, type Probes } from "../probes";
+
 const POLL_INTERVAL_IN_MS = 1000;
 const MS_PER_SECOND = 1000;
-const PROBE_TIMEOUT_IN_MS = 3000;
-const HTTP_SUCCESS_LIMIT = 400;
 /** The container must keep running this long after the first successful probe. */
 const STABILITY_WINDOW_IN_MS = 3000;
 
@@ -14,43 +14,6 @@ class HealthCheckFailedError extends Error {
     this.name = "HealthCheckFailedError";
   }
 }
-
-/** Network probes, replaceable in tests. */
-export type Probes = {
-  readonly http: (url: string) => Promise<boolean>;
-  readonly tcp: (host: string, port: number) => Promise<boolean>;
-};
-
-/** Probes using fetch and Bun.connect. */
-export const networkProbes: Probes = {
-  async http(url) {
-    try {
-      const response = await fetch(url, {
-        redirect: "manual",
-        signal: AbortSignal.timeout(PROBE_TIMEOUT_IN_MS),
-      });
-      await response.body?.cancel();
-      return response.status < HTTP_SUCCESS_LIMIT;
-    } catch {
-      return false;
-    }
-  },
-  async tcp(host, port) {
-    try {
-      const socket = await Promise.race([
-        Bun.connect({ hostname: host, port, socket: { data() {} } }),
-        Bun.sleep(PROBE_TIMEOUT_IN_MS).then(() => null),
-      ]);
-      if (socket == null) {
-        return false;
-      }
-      socket.end();
-      return true;
-    } catch {
-      return false;
-    }
-  },
-};
 
 /** What to check and for how long. */
 export type HealthCheckTarget = {

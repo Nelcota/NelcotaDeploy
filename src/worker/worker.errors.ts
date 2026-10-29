@@ -13,3 +13,11 @@ export class DeploymentCancelledError extends Error {
     this.name = "DeploymentCancelledError";
   }
 }
+
+/** Thrown when a deployment workspace cannot be created or removed on its server. */
+export class WorkspaceCommandError extends Error {
+  constructor(message: string) {
+    super(`Workspace command failed: ${message}`);
+    this.name = "WorkspaceCommandError";
+  }
+}

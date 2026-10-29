@@ -34,15 +34,13 @@ export async function runContainerAction(
 }
 
 /**
- * Removes every container and image of a project, then the project row and its history.
+ * Removes every container and image of a project from one server.
  *
- * @param database - Database.
- * @param docker - Docker access.
- * @param projectId - Project being deleted.
+ * @param docker - Docker of that server.
+ * @param projectId - Project whose resources go.
  * @returns How many containers and images were removed.
  */
-export async function runProjectCleanup(
-  database: Database,
+export async function removeProjectResources(
   docker: DockerEngine,
   projectId: string,
 ): Promise<{ containers: number; images: number }> {
@@ -56,9 +54,32 @@ export async function runProjectCleanup(
   const removals = await Promise.allSettled(
     images.map(async (image) => await docker.removeImage(image)),
   );
-  database.delete(tables.projects).where(eq(tables.projects.id, projectId)).run();
   return {
     containers: containers.length,
     images: removals.filter((result) => result.status === "fulfilled").length,
+  };
+}
+
+/**
+ * Removes every container and image of a project from every server it ever ran on, then the
+ * project row and its history.
+ *
+ * @param database - Database.
+ * @param dockers - Docker of each server the project ran on.
+ * @param projectId - Project being deleted.
+ * @returns How many containers and images were removed in total.
+ */
+export async function runProjectCleanup(
+  database: Database,
+  dockers: readonly DockerEngine[],
+  projectId: string,
+): Promise<{ containers: number; images: number }> {
+  const removed = await Promise.all(
+    dockers.map(async (docker) => await removeProjectResources(docker, projectId)),
+  );
+  database.delete(tables.projects).where(eq(tables.projects.id, projectId)).run();
+  return {
+    containers: removed.reduce((sum, entry) => sum + entry.containers, 0),
+    images: removed.reduce((sum, entry) => sum + entry.images, 0),
   };
 }

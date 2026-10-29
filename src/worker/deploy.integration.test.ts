@@ -93,7 +93,11 @@ async function runHealthTask(environment: FixtureEnvironment): Promise<string> {
     userId: null,
   });
   const signal = new AbortController().signal;
-  const status = await runTaskExecution({ database, docker, secretBox }, executionId, signal);
+  const status = await runTaskExecution(
+    { database, dockerOf: () => docker, secretBox },
+    executionId,
+    signal,
+  );
   expect(status).toBe("succeeded");
   const [execution] = listTaskExecutions(database, { projectId: project.id, taskId, limit: 1 });
   return execution?.output.trim() ?? "";

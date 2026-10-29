@@ -2,7 +2,8 @@ import { describe, expect, test } from "bun:test";
 
 import type { ContainerInfo } from "@/docker";
 
-import { type HealthCheckTarget, type Probes, waitUntilHealthy } from "./health-check";
+import type { Probes } from "../probes";
+import { type HealthCheckTarget, waitUntilHealthy } from "./health-check";
 
 const RUNNING_CONTAINER: ContainerInfo = {
   id: "abc",

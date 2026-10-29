@@ -32,6 +32,7 @@ const deploymentColumns = {
   commitMessage: tables.deployments.commitMessage,
   imageTag: tables.deployments.imageTag,
   containerName: tables.deployments.containerName,
+  serverId: tables.deployments.serverId,
   sourceDeploymentId: tables.deployments.sourceDeploymentId,
   errorMessage: tables.deployments.errorMessage,
   cancelRequestedAt: tables.deployments.cancelRequestedAt,
@@ -61,6 +62,8 @@ export type Deployment = {
   readonly commitMessage: string | null;
   readonly imageTag: string | null;
   readonly containerName: string | null;
+  /** Server the deployment ran on, where its image and container live. */
+  readonly serverId: string;
   readonly sourceDeploymentId: string | null;
   readonly errorMessage: string | null;
   readonly cancelRequestedAt: string | null;
@@ -281,6 +284,23 @@ export function completeDeployment(database: Database, deploymentId: string): vo
       .where(eq(tables.projects.id, deployment.projectId))
       .run();
   });
+}
+
+/**
+ * Lists the servers a project's deployments ran on, which are where its containers and
+ * images can be.
+ *
+ * @param database - Database.
+ * @param projectId - Project id.
+ * @returns Distinct server ids.
+ */
+export function listDeploymentServerIds(database: Database, projectId: string): string[] {
+  return database
+    .selectDistinct({ serverId: tables.deployments.serverId })
+    .from(tables.deployments)
+    .where(eq(tables.deployments.projectId, projectId))
+    .all()
+    .map((row) => row.serverId);
 }
 
 /**

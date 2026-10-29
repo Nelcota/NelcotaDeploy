@@ -2,7 +2,7 @@ import { and, count, desc, eq, gte, inArray, isNull } from "drizzle-orm";
 
 import { type Database, tables } from "@/db";
 
-import { getLatestHostSample, getWorkerStatus } from "./monitoring.service";
+import { getWorkerStatus } from "./monitoring.service";
 
 const RECENT_DEPLOYMENTS = 8;
 const RECENT_FAILURE_WINDOW_IN_MS = 86_400_000;
@@ -17,7 +17,7 @@ type WorkerStatus = ReturnType<typeof getWorkerStatus>;
  *
  * @param database - Database.
  * @param now - Current time.
- * @returns Counts, recent activity, latest host sample and overall health.
+ * @returns Counts, recent activity and overall health.
  */
 export function getDashboardSummary(database: Database, now: Date = new Date()) {
   const projects = countProjectStates(database);
@@ -34,7 +34,6 @@ export function getDashboardSummary(database: Database, now: Date = new Date()) 
     failuresLastDayCount: activity.lastDayCounts.find((row) => row.status === "failed")?.total ?? 0,
     recentDeployments: activity.recentDeployments,
     recentFailures: activity.recentFailures,
-    hostSample: getLatestHostSample(database),
     worker,
     health: environmentHealth(worker, { offline, unhealthy: projects.unhealthy }),
   };

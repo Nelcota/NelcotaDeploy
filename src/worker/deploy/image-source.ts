@@ -30,14 +30,15 @@ async function cloneRevision(
   const { deployment, project, logs, signal } = context;
 
   transitionDeployment(database, deployment.id, { to: "cloning" });
-  const revision = deployment.requestedCommitSha ?? `${deployment.branch} (latest)`;
+  // A redeploy or rollback that has to rebuild uses the exact commit of its source.
+  const commitSha = deployment.requestedCommitSha ?? deployment.commitSha;
+  const revision = commitSha ?? `${deployment.branch} (latest)`;
   logs.system(`Cloning ${project.repositoryFullName} at ${revision}`);
   const commit = await git.checkoutRevision({
     cloneUrl: project.repositoryUrl,
     branch: deployment.branch,
-    commitSha: deployment.requestedCommitSha,
+    commitSha,
     directory: workspace.repositoryPath,
-    scratchDirectory: workspace.path,
     token: repositoryToken,
     timeoutInMs: config.buildTimeoutInSeconds * MILLISECONDS_PER_SECOND,
     signal,
@@ -63,14 +64,19 @@ async function buildImage(
     readonly buildValues: Readonly<Record<string, string>>;
   },
 ): Promise<string> {
-  const { docker, config } = dependencies;
+  const { docker, config, runner } = dependencies;
   const { deployment, project, logs, signal } = context;
 
   const dockerfilePath = await resolveInsideWorkspace(
+    runner,
     workspace.repositoryPath,
     project.dockerfilePath,
   );
-  const contextPath = await resolveInsideWorkspace(workspace.repositoryPath, project.buildContext);
+  const contextPath = await resolveInsideWorkspace(
+    runner,
+    workspace.repositoryPath,
+    project.buildContext,
+  );
   const imageTag = imageTagFor(project.slug, deployment.id);
   logs.system(`Building image ${imageTag} from ${project.dockerfilePath}`);
   await docker.buildImage(
@@ -108,6 +114,7 @@ export async function buildFromSource(
   secrets: BuildSecrets,
 ): Promise<string> {
   await using workspace = await DeploymentWorkspace.create(
+    dependencies.runner,
     dependencies.config.workspaceDir,
     context.project.slug,
   );
@@ -119,23 +126,28 @@ export async function buildFromSource(
 }
 
 /**
- * Reuses the image of the deployment being rolled back to, without rebuilding.
+ * Reuses the image of the deployment being redeployed or rolled back to, without rebuilding.
  *
- * @returns The reused image tag.
- * @throws {Error} When the source deployment has no image or the image was removed.
+ * @returns The reused image tag, or null when this server does not have it (it was pruned,
+ *   or the source deployment ran on another server) and the revision must be built again.
+ * @throws {Error} When the source deployment has no image.
  */
 export async function reuseImage(
   docker: DockerEngine,
   deployment: Deployment,
   logs: DeploymentLogWriter,
-): Promise<string> {
+): Promise<string | null> {
   const imageTag = deployment.imageTag;
   if (imageTag == null) {
     throw new Error("The source deployment has no image to reuse");
   }
-  logs.system(`Reusing image ${imageTag} without rebuilding`);
-  if ((await docker.imageExists(imageTag)) === false) {
+  if (await docker.imageExists(imageTag)) {
+    logs.system(`Reusing image ${imageTag} without rebuilding`);
+    return imageTag;
+  }
+  if (deployment.commitSha == null) {
     throw new Error(`Image ${imageTag} is no longer available on this server`);
   }
-  return imageTag;
+  logs.system(`Image ${imageTag} is not on this server; building commit ${deployment.commitSha}`);
+  return null;
 }

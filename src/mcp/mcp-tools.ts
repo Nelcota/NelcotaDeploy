@@ -124,7 +124,7 @@ export const tools = {
     return {
       project: project.slug,
       containerSamples: listProjectSamples(context.database, project.id, since),
-      latestHostSample: getLatestHostSample(context.database),
+      latestHostSample: getLatestHostSample(context.database, project.serverId),
       note: "Null values mean the metric could not be collected.",
     };
   },

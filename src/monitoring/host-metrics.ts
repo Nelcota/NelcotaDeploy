@@ -1,14 +1,14 @@
-import { readFile, statfs } from "node:fs/promises";
-
 /** Cumulative CPU jiffies from /proc/stat. */
 export type CpuTimes = { readonly idle: number; readonly total: number };
 
-export type MemoryUsage = { readonly totalBytes: number; readonly usedBytes: number };
-export type DiskUsage = { readonly totalBytes: number; readonly usedBytes: number };
+type MemoryUsage = { readonly totalBytes: number; readonly usedBytes: number };
+type DiskUsage = { readonly totalBytes: number; readonly usedBytes: number };
 
 const KIBIBYTE = 1024;
 const IDLE_FIELD_INDEX = 3;
 const IOWAIT_FIELD_INDEX = 4;
+const DF_TOTAL_FIELD_INDEX = 1;
+const DF_AVAILABLE_FIELD_INDEX = 3;
 
 /**
  * Parses the aggregate "cpu" line of /proc/stat.
@@ -73,43 +73,25 @@ export function parseMeminfo(text: string): MemoryUsage | null {
 }
 
 /**
- * Reads cumulative CPU times. Returns null on systems without /proc.
- */
-export async function readCpuTimes(): Promise<CpuTimes | null> {
-  try {
-    return parseProcStat(await readFile("/proc/stat", "utf8"));
-  } catch {
-    return null;
-  }
-}
-
-/**
- * Reads memory usage. Returns null on systems without /proc.
- */
-export async function readMemoryUsage(): Promise<MemoryUsage | null> {
-  try {
-    return parseMeminfo(await readFile("/proc/meminfo", "utf8"));
-  } catch {
-    return null;
-  }
-}
-
-/**
- * Reads usage of the filesystem holding a path.
+ * Parses the output of `df -Pk <path>`: the last line holds the filesystem's 1024-byte block
+ * total and the blocks available to unprivileged users.
  *
- * @param path - Any path on the filesystem to measure, such as the data directory.
- * @returns Disk usage in bytes, or null when it cannot be read.
+ * @param text - Output of df in POSIX format.
+ * @returns Disk usage in bytes, or null when the output has no valid data line.
  */
-export async function readDiskUsage(path: string): Promise<DiskUsage | null> {
-  try {
-    const stats = await statfs(path);
-    const totalBytes = stats.blocks * stats.bsize;
-    const freeBytes = stats.bavail * stats.bsize;
-    if (Number.isFinite(totalBytes) === false || totalBytes <= 0) {
-      return null;
-    }
-    return { totalBytes, usedBytes: Math.max(totalBytes - freeBytes, 0) };
-  } catch {
+export function parseDiskUsage(text: string): DiskUsage | null {
+  const line = text.trim().split("\n").at(-1) ?? "";
+  const fields = line.trim().split(/\s+/);
+  const totalBlocks = Number(fields[DF_TOTAL_FIELD_INDEX]);
+  const availableBlocks = Number(fields[DF_AVAILABLE_FIELD_INDEX]);
+  if (
+    Number.isFinite(totalBlocks) === false ||
+    Number.isFinite(availableBlocks) === false ||
+    totalBlocks <= 0 ||
+    availableBlocks < 0
+  ) {
     return null;
   }
+  const totalBytes = totalBlocks * KIBIBYTE;
+  return { totalBytes, usedBytes: Math.max(totalBytes - availableBlocks * KIBIBYTE, 0) };
 }

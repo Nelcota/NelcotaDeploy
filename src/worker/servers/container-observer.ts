@@ -12,6 +12,8 @@ import {
 import { createRedactor, type SecretBox } from "@/secrets";
 
 const FLUSH_INTERVAL_IN_MS = 1000;
+// Docker emits several events per change (create, start, health…); one refresh covers them.
+const EVENT_REFRESH_DELAY_IN_MS = 300;
 const MAX_PENDING_LINES = 5000;
 const TIMESTAMPED_LINE = /^(\d{4}-\d{2}-\d{2}T\S+Z) ?(.*)$/;
 
@@ -43,10 +45,15 @@ export function parseTimestampedLine(line: string): { createdAt: string; message
 }
 
 /**
- * Keeps the database view of platform containers current: state snapshots, runtime
- * logs (followed with `docker logs -f`) and resource usage.
+ * Keeps the database view of one server's platform containers current: state snapshots,
+ * runtime logs (followed with `docker logs -f`) and resource usage.
+ *
+ * @remarks
+ * Docker events trigger a refresh as soon as a container changes, so the periodic refresh
+ * is only a safety net.
  */
 export class ContainerObserver implements Disposable {
+  readonly #serverId: string;
   readonly #database: Database;
   readonly #docker: DockerEngine;
   readonly #secretBox: SecretBox;
@@ -55,13 +62,17 @@ export class ContainerObserver implements Disposable {
   readonly #flushTimer: ReturnType<typeof setInterval>;
   #pending: RuntimeLogEntry[] = [];
   #running: ContainerInfo[] = [];
+  #events: AbortController | null = null;
+  #eventRefresh: ReturnType<typeof setTimeout> | null = null;
 
   constructor(dependencies: {
+    readonly serverId: string;
     readonly database: Database;
     readonly docker: DockerEngine;
     readonly secretBox: SecretBox;
     readonly logger: Logger;
   }) {
+    this.#serverId = dependencies.serverId;
     this.#database = dependencies.database;
     this.#docker = dependencies.docker;
     this.#secretBox = dependencies.secretBox;
@@ -77,6 +88,7 @@ export class ContainerObserver implements Disposable {
     const observedAt = new Date().toISOString();
     replaceContainerSnapshots(
       this.#database,
+      this.#serverId,
       containers
         .filter((container) => container.labels[LABELS.projectId] != null)
         .map((container) => ({
@@ -128,7 +140,42 @@ export class ContainerObserver implements Disposable {
         });
       }
     }
-    recordContainerSamples(this.#database, samples);
+    recordContainerSamples(this.#database, { serverId: this.#serverId, samples });
+  }
+
+  /**
+   * Follows Docker events of platform containers, refreshing shortly after each change.
+   * Does nothing while already following; the stream restarts on the next call after it
+   * ends (for example when the connection to the server dropped).
+   */
+  followEvents(): void {
+    if (this.#events != null) {
+      return;
+    }
+    const controller = new AbortController();
+    this.#events = controller;
+    this.#docker
+      .followContainerEvents(() => this.#scheduleRefresh(), controller.signal)
+      .catch((error: unknown) =>
+        this.#logger.warn({ err: error, serverId: this.#serverId }, "docker events stopped"),
+      )
+      .finally(() => {
+        if (this.#events === controller) {
+          this.#events = null;
+        }
+      });
+  }
+
+  #scheduleRefresh(): void {
+    if (this.#eventRefresh != null) {
+      return;
+    }
+    this.#eventRefresh = setTimeout(() => {
+      this.#eventRefresh = null;
+      this.refresh().catch((error: unknown) =>
+        this.#logger.warn({ err: error, serverId: this.#serverId }, "container refresh failed"),
+      );
+    }, EVENT_REFRESH_DELAY_IN_MS);
   }
 
   async #follow(container: ContainerInfo): Promise<void> {
@@ -231,6 +278,10 @@ export class ContainerObserver implements Disposable {
 
   [Symbol.dispose](): void {
     clearInterval(this.#flushTimer);
+    if (this.#eventRefresh != null) {
+      clearTimeout(this.#eventRefresh);
+    }
+    this.#events?.abort();
     for (const follower of this.#followers.values()) {
       follower.controller.abort();
     }

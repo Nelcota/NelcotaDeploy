@@ -13,15 +13,18 @@ import { pruneLogs } from "@/logs";
 import { pruneMetricSamples, recordWorkerHeartbeat } from "@/monitoring";
 import { scheduleDueTasks } from "@/tasks";
 
-import { ContainerObserver } from "./container-observer";
-import { HostSampler } from "./host-sampler";
 import { dispatchJob } from "./job-dispatch";
 import { handleRecoveredJobs } from "./job-recovery";
+import { finishProjectMoves } from "./project-moves";
+import { ServerFleet } from "./servers/server-fleet";
 import type { WorkerDependencies } from "./worker.types";
 
 const IDLE_POLL_INTERVAL_IN_MS = 1000;
 const HEARTBEAT_INTERVAL_IN_MS = 10_000;
-const CONTAINER_REFRESH_INTERVAL_IN_MS = 10_000;
+const SERVER_CHECK_INTERVAL_IN_MS = 10_000;
+// Docker events refresh containers as they change; this only catches anything missed.
+const CONTAINER_REFRESH_INTERVAL_IN_MS = 60_000;
+const MOVE_CHECK_INTERVAL_IN_MS = 60_000;
 const SHUTDOWN_GRACE_IN_MS = 90_000;
 const ABORT_GRACE_IN_MS = 10_000;
 const MILLISECONDS_PER_SECOND = 1000;
@@ -29,19 +32,29 @@ const MILLISECONDS_PER_HOUR = 3_600_000;
 
 type PeriodicDuty = () => Promise<void> | void;
 
+// A run that outlasts its interval (an unreachable server waiting for its timeout) is not
+// started again until it finishes.
 function guardDuty(logger: Logger, name: string, duty: PeriodicDuty): () => Promise<void> {
+  let running = false;
   return async () => {
+    if (running) {
+      return;
+    }
+    running = true;
     try {
       await duty();
     } catch (error) {
       logger.error({ err: error, duty: name }, "periodic duty failed");
+    } finally {
+      running = false;
     }
   };
 }
 
 /**
  * Consumes the persistent job queue and runs the periodic duties: heartbeats, lease
- * renewal, crash recovery, container observation, metrics, task scheduling and retention.
+ * renewal, crash recovery, server checks, container observation and metrics on every ready
+ * server, task scheduling and retention.
  */
 export class Worker {
   readonly #dependencies: WorkerDependencies;
@@ -50,14 +63,12 @@ export class Worker {
   readonly #shutdown = new AbortController();
   /** Aborted only when running jobs outlive the shutdown grace period. */
   readonly #abortJobs = new AbortController();
-  readonly #observer: ContainerObserver;
   readonly #timers: (ReturnType<typeof setInterval> | Bun.CronJob)[] = [];
-  readonly #hostSampler = new HostSampler();
-  #dockerVersion: string | null = null;
+  readonly #fleet: ServerFleet;
 
   constructor(dependencies: WorkerDependencies) {
     this.#dependencies = dependencies;
-    this.#observer = new ContainerObserver(dependencies);
+    this.#fleet = new ServerFleet(dependencies);
   }
 
   /**
@@ -67,7 +78,8 @@ export class Worker {
   async run(): Promise<void> {
     const { database, workerId, logger } = this.#dependencies;
     handleRecoveredJobs(database, logger, releaseWorkerJobs(database, workerId));
-    await this.#heartbeat();
+    this.#fleet.check();
+    this.#heartbeat();
     this.#startPeriodicDuties();
     logger.info(
       { workerId, concurrency: this.#dependencies.config.WORKER_CONCURRENCY },
@@ -111,7 +123,7 @@ export class Worker {
     try {
       await dispatchJob(this.#dependencies, job, {
         signal: this.#abortJobs.signal,
-        refreshContainers: async () => await this.#refreshContainers(),
+        refreshContainers: async (serverId) => await this.#fleet.refreshServer(serverId),
       });
       completeJob(database, job.id);
       logger.info({ jobId: job.id, kind: job.kind }, "job finished");
@@ -134,16 +146,23 @@ export class Worker {
       void run();
       this.#timers.push(setInterval(() => void run(), intervalInMs));
     };
-    every(HEARTBEAT_INTERVAL_IN_MS, "heartbeat", async () => await this.#heartbeat());
+    every(HEARTBEAT_INTERVAL_IN_MS, "heartbeat", () => this.#heartbeat());
+    every(SERVER_CHECK_INTERVAL_IN_MS, "servers", () => this.#fleet.check());
     every(
-      CONTAINER_REFRESH_INTERVAL_IN_MS,
-      "containers",
-      async () => await this.#refreshContainers(),
+      MOVE_CHECK_INTERVAL_IN_MS,
+      "moves",
+      async () => await finishProjectMoves(this.#dependencies),
     );
+    const refreshContainers = guard(
+      "containers",
+      async () => await this.#fleet.refreshContainers(),
+    );
+    this.#fleet.onServerReady(() => void refreshContainers());
+    every(CONTAINER_REFRESH_INTERVAL_IN_MS, "containers", refreshContainers);
     every(
       config.METRICS_INTERVAL_SECONDS * MILLISECONDS_PER_SECOND,
       "metrics",
-      async () => await this.#collectMetrics(),
+      async () => await this.#fleet.collectMetrics(),
     );
     this.#timers.push(
       Bun.cron(
@@ -159,32 +178,16 @@ export class Worker {
     );
   }
 
-  async #heartbeat(): Promise<void> {
-    const { database, docker, workerId } = this.#dependencies;
-    this.#dockerVersion = await docker.serverVersion();
+  #heartbeat(): void {
+    const { database, workerId } = this.#dependencies;
     recordWorkerHeartbeat(database, {
       workerId,
       startedAt: this.#startedAt,
-      dockerAvailable: this.#dockerVersion != null,
-      dockerVersion: this.#dockerVersion,
+      dockerAvailable: this.#fleet.applicationsReady(),
+      dockerVersion: this.#fleet.localDockerVersion,
     });
     renewJobLeases(database, { workerId, jobIds: [...this.#active.keys()] });
     handleRecoveredJobs(database, this.#dependencies.logger, recoverExpiredJobs(database));
-  }
-
-  async #refreshContainers(): Promise<void> {
-    if (this.#dockerVersion == null) {
-      return;
-    }
-    await this.#observer.refresh();
-  }
-
-  async #collectMetrics(): Promise<void> {
-    const { database, config } = this.#dependencies;
-    await this.#hostSampler.sample(database, config.WORKSPACE_DIR);
-    if (this.#dockerVersion != null) {
-      await this.#observer.sampleMetrics();
-    }
   }
 
   #scheduleTasks(): void {
@@ -222,7 +225,8 @@ export class Worker {
     await Promise.race([Promise.allSettled(pending), Bun.sleep(SHUTDOWN_GRACE_IN_MS)]);
     this.#abortJobs.abort();
     await Promise.race([Promise.allSettled(pending), Bun.sleep(ABORT_GRACE_IN_MS)]);
-    this.#observer[Symbol.dispose]();
+    this.#fleet[Symbol.dispose]();
+    this.#dependencies.hosts[Symbol.dispose]();
     this.#dependencies.logger.info({ unfinished: this.#active.size }, "worker stopped");
   }
 }

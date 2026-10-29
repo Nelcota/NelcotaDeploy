@@ -188,3 +188,42 @@ describe("retryDeployment", () => {
     ).toThrow(RetryUnavailableError);
   });
 });
+
+describe("requestDeployment servers", () => {
+  test("runs the deployment on the server the project is placed on", () => {
+    const database = openMemoryDatabase();
+    const project = createTestProject(database);
+
+    const { deploymentId } = requestDeployment(database, { projectId: project.id, ...manual });
+
+    expect(getDeployment(database, deploymentId).serverId).toBe(project.serverId);
+  });
+
+  test("queues a new deployment after the project moved instead of reusing the old one", () => {
+    const database = openMemoryDatabase();
+    const project = createTestProject(database);
+    const first = requestDeployment(database, { projectId: project.id, ...manual });
+    database
+      .insert(tables.servers)
+      .values({
+        id: "apps",
+        name: "apps",
+        kind: "ssh",
+        status: "ready",
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      })
+      .run();
+    database
+      .update(tables.projects)
+      .set({ serverId: "apps" })
+      .where(eq(tables.projects.id, project.id))
+      .run();
+
+    const second = requestDeployment(database, { projectId: project.id, ...manual });
+
+    expect(second.created).toBe(true);
+    expect(second.deploymentId).not.toBe(first.deploymentId);
+    expect(getDeployment(database, second.deploymentId).serverId).toBe("apps");
+  });
+});

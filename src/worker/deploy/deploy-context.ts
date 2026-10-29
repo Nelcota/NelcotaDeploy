@@ -2,15 +2,17 @@ import type { Database } from "@/db";
 import type { Deployment } from "@/deployments";
 import type { DockerEngine } from "@/docker";
 import type { GitClient } from "@/git";
+import type { CommandRunner } from "@/process";
 import type { Project } from "@/projects";
 import type { SecretBox } from "@/secrets";
 
+import type { Probes } from "../probes";
 import { DeploymentCancelledError } from "../worker.errors";
 import type { DeploymentLogWriter } from "./deployment-log-writer";
-import type { Probes } from "./health-check";
 
-/** Settings the deploy runner reads from configuration. */
+/** Settings the deploy runner reads from configuration and from the target server. */
 export type DeployRunnerConfig = {
+  /** Workspace directory on the server that builds. */
   readonly workspaceDir: string;
   readonly network: string;
   readonly buildTimeoutInSeconds: number;
@@ -21,12 +23,19 @@ export type DeployRunnerConfig = {
     readonly httpEntrypoint: string;
     readonly httpsEntrypoint: string;
     readonly certResolver: string;
+    /** Adds a compression middleware; off where the proxy compresses on its entrypoint. */
+    readonly compress: boolean;
   };
 };
 
-/** Everything the deploy runner talks to. Tests replace Docker, git and probes. */
+/**
+ * Everything the deploy runner talks to, all on the server the deployment runs on. Tests
+ * replace Docker, git and probes.
+ */
 export type DeployRunnerDependencies = {
   readonly database: Database;
+  /** Runs commands (workspace setup) on that server. */
+  readonly runner: CommandRunner;
   readonly docker: DockerEngine;
   readonly git: Pick<GitClient, "checkoutRevision">;
   readonly secretBox: SecretBox;

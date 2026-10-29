@@ -36,12 +36,15 @@ type PendingDeployment = {
   readonly status: DeploymentStatus;
   readonly requestedCommitSha: string | null;
   readonly sourceDeploymentId: string | null;
+  readonly serverId: string;
 };
 
 /** What makes two deployment requests identical. */
 type RequestIdentity = {
   readonly sourceDeploymentId: string | null;
   readonly requestedCommitSha: string | null;
+  /** A request for another server, after a move, is never a duplicate. */
+  readonly serverId: string;
 };
 
 function findReusableImage(
@@ -81,6 +84,7 @@ function listPendingDeployments(transaction: Transaction, projectId: string): Pe
       status: tables.deployments.status,
       requestedCommitSha: tables.deployments.requestedCommitSha,
       sourceDeploymentId: tables.deployments.sourceDeploymentId,
+      serverId: tables.deployments.serverId,
     })
     .from(tables.deployments)
     .where(
@@ -107,6 +111,7 @@ function findDuplicateRequest(
     (deployment) =>
       deployment.sourceDeploymentId === identity.sourceDeploymentId &&
       deployment.requestedCommitSha === identity.requestedCommitSha &&
+      deployment.serverId === identity.serverId &&
       // A branch-head request may run again once the earlier one started: the head may have moved.
       (deployment.status === "queued" || identity.requestedCommitSha != null),
   );
@@ -163,9 +168,16 @@ function insertQueuedDeployment(
   request: DeploymentRequest,
   {
     branch,
+    serverId,
     source,
     now,
-  }: { readonly branch: string; readonly source: ReusableImage | null; readonly now: Date },
+  }: {
+    readonly branch: string;
+    /** Server the project is placed on now, where this deployment will run. */
+    readonly serverId: string;
+    readonly source: ReusableImage | null;
+    readonly now: Date;
+  },
 ): string {
   const deploymentId = Bun.randomUUIDv7();
   transaction
@@ -180,6 +192,7 @@ function insertQueuedDeployment(
       ...revisionOf(request, { branch, source }),
       requestedCommitSha: request.commitSha ?? null,
       sourceDeploymentId: request.sourceDeploymentId ?? null,
+      serverId,
       createdAt: now.toISOString(),
     })
     .run();
@@ -249,6 +262,7 @@ export function requestDeployment(
     const duplicate = findDuplicateRequest(pending, {
       sourceDeploymentId,
       requestedCommitSha: request.commitSha ?? null,
+      serverId: project.serverId,
     });
     if (duplicate != null) {
       return { deploymentId: duplicate.id, created: false };
@@ -258,6 +272,7 @@ export function requestDeployment(
     cancelSupersededDeployments(transaction, pending, now);
     const deploymentId = insertQueuedDeployment(transaction, request, {
       branch: project.branch,
+      serverId: project.serverId,
       source,
       now,
     });

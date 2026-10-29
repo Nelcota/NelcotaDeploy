@@ -7,6 +7,7 @@ import { type Database, openMemoryDatabase } from "@/db";
 import { getDeployment, requestDeployment } from "@/deployments";
 import { saveEnvironmentVariable } from "@/environments";
 import { listDeploymentLogs } from "@/logs";
+import { runProcess } from "@/process";
 import { createTestProject, createTestSecretBox, FakeDocker, TEST_ACTOR } from "@/testing";
 
 import { runDeployment } from "./deploy-runner";
@@ -38,6 +39,7 @@ async function setup(options: { probes?: typeof alwaysHealthy; healthTimeout?: n
   const project = createTestProject(database);
   const dependencies: DeployRunnerDependencies = {
     database,
+    runner: runProcess,
     docker,
     git: fakeGit,
     secretBox,
@@ -53,6 +55,7 @@ async function setup(options: { probes?: typeof alwaysHealthy; healthTimeout?: n
         httpEntrypoint: "web",
         httpsEntrypoint: "websecure",
         certResolver: "le",
+        compress: false,
       },
     },
   };

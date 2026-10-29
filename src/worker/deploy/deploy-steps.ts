@@ -3,6 +3,7 @@ import { resolveEnvironment } from "@/environments";
 import { readRepositoryToken } from "@/projects";
 import { createRedactor } from "@/secrets";
 
+import { networkProbes } from "../probes";
 import { startContainer } from "./container-start";
 import {
   assertNotCancelled,
@@ -10,7 +11,7 @@ import {
   type DeployRunnerDependencies,
   MILLISECONDS_PER_SECOND,
 } from "./deploy-context";
-import { networkProbes, waitUntilHealthy } from "./health-check";
+import { waitUntilHealthy } from "./health-check";
 import { buildFromSource, reuseImage } from "./image-source";
 
 /**
@@ -34,13 +35,14 @@ export async function deploy(
   context.state.useRedactor(createRedactor([...environment.secretValues, repositoryToken ?? ""]));
   logs.useRedactor(context.state.redact);
 
+  const reused =
+    deployment.sourceDeploymentId == null ? null : await reuseImage(docker, deployment, logs);
   const imageTag =
-    deployment.sourceDeploymentId == null
-      ? await buildFromSource(dependencies, context, {
-          buildValues: environment.build,
-          repositoryToken,
-        })
-      : await reuseImage(docker, deployment, logs);
+    reused ??
+    (await buildFromSource(dependencies, context, {
+      buildValues: environment.build,
+      repositoryToken,
+    }));
   assertNotCancelled(signal);
 
   const containerName = await startContainer(dependencies, context, {

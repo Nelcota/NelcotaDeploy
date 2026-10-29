@@ -32,6 +32,7 @@ function containerLabels(
       httpEntrypoint: config.traefik.httpEntrypoint,
       httpsEntrypoint: config.traefik.httpsEntrypoint,
       certResolver: config.traefik.certResolver,
+      compress: config.traefik.compress,
     }),
   };
 }

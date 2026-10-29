@@ -1,4 +1,4 @@
-import { type OutputStream, type ProcessResult, runProcess } from "@/process";
+import { type CommandRunner, type OutputStream, type ProcessResult, runProcess } from "@/process";
 
 import {
   assertContainerReference,
@@ -35,19 +35,26 @@ type CommandOptions = {
  * Docker Engine access through the docker CLI.
  *
  * @remarks
- * Every argument goes through `Bun.spawn` as a vector. Mutating operations on an existing
- * container or image first verify the platform label, so containers created by anything
- * else on the host are never started, stopped or removed.
+ * Every argument goes to the runner as a vector: `Bun.spawn` on this host, or an SSH channel
+ * to another server, where the CLI talks to that server's own Docker. Mutating operations on
+ * an existing container or image first verify the platform label, so containers created by
+ * anything else on the host are never started, stopped or removed.
  */
 export class DockerCli {
   readonly #binary: string;
+  readonly #runner: CommandRunner;
 
-  constructor(binary: string) {
+  /**
+   * @param binary - Docker CLI executable on the host the runner reaches.
+   * @param runner - Where commands run; this host by default.
+   */
+  constructor(binary: string, runner: CommandRunner = runProcess) {
     this.#binary = binary;
+    this.#runner = runner;
   }
 
   async #run(args: readonly string[], options: CommandOptions = {}): Promise<ProcessResult> {
-    return await runProcess([this.#binary, ...args], {
+    return await this.#runner([this.#binary, ...args], {
       timeoutInMs: options.timeoutInMs ?? QUICK_COMMAND_TIMEOUT_IN_MS,
       ...(options.env == null ? {} : { env: options.env }),
       ...(options.signal == null ? {} : { signal: options.signal }),
@@ -395,6 +402,25 @@ export class DockerCli {
       "stats",
     );
     return parseStatsOutput(output);
+  }
+
+  /**
+   * Calls `onEvent` for each Docker event of a platform container, until `signal` aborts or
+   * the stream ends.
+   */
+  async followContainerEvents(onEvent: () => void, signal: AbortSignal): Promise<void> {
+    await this.#run(
+      [
+        "events",
+        "--filter",
+        "type=container",
+        "--filter",
+        `label=${LABELS.managed}=true`,
+        "--format",
+        "{{.Action}}",
+      ],
+      { timeoutInMs: Number.MAX_SAFE_INTEGER, signal, onLine: () => onEvent() },
+    );
   }
 
   /**
