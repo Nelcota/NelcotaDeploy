@@ -1,6 +1,6 @@
 # Nelcota Deploy
 
-Plataforma interna para gerenciar aplicações e deploys em uma VPS Linux com Docker — no estilo
+Plataforma interna para gerenciar aplicações e deploys em uma ou mais VPSs Linux com Docker — no estilo
 de Railway, Coolify e Dokploy, mas pensada para uma única organização.
 
 Cadastre um repositório GitHub, escolha a branch e o Dockerfile, configure variáveis e domínios
@@ -14,6 +14,7 @@ contêiner, verifica a saúde e só então troca a versão anterior. Logs aparec
 - [Instalação e desenvolvimento local](#instalação-e-desenvolvimento-local)
 - [Banco de dados](#banco-de-dados)
 - [Worker e Docker](#worker-e-docker)
+- [Vários servidores](#vários-servidores)
 - [Primeiro administrador](#primeiro-administrador)
 - [Cadastrar uma aplicação e fazer deploy](#cadastrar-uma-aplicação-e-fazer-deploy)
 - [Webhook do GitHub (deploy automático)](#webhook-do-github-deploy-automático)
@@ -43,7 +44,7 @@ Monólito modular com **dois processos** que compartilham a camada de domínio e
 | Processo         | Responsabilidade                                                                                                                                    | Acesso ao Docker        |
 | ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------- |
 | `web`            | Painel, autenticação (Better Auth), server functions, endpoints HTTP, streaming de logs (SSE), webhook GitHub                                       | **Nenhum**              |
-| `worker`         | Consome a fila: clone, build, start, health check, ações de contêiner, tasks, limpeza; coleta métricas e logs de runtime; agenda tasks (`Bun.cron`) | Socket do Docker        |
+| `worker`         | Consome a fila: clone, build, start, health check, ações de contêiner, tasks, limpeza; coleta métricas e logs de runtime; agenda tasks (`Bun.cron`) | Socket local e SSH      |
 | `mcp` (opcional) | Servidor MCP via stdio para agentes                                                                                                                 | Nenhum (enfileira jobs) |
 
 Operações demoradas nunca rodam na requisição HTTP: o web grava um job no SQLite e o worker o executa.
@@ -68,9 +69,11 @@ src/
   tasks/         tasks, cron, execuções
   monitoring/    métricas do host e dos contêineres, saúde
   webhooks/      webhook do GitHub
-  docker/        adaptador da docker CLI (argumentos estruturados, labels)
-  git/           clone/checkout com GIT_ASKPASS
-  process/       Bun.spawn com timeout, cancelamento e ambiente mínimo
+  docker/        adaptador da docker CLI (argumentos estruturados, labels, proxy dos servidores)
+  git/           clone/checkout com credential helper (token só no ambiente)
+  process/       Bun.spawn com timeout, cancelamento e ambiente mínimo; interface CommandRunner
+  remote/        conexão SSH persistente (ssh2), execução remota e geração da chave do painel
+  servers/       servidores, escolha automática, chave do painel e comando de instalação
   secrets/       SecretBox (AES-256-GCM) e redação de logs
   worker/        engine de deploy, runners, observador de contêineres, loop do worker
   mcp/           servidor MCP (stdio)
@@ -140,6 +143,8 @@ Garantias da engine:
   qualquer coisa, o worker confirma a label: **contêineres que não pertencem à plataforma nunca são tocados**.
 - Nomes e tags determinísticos: imagem `nelcota/<slug>:<id curto do deploy>`, contêiner
   `nelcota-<slug>-<id curto>`.
+- O worker reage a eventos do Docker (`docker events`) para atualizar o estado dos contêineres na hora;
+  a varredura periódica a cada 60 s é só uma rede de segurança.
 - Recuperação: jobs têm lease renovado a cada 10 s. Se o worker morrer, o job volta para a fila
   (deploys têm uma nova tentativa) ou falha com mensagem clara; tasks interrompidas são marcadas como falhas.
 
@@ -157,6 +162,45 @@ incompatíveis ou portas fixas podem ter uma pequena indisponibilidade.
 3. Senão, com "caminho de health check" configurado, faz `GET http://<ip>:<porta><caminho>` (2xx/3xx);
    sem caminho, uma conexão TCP na porta interna basta.
 4. Precisa ficar saudável por 3 s seguidos dentro de `HEALTH_CHECK_TIMEOUT_SECONDS`.
+
+## Vários servidores
+
+O painel pode rodar as aplicações em outras VPSs, deixando a VPS do painel só para ele. Em
+**Administração → Servidores**:
+
+1. Clique em **Adicionar servidor** e informe um nome e o IP da VPS (porta e usuário ficam em
+   "Avançado"; o padrão é `22` e `nelcota`).
+2. O painel mostra um comando. Rode-o **uma vez** na VPS nova, como root ou com sudo. Ele instala o
+   Docker (script oficial `get.docker.com`) e o git, cria o usuário `nelcota` no grupo `docker`,
+   autoriza a chave do painel e libera para esse usuário túneis locais (`AllowTcpForwarding local`) e
+   até 200 canais SSH (`MaxSessions 200`), validando o `sshd_config` com `sshd -t` antes de recarregar.
+3. Pronto. Em até 10 segundos o worker conecta, grava a impressão digital da chave SSH do servidor
+   (as conexões seguintes exigem a mesma chave), cria a rede, sobe o Traefik com Let's Encrypt
+   (portas 80/443) e descobre o IP público.
+
+Quando o primeiro servidor extra fica pronto e a VPS do painel ainda não tem projetos, ela deixa de
+receber projetos novos automaticamente. Projetos novos vão para o servidor pronto com menos projetos;
+o interruptor **Recebe novos projetos** de cada servidor controla isso.
+
+Como funciona, pensando em desempenho:
+
+- Uma conexão SSH persistente por servidor (biblioteca `ssh2`, dentro do worker): cada comando é um
+  canal nela, sem novo handshake. A conexão volta sozinha se cair.
+- O clone e o build rodam **na própria VPS** das aplicações: o código vem direto do GitHub para lá e o
+  cache do BuildKit fica lá. Nada passa pela VPS do painel.
+- O health check usa um túnel pela conexão (`forwardOut`) até o IP do contêiner na rede Docker da VPS.
+- As métricas de CPU, memória e disco chegam em uma única ida e volta por coleta.
+- Comandos e variáveis vão pelo stdin do canal (`sh -s`), nunca pela linha de comando: segredos não
+  aparecem no `ps` da VPS. Timeout e cancelamento matam o processo remoto pelo PID.
+
+**Mover um projeto**: em Ajustes do projeto → Servidor (administradores). O deploy roda no servidor
+novo a partir do mesmo commit. O contêiner antigo continua no ar até todos os domínios do projeto
+apontarem para o IP do servidor novo (ou por até 24 horas), então nada sai do ar enquanto o DNS muda.
+O card de DNS de cada projeto mostra o IP do servidor dele.
+
+A VPS das aplicações não guarda banco, chave de criptografia nem sessões. Em compensação, **a chave SSH
+do painel equivale a root nessa VPS** (o usuário está no grupo `docker`): ela fica criptografada no
+banco, como os outros segredos.
 
 ## Primeiro administrador
 
@@ -296,7 +340,9 @@ Sem Compose: `bun run build`, depois `bun run db:migrate && bun run start` e `bu
 bun run check        # formatação, oxlint, TypeScript, knip e testes
 bun test             # testes unitários e de integração (SQLite em memória, Docker simulado)
 bun run test:docker  # ciclo completo com Docker real: build, health check, start/stop/restart,
-                     # rollback, task e limpeza usando fixtures/hello-app (python:3.13-alpine)
+                     # rollback, task e limpeza usando fixtures/hello-app (python:3.13-alpine); e
+                     # uma VPS simulada (Docker-in-Docker com sshd) que recebe o comando de
+                     # instalação e um deploy completo por SSH, com roteamento pelo Traefik
 bun run build        # build de produção
 ```
 
@@ -337,7 +383,11 @@ Guarde também o `NELCOTA_ENCRYPTION_KEY`: sem ele, secrets e tokens do backup s
 
 ## Limitações conhecidas
 
-- Um único servidor (`server_id = "local"`); o domínio já reserva espaço para múltiplos servidores.
+- O comando de instalação foi feito para Debian e Ubuntu, que têm `useradd` e PAM. O teste automático
+  roda em Alpine com o pacote `shadow`; em outras distribuições pode ser preciso instalar o Docker ou o
+  `useradd` à mão antes.
+- O domínio automático (`<slug>.<domínio base>`) usa um único curinga de DNS: com projetos em
+  servidores diferentes, crie um registro `A` por projeto apontando para o IP do servidor dele.
 - Somente repositórios GitHub via HTTPS; privados exigem token de leitura (deploy keys SSH não implementadas).
 - Um ambiente (`production`) por projeto; a tabela `environments` já existe para mais ambientes.
 - Sem zero downtime garantido (veja [Troca de versão](#troca-de-versão-downtime)); sem portas publicadas
