@@ -40,7 +40,7 @@ export function ServersTab({ canEdit }: { readonly canEdit: boolean }) {
     <Section
       icon={ServerIcon}
       title="Servidores"
-      description="Adicione outra VPS para separar as aplicações do painel. O painel instala o proxy com HTTPS, faz o build e o deploy lá pela própria conexão SSH."
+      description="Adicione uma VPS para rodar as aplicações fora do servidor do painel."
       action={
         canEdit ? (
           <Button onClick={() => setAddOpen(true)}>

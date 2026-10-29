@@ -1,5 +1,5 @@
 import type { UseQueryResult } from "@tanstack/react-query";
-import { InfoIcon, ListChecksIcon, PlusIcon } from "lucide-react";
+import { ListChecksIcon, PlusIcon } from "lucide-react";
 import type { ReactNode } from "react";
 
 import { EmptyState, ErrorState, ListSkeleton } from "@/web/components/layout/states";
@@ -50,16 +50,6 @@ export function TasksQueryState({
   );
 }
 
-export function TasksFootnote({ timeZone }: { readonly timeZone: string }) {
-  return (
-    <p className="flex items-start gap-2 text-xs leading-relaxed text-faint">
-      <InfoIcon aria-hidden className="mt-0.5 size-3.5 shrink-0" />
-      Cada comando roda com docker exec no contêiner atual, como lista de argumentos: não passa por
-      um shell e nunca executa no servidor host. Agendamentos usam o fuso {timeZone}.
-    </p>
-  );
-}
-
 export function TasksHeader({
   count,
   action,
@@ -68,12 +58,5 @@ export function TasksHeader({
   readonly count: number | null;
   readonly action: ReactNode;
 }) {
-  return (
-    <TabHeader
-      title="Tasks"
-      count={count}
-      description="Comandos que rodam dentro do contêiner da aplicação, sob demanda ou agendados."
-      actions={action}
-    />
-  );
+  return <TabHeader title="Tasks" count={count} actions={action} />;
 }

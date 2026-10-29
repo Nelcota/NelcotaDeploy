@@ -185,26 +185,18 @@ function ProjectFormSections({ form }: { readonly form: ProjectFormApi }) {
       <SettingsSection
         icon={GitBranchIcon}
         title="Repositório"
-        description="De onde vem o código. O repositório precisa ter um Dockerfile."
+        description="Precisa ter um Dockerfile."
       >
         <div className="grid gap-x-5 gap-y-5 sm:grid-cols-[minmax(0,1fr)_minmax(0,11rem)]">
           <RepositoryFields form={form} />
         </div>
       </SettingsSection>
-      <SettingsSection
-        icon={IdCardIcon}
-        title="Identificação"
-        description="Preenchidos a partir do repositório; ajuste se quiser."
-      >
+      <SettingsSection icon={IdCardIcon} title="Identificação">
         <div className={PAIR_GRID}>
           <IdentityFields form={form} />
         </div>
       </SettingsSection>
-      <SettingsSection
-        icon={RocketIcon}
-        title="Execução"
-        description="Como a aplicação recebe tráfego e quando sobe uma versão nova."
-      >
+      <SettingsSection icon={RocketIcon} title="Execução">
         <div className="space-y-5">
           <div className="sm:max-w-56">
             <PortField form={form} />
@@ -215,7 +207,7 @@ function ProjectFormSections({ form }: { readonly form: ProjectFormApi }) {
       <SettingsSection
         icon={HammerIcon}
         title="Build"
-        description="Os valores padrão servem para a maioria dos repositórios."
+        description="Opcional. Os padrões servem para a maioria."
       >
         <AdvancedSettings form={form} />
       </SettingsSection>

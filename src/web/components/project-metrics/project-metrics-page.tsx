@@ -27,7 +27,6 @@ export function ProjectMetricsPage({ projectId }: { readonly projectId: string }
     <section aria-label="Métricas" className="space-y-6">
       <TabHeader
         title="Métricas"
-        description="CPU e memória do contêiner atual, coletadas pelo worker."
         actions={
           <SegmentedControl label="Período" options={WINDOWS} value={hours} onChange={setHours} />
         }

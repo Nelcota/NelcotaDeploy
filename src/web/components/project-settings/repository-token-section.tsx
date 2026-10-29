@@ -48,7 +48,7 @@ export function RepositoryTokenSection({
     <SettingsSection
       icon={KeyRoundIcon}
       title="Repositório privado"
-      description="Token de leitura do GitHub (permissão “Contents: read”). Fica criptografado e nunca é exibido."
+      description="Token do GitHub com permissão “Contents: read”."
     >
       <form className="space-y-3" onSubmit={submit}>
         <Tag icon={hasToken ? CircleCheckIcon : CircleDashedIcon}>

@@ -20,11 +20,7 @@ function NewProjectPage() {
 
   return (
     <>
-      <PageHeader
-        eyebrow={<BackToProjectsLink />}
-        title="Novo projeto"
-        description="Cole a URL do repositório: o nome e o identificador são preenchidos sozinhos."
-      />
+      <PageHeader eyebrow={<BackToProjectsLink />} title="Novo projeto" />
       <div className="max-w-5xl space-y-4">
         {isAdmin ? null : <ApprovalNotice />}
         <ProjectForm

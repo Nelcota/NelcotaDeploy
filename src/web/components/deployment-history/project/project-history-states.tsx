@@ -17,7 +17,6 @@ export function ProjectHistoryHeader({
   return (
     <TabHeader
       title="Deploys"
-      description="Histórico de builds e publicações deste projeto."
       actions={
         <SegmentedControl
           label="Filtrar deploys por status"

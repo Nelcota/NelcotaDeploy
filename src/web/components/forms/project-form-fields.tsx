@@ -37,7 +37,7 @@ export function IdentityFields({ form }: { readonly form: ProjectFormApi }) {
           <FormField
             id="project-slug"
             label="Identificador"
-            hint="Gerado a partir do nome. Usado no nome do contêiner e no domínio automático."
+            hint="Usado no nome do contêiner e no domínio automático."
             errors={visibleErrors(form, field.state.meta)}
           >
             {(props) => (

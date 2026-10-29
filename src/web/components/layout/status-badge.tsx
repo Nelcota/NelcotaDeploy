@@ -25,15 +25,7 @@ const TONE_BACKGROUND: Record<Tone, string> = {
   neutral: "bg-well",
 };
 
-const TONE_DOT: Record<Tone, string> = {
-  success: "bg-success",
-  danger: "bg-destructive",
-  progress: "bg-brand animate-pulse",
-  warning: "bg-warning",
-  neutral: "bg-faint",
-};
-
-/** Status as a tinted pill with a dot. The text always names the state, so color is never the only cue. */
+/** Status as a tinted label. The text always names the state, so color is never the only cue. */
 export function StatusPill({
   tone,
   label,
@@ -46,13 +38,12 @@ export function StatusPill({
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-1.5 rounded-md px-2 py-0.5 text-xs font-medium whitespace-nowrap",
+        "inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium whitespace-nowrap",
         TONE_TEXT[tone],
         TONE_BACKGROUND[tone],
         className,
       )}
     >
-      <span aria-hidden className={cn("size-1.5 shrink-0 rounded-full", TONE_DOT[tone])} />
       {label}
     </span>
   );

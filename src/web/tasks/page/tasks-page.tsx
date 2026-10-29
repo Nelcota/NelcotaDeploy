@@ -7,7 +7,7 @@ import { TaskDialog } from "../task-dialog";
 import type { TaskRow } from "../task-row";
 import { TaskHistorySheet } from "./task-history-sheet";
 import { TaskList } from "./task-list";
-import { NewTaskButton, TasksFootnote, TasksHeader, TasksQueryState } from "./tasks-page-states";
+import { NewTaskButton, TasksHeader, TasksQueryState } from "./tasks-page-states";
 import { useTaskActions, useTasksQuery } from "./use-tasks";
 
 /** Tasks of one project: list, run, schedule, edit, delete and run history. */
@@ -41,7 +41,6 @@ export function TasksPage({ projectId }: { readonly projectId: string }) {
         onOpenHistory={setHistoryTaskId}
         onEdit={openDialog}
       />
-      <TasksFootnote timeZone={timeZone} />
       <TaskHistorySheet
         projectId={projectId}
         task={tasks.find((task) => task.id === historyTaskId) ?? null}

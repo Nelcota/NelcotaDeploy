@@ -1,5 +1,3 @@
-import { useQuery } from "@tanstack/react-query";
-import { Link } from "@tanstack/react-router";
 import {
   ActivityIcon,
   CircleAlertIcon,
@@ -8,47 +6,14 @@ import {
   CircleXIcon,
   LoaderCircleIcon,
   RocketIcon,
-  ServerIcon,
 } from "lucide-react";
 
 import { CardTitleRow, StatusTile } from "@/web/components/layout/layout";
-import { describeSystemStatus, SYSTEM_STATUS_DOTS } from "@/web/components/shell/system-status";
+import { useSystemStatus } from "@/web/components/shell/use-shell-queries";
 import { Card } from "@/web/components/ui/card";
-import { cn } from "@/web/components/ui/class-names";
 import { Skeleton } from "@/web/components/ui/skeleton";
-import { getSidebarStatusFn } from "@/web/functions/dashboard.functions";
 
-import { type DashboardSummary, REFRESH_INTERVAL_IN_MS } from "./dashboard";
-
-function useSidebarStatus() {
-  return useQuery({
-    queryKey: ["sidebar-status"],
-    queryFn: () => getSidebarStatusFn(),
-    refetchInterval: REFRESH_INTERVAL_IN_MS,
-  });
-}
-
-function WorkerPill() {
-  const status = useSidebarStatus();
-  // Deploys in progress already have their own tile here, so the pill only tells the health.
-  const { label, tone } = describeSystemStatus({
-    pending: status.isPending,
-    failed: status.isError,
-    worker: status.data?.worker ?? null,
-    activeDeployments: 0,
-  });
-  return (
-    <Link
-      to="/settings"
-      search={{ tab: "server" }}
-      className="flex h-9 items-center gap-2 rounded-full px-3.5 text-sm ring-1 ring-border transition-colors hover:bg-well focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
-    >
-      <ServerIcon aria-hidden className="size-4 text-muted-foreground" />
-      {label}
-      <span aria-hidden className={cn("size-2 rounded-full", SYSTEM_STATUS_DOTS[tone])} />
-    </Link>
-  );
-}
+import type { DashboardSummary } from "./dashboard";
 
 /** Icon color of a tile: its tone when the count is above zero, neutral otherwise. */
 function toneWhenPositive(count: number, className: string): string {
@@ -63,9 +28,8 @@ export function OverviewCard({ data }: { readonly data: DashboardSummary | null 
   return (
     <Card className="gap-4 p-5">
       <div className="flex min-w-0 flex-col gap-4">
-        <CardTitleRow icon={ActivityIcon} title="Status das aplicações" count={data.projectCount}>
-          <WorkerPill />
-        </CardTitleRow>
+        {/* The system health is the status button in the top bar, on every page. */}
+        <CardTitleRow icon={ActivityIcon} title="Status das aplicações" count={data.projectCount} />
         <dl className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
           <ApplicationTiles data={data} />
           <DeploymentTiles data={data} />
@@ -98,7 +62,7 @@ function ApplicationTiles({ data }: { readonly data: DashboardSummary }) {
 }
 
 function DeploymentTiles({ data }: { readonly data: DashboardSummary }) {
-  const status = useSidebarStatus();
+  const status = useSystemStatus();
   const active = status.data?.activeDeployments ?? 0;
   const failures = data.failuresLastDayCount;
   return (

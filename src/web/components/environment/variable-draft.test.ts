@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 
 import type { EnvironmentVariableView } from "@/environments";
 
-import { describeKinds, draftFromVariable } from "./variable-draft";
+import { draftFromVariable } from "./variable-draft";
 
 function variable(overrides: Partial<EnvironmentVariableView>): EnvironmentVariableView {
   return {
@@ -38,21 +38,5 @@ describe("draftFromVariable", () => {
     const draft = draftFromVariable(variable({ kind: "secret", value: null }));
 
     expect(draft.value).toBe("");
-  });
-});
-
-describe("describeKinds", () => {
-  test("counts secrets and plain settings separately", () => {
-    const variables = [variable({ kind: "secret" }), variable({}), variable({})];
-
-    const description = describeKinds(variables);
-
-    expect(description).toBe("1 secret, 2 configurações");
-  });
-
-  test("uses plural forms when there are no variables", () => {
-    const description = describeKinds([]);
-
-    expect(description).toBe("0 secrets, 0 configurações");
   });
 });

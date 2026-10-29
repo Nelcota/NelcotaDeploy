@@ -74,11 +74,7 @@ export function ServerSection({
   const move = useMoveProject(projectId);
   const targetName = servers.find((server) => server.id === target)?.name ?? "";
   return (
-    <SettingsSection
-      icon={ServerIcon}
-      title="Servidor"
-      description="A VPS onde o projeto roda. Ao mover, o novo contêiner sobe e passa no health check antes de o antigo ser removido."
-    >
+    <SettingsSection icon={ServerIcon} title="Servidor">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
         <ServerSelect servers={servers} value={target} onChange={setTarget} />
         <ConfirmDialog

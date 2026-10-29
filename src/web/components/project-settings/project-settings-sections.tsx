@@ -16,11 +16,7 @@ const FIELD_GRID = "grid gap-x-6 gap-y-5 sm:grid-cols-2";
 
 export function GeneralSection({ form }: { readonly form: ProjectFormApi }) {
   return (
-    <SettingsSection
-      icon={IdCardIcon}
-      title="Geral"
-      description="Nome exibido no painel e identificador usado no contêiner e no domínio automático."
-    >
+    <SettingsSection icon={IdCardIcon} title="Geral">
       <div className={FIELD_GRID}>
         <IdentityFields form={form} />
       </div>
@@ -36,11 +32,7 @@ export function RepositorySection({
   readonly savedRepositoryUrl: string;
 }) {
   return (
-    <SettingsSection
-      icon={GitBranchIcon}
-      title="Repositório"
-      description="De onde vem o código e quando um deploy começa sozinho."
-    >
+    <SettingsSection icon={GitBranchIcon} title="Repositório">
       <div className={FIELD_GRID}>
         <RepositoryFields form={form} />
         <AutoDeployField form={form} className="sm:col-span-2" />
@@ -63,11 +55,7 @@ function ReapprovalWarning() {
 
 export function BuildSection({ form }: { readonly form: ProjectFormApi }) {
   return (
-    <SettingsSection
-      icon={HammerIcon}
-      title="Build e execução"
-      description="Como a imagem é construída e como o painel confere que a aplicação subiu."
-    >
+    <SettingsSection icon={HammerIcon} title="Build e execução">
       <div className={FIELD_GRID}>
         <PortField form={form} />
         <HealthCheckField form={form} />

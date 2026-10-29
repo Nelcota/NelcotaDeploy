@@ -4,12 +4,11 @@ import { ErrorState } from "@/web/components/layout/states";
 import { getDashboardFn } from "@/web/functions/dashboard.functions";
 
 import { ActivityCard } from "./activity-card";
-import { ApplicationsCard } from "./applications-card";
 import { REFRESH_INTERVAL_IN_MS } from "./dashboard";
 import { OverviewCard } from "./overview-card";
 import { ServerCard } from "./server/server-card";
 
-/** Home page: application states, server load, recent activity and every application. */
+/** Home page: application states, server load and recent activity. The full list is on Projetos. */
 export function DashboardPage() {
   const dashboard = useQuery({
     queryKey: ["dashboard"],
@@ -28,7 +27,6 @@ export function DashboardPage() {
         <ServerCard />
         <ActivityCard data={data} />
       </div>
-      <ApplicationsCard />
     </>
   );
 }

@@ -38,11 +38,7 @@ export function WebhookDeliveriesSection() {
     queryFn: () => listWebhookDeliveriesFn(),
   });
   return (
-    <Section
-      icon={WebhookIcon}
-      title="Webhooks recebidos"
-      description="Entregas do GitHub com assinatura válida, deduplicadas pelo identificador de entrega."
-    >
+    <Section icon={WebhookIcon} title="Webhooks recebidos">
       {deliveries.isError ? (
         <ErrorState error={deliveries.error} onRetry={() => void deliveries.refetch()} />
       ) : null}

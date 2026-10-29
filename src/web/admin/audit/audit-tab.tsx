@@ -12,11 +12,7 @@ export function AuditTab() {
   const { firstPage, events, loadingMore, exhausted, loadMore } = useAuditEvents();
   return (
     <div className="space-y-10">
-      <Section
-        icon={HistoryIcon}
-        title="Eventos de auditoria"
-        description="Ações administrativas e operacionais. Valores de secrets nunca são registrados."
-      >
+      <Section icon={HistoryIcon} title="Eventos de auditoria">
         {firstPage.isError ? (
           <ErrorState error={firstPage.error} onRetry={() => void firstPage.refetch()} />
         ) : null}

@@ -3,7 +3,6 @@ import type { ReactNode } from "react";
 
 import { NelcotaMark } from "@/web/components/shell/brand-logo";
 import { AccountMenu } from "@/web/components/shell/top-bar/account-menu";
-import { ShortcutPills } from "@/web/components/shell/top-bar/shortcut-pills";
 import {
   RefreshButton,
   SearchButton,
@@ -12,8 +11,8 @@ import {
 import type { SessionUser } from "@/web/functions/session.functions";
 
 /**
- * Bar above the page: navigation on narrow screens, shortcuts, search, refresh, system status
- * and the account menu.
+ * Bar above the page: navigation on narrow screens, search, refresh, system status and the
+ * account menu.
  *
  * @param props - `navigation` is the menu button shown on narrow screens.
  */
@@ -36,7 +35,6 @@ export function TopBar({
       >
         <NelcotaMark aria-hidden className="h-7 w-auto" />
       </Link>
-      <ShortcutPills />
       <div className="ml-auto flex min-w-0 flex-1 items-center justify-end gap-2.5">
         <SearchButton onSearch={onSearch} />
         <RefreshButton />
