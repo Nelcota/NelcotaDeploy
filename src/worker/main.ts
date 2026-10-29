@@ -1,29 +1,15 @@
 import { mkdir } from "node:fs/promises";
 import { hostname } from "node:os";
 
+import { offsiteStoreFromConfig } from "@/backups";
 import { getConfig } from "@/config";
-import { type Database, getDatabase } from "@/db";
+import { getDatabase } from "@/db";
 import { createLogger } from "@/logging";
-import { generateSshKeyPair } from "@/remote";
-import { getSecretBox, type SecretBox } from "@/secrets";
-import { readPanelPrivateKey, storePanelKeyPair } from "@/servers";
+import { getSecretBox } from "@/secrets";
+import { ensurePanelPrivateKey } from "@/servers";
 
 import { ServerHosts } from "./servers/server-hosts";
 import { Worker } from "./worker";
-
-/** Returns the panel's SSH private key, generating the pair on the very first start. */
-async function ensurePanelPrivateKey(database: Database, secretBox: SecretBox): Promise<string> {
-  const existing = await readPanelPrivateKey(database, secretBox);
-  if (existing != null) {
-    return existing;
-  }
-  await storePanelKeyPair(database, secretBox, generateSshKeyPair());
-  const stored = await readPanelPrivateKey(database, secretBox);
-  if (stored == null) {
-    throw new Error("The panel SSH key pair was not stored");
-  }
-  return stored;
-}
 
 const logger = createLogger("worker");
 const config = getConfig();
@@ -38,6 +24,7 @@ const worker = new Worker({
   secretBox,
   config,
   logger,
+  offsiteStore: offsiteStoreFromConfig(config),
 });
 
 for (const signal of ["SIGINT", "SIGTERM"] as const) {

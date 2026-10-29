@@ -5,7 +5,7 @@ import { runProcess } from "@/process";
 import { RouteFiles } from "@/routing";
 
 import { networkProbes } from "../probes";
-import type { ServerHost } from "../worker.types";
+import type { ServerHost } from "../server-host";
 
 function localRoutes(config: AppConfig): RouteFiles | null {
   if (config.TRAEFIK_ENABLED === false) {

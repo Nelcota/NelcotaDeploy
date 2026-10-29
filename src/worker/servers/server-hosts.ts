@@ -13,7 +13,7 @@ import {
   type Server,
 } from "@/servers";
 
-import type { ServerHost } from "../worker.types";
+import type { ServerHost } from "../server-host";
 import { createLocalHost } from "./local-host";
 import { tunnelProbes } from "./tunnel-probes";
 

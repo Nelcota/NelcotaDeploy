@@ -1,4 +1,4 @@
-export { backupDatabase, listBackups } from "./backup";
+export { backupDatabase, listBackups, selectExpiredBackups } from "./backup";
 export {
   type Database,
   getDatabase,

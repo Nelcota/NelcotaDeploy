@@ -52,3 +52,35 @@ describe("parseConfig", () => {
     expect(parseConfig({ DATABASE_PATH: ":memory:" }).DATABASE_PATH).toBe(":memory:");
   });
 });
+
+describe("parseConfig off-site backups", () => {
+  const S3 = {
+    BACKUP_S3_BUCKET: "backups",
+    BACKUP_S3_ACCESS_KEY_ID: "key",
+    BACKUP_S3_SECRET_ACCESS_KEY: "secret",
+  };
+
+  test("accepts a bucket with its credentials and keeps 30 copies by default", () => {
+    const config = parseConfig(S3);
+
+    expect(config.BACKUP_S3_KEPT).toBe(30);
+    expect(config.BACKUP_S3_PREFIX).toBe("nelcota/");
+  });
+
+  test("throws InvalidConfigError for a bucket without credentials", () => {
+    expect(() => parseConfig({ BACKUP_S3_BUCKET: "backups" })).toThrow(InvalidConfigError);
+  });
+
+  test.each([["no-slash"], ["/root/"], ["a/../b/"]])(
+    "throws InvalidConfigError for the prefix %p",
+    (prefix) => {
+      expect(() => parseConfig({ ...S3, BACKUP_S3_PREFIX: prefix })).toThrow(InvalidConfigError);
+    },
+  );
+
+  test("throws InvalidConfigError for an endpoint that is not HTTP", () => {
+    expect(() => parseConfig({ ...S3, BACKUP_S3_ENDPOINT: "ftp://example.com" })).toThrow(
+      InvalidConfigError,
+    );
+  });
+});

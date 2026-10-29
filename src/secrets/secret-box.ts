@@ -6,6 +6,8 @@ const FORMAT_VERSION = "v1";
 const KEY_BYTES = 32;
 const IV_BYTES = 12;
 const encoder = new TextEncoder();
+/** Marks binary payloads of {@link SecretBox.encryptBytes}, so other files are never mistaken for one. */
+const BYTES_MAGIC = encoder.encode("NLC1");
 const decoder = new TextDecoder();
 
 /**
@@ -93,6 +95,69 @@ export class SecretBox {
     } catch (error) {
       throw new SecretDecryptionError(
         `Encrypted value failed authentication: ${error instanceof Error ? error.name : "unknown"}`,
+      );
+    }
+  }
+
+  /**
+   * Encrypts a file's contents, such as a database backup.
+   *
+   * @remarks
+   * Output: the bytes `NLC1`, a 12-byte IV, then the ciphertext with its tag.
+   *
+   * @param plaintext - Bytes to encrypt.
+   * @param associatedData - Context the ciphertext is bound to, such as the file name.
+   * @returns The encrypted bytes.
+   */
+  async encryptBytes(
+    plaintext: Uint8Array<ArrayBuffer>,
+    associatedData: string,
+  ): Promise<Uint8Array<ArrayBuffer>> {
+    const iv = crypto.getRandomValues(new Uint8Array(IV_BYTES));
+    const ciphertext = await crypto.subtle.encrypt(
+      { name: "AES-GCM", iv, additionalData: encoder.encode(associatedData) },
+      this.#key,
+      plaintext,
+    );
+    const output = new Uint8Array(BYTES_MAGIC.byteLength + IV_BYTES + ciphertext.byteLength);
+    output.set(BYTES_MAGIC, 0);
+    output.set(iv, BYTES_MAGIC.byteLength);
+    output.set(new Uint8Array(ciphertext), BYTES_MAGIC.byteLength + IV_BYTES);
+    return output;
+  }
+
+  /**
+   * Decrypts bytes produced by {@link SecretBox.encryptBytes}.
+   *
+   * @param payload - Encrypted bytes.
+   * @param associatedData - The same context used to encrypt.
+   * @returns The original bytes.
+   * @throws {SecretDecryptionError} When the payload is not in this format, was tampered with,
+   *   or the key or associated data differ.
+   */
+  async decryptBytes(
+    payload: Uint8Array<ArrayBuffer>,
+    associatedData: string,
+  ): Promise<Uint8Array<ArrayBuffer>> {
+    const headerLength = BYTES_MAGIC.byteLength + IV_BYTES;
+    const magic = payload.subarray(0, BYTES_MAGIC.byteLength);
+    if (payload.byteLength <= headerLength || Buffer.compare(magic, BYTES_MAGIC) !== 0) {
+      throw new SecretDecryptionError("Encrypted file has an unknown format");
+    }
+    try {
+      const plaintext = await crypto.subtle.decrypt(
+        {
+          name: "AES-GCM",
+          iv: payload.subarray(BYTES_MAGIC.byteLength, headerLength),
+          additionalData: encoder.encode(associatedData),
+        },
+        this.#key,
+        payload.subarray(headerLength),
+      );
+      return new Uint8Array(plaintext);
+    } catch (error) {
+      throw new SecretDecryptionError(
+        `Encrypted file failed authentication: ${error instanceof Error ? error.name : "unknown"}`,
       );
     }
   }

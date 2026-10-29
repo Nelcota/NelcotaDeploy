@@ -13,8 +13,9 @@ import type { Job } from "@/jobs";
 import { runContainerAction, runProjectCleanup } from "./container-action-runner";
 import type { DeployRunnerConfig, DeployRunnerDependencies } from "./deploy/deploy-context";
 import { runDeployment } from "./deploy/deploy-runner";
+import type { ServerHost } from "./server-host";
 import { runTaskExecution } from "./task-runner";
-import type { ServerHost, WorkerDependencies } from "./worker.types";
+import type { WorkerDependencies } from "./worker.types";
 
 // Traefik applies provider changes after a 2 s throttle; a little more lets it switch to the
 // new container before the old one stops.

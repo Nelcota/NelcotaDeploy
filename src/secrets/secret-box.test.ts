@@ -73,6 +73,34 @@ describe("SecretBox rejections", () => {
   });
 });
 
+describe("SecretBox bytes", () => {
+  test("decrypts the bytes it encrypted with the same context", async () => {
+    const box = await SecretBox.fromBase64Key(KEY);
+    const original = Uint8Array.from([0, 1, 2, 250, 255]);
+
+    const encrypted = await box.encryptBytes(original, "nelcota-1.db");
+
+    expect(await box.decryptBytes(encrypted, "nelcota-1.db")).toEqual(original);
+  });
+
+  test("throws SecretDecryptionError when the file name differs", async () => {
+    const box = await SecretBox.fromBase64Key(KEY);
+    const encrypted = await box.encryptBytes(Uint8Array.from([1, 2, 3]), "nelcota-1.db");
+
+    const result = box.decryptBytes(encrypted, "nelcota-2.db");
+
+    expect(await result.catch((error: unknown) => error)).toBeInstanceOf(SecretDecryptionError);
+  });
+
+  test("throws SecretDecryptionError for a file that was not encrypted by it", async () => {
+    const box = await SecretBox.fromBase64Key(KEY);
+
+    const result = box.decryptBytes(new TextEncoder().encode("SQLite format 3"), "x");
+
+    expect(await result.catch((error: unknown) => error)).toBeInstanceOf(SecretDecryptionError);
+  });
+});
+
 describe("createRedactor", () => {
   test("replaces every known secret, longest first", () => {
     const redact = createRedactor(["abcd", "abcdef"]);
