@@ -1,8 +1,6 @@
-import { lookup } from "node:dns/promises";
-
 import type { AppConfig } from "@/config";
 import { ensureProxy } from "@/docker";
-import { isPublicIpAddress } from "@/domains";
+import { isPublicIpAddress, lookupWithTimeout } from "@/domains";
 import type { Server, ServerCheck } from "@/servers";
 
 import { REMOTE_DOCKER_BINARY, type ServerHost } from "./server-hosts";
@@ -22,7 +20,7 @@ export function firstPublicAddress(output: string): string | null {
 
 async function lookupPublicAddress(hostname: string): Promise<string | null> {
   try {
-    const resolved = await lookup(hostname);
+    const resolved = await lookupWithTimeout(hostname);
     return isPublicIpAddress(resolved.address) ? resolved.address : null;
   } catch {
     return null;

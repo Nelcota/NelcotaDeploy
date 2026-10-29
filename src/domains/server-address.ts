@@ -1,6 +1,9 @@
+import { lookup } from "node:dns/promises";
 import { isIP } from "node:net";
 
 import ipaddr from "ipaddr.js";
+
+const LOOKUP_TIMEOUT_IN_MS = 3000;
 
 /** Resolves a hostname to one address, like `dns.promises.lookup`. */
 type Lookup = (hostname: string) => Promise<{ readonly address: string }>;
@@ -44,4 +47,42 @@ export async function resolvePublicAddress(
     return null;
   }
   return resolved.address;
+}
+
+async function withLookupTimeout<T>(hostname: string, resolving: Promise<T>): Promise<T> {
+  const { promise, reject } = Promise.withResolvers<never>();
+  const timer = setTimeout(
+    () => reject(new Error(`DNS lookup of ${hostname} timed out`)),
+    LOOKUP_TIMEOUT_IN_MS,
+  );
+  using _timer = { [Symbol.dispose]: () => clearTimeout(timer) };
+  return await Promise.race([resolving, promise]);
+}
+
+/**
+ * Resolves a hostname to one address, giving up after a few seconds so a slow DNS never
+ * hangs a page or a worker duty.
+ *
+ * @param hostname - Name to resolve.
+ * @returns The first address.
+ * @throws {Error} When the name does not resolve or the lookup times out.
+ */
+export async function lookupWithTimeout(hostname: string): Promise<{ readonly address: string }> {
+  return await withLookupTimeout(hostname, lookup(hostname));
+}
+
+/**
+ * Resolves every address of a hostname, giving up after a few seconds.
+ *
+ * @param hostname - Name to resolve.
+ * @returns Its addresses; empty when it does not resolve or the lookup times out.
+ */
+export async function lookupAllWithTimeout(hostname: string): Promise<string[]> {
+  try {
+    const resolved = await withLookupTimeout(hostname, lookup(hostname, { all: true }));
+    return resolved.map((entry) => entry.address);
+  } catch {
+    // An unknown name and a timeout mean the same here: it does not point anywhere yet.
+    return [];
+  }
 }

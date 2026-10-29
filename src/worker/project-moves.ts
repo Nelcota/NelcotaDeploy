@@ -1,6 +1,9 @@
-import { lookup } from "node:dns/promises";
-
-import { listProjectDomains, resolvePublicAddress } from "@/domains";
+import {
+  listProjectDomains,
+  lookupAllWithTimeout,
+  lookupWithTimeout,
+  resolvePublicAddress,
+} from "@/domains";
 import { listMoveLeftovers, type MoveLeftover } from "@/monitoring";
 import { getServer, listServers } from "@/servers";
 import { getSystemSettings } from "@/settings";
@@ -38,12 +41,7 @@ export function canFinishMove(input: {
 }
 
 async function resolvesTo(hostname: string, address: string): Promise<boolean> {
-  try {
-    const addresses = await lookup(hostname, { all: true });
-    return addresses.some((resolved) => resolved.address === address);
-  } catch {
-    return false;
-  }
+  return (await lookupAllWithTimeout(hostname)).includes(address);
 }
 
 async function addressOf(
@@ -54,7 +52,7 @@ async function addressOf(
   if (server.kind === "ssh") {
     return server.publicAddress;
   }
-  return await resolvePublicAddress(dependencies.config.PUBLIC_URL, lookup);
+  return await resolvePublicAddress(dependencies.config.PUBLIC_URL, lookupWithTimeout);
 }
 
 /** Tells whether every domain of the project already resolves to its new server. */
@@ -75,6 +73,13 @@ async function domainsMoved(
     domains.map(async (domain) => await resolvesTo(domain.hostname, address)),
   );
   return results.every(Boolean);
+}
+
+function isStillLeftover(dependencies: WorkerDependencies, leftover: MoveLeftover): boolean {
+  return listMoveLeftovers(dependencies.database).some(
+    (current) =>
+      current.projectId === leftover.projectId && current.otherServerId === leftover.otherServerId,
+  );
 }
 
 /**
@@ -105,6 +110,10 @@ export async function finishProjectMoves(
       }
       const moved = await domainsMoved(dependencies, leftover);
       if (canFinishMove({ domainsMoved: moved, liveSince: leftover.liveSince, now }) === false) {
+        return;
+      }
+      // The DNS lookups took a while: the project may have moved back or started a deployment.
+      if (isStillLeftover(dependencies, leftover) === false) {
         return;
       }
       const removed = await removeProjectResources(
