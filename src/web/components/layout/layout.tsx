@@ -58,6 +58,30 @@ const STAT_TONES = {
   danger: "text-destructive",
 } as const;
 
+function StatTile({ stat }: { readonly stat: Stat }) {
+  return (
+    <div className="flex min-h-28 min-w-0 flex-col-reverse justify-between gap-4 rounded-xl bg-well p-4 ring-1 ring-border/70">
+      <dt className="flex min-w-0 items-center gap-2 text-sm leading-tight text-muted-foreground">
+        {stat.icon == null ? null : <stat.icon aria-hidden className="size-4 shrink-0" />}
+        <span>{stat.label}</span>
+      </dt>
+      <dd className="min-w-0 space-y-1">
+        <span
+          className={cn(
+            "block truncate text-2xl leading-none font-semibold tracking-tight tabular-nums",
+            STAT_TONES[stat.tone ?? "default"],
+          )}
+        >
+          {stat.value}
+        </span>
+        {stat.detail == null ? null : (
+          <span className="block truncate text-xs text-faint">{stat.detail}</span>
+        )}
+      </dd>
+    </div>
+  );
+}
+
 /** Key figures as tiles on one card: the value on top, the label (and detail) at the bottom. */
 export function StatRow({
   stats,
@@ -90,28 +114,7 @@ export function StatRow({
         style={{ "--stats": stats.length } as React.CSSProperties}
       >
         {stats.map((stat) => (
-          <div
-            key={stat.label}
-            className="flex min-h-28 min-w-0 flex-col-reverse justify-between gap-4 rounded-xl bg-well p-4 ring-1 ring-border/70"
-          >
-            <dt className="flex min-w-0 items-center gap-2 text-sm leading-tight text-muted-foreground">
-              {stat.icon == null ? null : <stat.icon aria-hidden className="size-4 shrink-0" />}
-              <span>{stat.label}</span>
-            </dt>
-            <dd className="min-w-0 space-y-1">
-              <span
-                className={cn(
-                  "block truncate text-2xl leading-none font-semibold tracking-tight tabular-nums",
-                  STAT_TONES[stat.tone ?? "default"],
-                )}
-              >
-                {stat.value}
-              </span>
-              {stat.detail == null ? null : (
-                <span className="block truncate text-xs text-faint">{stat.detail}</span>
-              )}
-            </dd>
-          </div>
+          <StatTile key={stat.label} stat={stat} />
         ))}
       </dl>
     </div>
@@ -195,6 +198,24 @@ const TILE_TONES = {
   danger: "bg-destructive/20 ring-destructive/30",
 } as const;
 
+function TileValue({ value, detail }: { readonly value: ReactNode; readonly detail?: ReactNode }) {
+  return (
+    <dd className="min-w-0 space-y-1">
+      <span className="block truncate text-xl leading-none font-semibold tabular-nums sm:text-2xl">
+        {value}
+      </span>
+      {detail == null ? null : (
+        <span
+          className="block truncate text-xs text-faint"
+          title={typeof detail === "string" ? detail : undefined}
+        >
+          {detail}
+        </span>
+      )}
+    </dd>
+  );
+}
+
 /**
  * One figure in a grid of tiles: the value on top, an icon and label at the bottom. Must be
  * placed inside a `dl`.
@@ -225,19 +246,7 @@ export function StatusTile({
         className,
       )}
     >
-      <dd className="min-w-0 space-y-1">
-        <span className="block truncate text-xl leading-none font-semibold tabular-nums sm:text-2xl">
-          {value}
-        </span>
-        {detail == null ? null : (
-          <span
-            className="block truncate text-xs text-faint"
-            title={typeof detail === "string" ? detail : undefined}
-          >
-            {detail}
-          </span>
-        )}
-      </dd>
+      <TileValue value={value} detail={detail} />
       <dt
         className={cn(
           "flex min-w-0 items-center gap-2 text-sm leading-tight",

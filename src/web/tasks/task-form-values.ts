@@ -21,12 +21,21 @@ export type TaskFormValues = {
  * @returns Values for the form and the update server function.
  */
 export function toTaskFormValues(task: Task | null, enabled?: boolean): TaskFormValues {
+  if (task == null) {
+    return {
+      name: "",
+      commandLine: "",
+      schedule: "",
+      enabled: enabled ?? true,
+      timeoutInSeconds: DEFAULT_TASK_TIMEOUT_IN_SECONDS,
+    };
+  }
   return {
-    name: task?.name ?? "",
-    commandLine: task == null ? "" : formatCommandLine(task.command),
-    schedule: task?.schedule ?? "",
-    enabled: enabled ?? task?.enabled ?? true,
-    timeoutInSeconds: task?.timeoutInSeconds ?? DEFAULT_TASK_TIMEOUT_IN_SECONDS,
+    name: task.name,
+    commandLine: formatCommandLine(task.command),
+    schedule: task.schedule ?? "",
+    enabled: enabled ?? task.enabled,
+    timeoutInSeconds: task.timeoutInSeconds,
   };
 }
 

@@ -62,13 +62,13 @@ export class GitClient {
   }
 
   /**
-   * Clones and checks out the requested revision.
+   * Checks out the requested revision into a fresh shallow clone.
    *
    * @param options - Repository, revision, target directory and credentials.
    * @returns The commit now checked out.
    * @throws {GitCommandError} When cloning or checkout fails, or the SHA is malformed.
    */
-  async cloneAndCheckout(options: CloneOptions): Promise<CheckedOutCommit> {
+  async checkoutRevision(options: CloneOptions): Promise<CheckedOutCommit> {
     if (options.commitSha != null && isCommitSha(options.commitSha) === false) {
       throw new GitCommandError(`Invalid commit SHA: ${JSON.stringify(options.commitSha)}`);
     }

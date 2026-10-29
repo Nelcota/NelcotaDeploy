@@ -4,19 +4,19 @@ import { type Database, tables } from "@/db";
 
 import { InvalidAvatarError } from "./auth.errors";
 
-/** Largest photo accepted; the browser sends a 256×256 WebP of a few tens of KB. */
-export const MAX_AVATAR_BYTES = 512 * 1024;
+/** Largest photo accepted (512 KiB); the browser sends a 256×256 WebP of a few tens of KB. */
+export const MAX_AVATAR_BYTES = 524_288;
 
 type AvatarContentType = "image/png" | "image/jpeg" | "image/webp";
 
-const PNG_SIGNATURE = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a] as const;
-const JPEG_SIGNATURE = [0xff, 0xd8, 0xff] as const;
+const PNG_SIGNATURE = Uint8Array.fromHex("89504e470d0a1a0a");
+const JPEG_SIGNATURE = Uint8Array.fromHex("ffd8ff");
 const RIFF = "RIFF";
 const WEBP = "WEBP";
 const WEBP_TAG_OFFSET = 8;
 const WEBP_HEADER_LENGTH = 12;
 
-function startsWith(bytes: Uint8Array, signature: readonly number[]): boolean {
+function startsWith(bytes: Uint8Array, signature: Uint8Array): boolean {
   return signature.every((byte, index) => bytes[index] === byte);
 }
 

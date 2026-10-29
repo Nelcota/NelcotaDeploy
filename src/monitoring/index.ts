@@ -7,7 +7,6 @@ export {
 } from "./host-metrics";
 export {
   type ContainerSample,
-  getDashboardSummary,
   getLatestHostSample,
   getWorkerStatus,
   listHostSamples,
@@ -19,3 +18,4 @@ export {
   recordWorkerHeartbeat,
   replaceContainerSnapshots,
 } from "./monitoring.service";
+export { getDashboardSummary } from "./dashboard.service";

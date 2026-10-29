@@ -1,12 +1,10 @@
-import { and, asc, count, desc, eq, gte, inArray, isNull, lt, notInArray } from "drizzle-orm";
+import { and, asc, desc, eq, gte, lt, notInArray } from "drizzle-orm";
 
 import { type Database, tables } from "@/db";
 
 /** A worker is considered offline after this long without a heartbeat. */
 const WORKER_OFFLINE_AFTER_IN_MS = 30_000;
 const MAX_SERIES_POINTS = 2000;
-const RECENT_DEPLOYMENTS = 8;
-const RECENT_FAILURE_WINDOW_IN_MS = 86_400_000;
 
 /** One host reading. Any field may be null when it could not be measured. */
 export type HostSample = {
@@ -281,111 +279,4 @@ export function pruneMetricSamples(database: Database, before: Date): void {
     .delete(tables.metricSamples)
     .where(lt(tables.metricSamples.createdAt, before.toISOString()))
     .run();
-}
-
-/** Overall state shown on the dashboard. */
-type EnvironmentHealth = "healthy" | "degraded" | "unavailable";
-
-/**
- * Builds the dashboard summary in a fixed number of queries.
- *
- * @param database - Database.
- * @param now - Current time.
- * @returns Counts, recent activity, latest host sample and overall health.
- */
-export function getDashboardSummary(database: Database, now: Date = new Date()) {
-  const projects = database
-    .select({ id: tables.projects.id, currentDeploymentId: tables.projects.currentDeploymentId })
-    .from(tables.projects)
-    .where(isNull(tables.projects.deletionRequestedAt))
-    .all();
-  const currentDeploymentIds = projects
-    .map((project) => project.currentDeploymentId)
-    .filter((id): id is string => id != null);
-  const runningCurrent =
-    currentDeploymentIds.length === 0
-      ? []
-      : database
-          .select({
-            deploymentId: tables.containerSnapshots.deploymentId,
-            health: tables.containerSnapshots.health,
-          })
-          .from(tables.containerSnapshots)
-          .where(
-            and(
-              inArray(tables.containerSnapshots.deploymentId, currentDeploymentIds),
-              eq(tables.containerSnapshots.state, "running"),
-            ),
-          )
-          .all();
-  const onlineDeployments = new Set(runningCurrent.map((snapshot) => snapshot.deploymentId));
-  const online = projects.filter(
-    (project) =>
-      project.currentDeploymentId != null && onlineDeployments.has(project.currentDeploymentId),
-  ).length;
-  const deployedProjects = projects.filter((project) => project.currentDeploymentId != null).length;
-  const unhealthy = runningCurrent.filter((snapshot) => snapshot.health === "unhealthy").length;
-
-  const recentColumns = {
-    id: tables.deployments.id,
-    projectId: tables.deployments.projectId,
-    projectName: tables.projects.name,
-    status: tables.deployments.status,
-    trigger: tables.deployments.trigger,
-    commitSha: tables.deployments.commitSha,
-    commitMessage: tables.deployments.commitMessage,
-    errorMessage: tables.deployments.errorMessage,
-    createdAt: tables.deployments.createdAt,
-    startedAt: tables.deployments.startedAt,
-    finishedAt: tables.deployments.finishedAt,
-  };
-  const recentDeployments = database
-    .select(recentColumns)
-    .from(tables.deployments)
-    .innerJoin(tables.projects, eq(tables.projects.id, tables.deployments.projectId))
-    .orderBy(desc(tables.deployments.createdAt))
-    .limit(RECENT_DEPLOYMENTS)
-    .all();
-  const lastDayStart = new Date(now.getTime() - RECENT_FAILURE_WINDOW_IN_MS).toISOString();
-  // The lists above are capped for display; the dashboard figures need the real totals.
-  const lastDayCounts = database
-    .select({ status: tables.deployments.status, total: count() })
-    .from(tables.deployments)
-    .where(gte(tables.deployments.createdAt, lastDayStart))
-    .groupBy(tables.deployments.status)
-    .all();
-  const recentFailures = database
-    .select(recentColumns)
-    .from(tables.deployments)
-    .innerJoin(tables.projects, eq(tables.projects.id, tables.deployments.projectId))
-    .where(
-      and(eq(tables.deployments.status, "failed"), gte(tables.deployments.createdAt, lastDayStart)),
-    )
-    .orderBy(desc(tables.deployments.createdAt))
-    .limit(RECENT_DEPLOYMENTS)
-    .all();
-
-  const worker = getWorkerStatus(database, now);
-  const offline = deployedProjects - online;
-  let health: EnvironmentHealth = "healthy";
-  if (worker == null || worker.online === false || worker.dockerAvailable === false) {
-    health = "unavailable";
-  } else if (offline > 0 || unhealthy > 0) {
-    health = "degraded";
-  }
-
-  return {
-    projectCount: projects.length,
-    onlineCount: online,
-    offlineCount: offline,
-    neverDeployedCount: projects.length - deployedProjects,
-    unhealthyCount: unhealthy,
-    deploymentsLastDayCount: lastDayCounts.reduce((sum, row) => sum + row.total, 0),
-    failuresLastDayCount: lastDayCounts.find((row) => row.status === "failed")?.total ?? 0,
-    recentDeployments,
-    recentFailures,
-    hostSample: getLatestHostSample(database),
-    worker,
-    health,
-  };
 }

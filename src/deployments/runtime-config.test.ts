@@ -7,7 +7,8 @@ import { addDomain } from "@/domains";
 import { saveEnvironmentVariable } from "@/environments";
 import { createTestProject, createTestSecretBox, TEST_ACTOR } from "@/testing";
 
-import { completeDeployment, requestDeployment, transitionDeployment } from "./deployment.service";
+import { requestDeployment } from "./deployment-request.service";
+import { completeDeployment, transitionDeployment } from "./deployment.service";
 import { hasPendingRuntimeChanges, runtimeConfigFingerprint } from "./runtime-config";
 
 const manual = { trigger: "manual" as const, actor: TEST_ACTOR, triggeredByUserId: null };
@@ -88,7 +89,9 @@ describe("hasPendingRuntimeChanges", () => {
 
     expect(hasPendingRuntimeChanges(database, project.id)).toBe(true);
   });
+});
 
+describe("hasPendingRuntimeChanges after a new deploy", () => {
   test("is false again after a new deploy applies the change", async () => {
     const database = openMemoryDatabase();
     const project = createTestProject(database);

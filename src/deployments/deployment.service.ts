@@ -2,46 +2,21 @@ import { and, count, desc, eq, inArray, isNotNull, lt, ne, sql } from "drizzle-o
 
 import { type Actor, recordAuditEvent } from "@/audit";
 import { type Database, tables, type Transaction } from "@/db";
-import { cancelQueuedJobs, enqueueJob } from "@/jobs";
+import { cancelQueuedJobs } from "@/jobs";
 import { getProject } from "@/projects";
 
 import {
+  ACTIVE_STATUSES,
   assertDeploymentTransition,
   type DeploymentStatus,
   isTerminalStatus,
 } from "./deployment-status";
-import {
-  DeploymentNotFoundError,
-  ProjectNotApprovedError,
-  RetryUnavailableError,
-  RollbackUnavailableError,
-} from "./deployment.errors";
+import { DeploymentNotFoundError } from "./deployment.errors";
 
 export type DeploymentTrigger = (typeof tables.deployments.$inferSelect)["trigger"];
 
-/** Total runs of a deploy job; the second only happens when a worker crashed mid-deploy. */
-const DEPLOY_MAX_ATTEMPTS = 2;
 const MAX_PAGE_SIZE = 100;
 const MAX_ROLLBACK_CANDIDATES = 10;
-const IN_PROGRESS_STATUSES: DeploymentStatus[] = [
-  "cloning",
-  "building",
-  "starting",
-  "health_checking",
-];
-
-/** Input for {@link requestDeployment}. */
-export type DeploymentRequest = {
-  readonly projectId: string;
-  readonly trigger: DeploymentTrigger;
-  readonly actor: Actor;
-  readonly triggeredByUserId: string | null;
-  /** Exact commit to build; the branch head when null. */
-  readonly commitSha?: string | null;
-  readonly commitMessage?: string | null;
-  /** Deployment whose image is reused instead of building (redeploy and rollback). */
-  readonly sourceDeploymentId?: string | null;
-};
 
 const deploymentColumns = {
   id: tables.deployments.id,
@@ -93,152 +68,6 @@ export type Deployment = {
   readonly startedAt: string | null;
   readonly finishedAt: string | null;
 };
-
-function findReusableImage(
-  transaction: Transaction,
-  projectId: string,
-  sourceDeploymentId: string,
-) {
-  const source = transaction
-    .select({
-      imageTag: tables.deployments.imageTag,
-      status: tables.deployments.status,
-      commitSha: tables.deployments.commitSha,
-      commitMessage: tables.deployments.commitMessage,
-      branch: tables.deployments.branch,
-    })
-    .from(tables.deployments)
-    .where(
-      and(
-        eq(tables.deployments.id, sourceDeploymentId),
-        eq(tables.deployments.projectId, projectId),
-      ),
-    )
-    .get();
-  if (source == null) {
-    throw new RollbackUnavailableError("the source deployment does not belong to this project");
-  }
-  if (source.status !== "succeeded" || source.imageTag == null) {
-    throw new RollbackUnavailableError("the source deployment has no successful image");
-  }
-  return source;
-}
-
-/**
- * Creates a deployment and queues it for the worker.
- *
- * @remarks
- * Requests are idempotent: an identical request still waiting in the queue is returned
- * instead of creating another one, and older queued deployments of the project are
- * cancelled because the new one supersedes them. The running deployment, if any, is
- * left alone; the queue starts the new one after it.
- *
- * @param database - Database.
- * @param request - What to deploy and who asked.
- * @returns The deployment id and whether it was created (false for a duplicate request).
- * @throws {ProjectNotFoundError} When the project does not exist.
- * @throws {ProjectNotApprovedError} When an admin has not approved the project.
- * @throws {RollbackUnavailableError} When the source deployment has no reusable image.
- */
-export function requestDeployment(
-  database: Database,
-  request: DeploymentRequest,
-): { deploymentId: string; created: boolean } {
-  return database.transaction((transaction) => {
-    const project = getProject(transaction, request.projectId);
-    if (project.deploymentsApproved === false) {
-      throw new ProjectNotApprovedError(project.id);
-    }
-    const sourceDeploymentId = request.sourceDeploymentId ?? null;
-    const source =
-      sourceDeploymentId == null
-        ? null
-        : findReusableImage(transaction, project.id, sourceDeploymentId);
-    const requestedCommitSha = request.commitSha ?? null;
-
-    const pending = transaction
-      .select({
-        id: tables.deployments.id,
-        status: tables.deployments.status,
-        requestedCommitSha: tables.deployments.requestedCommitSha,
-        sourceDeploymentId: tables.deployments.sourceDeploymentId,
-      })
-      .from(tables.deployments)
-      .where(
-        and(
-          eq(tables.deployments.projectId, project.id),
-          inArray(tables.deployments.status, ["queued", ...IN_PROGRESS_STATUSES]),
-        ),
-      )
-      .all();
-    const duplicate = pending.find(
-      (deployment) =>
-        deployment.sourceDeploymentId === sourceDeploymentId &&
-        deployment.requestedCommitSha === requestedCommitSha &&
-        // A branch-head request may run again once the earlier one started: the head may have moved.
-        (deployment.status === "queued" || requestedCommitSha != null),
-    );
-    if (duplicate != null) {
-      return { deploymentId: duplicate.id, created: false };
-    }
-
-    const now = new Date();
-    const superseded = pending
-      .filter((deployment) => deployment.status === "queued")
-      .map((deployment) => deployment.id);
-    if (superseded.length > 0) {
-      transaction
-        .update(tables.deployments)
-        .set({
-          status: "cancelled",
-          errorMessage: "Superseded by a newer deployment",
-          finishedAt: now.toISOString(),
-        })
-        .where(inArray(tables.deployments.id, superseded))
-        .run();
-      const supersededJobs = transaction
-        .select({ id: tables.jobs.id })
-        .from(tables.jobs)
-        .where(inArray(tables.jobs.deploymentId, superseded))
-        .all()
-        .map((job) => job.id);
-      cancelQueuedJobs(transaction, supersededJobs, now);
-    }
-
-    const deploymentId = Bun.randomUUIDv7();
-    transaction
-      .insert(tables.deployments)
-      .values({
-        id: deploymentId,
-        projectId: project.id,
-        status: "queued",
-        trigger: request.trigger,
-        triggeredByUserId: request.triggeredByUserId,
-        triggeredByLabel: request.actor.label,
-        branch: source?.branch ?? project.branch,
-        requestedCommitSha,
-        commitSha: source?.commitSha ?? null,
-        commitMessage: source?.commitMessage ?? request.commitMessage ?? null,
-        imageTag: source?.imageTag ?? null,
-        sourceDeploymentId,
-        createdAt: now.toISOString(),
-      })
-      .run();
-    enqueueJob(
-      transaction,
-      { kind: "deploy", projectId: project.id, deploymentId, maxAttempts: DEPLOY_MAX_ATTEMPTS },
-      now,
-    );
-    recordAuditEvent(transaction, {
-      actor: request.actor,
-      action: `deployment.${request.trigger}`,
-      targetType: "deployment",
-      targetId: deploymentId,
-      metadata: { projectId: project.id, commitSha: requestedCommitSha, sourceDeploymentId },
-    });
-    return { deploymentId, created: true };
-  });
-}
 
 /**
  * Cancels a deployment. Queued deployments stop immediately; running ones stop at the
@@ -480,36 +309,7 @@ export function countActiveDeployments(database: Database): number {
   const row = database
     .select({ total: count() })
     .from(tables.deployments)
-    .where(inArray(tables.deployments.status, ["queued", ...IN_PROGRESS_STATUSES]))
+    .where(inArray(tables.deployments.status, ACTIVE_STATUSES))
     .get();
   return row?.total ?? 0;
-}
-
-/**
- * Builds again the commit of a deployment that failed or was cancelled.
- *
- * @param database - Database.
- * @param deploymentId - Deployment to retry.
- * @param context - Who asks, for the audit log.
- * @returns The new deployment, or the identical one already waiting in the queue.
- * @throws {DeploymentNotFoundError} When the deployment does not exist.
- * @throws {RetryUnavailableError} When the deployment did not fail and was not cancelled.
- */
-export function retryDeployment(
-  database: Database,
-  deploymentId: string,
-  context: { readonly actor: Actor; readonly triggeredByUserId: string | null },
-) {
-  const deployment = getDeployment(database, deploymentId);
-  if (deployment.status !== "failed" && deployment.status !== "cancelled") {
-    throw new RetryUnavailableError(deploymentId, deployment.status);
-  }
-  return requestDeployment(database, {
-    projectId: deployment.projectId,
-    trigger: "manual",
-    actor: context.actor,
-    triggeredByUserId: context.triggeredByUserId,
-    commitSha: deployment.commitSha ?? deployment.requestedCommitSha,
-    commitMessage: deployment.commitMessage,
-  });
 }

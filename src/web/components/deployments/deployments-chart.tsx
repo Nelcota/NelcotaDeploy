@@ -62,6 +62,14 @@ function captionFor(days: readonly DeploymentChartDay[]): string {
   return `Últimos ${days.length} dias: ${totals.succeeded} concluídos, ${totals.failed} falharam, ${totals.other} cancelados ou em andamento.`;
 }
 
+const CHART_MARGIN = { top: 6, right: 4, bottom: 0, left: 0 };
+const TOOLTIP_CONTENT_STYLE = {
+  background: "var(--popover)",
+  border: "1px solid var(--border)",
+  borderRadius: 8,
+  fontSize: 13,
+};
+
 /** Stacked bars with the deploys of each day, succeeded at the base. */
 export function DeploymentsChart({ days }: { readonly days: readonly DeploymentChartDay[] }) {
   return (
@@ -69,11 +77,7 @@ export function DeploymentsChart({ days }: { readonly days: readonly DeploymentC
       <figcaption className="sr-only">{captionFor(days)}</figcaption>
       <ResponsiveContainer width="100%" height="100%">
         {/* Not focusable: a click would draw a focus box, and the caption already reads it out. */}
-        <BarChart
-          data={[...days]}
-          margin={{ top: 6, right: 4, bottom: 0, left: 0 }}
-          accessibilityLayer={false}
-        >
+        <BarChart data={[...days]} margin={CHART_MARGIN} accessibilityLayer={false}>
           <CartesianGrid stroke="var(--border)" vertical={false} />
           <XAxis
             dataKey="day"
@@ -93,12 +97,7 @@ export function DeploymentsChart({ days }: { readonly days: readonly DeploymentC
           />
           <Tooltip
             cursor={false}
-            contentStyle={{
-              background: "var(--popover)",
-              border: "1px solid var(--border)",
-              borderRadius: 8,
-              fontSize: 13,
-            }}
+            contentStyle={TOOLTIP_CONTENT_STYLE}
             labelFormatter={(value) => (typeof value === "string" ? formatShortDay(value) : "")}
           />
           <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 12 }} />

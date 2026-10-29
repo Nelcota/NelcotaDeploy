@@ -10,7 +10,7 @@ import {
   saveEnvironmentVariable,
 } from "./environment-variable.service";
 
-describe("environment variables", () => {
+describe("environment variable storage", () => {
   test("stores secrets encrypted and never lists their values", async () => {
     const database = openMemoryDatabase();
     const box = await createTestSecretBox();
@@ -58,7 +58,9 @@ describe("environment variables", () => {
     expect(resolved.runtime["TOKEN"]).toBe("first-value");
     expect(resolved.build["TOKEN"]).toBe("first-value");
   });
+});
 
+describe("environment variable resolution", () => {
   test("resolves plain and secret values and reports secrets for redaction", async () => {
     const database = openMemoryDatabase();
     const box = await createTestSecretBox();
@@ -80,7 +82,9 @@ describe("environment variables", () => {
     expect(resolved.build).toEqual({});
     expect(resolved.secretValues).toEqual(["abc123"]);
   });
+});
 
+describe("environment variable audit and deletion", () => {
   test("records audit events without secret values", async () => {
     const database = openMemoryDatabase();
     const box = await createTestSecretBox();

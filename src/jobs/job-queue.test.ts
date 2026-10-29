@@ -77,7 +77,9 @@ describe("job queue", () => {
 
     expect(forceSecondRunning).toThrow(/UNIQUE constraint failed/);
   });
+});
 
+describe("job queue deduplication", () => {
   test("returns the active job instead of creating a duplicate for the same dedupe key", () => {
     const database = openMemoryDatabase();
     const projectId = insertProject(database, "api");
@@ -115,7 +117,9 @@ describe("job queue", () => {
 
     expect(second.created).toBe(true);
   });
+});
 
+describe("job queue failures", () => {
   test("requeues a retryable failure while attempts remain", () => {
     const database = openMemoryDatabase();
     const projectId = insertProject(database, "api");
@@ -145,7 +149,9 @@ describe("job queue", () => {
 
     expect(outcome).toBe("failed");
   });
+});
 
+describe("job queue lease recovery", () => {
   test("recovers a job whose worker stopped renewing the lease", () => {
     const database = openMemoryDatabase();
     const projectId = insertProject(database, "api");

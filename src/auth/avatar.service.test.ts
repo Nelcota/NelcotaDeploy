@@ -90,7 +90,9 @@ describe("saveUserAvatar", () => {
     expect(avatar?.contentType).toBe("image/png");
     expect(avatar?.updatedAt).toBe("2026-10-28T13:00:00.000Z");
   });
+});
 
+describe("saveUserAvatar validation", () => {
   test("throws InvalidAvatarError for an empty file", () => {
     const database = openMemoryDatabase();
     const userId = createUser(database);

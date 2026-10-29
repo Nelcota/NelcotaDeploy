@@ -7,11 +7,30 @@ import { type Database, getDatabase, tables } from "@/db";
 import { PASSWORD_MIN_LENGTH } from "@/shared/schemas/user.schema";
 
 const SECONDS_PER_DAY = 86_400;
-const SESSION_LIFETIME_IN_SECONDS = 7 * SECONDS_PER_DAY;
+const SESSION_LIFETIME_IN_DAYS = 7;
+const SESSION_LIFETIME_IN_SECONDS = SESSION_LIFETIME_IN_DAYS * SECONDS_PER_DAY;
 const SESSION_REFRESH_AGE_IN_SECONDS = SECONDS_PER_DAY;
 const RATE_LIMIT_WINDOW_IN_SECONDS = 60;
 const RATE_LIMIT_MAX_REQUESTS = 100;
 const SIGN_IN_MAX_ATTEMPTS_PER_WINDOW = 5;
+
+const BUN_PASSWORD_HASHING = {
+  hash: async (password: string) => await Bun.password.hash(password),
+  verify: async ({ hash, password }: { hash: string; password: string }) =>
+    await Bun.password.verify(password, hash),
+};
+
+const RATE_LIMIT = {
+  enabled: true,
+  window: RATE_LIMIT_WINDOW_IN_SECONDS,
+  max: RATE_LIMIT_MAX_REQUESTS,
+  customRules: {
+    "/sign-in/email": {
+      window: RATE_LIMIT_WINDOW_IN_SECONDS,
+      max: SIGN_IN_MAX_ATTEMPTS_PER_WINDOW,
+    },
+  },
+};
 
 /**
  * Creates the Better Auth instance.
@@ -45,10 +64,7 @@ function createAuth(
       enabled: true,
       disableSignUp: true,
       minPasswordLength: PASSWORD_MIN_LENGTH,
-      password: {
-        hash: async (password) => await Bun.password.hash(password),
-        verify: async ({ hash, password }) => await Bun.password.verify(password, hash),
-      },
+      password: BUN_PASSWORD_HASHING,
     },
     user: {
       additionalFields: {
@@ -60,17 +76,7 @@ function createAuth(
       expiresIn: SESSION_LIFETIME_IN_SECONDS,
       updateAge: SESSION_REFRESH_AGE_IN_SECONDS,
     },
-    rateLimit: {
-      enabled: true,
-      window: RATE_LIMIT_WINDOW_IN_SECONDS,
-      max: RATE_LIMIT_MAX_REQUESTS,
-      customRules: {
-        "/sign-in/email": {
-          window: RATE_LIMIT_WINDOW_IN_SECONDS,
-          max: SIGN_IN_MAX_ATTEMPTS_PER_WINDOW,
-        },
-      },
-    },
+    rateLimit: RATE_LIMIT,
     advanced: {
       useSecureCookies: options.baseURL.startsWith("https://"),
       database: { generateId: () => Bun.randomUUIDv7() },

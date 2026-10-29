@@ -7,6 +7,22 @@ const ENCRYPTION_KEY_BYTES = 32;
 const DEFAULT_PORT = 3000;
 const MAX_PORT = 65_535;
 
+/** Allowed values and default of a numeric setting. */
+type IntegerRange = { readonly min: number; readonly max: number; readonly fallback: number };
+
+const WORKER_CONCURRENCY_RANGE: IntegerRange = { min: 1, max: 8, fallback: 2 };
+const BUILD_TIMEOUT_SECONDS_RANGE: IntegerRange = { min: 60, max: 7200, fallback: 1200 };
+const HEALTH_CHECK_TIMEOUT_SECONDS_RANGE: IntegerRange = { min: 5, max: 600, fallback: 60 };
+const METRICS_INTERVAL_SECONDS_RANGE: IntegerRange = { min: 5, max: 3600, fallback: 15 };
+const METRICS_RETENTION_HOURS_RANGE: IntegerRange = { min: 1, max: 720, fallback: 48 };
+const RUNTIME_LOG_RETENTION_LINES_RANGE: IntegerRange = { min: 100, max: 100_000, fallback: 5000 };
+const DEPLOYMENT_LOG_RETENTION_DAYS_RANGE: IntegerRange = { min: 1, max: 365, fallback: 30 };
+const IMAGES_KEPT_PER_PROJECT_RANGE: IntegerRange = { min: 1, max: 50, fallback: 5 };
+
+function boundedInteger(range: IntegerRange) {
+  return z.coerce.number().int().min(range.min).max(range.max).default(range.fallback);
+}
+
 const booleanFromString = z
   .enum(["true", "false"])
   .transform((value) => value === "true")
@@ -49,14 +65,14 @@ const configSchema = z.object({
   TRAEFIK_HTTPS_ENTRYPOINT: z.string().min(1).default("websecure"),
   TRAEFIK_CERT_RESOLVER: z.string().min(1).default("letsencrypt"),
   TRAEFIK_ENABLED: booleanFromString,
-  WORKER_CONCURRENCY: z.coerce.number().int().min(1).max(8).default(2),
-  BUILD_TIMEOUT_SECONDS: z.coerce.number().int().min(60).max(7200).default(1200),
-  HEALTH_CHECK_TIMEOUT_SECONDS: z.coerce.number().int().min(5).max(600).default(60),
-  METRICS_INTERVAL_SECONDS: z.coerce.number().int().min(5).max(3600).default(15),
-  METRICS_RETENTION_HOURS: z.coerce.number().int().min(1).max(720).default(48),
-  RUNTIME_LOG_RETENTION_LINES: z.coerce.number().int().min(100).max(100_000).default(5000),
-  DEPLOYMENT_LOG_RETENTION_DAYS: z.coerce.number().int().min(1).max(365).default(30),
-  IMAGES_KEPT_PER_PROJECT: z.coerce.number().int().min(1).max(50).default(5),
+  WORKER_CONCURRENCY: boundedInteger(WORKER_CONCURRENCY_RANGE),
+  BUILD_TIMEOUT_SECONDS: boundedInteger(BUILD_TIMEOUT_SECONDS_RANGE),
+  HEALTH_CHECK_TIMEOUT_SECONDS: boundedInteger(HEALTH_CHECK_TIMEOUT_SECONDS_RANGE),
+  METRICS_INTERVAL_SECONDS: boundedInteger(METRICS_INTERVAL_SECONDS_RANGE),
+  METRICS_RETENTION_HOURS: boundedInteger(METRICS_RETENTION_HOURS_RANGE),
+  RUNTIME_LOG_RETENTION_LINES: boundedInteger(RUNTIME_LOG_RETENTION_LINES_RANGE),
+  DEPLOYMENT_LOG_RETENTION_DAYS: boundedInteger(DEPLOYMENT_LOG_RETENTION_DAYS_RANGE),
+  IMAGES_KEPT_PER_PROJECT: boundedInteger(IMAGES_KEPT_PER_PROJECT_RANGE),
   NELCOTA_MCP_TOKEN: z.string().min(1).optional(),
   SCHEDULE_TIME_ZONE: z
     .string()

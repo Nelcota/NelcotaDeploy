@@ -1,7 +1,7 @@
 import type { Logger } from "pino";
 
 import type { Database } from "@/db";
-import { type ContainerInfo, type DockerEngine, LABELS } from "@/docker";
+import { type ContainerInfo, type DockerEngine, LABELS, type OutputHandler } from "@/docker";
 import { resolveEnvironment } from "@/environments";
 import { appendRuntimeLogs, getLatestRuntimeLogTime, type RuntimeLogEntry } from "@/logs";
 import {
@@ -139,16 +139,8 @@ export class ContainerObserver implements Disposable {
     }
     const controller = new AbortController();
     this.#followers.set(container.id, { controller, projectId });
-    let redact: (text: string) => string;
-    try {
-      const environment = await resolveEnvironment(this.#database, this.#secretBox, projectId);
-      redact = createRedactor(environment.secretValues);
-    } catch (error) {
-      // Without the secrets we cannot redact, so the logs are not collected at all.
-      this.#logger.warn(
-        { err: error, projectId },
-        "cannot load secrets for log redaction; skipping logs",
-      );
+    const redact = await this.#loadRedactor(projectId);
+    if (redact == null) {
       return;
     }
     const lastStored =
@@ -157,30 +149,11 @@ export class ContainerObserver implements Disposable {
     this.#docker
       .followContainerLogs(
         container.id,
-        (line, stream) => {
-          const parsed = parseTimestampedLine(line);
-          if (parsed == null) {
-            // A message from the docker CLI, not the application: keep it out of its logs.
-            this.#logger.debug(
-              { container: container.name, line: line.replaceAll(/[\r\n]/g, " ") },
-              "docker logs reported",
-            );
-            return;
-          }
-          if (lastStored != null && parsed.createdAt <= lastStored) {
-            return;
-          }
-          if (this.#pending.length >= MAX_PENDING_LINES) {
-            return;
-          }
-          this.#pending.push({
-            projectId,
-            deploymentId,
-            stream,
-            message: redact(parsed.message),
-            createdAt: parsed.createdAt,
-          });
-        },
+        (line, stream) =>
+          this.#collectLine(
+            { container, deploymentId, projectId, lastStored, redact },
+            { line, stream },
+          ),
         { since, signal: controller.signal },
       )
       .catch((error: unknown) =>
@@ -191,6 +164,55 @@ export class ContainerObserver implements Disposable {
           this.#followers.delete(container.id);
         }
       });
+  }
+
+  async #loadRedactor(projectId: string): Promise<((text: string) => string) | null> {
+    try {
+      const environment = await resolveEnvironment(this.#database, this.#secretBox, projectId);
+      return createRedactor(environment.secretValues);
+    } catch (error) {
+      // Without the secrets we cannot redact, so the logs are not collected at all.
+      this.#logger.warn(
+        { err: error, projectId },
+        "cannot load secrets for log redaction; skipping logs",
+      );
+      return null;
+    }
+  }
+
+  #collectLine(
+    source: {
+      readonly container: ContainerInfo;
+      readonly projectId: string;
+      readonly deploymentId: string | null;
+      /** Lines at or before this time were stored by an earlier follower. */
+      readonly lastStored: string | null;
+      readonly redact: (text: string) => string;
+    },
+    { line, stream }: { readonly line: string; readonly stream: Parameters<OutputHandler>[1] },
+  ): void {
+    const parsed = parseTimestampedLine(line);
+    if (parsed == null) {
+      // A message from the docker CLI, not the application: keep it out of its logs.
+      this.#logger.debug(
+        { container: source.container.name, line: line.replaceAll(/[\r\n]/g, " ") },
+        "docker logs reported",
+      );
+      return;
+    }
+    if (source.lastStored != null && parsed.createdAt <= source.lastStored) {
+      return;
+    }
+    if (this.#pending.length >= MAX_PENDING_LINES) {
+      return;
+    }
+    this.#pending.push({
+      projectId: source.projectId,
+      deploymentId: source.deploymentId,
+      stream,
+      message: source.redact(parsed.message),
+      createdAt: parsed.createdAt,
+    });
   }
 
   #flush(): void {

@@ -1,8 +1,8 @@
 /** Side of the square photo sent to the server, in pixels; it is shown at 40 px at most. */
 export const AVATAR_SIZE_IN_PX = 256;
 
-/** Largest file picked by the user; bigger photos are refused before decoding. */
-export const MAX_SOURCE_IMAGE_BYTES = 20 * 1024 * 1024;
+/** Largest file picked by the user (20 MiB); bigger photos are refused before decoding. */
+const MAX_SOURCE_IMAGE_BYTES = 20_971_520;
 
 // btoa takes a string of bytes; building it in chunks avoids a call with too many arguments.
 const BASE64_CHUNK_BYTES = 0x8000;
@@ -45,4 +45,23 @@ export function bytesToBase64(bytes: Uint8Array): string {
     parts.push(String.fromCharCode(...bytes.subarray(offset, offset + BASE64_CHUNK_BYTES)));
   }
   return btoa(parts.join(""));
+}
+
+/**
+ * Checks a picked file before it is decoded.
+ *
+ * @param file - MIME type and size in bytes of the picked file.
+ * @returns A message for the user when the file cannot be used, or null when it can.
+ */
+export function photoFileProblem(file: {
+  readonly type: string;
+  readonly size: number;
+}): string | null {
+  if (file.type.startsWith("image/") === false) {
+    return "Escolha um arquivo de imagem.";
+  }
+  if (file.size > MAX_SOURCE_IMAGE_BYTES) {
+    return "A imagem passa de 20 MB. Escolha uma foto menor.";
+  }
+  return null;
 }

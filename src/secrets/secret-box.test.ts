@@ -7,7 +7,7 @@ import { InvalidEncryptionKeyError, SecretDecryptionError } from "./secrets.erro
 const KEY = Buffer.alloc(32, 1).toString("base64");
 const OTHER_KEY = Buffer.alloc(32, 2).toString("base64");
 
-describe("SecretBox", () => {
+describe("SecretBox round trip", () => {
   test("decrypts what it encrypted with the same context", async () => {
     const box = await SecretBox.fromBase64Key(KEY);
 
@@ -25,7 +25,9 @@ describe("SecretBox", () => {
 
     expect(first).not.toBe(second);
   });
+});
 
+describe("SecretBox rejections", () => {
   test("throws SecretDecryptionError when the context differs", async () => {
     const box = await SecretBox.fromBase64Key(KEY);
     const ciphertext = await box.encrypt("value", "env:1:A");

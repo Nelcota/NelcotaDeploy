@@ -38,7 +38,7 @@ function delivery(
   };
 }
 
-describe("handleGitHubDelivery", () => {
+describe("handleGitHubDelivery signature checks", () => {
   test("throws InvalidWebhookSignatureError for a wrong signature", async () => {
     const database = openMemoryDatabase();
     const body = pushBody();
@@ -82,7 +82,9 @@ describe("handleGitHubDelivery", () => {
       InvalidWebhookSignatureError,
     );
   });
+});
 
+describe("handleGitHubDelivery push events", () => {
   test("queues a deployment of the exact pushed commit", async () => {
     const database = openMemoryDatabase();
     const project = createTestProject(database);
@@ -106,7 +108,9 @@ describe("handleGitHubDelivery", () => {
     expect(second.status).toBe("duplicate");
     expect(listDeployments(database, { projectId: project.id, limit: 10 })).toHaveLength(1);
   });
+});
 
+describe("handleGitHubDelivery ignored events", () => {
   test("ignores pushes to another branch and records the delivery", async () => {
     const database = openMemoryDatabase();
     createTestProject(database);

@@ -17,16 +17,15 @@ import {
 import { type FormEvent, type ReactNode, useState } from "react";
 import { toast } from "sonner";
 
+import { projectToFormValues, useProjectForm } from "@/web/components/forms/project-form";
 import {
   AutoDeployField,
   BuildFields,
   HealthCheckField,
   IdentityFields,
   PortField,
-  projectToFormValues,
   RepositoryFields,
-  useProjectForm,
-} from "@/web/components/forms/project-form";
+} from "@/web/components/forms/project-form-fields";
 import { ConfirmDialog } from "@/web/components/layout/confirm-dialog";
 import { toUserMessage } from "@/web/components/layout/error-message";
 import { Tag } from "@/web/components/layout/layout";

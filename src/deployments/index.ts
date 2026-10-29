@@ -4,6 +4,7 @@ export {
   isContainerAction,
   requestContainerAction,
 } from "./container-action.service";
+export { requestDeployment, retryDeployment } from "./deployment-request.service";
 export { summarizeDeployments } from "./deployment-stats.service";
 export { hasPendingRuntimeChanges, runtimeConfigFingerprint } from "./runtime-config";
 export {
@@ -23,8 +24,6 @@ export {
   isCancellationRequested,
   listDeployments,
   listRollbackCandidates,
-  requestDeployment,
-  retryDeployment,
   transitionDeployment,
 } from "./deployment.service";
 export {

@@ -1,38 +1,11 @@
-import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
-import {
-  EllipsisIcon,
-  FolderGit2Icon,
-  LoaderCircleIcon,
-  ExternalLinkIcon,
-  GitBranchIcon,
-  GlobeIcon,
-  PlayIcon,
-  RefreshCwIcon,
-  RocketIcon,
-  RotateCwIcon,
-  SquareIcon,
-} from "lucide-react";
-import { type ReactNode, useEffect, useRef, useState } from "react";
+import { Link, useRouterState } from "@tanstack/react-router";
+import { FolderGit2Icon, GitBranchIcon, GlobeIcon } from "lucide-react";
+import { type ReactNode, useEffect, useRef } from "react";
 
-import { ConfirmDialog } from "@/web/components/layout/confirm-dialog";
 import { ContainerStateBadge } from "@/web/components/layout/status-badge";
-import { useAction } from "@/web/components/layout/use-action";
+import { ProjectActions } from "@/web/components/projects/project-actions";
 import type { ProjectDetails } from "@/web/components/projects/project-query";
 import { PROJECT_SECTIONS } from "@/web/components/shell/navigation";
-import { useCan } from "@/web/components/shell/use-permissions";
-import { Button } from "@/web/components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/web/components/ui/dropdown-menu";
-import {
-  containerActionFn,
-  deployProjectFn,
-  redeployProjectFn,
-} from "@/web/functions/deployments.functions";
 
 /** The container of the project's current deployment, if the worker has seen it. */
 export function currentContainer(details: ProjectDetails) {
@@ -51,13 +24,54 @@ function publicUrl(details: ProjectDetails): string | null {
   return `${domain.httpsEnabled ? "https" : "http"}://${domain.hostname}`;
 }
 
+const HEADER_LINK =
+  "max-w-full min-w-0 truncate rounded-sm font-mono transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none";
+
+function ProjectLinks({
+  url,
+  project,
+}: {
+  readonly url: string | null;
+  readonly project: ProjectDetails["project"];
+}) {
+  return (
+    <div className="flex flex-wrap items-center gap-x-5 gap-y-1 text-sm text-muted-foreground">
+      {url == null ? null : (
+        <a
+          href={url}
+          target="_blank"
+          rel="noreferrer noopener"
+          title={url}
+          className={`${HEADER_LINK} inline-flex items-center gap-1.5`}
+        >
+          <GlobeIcon aria-hidden className="size-3.5 shrink-0" />
+          <span className="truncate">{url.replace(/^https?:\/\//, "")}</span>
+          <span className="sr-only"> (abre em nova aba)</span>
+        </a>
+      )}
+      <a
+        href={`https://github.com/${project.repositoryFullName}`}
+        target="_blank"
+        rel="noreferrer noopener"
+        title={project.repositoryFullName}
+        className={`${HEADER_LINK} inline-flex items-center gap-1.5`}
+      >
+        <FolderGit2Icon aria-hidden className="size-3.5 shrink-0" />
+        <span className="truncate">{project.repositoryFullName}</span>
+        <span className="sr-only"> (repositório no GitHub, abre em nova aba)</span>
+      </a>
+      <span className="inline-flex items-center gap-1.5 font-mono">
+        <GitBranchIcon aria-hidden className="size-3.5" />
+        {project.branch}
+      </span>
+    </div>
+  );
+}
+
 /**
  * Header shared by every project page: where you are, the project's state, its address,
  * the actions, and the tabs that lead to each part of the project.
  */
-const HEADER_LINK =
-  "max-w-full min-w-0 truncate rounded-sm font-mono transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none";
-
 export function ProjectBand({ details }: { readonly details: ProjectDetails }) {
   const { project } = details;
   const container = currentContainer(details);
@@ -75,36 +89,7 @@ export function ProjectBand({ details }: { readonly details: ProjectDetails }) {
               health={container?.health ?? null}
             />
           </div>
-          <div className="flex flex-wrap items-center gap-x-5 gap-y-1 text-sm text-muted-foreground">
-            {url == null ? null : (
-              <a
-                href={url}
-                target="_blank"
-                rel="noreferrer noopener"
-                title={url}
-                className={`${HEADER_LINK} inline-flex items-center gap-1.5`}
-              >
-                <GlobeIcon aria-hidden className="size-3.5 shrink-0" />
-                <span className="truncate">{url.replace(/^https?:\/\//, "")}</span>
-                <span className="sr-only"> (abre em nova aba)</span>
-              </a>
-            )}
-            <a
-              href={`https://github.com/${project.repositoryFullName}`}
-              target="_blank"
-              rel="noreferrer noopener"
-              title={project.repositoryFullName}
-              className={`${HEADER_LINK} inline-flex items-center gap-1.5`}
-            >
-              <FolderGit2Icon aria-hidden className="size-3.5 shrink-0" />
-              <span className="truncate">{project.repositoryFullName}</span>
-              <span className="sr-only"> (repositório no GitHub, abre em nova aba)</span>
-            </a>
-            <span className="inline-flex items-center gap-1.5 font-mono">
-              <GitBranchIcon aria-hidden className="size-3.5" />
-              {project.branch}
-            </span>
-          </div>
+          <ProjectLinks url={url} project={project} />
         </div>
         <ProjectActions details={details} containerState={container?.state ?? null} url={url} />
       </header>
@@ -183,151 +168,6 @@ export function TabHeader({
       {actions == null ? null : (
         <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div>
       )}
-    </div>
-  );
-}
-
-const STOP_DESCRIPTION =
-  "O contêiner será parado e a aplicação ficará fora do ar até ser iniciada novamente.";
-const REDEPLOY_DESCRIPTION =
-  "Um novo contêiner será criado com a imagem atual, aplicando as variáveis e domínios salvos, sem novo build. Pode haver uma breve troca de versão durante a substituição.";
-
-function ProjectActions({
-  details,
-  containerState,
-  url,
-}: {
-  readonly details: ProjectDetails;
-  /** State of the live container, or null when there is none. */
-  readonly containerState: string | null;
-  readonly url: string | null;
-}) {
-  const { project } = details;
-  const projectId = project.id;
-  const can = useCan();
-  const navigate = useNavigate();
-  const [confirming, setConfirming] = useState<"stop" | "redeploy" | null>(null);
-  const invalidate = [["project", projectId], ["deployments"], ["projects"]] as const;
-  const openDeployment = async (result: { deploymentId: string }) => {
-    await navigate({
-      to: "/projects/$projectId/deployments/$deploymentId",
-      params: { projectId, deploymentId: result.deploymentId },
-    });
-  };
-
-  const deploy = useAction({
-    action: () => deployProjectFn({ data: { projectId } }),
-    successMessage: (result) =>
-      result.created ? "Deploy colocado na fila" : "Já existe um deploy igual na fila",
-    invalidate,
-    onSuccess: openDeployment,
-  });
-  const redeploy = useAction({
-    action: () => redeployProjectFn({ data: { projectId } }),
-    successMessage: "Redeploy colocado na fila",
-    invalidate,
-    onSuccess: openDeployment,
-  });
-  const containerAction = useAction({
-    action: (action: "start" | "stop" | "restart") =>
-      containerActionFn({ data: { projectId, action } }),
-    successMessage: "Ação enviada ao worker",
-    invalidate,
-  });
-
-  const canDeploy = can("deployment:create") && project.deploymentsApproved;
-  const canControl = can("container:control") && project.currentDeploymentId != null;
-  const canRedeploy = canDeploy && project.currentDeploymentId != null;
-  const busy = deploy.isPending || redeploy.isPending || containerAction.isPending;
-  const running = containerState === "running";
-
-  return (
-    <div className="flex items-center gap-2 max-lg:border-b max-lg:border-border/70 max-lg:pb-4">
-      {url == null ? null : (
-        <Button variant="outline" size="sm" asChild>
-          <a href={url} target="_blank" rel="noreferrer noopener">
-            <ExternalLinkIcon aria-hidden />
-            Abrir
-            <span className="sr-only"> a aplicação em nova aba</span>
-          </a>
-        </Button>
-      )}
-      {canControl || canRedeploy ? (
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="outline" size="icon-sm" aria-label="Mais ações">
-              <EllipsisIcon aria-hidden />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-52">
-            {canControl ? (
-              <>
-                {containerState == null ? (
-                  <DropdownMenuItem disabled>Nenhum contêiner ativo</DropdownMenuItem>
-                ) : (
-                  <>
-                    <DropdownMenuItem
-                      disabled={busy || running}
-                      onSelect={() => containerAction.mutate("start")}
-                    >
-                      <PlayIcon aria-hidden />
-                      Iniciar
-                    </DropdownMenuItem>
-                    <DropdownMenuItem
-                      disabled={busy || running === false}
-                      onSelect={() => containerAction.mutate("restart")}
-                    >
-                      <RotateCwIcon aria-hidden />
-                      Reiniciar
-                    </DropdownMenuItem>
-                    <DropdownMenuItem
-                      disabled={busy || running === false}
-                      onSelect={() => setConfirming("stop")}
-                    >
-                      <SquareIcon aria-hidden />
-                      Parar
-                    </DropdownMenuItem>
-                  </>
-                )}
-              </>
-            ) : null}
-            {canControl && canRedeploy ? <DropdownMenuSeparator /> : null}
-            {canRedeploy ? (
-              <DropdownMenuItem disabled={busy} onSelect={() => setConfirming("redeploy")}>
-                <RefreshCwIcon aria-hidden />
-                Redeploy sem build
-              </DropdownMenuItem>
-            ) : null}
-          </DropdownMenuContent>
-        </DropdownMenu>
-      ) : null}
-      {canDeploy ? (
-        <Button size="sm" disabled={busy} onClick={() => deploy.mutate()}>
-          {deploy.isPending ? (
-            <LoaderCircleIcon aria-hidden className="animate-spin" />
-          ) : (
-            <RocketIcon aria-hidden />
-          )}
-          Deploy
-        </Button>
-      ) : null}
-      <ConfirmDialog
-        open={confirming === "stop"}
-        onOpenChange={(open) => setConfirming(open ? "stop" : null)}
-        title="Parar a aplicação?"
-        description={STOP_DESCRIPTION}
-        confirmLabel="Parar"
-        destructive
-        onConfirm={() => containerAction.mutate("stop")}
-      />
-      <ConfirmDialog
-        open={confirming === "redeploy"}
-        onOpenChange={(open) => setConfirming(open ? "redeploy" : null)}
-        title="Recriar o contêiner?"
-        description={REDEPLOY_DESCRIPTION}
-        confirmLabel="Fazer redeploy"
-        onConfirm={() => redeploy.mutate()}
-      />
     </div>
   );
 }

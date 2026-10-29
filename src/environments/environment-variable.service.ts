@@ -1,7 +1,7 @@
 import { and, asc, eq } from "drizzle-orm";
 
 import { type Actor, recordAuditEvent } from "@/audit";
-import { type Database, tables } from "@/db";
+import { type Database, tables, type Transaction } from "@/db";
 import { getProject, PRODUCTION_ENVIRONMENT } from "@/projects";
 import type { SecretBox } from "@/secrets";
 import type { EnvironmentVariableInput } from "@/shared/schemas/environment-variable.schema";
@@ -118,19 +118,7 @@ export async function saveEnvironmentVariable(
       : null;
   const now = new Date().toISOString();
   database.transaction((transaction) => {
-    const existing = transaction
-      .select({
-        id: tables.environmentVariables.id,
-        encryptedValue: tables.environmentVariables.encryptedValue,
-      })
-      .from(tables.environmentVariables)
-      .where(
-        and(
-          eq(tables.environmentVariables.environmentId, environmentId),
-          eq(tables.environmentVariables.key, input.key),
-        ),
-      )
-      .get();
+    const existing = findVariable(transaction, environmentId, input.key);
     const values = {
       kind: input.kind,
       plainValue: input.kind === "plain" ? input.value : null,
@@ -141,24 +129,7 @@ export async function saveEnvironmentVariable(
     if (input.kind === "secret" && values.encryptedValue == null) {
       throw new Error(`Secret ${input.key} needs a value`);
     }
-    if (existing == null) {
-      transaction
-        .insert(tables.environmentVariables)
-        .values({
-          id: Bun.randomUUIDv7(),
-          environmentId,
-          key: input.key,
-          createdAt: now,
-          ...values,
-        })
-        .run();
-    } else {
-      transaction
-        .update(tables.environmentVariables)
-        .set(values)
-        .where(eq(tables.environmentVariables.id, existing.id))
-        .run();
-    }
+    writeVariable(transaction, { existingId: existing?.id, environmentId, key: input.key, values });
     recordAuditEvent(transaction, {
       actor,
       action: existing == null ? "environment_variable.create" : "environment_variable.update",
@@ -167,6 +138,61 @@ export async function saveEnvironmentVariable(
       metadata: { key: input.key, kind: input.kind },
     });
   });
+}
+
+type VariableValues = {
+  readonly kind: "plain" | "secret";
+  readonly plainValue: string | null;
+  readonly encryptedValue: string | null;
+  readonly availableAtBuild: boolean;
+  readonly updatedAt: string;
+};
+
+/** Inserts the variable, or updates it in place when it already exists. */
+function writeVariable(
+  transaction: Transaction,
+  target: {
+    readonly existingId: string | undefined;
+    readonly environmentId: string;
+    readonly key: string;
+    readonly values: VariableValues;
+  },
+): void {
+  const { existingId, environmentId, key, values } = target;
+  if (existingId == null) {
+    transaction
+      .insert(tables.environmentVariables)
+      .values({
+        id: Bun.randomUUIDv7(),
+        environmentId,
+        key,
+        createdAt: values.updatedAt,
+        ...values,
+      })
+      .run();
+    return;
+  }
+  transaction
+    .update(tables.environmentVariables)
+    .set(values)
+    .where(eq(tables.environmentVariables.id, existingId))
+    .run();
+}
+
+function findVariable(transaction: Transaction, environmentId: string, key: string) {
+  return transaction
+    .select({
+      id: tables.environmentVariables.id,
+      encryptedValue: tables.environmentVariables.encryptedValue,
+    })
+    .from(tables.environmentVariables)
+    .where(
+      and(
+        eq(tables.environmentVariables.environmentId, environmentId),
+        eq(tables.environmentVariables.key, key),
+      ),
+    )
+    .get();
 }
 
 /**

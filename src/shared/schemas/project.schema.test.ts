@@ -46,7 +46,9 @@ describe("projectInputSchema", () => {
 
     expect(result.success).toBe(false);
   });
+});
 
+describe("projectInputSchema field limits", () => {
   test("rejects a Dockerfile path that escapes the repository", () => {
     const result = projectInputSchema.safeParse({
       ...validInput,

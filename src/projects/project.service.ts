@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, inArray, isNull, like, or, sql } from "drizzle-orm";
+import { and, eq, isNull, or, sql } from "drizzle-orm";
 
 import { type Actor, recordAuditEvent } from "@/audit";
 import { type Database, tables, type Transaction } from "@/db";
@@ -10,9 +10,9 @@ import { ProjectNotFoundError, ProjectSlugTakenError } from "./project.errors";
 
 /** Name of the single environment every project has today. */
 export const PRODUCTION_ENVIRONMENT = "production";
-const MAX_SEARCH_LENGTH = 100;
 
-const projectColumns = {
+/** Columns that make up a {@link Project}; shared with the listing query. */
+export const projectColumns = {
   id: tables.projects.id,
   name: tables.projects.name,
   slug: tables.projects.slug,
@@ -370,103 +370,4 @@ export function findProject(database: Database, idOrSlug: string): Project {
     throw new ProjectNotFoundError(idOrSlug);
   }
   return project;
-}
-
-/** Project row in listings, with its latest deployment and container state. */
-export type ProjectSummary = Project & {
-  readonly latestDeployment: {
-    readonly id: string;
-    readonly status: string;
-    readonly commitSha: string | null;
-    readonly createdAt: string;
-    readonly finishedAt: string | null;
-  } | null;
-  readonly containerState: string | null;
-  readonly containerHealth: string | null;
-};
-
-/**
- * Lists projects with their latest deployment and container state, without N+1 queries.
- *
- * @param database - Database.
- * @param options - Optional name, slug or repository search.
- * @returns Projects sorted by name.
- */
-export function listProjects(
-  database: Database,
-  options: { readonly search?: string } = {},
-): ProjectSummary[] {
-  const search = (options.search ?? "").trim().slice(0, MAX_SEARCH_LENGTH);
-  const pattern = `%${search.replaceAll(/[%_\\]/g, (character) => `\\${character}`)}%`;
-  const searchCondition =
-    search === ""
-      ? undefined
-      : or(
-          sql`${tables.projects.name} LIKE ${pattern} ESCAPE '\\'`,
-          sql`${tables.projects.slug} LIKE ${pattern} ESCAPE '\\'`,
-          like(tables.projects.repositoryFullName, pattern),
-        );
-  const projects = database
-    .select(projectColumns)
-    .from(tables.projects)
-    .where(and(isNull(tables.projects.deletionRequestedAt), searchCondition))
-    .orderBy(asc(tables.projects.name))
-    .all();
-  if (projects.length === 0) {
-    return [];
-  }
-  const projectIds = projects.map((project) => project.id);
-  const latestDeployments = database
-    .select({
-      id: tables.deployments.id,
-      projectId: tables.deployments.projectId,
-      status: tables.deployments.status,
-      commitSha: tables.deployments.commitSha,
-      createdAt: tables.deployments.createdAt,
-      finishedAt: tables.deployments.finishedAt,
-    })
-    .from(tables.deployments)
-    .where(
-      and(
-        inArray(tables.deployments.projectId, projectIds),
-        eq(
-          tables.deployments.id,
-          sql`(
-            SELECT latest.id FROM deployments AS latest
-            WHERE latest.project_id = ${tables.deployments.projectId}
-            ORDER BY latest.created_at DESC, latest.id DESC
-            LIMIT 1
-          )`,
-        ),
-      ),
-    )
-    .all();
-  const latestByProject = new Map(
-    latestDeployments.map((deployment) => [deployment.projectId, deployment]),
-  );
-  const snapshots = database
-    .select({
-      projectId: tables.containerSnapshots.projectId,
-      deploymentId: tables.containerSnapshots.deploymentId,
-      state: tables.containerSnapshots.state,
-      health: tables.containerSnapshots.health,
-    })
-    .from(tables.containerSnapshots)
-    .where(inArray(tables.containerSnapshots.projectId, projectIds))
-    .orderBy(desc(tables.containerSnapshots.observedAt))
-    .all();
-  const snapshotByDeployment = new Map(
-    snapshots
-      .toReversed()
-      .map((snapshot) => [`${snapshot.projectId}:${snapshot.deploymentId}`, snapshot]),
-  );
-  return projects.map((project) => {
-    const snapshot =
-      snapshotByDeployment.get(`${project.id}:${project.currentDeploymentId}`) ?? null;
-    return Object.assign(project, {
-      latestDeployment: latestByProject.get(project.id) ?? null,
-      containerState: snapshot?.state ?? null,
-      containerHealth: snapshot?.health ?? null,
-    });
-  });
 }

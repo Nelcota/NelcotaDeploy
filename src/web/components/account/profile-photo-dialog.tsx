@@ -1,22 +1,11 @@
 import { useRouter } from "@tanstack/react-router";
-import { ImageUpIcon, LoaderCircleIcon, Trash2Icon } from "lucide-react";
-import { type ChangeEvent, useRef } from "react";
-import { toast } from "sonner";
 
-import {
-  AVATAR_SIZE_IN_PX,
-  bytesToBase64,
-  centerSquareCrop,
-  MAX_SOURCE_IMAGE_BYTES,
-} from "@/web/components/account/avatar-image";
-import {
-  ImageProcessingError,
-  UnreadableImageError,
-} from "@/web/components/account/profile-photo.errors";
+import { toAvatarBytes } from "@/web/components/account/avatar-encoder";
+import { bytesToBase64 } from "@/web/components/account/avatar-image";
+import { PickPhotoButton, RemovePhotoButton } from "@/web/components/account/profile-photo-buttons";
+import { UnreadableImageError } from "@/web/components/account/profile-photo.errors";
 import { UserAvatar } from "@/web/components/account/user-avatar";
-import { ConfirmDialog } from "@/web/components/layout/confirm-dialog";
 import { useAction } from "@/web/components/layout/use-action";
-import { Button } from "@/web/components/ui/button";
 import {
   Dialog,
   DialogContent,
@@ -26,65 +15,8 @@ import {
 } from "@/web/components/ui/dialog";
 import { removeAvatarFn, updateAvatarFn } from "@/web/functions/session.functions";
 
-const WEBP_QUALITY = 0.85;
-
-/**
- * Crops the picture to a centered square and re-encodes it at the avatar size, so any photo
- * becomes a small WebP (PNG on browsers without WebP encoding).
- */
-async function toAvatarBytes(file: File): Promise<Uint8Array> {
-  const bitmap = await createImageBitmap(file);
-  try {
-    const crop = centerSquareCrop(bitmap.width, bitmap.height);
-    const canvas = document.createElement("canvas");
-    canvas.width = AVATAR_SIZE_IN_PX;
-    canvas.height = AVATAR_SIZE_IN_PX;
-    const context = canvas.getContext("2d");
-    if (context == null) {
-      throw new ImageProcessingError("2d canvas unavailable");
-    }
-    context.drawImage(
-      bitmap,
-      crop.x,
-      crop.y,
-      crop.size,
-      crop.size,
-      0,
-      0,
-      AVATAR_SIZE_IN_PX,
-      AVATAR_SIZE_IN_PX,
-    );
-    const { promise, resolve } = Promise.withResolvers<Blob | null>();
-    canvas.toBlob(resolve, "image/webp", WEBP_QUALITY);
-    const blob = await promise;
-    if (blob == null) {
-      throw new ImageProcessingError("canvas could not be encoded");
-    }
-    return new Uint8Array(await blob.arrayBuffer());
-  } finally {
-    bitmap.close();
-  }
-}
-
-function uploadLabel(uploading: boolean, hasPhoto: boolean): string {
-  if (uploading) {
-    return "Enviando…";
-  }
-  return hasPhoto ? "Trocar imagem" : "Escolher imagem";
-}
-
-/** Dialog where the signed-in user picks or removes their profile photo. */
-export function ProfilePhotoDialog({
-  user,
-  open,
-  onOpenChange,
-}: {
-  readonly user: { readonly name: string; readonly image: string | null };
-  readonly open: boolean;
-  readonly onOpenChange: (open: boolean) => void;
-}) {
+function useProfilePhotoActions() {
   const router = useRouter();
-  const inputRef = useRef<HTMLInputElement>(null);
   const refreshSession = async () => {
     await router.invalidate();
   };
@@ -103,27 +35,21 @@ export function ProfilePhotoDialog({
     successMessage: "Foto de perfil removida",
     onSuccess: refreshSession,
   });
-  const busy = upload.isPending || remove.isPending;
+  return { upload, remove };
+}
 
-  const pick = (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    // Clearing the input lets the same file be picked again after an error.
-    if (inputRef.current != null) {
-      inputRef.current.value = "";
-    }
-    if (file == null) {
-      return;
-    }
-    if (file.type.startsWith("image/") === false) {
-      toast.error("Escolha um arquivo de imagem.");
-      return;
-    }
-    if (file.size > MAX_SOURCE_IMAGE_BYTES) {
-      toast.error("A imagem passa de 20 MB. Escolha uma foto menor.");
-      return;
-    }
-    upload.mutate(file);
-  };
+/** Dialog where the signed-in user picks or removes their profile photo. */
+export function ProfilePhotoDialog({
+  user,
+  open,
+  onOpenChange,
+}: {
+  readonly user: { readonly name: string; readonly image: string | null };
+  readonly open: boolean;
+  readonly onOpenChange: (open: boolean) => void;
+}) {
+  const { upload, remove } = useProfilePhotoActions();
+  const busy = upload.isPending || remove.isPending;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -142,41 +68,18 @@ export function ProfilePhotoDialog({
             className="size-28"
             fallbackClassName="text-2xl"
           />
-          <input
-            ref={inputRef}
-            type="file"
-            accept="image/*"
-            className="sr-only"
-            tabIndex={-1}
-            aria-hidden
-            onChange={pick}
-          />
           <div className="flex flex-wrap justify-center gap-2">
-            <Button disabled={busy} onClick={() => inputRef.current?.click()}>
-              {upload.isPending ? (
-                <LoaderCircleIcon aria-hidden className="animate-spin" />
-              ) : (
-                <ImageUpIcon aria-hidden />
-              )}
-              {uploadLabel(upload.isPending, user.image != null)}
-            </Button>
+            <PickPhotoButton
+              hasPhoto={user.image != null}
+              uploading={upload.isPending}
+              disabled={busy}
+              onPick={(file) => upload.mutate(file)}
+            />
             {user.image == null ? null : (
-              <ConfirmDialog
-                trigger={
-                  <Button variant="outline" disabled={busy}>
-                    {remove.isPending ? (
-                      <LoaderCircleIcon aria-hidden className="animate-spin" />
-                    ) : (
-                      <Trash2Icon aria-hidden />
-                    )}
-                    Remover foto
-                  </Button>
-                }
-                title="Remover a foto de perfil?"
-                description="No lugar dela aparecem as iniciais do seu nome."
-                confirmLabel="Remover"
-                destructive
-                onConfirm={() => remove.mutate()}
+              <RemovePhotoButton
+                removing={remove.isPending}
+                disabled={busy}
+                onRemove={() => remove.mutate()}
               />
             )}
           </div>

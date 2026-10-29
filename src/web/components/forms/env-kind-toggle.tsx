@@ -12,6 +12,37 @@ const OPTIONS = [
 
 const ARROW_KEYS = new Set(["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"]);
 
+function KindOption({
+  option,
+  selected,
+  onSelect,
+}: {
+  readonly option: (typeof OPTIONS)[number];
+  readonly selected: boolean;
+  readonly onSelect: (value: VariableKind) => void;
+}) {
+  return (
+    <button
+      type="button"
+      role="radio"
+      data-value={option.value}
+      tabIndex={selected ? 0 : -1}
+      title={option.hint}
+      aria-checked={selected}
+      onClick={() => onSelect(option.value)}
+      className={cn(
+        "flex items-center justify-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors focus-visible:ring-3 focus-visible:ring-ring/40 focus-visible:outline-none",
+        selected
+          ? "bg-card text-foreground ring-1 ring-border"
+          : "text-muted-foreground hover:text-foreground",
+      )}
+    >
+      <option.icon aria-hidden className="size-4" />
+      {option.label}
+    </button>
+  );
+}
+
 /**
  * Two-option switch between a visible configuration value and an encrypted secret. Behaves
  * like a radio group: one Tab stop, and the arrow keys move the choice.
@@ -47,25 +78,12 @@ export function VariableKindToggle({
       className="grid grid-cols-2 gap-1 rounded-lg bg-secondary p-1 ring-1 ring-border ring-inset"
     >
       {OPTIONS.map((option) => (
-        <button
+        <KindOption
           key={option.value}
-          type="button"
-          role="radio"
-          data-value={option.value}
-          tabIndex={value === option.value ? 0 : -1}
-          title={option.hint}
-          aria-checked={value === option.value}
-          onClick={() => onChange(option.value)}
-          className={cn(
-            "flex items-center justify-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors focus-visible:ring-3 focus-visible:ring-ring/40 focus-visible:outline-none",
-            value === option.value
-              ? "bg-card text-foreground ring-1 ring-border"
-              : "text-muted-foreground hover:text-foreground",
-          )}
-        >
-          <option.icon aria-hidden className="size-4" />
-          {option.label}
-        </button>
+          option={option}
+          selected={value === option.value}
+          onSelect={onChange}
+        />
       ))}
     </div>
   );

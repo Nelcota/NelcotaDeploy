@@ -31,6 +31,21 @@ function LatestDeployment({ project, now }: { readonly project: ProjectRow; read
   );
 }
 
+function RepositoryCell({ project }: { readonly project: ProjectRow }) {
+  return (
+    <div className="hidden w-56 min-w-0 shrink-0 space-y-0.5 text-sm md:block">
+      <p className="flex min-w-0 items-center gap-1.5 text-muted-foreground">
+        <FolderGit2Icon aria-hidden className="size-3.5 shrink-0" />
+        <span className="truncate">{project.repositoryFullName}</span>
+      </p>
+      <p className="flex min-w-0 items-center gap-1.5 font-mono text-xs text-muted-foreground">
+        <GitBranchIcon aria-hidden className="size-3.5 shrink-0" />
+        <span className="truncate">{project.branch}</span>
+      </p>
+    </div>
+  );
+}
+
 /** One project in a {@link List}: name, repository, last deploy and container state. */
 export function ProjectListRow({
   project,
@@ -52,16 +67,7 @@ export function ProjectListRow({
         </Link>
         <p className="truncate font-mono text-xs text-muted-foreground">{project.slug}</p>
       </div>
-      <div className="hidden w-56 min-w-0 shrink-0 space-y-0.5 text-sm md:block">
-        <p className="flex min-w-0 items-center gap-1.5 text-muted-foreground">
-          <FolderGit2Icon aria-hidden className="size-3.5 shrink-0" />
-          <span className="truncate">{project.repositoryFullName}</span>
-        </p>
-        <p className="flex min-w-0 items-center gap-1.5 font-mono text-xs text-muted-foreground">
-          <GitBranchIcon aria-hidden className="size-3.5 shrink-0" />
-          <span className="truncate">{project.branch}</span>
-        </p>
-      </div>
+      <RepositoryCell project={project} />
       <div className="hidden w-36 shrink-0 lg:block">
         <LatestDeployment project={project} now={now} />
       </div>

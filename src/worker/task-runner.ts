@@ -9,6 +9,18 @@ import { getExecutionForRun, updateTaskExecution } from "@/tasks";
 const MILLISECONDS_PER_SECOND = 1000;
 const MAX_OUTPUT_LENGTH = 65_536;
 
+type TaskRunnerDependencies = {
+  readonly database: Database;
+  readonly docker: DockerEngine;
+  readonly secretBox: SecretBox;
+};
+
+type QueuedExecution = {
+  readonly id: string;
+  readonly command: readonly string[];
+  readonly timeoutInSeconds: number;
+};
+
 /**
  * Runs a task execution inside the project's current container.
  *
@@ -22,24 +34,17 @@ const MAX_OUTPUT_LENGTH = 65_536;
  * @returns Final status.
  */
 export async function runTaskExecution(
-  dependencies: {
-    readonly database: Database;
-    readonly docker: DockerEngine;
-    readonly secretBox: SecretBox;
-  },
+  dependencies: TaskRunnerDependencies,
   executionId: string,
   signal: AbortSignal,
 ): Promise<"succeeded" | "failed" | "skipped"> {
-  const { database, docker } = dependencies;
+  const { database } = dependencies;
   const execution = getExecutionForRun(database, executionId);
   if (execution?.status !== "queued") {
     return "skipped";
   }
   const project = getProject(database, execution.projectId);
-  const containerName =
-    project.currentDeploymentId == null
-      ? null
-      : getDeployment(database, project.currentDeploymentId).containerName;
+  const containerName = currentContainerName(database, project.currentDeploymentId);
   if (containerName == null) {
     updateTaskExecution(database, executionId, {
       status: "failed",
@@ -48,33 +53,60 @@ export async function runTaskExecution(
     return "failed";
   }
   const environment = await resolveEnvironment(database, dependencies.secretBox, project.id);
-  const redact = createRedactor(environment.secretValues);
   updateTaskExecution(database, executionId, { status: "running" });
+  return await executeInContainer(dependencies, {
+    execution: { ...execution, id: executionId },
+    containerName,
+    redact: createRedactor(environment.secretValues),
+    signal,
+  });
+}
+
+async function executeInContainer(
+  { database, docker }: TaskRunnerDependencies,
+  run: {
+    readonly execution: QueuedExecution;
+    readonly containerName: string;
+    readonly redact: (text: string) => string;
+    readonly signal: AbortSignal;
+  },
+): Promise<"succeeded" | "failed"> {
+  const { execution } = run;
   let output = "";
   try {
-    const result = await docker.execInContainer(containerName, execution.command, {
+    const result = await docker.execInContainer(run.containerName, execution.command, {
       timeoutInMs: execution.timeoutInSeconds * MILLISECONDS_PER_SECOND,
-      signal,
+      signal: run.signal,
       onLine: (line) => {
-        output = `${output}${redact(line)}\n`.slice(-MAX_OUTPUT_LENGTH);
+        output = `${output}${run.redact(line)}\n`.slice(-MAX_OUTPUT_LENGTH);
       },
     });
-    const succeeded = result.exitCode === 0;
-    updateTaskExecution(database, executionId, {
-      status: succeeded ? "succeeded" : "failed",
+    const status = result.exitCode === 0 ? "succeeded" : "failed";
+    updateTaskExecution(database, execution.id, {
+      status,
       exitCode: result.exitCode,
       output,
       errorMessage: describeFailure(result, execution.timeoutInSeconds),
     });
-    return succeeded ? "succeeded" : "failed";
+    return status;
   } catch (error) {
-    updateTaskExecution(database, executionId, {
+    updateTaskExecution(database, execution.id, {
       status: "failed",
       output,
       errorMessage: error instanceof Error ? error.message : String(error),
     });
     return "failed";
   }
+}
+
+function currentContainerName(
+  database: Database,
+  currentDeploymentId: string | null,
+): string | null {
+  if (currentDeploymentId == null) {
+    return null;
+  }
+  return getDeployment(database, currentDeploymentId).containerName;
 }
 
 function describeFailure(

@@ -14,8 +14,12 @@ import { createTask } from "@/tasks";
 const ACTOR = { type: "system", label: "ui-review" } as const;
 const MINUTE_IN_MS = 60_000;
 const METRIC_SAMPLES = 60;
-const MEBIBYTE = 1024 * 1024;
-const REVIEW_DURATION_IN_MS = 60 * MINUTE_IN_MS;
+const BYTES_PER_KIBIBYTE = 1024;
+const MEBIBYTE = BYTES_PER_KIBIBYTE * BYTES_PER_KIBIBYTE;
+const REVIEW_DURATION_IN_MINUTES = 60;
+const REVIEW_DURATION_IN_MS = REVIEW_DURATION_IN_MINUTES * MINUTE_IN_MS;
+const SHORT_COMMIT_LENGTH = 7;
+const CONTAINER_UPTIME_IN_MINUTES = 90;
 
 const email = process.env["UI_REVIEW_EMAIL"] ?? "";
 const password = process.env["UI_REVIEW_PASSWORD"] ?? "";
@@ -91,8 +95,8 @@ function runDeploy(outcome: "succeeded" | "failed", commit: string, message: str
   }
   transitionDeployment(database, deploymentId, {
     to: "starting",
-    imageTag: `nelcota/api-pagamentos:${commit.slice(0, 7)}`,
-    containerName: `nelcota-api-pagamentos-${commit.slice(0, 7)}`,
+    imageTag: `nelcota/api-pagamentos:${commit.slice(0, SHORT_COMMIT_LENGTH)}`,
+    containerName: `nelcota-api-pagamentos-${commit.slice(0, SHORT_COMMIT_LENGTH)}`,
   });
   transitionDeployment(database, deploymentId, { to: "health_checking" });
   completeDeployment(database, deploymentId);
@@ -107,17 +111,21 @@ const liveDeploymentId = runDeploy(
   "feat(pagamentos): adiciona Pix com QR code dinâmico e conciliação automática",
 );
 
-for (const [key, kind, value] of [
+const ENVIRONMENT_VARIABLES = [
   ["NODE_ENV", "plain", "production"],
   ["API_BASE_URL", "plain", "https://api.exemplo.com"],
   ["DATABASE_URL", "secret", "postgres://usuario:senha@db:5432/pagamentos"],
-] as const) {
-  await saveEnvironmentVariable(database, secretBox, {
-    projectId: api.id,
-    input: { key, kind, value, availableAtBuild: key === "NODE_ENV" },
-    actor: ACTOR,
-  });
-}
+] as const;
+await Promise.all(
+  ENVIRONMENT_VARIABLES.map(
+    async ([key, kind, value]) =>
+      await saveEnvironmentVariable(database, secretBox, {
+        projectId: api.id,
+        input: { key, kind, value, availableAtBuild: key === "NODE_ENV" },
+        actor: ACTOR,
+      }),
+  ),
+);
 addDomain(database, {
   projectId: api.id,
   input: { hostname: "pagamentos.exemplo.com", httpsEnabled: true },
@@ -148,7 +156,7 @@ createTask(database, {
   ...taskContext,
 });
 
-const startedAt = new Date(now - 90 * MINUTE_IN_MS).toISOString();
+const startedAt = new Date(now - CONTAINER_UPTIME_IN_MINUTES * MINUTE_IN_MS).toISOString();
 database
   .insert(tables.containerSnapshots)
   .values({
@@ -175,28 +183,47 @@ database
     dockerVersion: "28.0.0",
   })
   .run();
+// Each fake metric curve is a base value plus a sine wave of the given amplitude.
+const WAVE_PERIOD_IN_SAMPLES = 6;
+const CONTAINER_METRICS = {
+  cpu: { basePercent: 12, amplitudePercent: 8 },
+  memory: { baseInMebibytes: 180, amplitudeInMebibytes: 20, totalInMebibytes: 2048 },
+} as const;
+const HOST_METRICS = {
+  cpu: { basePercent: 30, amplitudePercent: 15 },
+  memory: { baseInMebibytes: 2600, amplitudeInMebibytes: 200, totalInMebibytes: 8192 },
+  disk: { usedInMebibytes: 40_000, totalInMebibytes: 80_000 },
+} as const;
+
 for (let index = 0; index < METRIC_SAMPLES; index += 1) {
   const createdAt = new Date(now - (METRIC_SAMPLES - index) * MINUTE_IN_MS).toISOString();
-  const wave = Math.sin(index / 6);
+  const wave = Math.sin(index / WAVE_PERIOD_IN_SAMPLES);
+  const { cpu: containerCpu, memory: containerMemory } = CONTAINER_METRICS;
+  const { cpu: hostCpu, memory: hostMemory, disk: hostDisk } = HOST_METRICS;
   database
     .insert(tables.metricSamples)
     .values([
       {
         scope: "container",
         projectId: api.id,
-        cpuPercent: 12 + wave * 8,
-        memoryUsedBytes: Math.round((180 + wave * 20) * MEBIBYTE),
-        memoryTotalBytes: 2048 * MEBIBYTE,
+        cpuPercent: containerCpu.basePercent + wave * containerCpu.amplitudePercent,
+        memoryUsedBytes: Math.round(
+          (containerMemory.baseInMebibytes + wave * containerMemory.amplitudeInMebibytes) *
+            MEBIBYTE,
+        ),
+        memoryTotalBytes: containerMemory.totalInMebibytes * MEBIBYTE,
         createdAt,
       },
       {
         scope: "host",
         projectId: null,
-        cpuPercent: 30 + wave * 15,
-        memoryUsedBytes: Math.round((2600 + wave * 200) * MEBIBYTE),
-        memoryTotalBytes: 8192 * MEBIBYTE,
-        diskUsedBytes: 40_000 * MEBIBYTE,
-        diskTotalBytes: 80_000 * MEBIBYTE,
+        cpuPercent: hostCpu.basePercent + wave * hostCpu.amplitudePercent,
+        memoryUsedBytes: Math.round(
+          (hostMemory.baseInMebibytes + wave * hostMemory.amplitudeInMebibytes) * MEBIBYTE,
+        ),
+        memoryTotalBytes: hostMemory.totalInMebibytes * MEBIBYTE,
+        diskUsedBytes: hostDisk.usedInMebibytes * MEBIBYTE,
+        diskTotalBytes: hostDisk.totalInMebibytes * MEBIBYTE,
         createdAt,
       },
     ])

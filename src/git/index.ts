@@ -1,1 +1,1 @@
-export { type CloneOptions, GitClient, isCommitSha } from "./git-client";
+export { GitClient, isCommitSha } from "./git-client";

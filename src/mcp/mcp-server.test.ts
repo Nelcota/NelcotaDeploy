@@ -117,7 +117,9 @@ describe("MCP server over stdio", () => {
     ]);
     await cleanup();
   }, 20_000);
+});
 
+describe("MCP server token permissions", () => {
   test("a read token lists projects", async () => {
     const { client, cleanup } = await setup(["read"]);
     await using _client = client;

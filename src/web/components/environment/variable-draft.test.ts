@@ -1,0 +1,58 @@
+import { describe, expect, test } from "bun:test";
+
+import type { EnvironmentVariableView } from "@/environments";
+
+import { describeKinds, draftFromVariable } from "./variable-draft";
+
+function variable(overrides: Partial<EnvironmentVariableView>): EnvironmentVariableView {
+  return {
+    id: "variable-1",
+    key: "NODE_ENV",
+    kind: "plain",
+    value: "production",
+    availableAtBuild: false,
+    updatedAt: "2026-10-28T12:00:00Z",
+    ...overrides,
+  };
+}
+
+describe("draftFromVariable", () => {
+  test("returns an empty plain draft for a new variable", () => {
+    const draft = draftFromVariable(null);
+
+    expect(draft).toEqual({ key: "", kind: "plain", value: "", availableAtBuild: false });
+  });
+
+  test("copies the saved fields of a plain variable", () => {
+    const draft = draftFromVariable(variable({ availableAtBuild: true }));
+
+    expect(draft).toEqual({
+      key: "NODE_ENV",
+      kind: "plain",
+      value: "production",
+      availableAtBuild: true,
+    });
+  });
+
+  test("starts a secret with an empty value", () => {
+    const draft = draftFromVariable(variable({ kind: "secret", value: null }));
+
+    expect(draft.value).toBe("");
+  });
+});
+
+describe("describeKinds", () => {
+  test("counts secrets and plain settings separately", () => {
+    const variables = [variable({ kind: "secret" }), variable({}), variable({})];
+
+    const description = describeKinds(variables);
+
+    expect(description).toBe("1 secret, 2 configurações");
+  });
+
+  test("uses plural forms when there are no variables", () => {
+    const description = describeKinds([]);
+
+    expect(description).toBe("0 secrets, 0 configurações");
+  });
+});

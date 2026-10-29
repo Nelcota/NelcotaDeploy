@@ -100,15 +100,17 @@ describe("runContainerArgs", () => {
   });
 });
 
-describe("traefikLabels", () => {
-  const base = {
-    projectSlug: "api",
-    internalPort: 8080,
-    network: "nelcota",
-    httpEntrypoint: "web",
-    httpsEntrypoint: "websecure",
-    certResolver: "letsencrypt",
-  };
+const TRAEFIK_BASE = {
+  projectSlug: "api",
+  internalPort: 8080,
+  network: "nelcota",
+  httpEntrypoint: "web",
+  httpsEntrypoint: "websecure",
+  certResolver: "letsencrypt",
+};
+
+describe("traefikLabels routing", () => {
+  const base = TRAEFIK_BASE;
 
   test("returns no labels when the project has no domains", () => {
     expect(traefikLabels({ ...base, domains: [] })).toEqual({});
@@ -137,6 +139,10 @@ describe("traefikLabels", () => {
     expect(labels["traefik.http.routers.nelcota-api-0.entrypoints"]).toBe("web");
     expect(labels["traefik.http.routers.nelcota-api-0.tls"]).toBeUndefined();
   });
+});
+
+describe("traefikLabels validation", () => {
+  const base = TRAEFIK_BASE;
 
   test("throws InvalidDockerArgumentError for a hostname that could break the rule", () => {
     const labels = () =>

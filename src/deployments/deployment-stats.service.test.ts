@@ -68,7 +68,9 @@ describe("summarizeDeployments", () => {
 
     expect(stats.total).toBe(0);
   });
+});
 
+describe("summarizeDeployments daily series and success rate", () => {
   test("returns one entry per day, oldest first, including empty days", () => {
     const { database, projectId } = setup();
     insertDeployment(database, projectId, {
@@ -116,7 +118,9 @@ describe("summarizeDeployments", () => {
 
     expect(stats.successRatePercent).toBe(75);
   });
+});
 
+describe("summarizeDeployments duration and validation", () => {
   test("averages the duration of succeeded deploys", () => {
     const { database, projectId } = setup();
     insertDeployment(database, projectId, {

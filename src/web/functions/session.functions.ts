@@ -34,8 +34,12 @@ export const getSessionFn = createServerFn({ method: "GET" }).handler(async () =
 
 export type SessionUser = NonNullable<Awaited<ReturnType<typeof getSessionFn>>>;
 
-// Base64 grows the content by a third; this fits the largest accepted photo.
-const MAX_AVATAR_BASE64_LENGTH = Math.ceil((MAX_AVATAR_BYTES * 4) / 3) + 4;
+// Base64 writes every 3 input bytes as 4 characters; one extra group covers the padding.
+const BASE64_BYTES_PER_GROUP = 3;
+const BASE64_CHARACTERS_PER_GROUP = 4;
+const MAX_AVATAR_BASE64_LENGTH =
+  Math.ceil(MAX_AVATAR_BYTES / BASE64_BYTES_PER_GROUP) * BASE64_CHARACTERS_PER_GROUP +
+  BASE64_CHARACTERS_PER_GROUP;
 
 /** Replaces the signed-in user's profile photo with an image sent as base64. */
 export const updateAvatarFn = createServerFn({ method: "POST" })

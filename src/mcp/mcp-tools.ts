@@ -1,8 +1,5 @@
 import { z } from "zod";
 
-import type { Actor } from "@/audit";
-import { type ApiTokenScope, verifyApiToken } from "@/auth";
-import type { Database } from "@/db";
 import {
   getDeployment,
   listDeployments,
@@ -21,38 +18,14 @@ import {
 import { findProject, listProjects } from "@/projects";
 import { getSystemSettings } from "@/settings";
 
+import { authorize, type McpToolContext } from "./mcp-authorization";
+
 const MILLISECONDS_PER_HOUR = 3_600_000;
 const MAX_METRIC_HOURS = 48;
 const MAX_DEPLOYMENTS = 50;
 const MAX_LOG_LINES = 1000;
 const DEFAULT_DEPLOYMENTS = 10;
 const DEFAULT_LOG_LINES = 300;
-
-/** Thrown when the MCP token is invalid, revoked, expired or lacks a scope. */
-class McpAuthorizationError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "McpAuthorizationError";
-  }
-}
-
-/** Shared state of every tool call. */
-export type McpToolContext = {
-  readonly database: Database;
-  /** Plaintext token from the MCP process environment, re-verified on every call. */
-  readonly token: string;
-};
-
-function authorize(context: McpToolContext, scope: ApiTokenScope): Actor {
-  const token = verifyApiToken(context.database, context.token);
-  if (token == null) {
-    throw new McpAuthorizationError("The MCP token is invalid, revoked or expired");
-  }
-  if (token.scopes.includes(scope) === false) {
-    throw new McpAuthorizationError(`The MCP token lacks the "${scope}" scope`);
-  }
-  return { type: "token", id: token.id, label: `token:${token.name}` };
-}
 
 const projectReference = z.string().trim().min(1).max(100).describe("Project id or slug");
 

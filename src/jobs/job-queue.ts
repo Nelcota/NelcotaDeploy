@@ -59,22 +59,24 @@ export function enqueueJob(
   if (inserted != null) {
     return { id: inserted.id, created: true };
   }
+  return { id: findActiveDuplicate(database, job.dedupeKey ?? null), created: false };
+}
+
+function findActiveDuplicate(database: Database | Transaction, dedupeKey: string | null): string {
+  if (dedupeKey == null) {
+    throw new Error("Job insert was ignored without a dedupe key");
+  }
   const existing = database
     .select({ id: tables.jobs.id })
     .from(tables.jobs)
     .where(
-      and(
-        eq(tables.jobs.dedupeKey, job.dedupeKey ?? ""),
-        inArray(tables.jobs.status, ["queued", "running"]),
-      ),
+      and(eq(tables.jobs.dedupeKey, dedupeKey), inArray(tables.jobs.status, ["queued", "running"])),
     )
     .get();
   if (existing == null) {
-    throw new Error(
-      `Job insert was ignored without an active duplicate (dedupe key ${job.dedupeKey ?? "none"})`,
-    );
+    throw new Error(`Job insert was ignored without an active duplicate (dedupe key ${dedupeKey})`);
   }
-  return { id: existing.id, created: false };
+  return existing.id;
 }
 
 /**

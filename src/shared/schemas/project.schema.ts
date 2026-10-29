@@ -75,16 +75,20 @@ export function isValidBranchName(branch: string): boolean {
   if (BRANCH_PATTERN.test(branch) === false) {
     return false;
   }
-  const breaksGitRules =
-    branch.startsWith("-") ||
-    branch.startsWith("/") ||
-    branch.endsWith("/") ||
-    branch.endsWith(".") ||
-    branch.endsWith(".lock") ||
-    branch.includes("..") ||
-    branch.includes("//") ||
-    branch.includes("/.");
-  return breaksGitRules === false;
+  return breaksGitRefRules(branch) === false;
+}
+
+// Rules from `git check-ref-format` that the character pattern alone cannot express.
+const FORBIDDEN_BRANCH_PREFIXES = ["-", "/"] as const;
+const FORBIDDEN_BRANCH_SUFFIXES = ["/", ".", ".lock"] as const;
+const FORBIDDEN_BRANCH_SEQUENCES = ["..", "//", "/."] as const;
+
+function breaksGitRefRules(branch: string): boolean {
+  return (
+    FORBIDDEN_BRANCH_PREFIXES.some((prefix) => branch.startsWith(prefix)) ||
+    FORBIDDEN_BRANCH_SUFFIXES.some((suffix) => branch.endsWith(suffix)) ||
+    FORBIDDEN_BRANCH_SEQUENCES.some((sequence) => branch.includes(sequence))
+  );
 }
 
 /**

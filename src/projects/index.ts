@@ -4,7 +4,6 @@ export {
   createProject,
   findProject,
   getProject,
-  listProjects,
   PRODUCTION_ENVIRONMENT,
   type Project,
   readRepositoryToken,
@@ -12,3 +11,4 @@ export {
   setRepositoryToken,
   updateProject,
 } from "./project.service";
+export { listProjects } from "./project-listing.service";

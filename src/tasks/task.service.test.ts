@@ -5,8 +5,9 @@ import { claimNextJob } from "@/jobs";
 import { taskInputSchema } from "@/shared/schemas/task.schema";
 import { createTestProject, TEST_ACTOR } from "@/testing";
 
+import { scheduleDueTasks } from "./task-execution.service";
 import { InvalidScheduleError } from "./task.errors";
-import { createTask, listTasks, runTask, scheduleDueTasks } from "./task.service";
+import { createTask, listTasks, runTask } from "./task.service";
 
 const TIME_ZONE = "UTC";
 const T0 = new Date("2026-10-28T10:00:30.000Z");
@@ -55,7 +56,9 @@ describe("tasks", () => {
 
     expect(create).toThrow(InvalidScheduleError);
   });
+});
 
+describe("task scheduling", () => {
   test("queues a due task once and advances its schedule", () => {
     const database = openMemoryDatabase();
     const project = createTestProject(database);
@@ -97,7 +100,9 @@ describe("tasks", () => {
 
     expect(queued).toHaveLength(0);
   });
+});
 
+describe("task scheduling of disabled tasks", () => {
   test("does not schedule disabled tasks", () => {
     const database = openMemoryDatabase();
     const project = createTestProject(database);
@@ -112,7 +117,9 @@ describe("tasks", () => {
 
     expect(scheduleDueTasks(database, new Date("2026-10-29T00:00:00Z"), TIME_ZONE)).toEqual([]);
   });
+});
 
+describe("manual task runs", () => {
   test("a manual run creates an execution and a task job", () => {
     const database = openMemoryDatabase();
     const project = createTestProject(database);
