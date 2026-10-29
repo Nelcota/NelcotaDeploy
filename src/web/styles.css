@@ -37,6 +37,8 @@
   --accent: #e9efff;
   --accent-foreground: #1a3fb8;
   --destructive: #c0283a;
+  /* Fill of destructive buttons; white text on it stays above WCAG AA in both themes. */
+  --destructive-solid: #c0283a;
   --border: #e4e4e0;
   --input: #d9d9d4;
   --ring: #1f55f0;
@@ -82,6 +84,7 @@
   --accent: #161f3d;
   --accent-foreground: #bccbff;
   --destructive: #ff6b78;
+  --destructive-solid: #cf2a3b;
   --border: #28282d;
   --input: #2b2b30;
   --ring: #5b84ff;
@@ -140,6 +143,7 @@
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
   --color-destructive: var(--destructive);
+  --color-destructive-solid: var(--destructive-solid);
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
