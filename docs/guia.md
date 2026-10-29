@@ -18,6 +18,7 @@ contêiner, verifica a saúde e só então troca a versão anterior. Logs aparec
 - [Primeiro administrador](#primeiro-administrador)
 - [Cadastrar uma aplicação e fazer deploy](#cadastrar-uma-aplicação-e-fazer-deploy)
 - [GitHub (deploy automático e repositórios privados)](#github-deploy-automático-e-repositórios-privados)
+- [Previews de pull request](#previews-de-pull-request)
 - [Volumes](#volumes)
 - [Domínios e HTTPS](#domínios-e-https)
 - [Alertas](#alertas)
@@ -313,6 +314,27 @@ manual) sobre o corpo bruto (limite de 1 MB), registra cada
 entrega pelo `X-GitHub-Delivery` (reentregas são ignoradas), confere repositório e branch e enfileira
 o deploy do **commit exato** do push. Entregas recebidas aparecem em **Configurações → Auditoria**.
 O deploy manual funciona independentemente do webhook.
+
+## Previews de pull request
+
+Com **Ajustes → Previews de pull request** ligado, cada PR aberto para a branch do projeto ganha um
+deploy temporário em `pr-<número>-<identificador>.<domínio base>`. Cada push no PR atualiza o
+preview, e fechar o PR remove rota, contêiner e imagem.
+
+- **Só PRs do próprio repositório.** PRs de forks nunca rodam: seriam código de terceiros no seu
+  servidor, com as variáveis do projeto.
+- Exige domínio base (o curinga de DNS dele já cobre o endereço do preview) e projeto aprovado.
+- No máximo 5 previews ativos por projeto; PRs além disso ficam sem preview até outro fechar.
+- O preview recebe as variáveis de produção, menos as marcadas com **Não enviar para previews**
+  (por exemplo `DATABASE_URL`). Volumes nunca são montados num preview.
+- Produção e previews são isolados: um nunca cancela, substitui ou reaproveita a imagem do outro,
+  e o histórico, o rollback, as métricas, os logs e as tasks do projeto continuam sendo só da
+  produção. Os deploys de preview aparecem no cartão **Previews** da visão geral.
+- Com o GitHub App, o PR mostra o status “Nelcota Deploy (identificador) · preview” com o link do
+  preview no ar. O app precisa do evento _Pull request_ e da permissão _Pull requests: Read-only_
+  (apps antigos: veja o aviso em **Configurações → Sistema**). Com webhook manual, marque também o
+  evento _Pull requests_.
+- Os deploys de um projeto (produção e previews) rodam um de cada vez.
 
 ## Volumes
 
