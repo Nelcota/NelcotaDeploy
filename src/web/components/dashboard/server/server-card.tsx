@@ -1,7 +1,7 @@
 import { ServerIcon } from "lucide-react";
 import { useState } from "react";
 
-import { useServers } from "@/web/admin/servers/use-servers";
+import { useServers } from "@/web/admin";
 import { CardTitleRow } from "@/web/components/layout/layout";
 import { SegmentedControl } from "@/web/components/layout/overview";
 import { ErrorState } from "@/web/components/layout/states";

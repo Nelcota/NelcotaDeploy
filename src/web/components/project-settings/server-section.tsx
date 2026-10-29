@@ -1,7 +1,7 @@
 import { ArrowRightLeftIcon, ServerIcon } from "lucide-react";
 import { useState } from "react";
 
-import { type ServerView, useServers } from "@/web/admin/servers/use-servers";
+import { type ServerView, useServers } from "@/web/admin";
 import { ConfirmDialog } from "@/web/components/layout/confirm-dialog";
 import { useAction } from "@/web/components/layout/use-action";
 import { Button } from "@/web/components/ui/button";
@@ -24,7 +24,8 @@ function useMoveProject(projectId: string) {
       result.deploymentId == null
         ? "Servidor alterado. O próximo deploy roda nele."
         : "Mudança iniciada: o deploy no novo servidor está na fila.",
-    invalidate: [["project", projectId], ["servers"]],
+    // The DNS card must show the new server's address right away.
+    invalidate: [["project", projectId], ["servers"], ["server-address", projectId]],
   });
 }
 
