@@ -57,6 +57,13 @@
       "when": 1793294400698,
       "tag": "0007_build_config_hash",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1793300516494,
+      "tag": "0008_project_volumes",
+      "breakpoints": true
     }
   ]
 }

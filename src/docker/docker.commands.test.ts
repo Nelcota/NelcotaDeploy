@@ -8,6 +8,7 @@ import {
   proxyContainerArgs,
   runContainerArgs,
   stopContainerArgs,
+  volumeNameFor,
 } from "./docker.commands";
 import { InvalidDockerArgumentError } from "./docker.errors";
 
@@ -76,6 +77,7 @@ describe("runContainerArgs", () => {
       network: "nelcota",
       labels: managedLabels({ projectId: "p1", projectSlug: "api", deploymentId: "d1" }),
       environmentKeys: ["SECRET_TOKEN"],
+      volumes: [],
     });
 
     expect(args).toContain("--detach");
@@ -95,6 +97,7 @@ describe("runContainerArgs", () => {
         network: "nelcota",
         labels: {},
         environmentKeys: [],
+        volumes: [],
       });
 
     expect(run).toThrow(InvalidDockerArgumentError);
@@ -181,5 +184,40 @@ describe("stopContainerArgs", () => {
 
   test("throws InvalidDockerArgumentError for an id that could be read as an option", () => {
     expect(() => stopContainerArgs("--all")).toThrow(InvalidDockerArgumentError);
+  });
+});
+
+const RUN_BASE = {
+  containerName: "nelcota-api-abc",
+  imageTag: "nelcota/api:abc",
+  network: "nelcota",
+  labels: {},
+  environmentKeys: [],
+};
+
+describe("runContainerArgs volumes", () => {
+  test("mounts each named volume at its path", () => {
+    const args = runContainerArgs({
+      ...RUN_BASE,
+      volumes: [{ name: "nelcota-data-0a1b2c3d4e5f", target: "/app/data" }],
+    });
+
+    expect(args).toContain("type=volume,source=nelcota-data-0a1b2c3d4e5f,target=/app/data");
+  });
+
+  test.each([["/app/data,readonly"], ["/app/data=x"], ["relative"], ["/"]])(
+    "throws InvalidDockerArgumentError for the mount path %p",
+    (target) => {
+      const run = () =>
+        runContainerArgs({ ...RUN_BASE, volumes: [{ name: "nelcota-data-1", target }] });
+
+      expect(run).toThrow(InvalidDockerArgumentError);
+    },
+  );
+});
+
+describe("volumeNameFor", () => {
+  test("derives a stable name from the volume id", () => {
+    expect(volumeNameFor(DEPLOYMENT_ID)).toBe("nelcota-data-0c1d2e3f4a5b");
   });
 });

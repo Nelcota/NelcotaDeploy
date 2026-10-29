@@ -36,6 +36,7 @@ file. No Kubernetes, no external database, no agents to install.
 | **Logs**    | Live build and runtime logs with search, level filter and jump to the first error.                                     |
 | **Metrics** | CPU and memory per container and for the host, with history.                                                           |
 | **Config**  | Variables and secrets (AES-256-GCM), applied to the running app as soon as they are saved.                             |
+| **Volumes** | Folders kept between deploys as Docker named volumes, with detach and an explicit delete of the data.                  |
 | **Domains** | Automatic and custom domains, HTTPS by Let's Encrypt through Traefik, and a live check of each domain's DNS.           |
 | **Ops**     | Daily database backups, encrypted off-site copies to any S3 bucket, and Discord or Slack alerts.                       |
 | **Servers** | Add a VPS with one pasted command; builds and apps run there over a persistent SSH connection, moves keep sites up.    |

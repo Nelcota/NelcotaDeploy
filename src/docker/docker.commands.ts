@@ -79,6 +79,18 @@ export function containerNameFor(projectSlug: string, deploymentId: string): str
 }
 
 /**
+ * Returns the deterministic Docker volume name of a project volume, such as
+ * "nelcota-data-0a1b2c3d4e5f". It never changes, so data survives renames of the project.
+ *
+ * @param volumeId - Volume UUID.
+ * @returns Volume name.
+ * @throws {InvalidDockerArgumentError} When the id is malformed.
+ */
+export function volumeNameFor(volumeId: string): string {
+  return `nelcota-data-${shortId(volumeId)}`;
+}
+
+/**
  * Builds the platform labels for a deployment's image and container.
  *
  * @param input - Owning project and deployment.
@@ -97,7 +109,7 @@ export function managedLabels(input: {
   };
 }
 
-function labelArgs(labels: Readonly<Record<string, string>>): string[] {
+export function labelArgs(labels: Readonly<Record<string, string>>): string[] {
   return Object.entries(labels).flatMap(([key, value]) => {
     assertMatches(key, LABEL_KEY_PATTERN, "label key");
     assertLabelValue(value);
@@ -149,7 +161,20 @@ export type RunContainerOptions = {
   readonly labels: Readonly<Record<string, string>>;
   /** Names passed as `--env NAME`; docker reads each value from its own environment. */
   readonly environmentKeys: readonly string[];
+  /** Named volumes mounted at absolute paths inside the container. */
+  readonly volumes: readonly { readonly name: string; readonly target: string }[];
 };
+
+// Plain absolute path: no comma or "=", which would add options to the --mount value.
+const MOUNT_TARGET_PATTERN = /^(?:\/[A-Za-z0-9._-]+)+$/;
+
+function mountArgs(volumes: RunContainerOptions["volumes"]): string[] {
+  return volumes.flatMap((volume) => {
+    assertMatches(volume.name, NAME_PATTERN, "volume name");
+    assertMatches(volume.target, MOUNT_TARGET_PATTERN, "mount path");
+    return ["--mount", `type=volume,source=${volume.name},target=${volume.target}`];
+  });
+}
 
 /**
  * Builds `docker run` arguments for a detached, auto-restarting container with no published
@@ -157,7 +182,7 @@ export type RunContainerOptions = {
  *
  * @param options - Container definition.
  * @returns Arguments after the docker binary.
- * @throws {InvalidDockerArgumentError} When a name, tag, label or key is malformed.
+ * @throws {InvalidDockerArgumentError} When a name, tag, label, key or mount is malformed.
  */
 export function runContainerArgs(options: RunContainerOptions): string[] {
   assertMatches(options.containerName, NAME_PATTERN, "container name");
@@ -181,6 +206,7 @@ export function runContainerArgs(options: RunContainerOptions): string[] {
     "max-file=3",
     ...labelArgs(options.labels),
     ...options.environmentKeys.flatMap((key) => ["--env", key]),
+    ...mountArgs(options.volumes),
     options.imageTag,
   ];
 }

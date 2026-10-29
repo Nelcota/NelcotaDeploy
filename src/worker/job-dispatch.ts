@@ -9,8 +9,13 @@ import {
   transitionDeployment,
 } from "@/deployments";
 import type { Job } from "@/jobs";
+import { getProject } from "@/projects";
 
-import { runContainerAction, runProjectCleanup } from "./container-action-runner";
+import {
+  runContainerAction,
+  runProjectCleanup,
+  runVolumeDeletion,
+} from "./container-action-runner";
 import type { DeployRunnerConfig, DeployRunnerDependencies } from "./deploy/deploy-context";
 import { runDeployment } from "./deploy/deploy-runner";
 import type { ServerHost } from "./server-host";
@@ -187,6 +192,17 @@ async function runProjectCleanupJob(dependencies: WorkerDependencies, job: Job):
   dependencies.logger.info({ projectId: job.projectId, ...removed }, "project deleted");
 }
 
+async function runVolumeDeleteJob(dependencies: WorkerDependencies, job: Job): Promise<void> {
+  const volumeId = job.payload["volumeId"];
+  if (typeof volumeId !== "string" || volumeId === "") {
+    throw new Error(`Job ${job.id} of kind ${job.kind} is missing its volume id`);
+  }
+  const { database, hosts } = dependencies;
+  // Projects with volumes cannot move, so the data is on the project's current server.
+  const host = hosts.hostOf(database, getProject(database, job.projectId).serverId);
+  await runVolumeDeletion(database, host.docker.volumes, { projectId: job.projectId, volumeId });
+}
+
 /**
  * Runs one claimed job with the runner for its kind, on the server it belongs to.
  *
@@ -215,6 +231,10 @@ export async function dispatchJob(
     }
     case "project_cleanup": {
       await runProjectCleanupJob(dependencies, job);
+      return;
+    }
+    case "volume_delete": {
+      await runVolumeDeleteJob(dependencies, job);
     }
   }
 }

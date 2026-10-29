@@ -18,6 +18,7 @@ contêiner, verifica a saúde e só então troca a versão anterior. Logs aparec
 - [Primeiro administrador](#primeiro-administrador)
 - [Cadastrar uma aplicação e fazer deploy](#cadastrar-uma-aplicação-e-fazer-deploy)
 - [GitHub (deploy automático e repositórios privados)](#github-deploy-automático-e-repositórios-privados)
+- [Volumes](#volumes)
 - [Domínios e HTTPS](#domínios-e-https)
 - [Alertas](#alertas)
 - [Tasks agendadas](#tasks-agendadas)
@@ -297,6 +298,26 @@ manual) sobre o corpo bruto (limite de 1 MB), registra cada
 entrega pelo `X-GitHub-Delivery` (reentregas são ignoradas), confere repositório e branch e enfileira
 o deploy do **commit exato** do push. Entregas recebidas aparecem em **Configurações → Auditoria**.
 O deploy manual funciona independentemente do webhook.
+
+## Volumes
+
+Sem volume, tudo o que a aplicação grava no disco some a cada deploy, porque cada versão roda num
+contêiner novo. Em **Ajustes → Volumes**, informe a pasta do contêiner que deve ser mantida (por
+exemplo `/app/data` ou `/var/lib/postgresql/data`).
+
+- Cada volume é um volume nomeado do Docker (`nelcota-data-…`) no disco do servidor do projeto,
+  nunca uma pasta qualquer do host.
+- O caminho precisa ser absoluto, sem `..` e fora das pastas do sistema (`/etc`, `/proc`, `/usr`…).
+  São até 10 volumes por projeto, sem um caminho dentro do outro.
+- Adicionar, desanexar ou anexar um volume é aplicado como as outras mudanças: o contêiner é
+  recriado, sozinho ou pelo botão **Aplicar agora**.
+- **Desanexar** para de montar a pasta e **mantém os dados**. **Apagar dados** só aparece para um
+  volume desanexado, pede para digitar o caminho e apaga os arquivos do servidor (só para
+  administradores). Excluir o projeto apaga os volumes dele.
+- Durante a troca de versão, o contêiner antigo e o novo usam o mesmo volume por alguns segundos.
+- Projetos com volumes **não podem mudar de servidor**: os dados ficam no disco do servidor atual.
+- O backup do painel não inclui os volumes. Faça backup deles com as ferramentas da própria
+  aplicação (por exemplo `pg_dump`) ou copiando o volume do Docker.
 
 ## Domínios e HTTPS
 
