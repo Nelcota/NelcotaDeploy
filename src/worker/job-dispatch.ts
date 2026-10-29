@@ -1,5 +1,11 @@
 import type { AppConfig } from "@/config";
-import { getDeployment, isContainerAction, listDeploymentServerIds } from "@/deployments";
+import {
+  getDeployment,
+  isContainerAction,
+  isTerminalStatus,
+  listDeploymentServerIds,
+  transitionDeployment,
+} from "@/deployments";
 import type { Job } from "@/jobs";
 
 import { runContainerAction, runProjectCleanup } from "./container-action-runner";
@@ -57,6 +63,26 @@ function requireId(id: string | null, job: Job): string {
   return id;
 }
 
+/**
+ * Returns the host of the server a deployment was queued for. When that server is gone, the
+ * deployment fails with a clear message instead of staying queued forever.
+ */
+function hostOfDeployment(dependencies: WorkerDependencies, deploymentId: string): ServerHost {
+  const { database } = dependencies;
+  const deployment = getDeployment(database, deploymentId);
+  try {
+    return dependencies.hosts.hostOf(database, deployment.serverId);
+  } catch (error) {
+    if (isTerminalStatus(deployment.status) === false) {
+      transitionDeployment(database, deploymentId, {
+        to: "failed",
+        errorMessage: `The server ${deployment.serverId} of this deployment no longer exists`,
+      });
+    }
+    throw error;
+  }
+}
+
 async function runDeployJob(
   dependencies: WorkerDependencies,
   job: Job,
@@ -64,8 +90,7 @@ async function runDeployJob(
 ): Promise<void> {
   const deploymentId = requireId(job.deploymentId, job);
   // The server was chosen when the deployment was queued; a retry after a crash stays there.
-  const { serverId } = getDeployment(dependencies.database, deploymentId);
-  const host = dependencies.hosts.hostOf(dependencies.database, serverId);
+  const host = hostOfDeployment(dependencies, deploymentId);
   const status = await runDeployment(
     deployRunnerDependencies(dependencies, host),
     deploymentId,
@@ -115,11 +140,17 @@ async function runTaskJob(dependencies: WorkerDependencies, job: Job, run: JobRu
 async function runProjectCleanupJob(dependencies: WorkerDependencies, job: Job): Promise<void> {
   const serverIds = listDeploymentServerIds(dependencies.database, job.projectId);
   const hosts = dependencies.hosts.hostsOf(dependencies.database, serverIds);
-  const removed = await runProjectCleanup(
+  const { failures, ...removed } = await runProjectCleanup(
     dependencies.database,
     hosts.map((host) => host.docker),
     job.projectId,
   );
+  for (const failure of failures) {
+    dependencies.logger.warn(
+      { err: failure, projectId: job.projectId },
+      "server unreachable during project deletion; its containers go when it is back",
+    );
+  }
   dependencies.logger.info({ projectId: job.projectId, ...removed }, "project deleted");
 }
 

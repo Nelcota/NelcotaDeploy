@@ -376,3 +376,19 @@ export function findProject(database: Database, idOrSlug: string): Project {
   }
   return project;
 }
+
+/**
+ * Lists the ids of every project that exists, including ones being deleted.
+ *
+ * @param database - Database.
+ * @returns Project ids.
+ */
+export function listProjectIds(database: Database): Set<string> {
+  return new Set(
+    database
+      .select({ id: tables.projects.id })
+      .from(tables.projects)
+      .all()
+      .map((project) => project.id),
+  );
+}

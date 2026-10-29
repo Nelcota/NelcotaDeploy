@@ -4,6 +4,7 @@ export {
   createProject,
   findProject,
   getProject,
+  listProjectIds,
   PRODUCTION_ENVIRONMENT,
   type Project,
   readRepositoryToken,

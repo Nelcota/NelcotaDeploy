@@ -1,3 +1,5 @@
+import { type ContainerInfo, LABELS } from "@/docker";
+import { listProjectIds } from "@/projects";
 import {
   applicationServersReady,
   dedicatePanelHostIfUnused,
@@ -7,10 +9,32 @@ import {
   type Server,
 } from "@/servers";
 
+import { removeProjectResources } from "../container-action-runner";
 import type { WorkerDependencies } from "../worker.types";
 import { ContainerObserver } from "./container-observer";
 import { HostSampler } from "./host-sampler";
 import { checkServer } from "./server-checker";
+
+/**
+ * Finds the projects that no longer exist among the owners of a server's containers.
+ *
+ * @param containers - Platform containers on the server.
+ * @param existing - Ids of the projects that exist.
+ * @returns Ids of deleted projects that still have containers there.
+ */
+export function deletedProjectIds(
+  containers: readonly ContainerInfo[],
+  existing: ReadonlySet<string>,
+): Set<string> {
+  const deleted = new Set<string>();
+  for (const container of containers) {
+    const projectId = container.labels[LABELS.projectId];
+    if (projectId != null && existing.has(projectId) === false) {
+      deleted.add(projectId);
+    }
+  }
+  return deleted;
+}
 
 /**
  * Every server the worker manages: their checks, and the container observer and host
@@ -150,13 +174,35 @@ export class ServerFleet implements Disposable {
     await this.#observerFor(server).refresh();
   }
 
-  /** Refreshes the containers of every ready server and follows their Docker events. */
+  /**
+   * Refreshes the containers of every ready server, follows their Docker events and removes
+   * what deleted projects left on servers that were unreachable when they were deleted.
+   */
   async refreshContainers(): Promise<void> {
     await Promise.all(
       this.#readyServers.map(async (server) => {
         const observer = this.#observerFor(server);
         observer.followEvents();
-        await observer.refresh();
+        const containers = await observer.refresh();
+        await this.#removeDeletedProjects(server, containers);
+      }),
+    );
+  }
+
+  async #removeDeletedProjects(
+    server: Server,
+    containers: readonly ContainerInfo[],
+  ): Promise<void> {
+    const { database, hosts, logger } = this.#dependencies;
+    const deleted = deletedProjectIds(containers, listProjectIds(database));
+    const docker = hosts.hostFor(server).docker;
+    await Promise.all(
+      [...deleted].map(async (projectId) => {
+        const removed = await removeProjectResources(docker, projectId);
+        logger.info(
+          { projectId, serverId: server.id, ...removed },
+          "removed what a deleted project left on a server",
+        );
       }),
     );
   }

@@ -82,8 +82,10 @@ export class ContainerObserver implements Disposable {
 
   /**
    * Reads every platform container, stores snapshots and follows logs of running ones.
+   *
+   * @returns The platform containers the server has now.
    */
-  async refresh(): Promise<void> {
+  async refresh(): Promise<ContainerInfo[]> {
     const containers = await this.#docker.listManagedContainers();
     const observedAt = new Date().toISOString();
     replaceContainerSnapshots(
@@ -117,6 +119,7 @@ export class ContainerObserver implements Disposable {
         .filter((container) => this.#followers.has(container.id) === false)
         .map(async (container) => await this.#follow(container)),
     );
+    return containers;
   }
 
   /**

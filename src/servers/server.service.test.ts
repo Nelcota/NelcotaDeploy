@@ -128,6 +128,7 @@ describe("removeServer with leftovers", () => {
   test("throws ServerInUseError while a moved project's old container still runs on it", () => {
     const database = openMemoryDatabase();
     const remote = addRemote(database);
+    markReady(database, remote);
     const project = createTestProject(database);
     database
       .insert(tables.containerSnapshots)
@@ -139,6 +140,60 @@ describe("removeServer with leftovers", () => {
         image: "nelcota/api:old",
         state: "running",
         observedAt: new Date().toISOString(),
+      })
+      .run();
+
+    const remove = () => removeServer(database, { serverId: remote, actor: TEST_ACTOR });
+
+    expect(remove).toThrow(ServerInUseError);
+  });
+});
+
+describe("removeServer of a server that is gone", () => {
+  test("removes an unreachable server and forgets the containers it had", () => {
+    const database = openMemoryDatabase();
+    const remote = addRemote(database);
+    const project = createTestProject(database);
+    database
+      .insert(tables.containerSnapshots)
+      .values({
+        containerId: "old",
+        serverId: remote,
+        projectId: project.id,
+        name: "nelcota-api-old",
+        image: "nelcota/api:old",
+        state: "running",
+        observedAt: new Date().toISOString(),
+      })
+      .run();
+    recordServerCheck(database, remote, {
+      status: "unreachable",
+      message: "x",
+      dockerVersion: null,
+    });
+
+    removeServer(database, { serverId: remote, actor: TEST_ACTOR });
+
+    expect(database.select().from(tables.containerSnapshots).all()).toEqual([]);
+  });
+});
+
+describe("removeServer with deployments", () => {
+  test("throws ServerInUseError while a deployment is queued for the server", () => {
+    const database = openMemoryDatabase();
+    const remote = addRemote(database);
+    const project = createTestProject(database);
+    database
+      .insert(tables.deployments)
+      .values({
+        id: "queued",
+        projectId: project.id,
+        status: "queued",
+        trigger: "manual",
+        triggeredByLabel: "test",
+        branch: "main",
+        serverId: remote,
+        createdAt: new Date().toISOString(),
       })
       .run();
 

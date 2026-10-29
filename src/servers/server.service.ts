@@ -1,10 +1,19 @@
-import { and, asc, count, eq, sql } from "drizzle-orm";
+import { and, asc, count, eq, inArray, sql } from "drizzle-orm";
 
 import { type Actor, recordAuditEvent } from "@/audit";
 import { type Database, tables } from "@/db";
 import type { ServerInput } from "@/shared/schemas/server.schema";
 
 import { ServerInUseError, ServerNotFoundError, ServerTakenError } from "./server.errors";
+
+// Same as ACTIVE_STATUSES of the deployments package, which depends on this one (via projects).
+const ACTIVE_DEPLOYMENT_STATUSES = [
+  "queued",
+  "cloning",
+  "building",
+  "starting",
+  "health_checking",
+] as const;
 
 /** Id of the panel's own host, which always exists. */
 export const LOCAL_SERVER_ID = tables.LOCAL_SERVER_ID;
@@ -219,16 +228,34 @@ export function removeServer(
   if (countProjectsOn(database, serverId) > 0) {
     throw new ServerInUseError(serverId, "projects still run on it");
   }
-  // A moved project's old container stays until its domains point at the new server.
+  const queued = database
+    .select({ id: tables.deployments.id })
+    .from(tables.deployments)
+    .where(
+      and(
+        eq(tables.deployments.serverId, serverId),
+        inArray(tables.deployments.status, [...ACTIVE_DEPLOYMENT_STATUSES]),
+      ),
+    )
+    .get();
+  if (queued != null) {
+    throw new ServerInUseError(serverId, "a deployment is queued or running on it");
+  }
+  // A moved project's old container stays until its domains point at the new server. A server
+  // that is gone for good can still be removed: nothing can be cleaned up there anyway.
   const leftover = database
     .select({ containerId: tables.containerSnapshots.containerId })
     .from(tables.containerSnapshots)
     .where(eq(tables.containerSnapshots.serverId, serverId))
     .get();
-  if (leftover != null) {
+  if (leftover != null && server.status === "ready") {
     throw new ServerInUseError(serverId, "containers of moved projects still run on it");
   }
   database.transaction((transaction) => {
+    transaction
+      .delete(tables.containerSnapshots)
+      .where(eq(tables.containerSnapshots.serverId, serverId))
+      .run();
     transaction.delete(tables.servers).where(eq(tables.servers.id, serverId)).run();
     recordAuditEvent(transaction, {
       actor,
