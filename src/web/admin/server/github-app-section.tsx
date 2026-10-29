@@ -19,7 +19,7 @@ export function GitHubAppSection({ server }: { readonly server: ServerData }) {
   return (
     <Section icon={GitBranchIcon} title="GitHub">
       {server.githubApp == null ? (
-        <ConnectGitHubApp canEdit={can("settings:write")} />
+        <ConnectGitHubApp canEdit={can("settings:write")} server={server} />
       ) : (
         <ConnectedGitHubApp app={server.githubApp} canEdit={can("settings:write")} />
       )}

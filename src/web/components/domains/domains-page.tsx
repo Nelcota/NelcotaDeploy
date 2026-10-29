@@ -42,7 +42,14 @@ export function DomainsPage({ projectId }: { readonly projectId: string }) {
           />
         </List>
       )}
-      <DnsCard projectId={projectId} automaticHostname={automaticHostnameOf(details)} />
+      {details == null ? null : (
+        <DnsCard
+          projectId={projectId}
+          automaticHostname={automaticHostnameOf(details)}
+          domains={details.domains}
+          dns={dns}
+        />
+      )}
     </>
   );
 }

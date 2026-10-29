@@ -28,20 +28,14 @@ export function AcceptsApplicationsSwitch({
   });
   const id = `server-accepts-${server.id}`;
   return (
-    <div className="flex items-start gap-3">
+    <div className="flex items-center gap-3">
       <Switch
         id={id}
         disabled={canEdit === false || toggle.isPending}
         checked={server.acceptsApplications}
         onCheckedChange={(checked) => toggle.mutate(checked)}
-        aria-describedby={`${id}-hint`}
       />
-      <div className="space-y-1">
-        <Label htmlFor={id}>Recebe novos projetos</Label>
-        <p id={`${id}-hint`} className="text-xs text-muted-foreground">
-          Projetos novos vão para o servidor com menos projetos entre os que recebem.
-        </p>
-      </div>
+      <Label htmlFor={id}>Recebe novos projetos</Label>
     </div>
   );
 }

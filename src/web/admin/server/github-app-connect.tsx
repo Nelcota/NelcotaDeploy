@@ -4,6 +4,9 @@ import { Button } from "@/web/components/ui/button";
 import { Input } from "@/web/components/ui/input";
 import { Label } from "@/web/components/ui/label";
 
+import type { ServerData } from "./server-data";
+import { ManualWebhook, UnreachableWarning } from "./webhook-section";
+
 function connectUrl(organization: string): string {
   const trimmed = organization.trim();
   if (trimmed === "") {
@@ -13,7 +16,13 @@ function connectUrl(organization: string): string {
 }
 
 /** Starts the creation of the GitHub App, under the user's account or an organization. */
-export function ConnectGitHubApp({ canEdit }: { readonly canEdit: boolean }) {
+export function ConnectGitHubApp({
+  canEdit,
+  server,
+}: {
+  readonly canEdit: boolean;
+  readonly server: ServerData;
+}) {
   const [organization, setOrganization] = useState("");
   return (
     <div className="max-w-2xl space-y-4">
@@ -21,6 +30,7 @@ export function ConnectGitHubApp({ canEdit }: { readonly canEdit: boolean }) {
         Crie um app no GitHub para escolher repositórios da lista, clonar repositórios privados sem
         token e fazer deploy a cada push sem configurar webhook.
       </p>
+      <UnreachableWarning webhookUrl={server.webhookUrl} />
       {canEdit ? (
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
           <div className="space-y-2 sm:w-64">
@@ -37,6 +47,7 @@ export function ConnectGitHubApp({ canEdit }: { readonly canEdit: boolean }) {
           </Button>
         </div>
       ) : null}
+      <ManualWebhook webhookUrl={server.webhookUrl} webhookConfigured={server.webhookConfigured} />
     </div>
   );
 }

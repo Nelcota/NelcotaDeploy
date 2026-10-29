@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { dnsRecordType, dnsTag, domainUrl } from "./domains";
+import { dnsRecordType, dnsTag, domainUrl, needsDnsHelp } from "./domains";
 
 describe("domainUrl", () => {
   test("uses https when HTTPS is enabled", () => {
@@ -52,4 +52,29 @@ describe("dnsTag", () => {
       expect(dnsTag(dns)).toBeNull();
     },
   );
+});
+
+describe("needsDnsHelp", () => {
+  const custom = { hostname: "app.example.com", automatic: false };
+  const automatic = { hostname: "api.apps.example.com", automatic: true };
+
+  test("explains DNS while there is no custom domain", () => {
+    expect(needsDnsHelp([automatic], new Map())).toBe(true);
+  });
+
+  test("explains DNS while a custom domain does not point at the server", () => {
+    const dns = new Map([["app.example.com", { status: "missing" as const }]]);
+
+    expect(needsDnsHelp([automatic, custom], dns)).toBe(true);
+  });
+
+  test("explains DNS while the check has not answered yet", () => {
+    expect(needsDnsHelp([custom], new Map())).toBe(true);
+  });
+
+  test("hides the explanation once every custom domain points at the server", () => {
+    const dns = new Map([["app.example.com", { status: "ok" as const }]]);
+
+    expect(needsDnsHelp([automatic, custom], dns)).toBe(false);
+  });
 });

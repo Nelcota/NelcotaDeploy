@@ -57,3 +57,22 @@ export function dnsTag(
     detail: `Aponta para ${dns.resolved.join(", ")}. Pode ser outro servidor ou um CDN.`,
   };
 }
+
+/**
+ * Tells whether the page should explain which DNS record to create: until every custom domain
+ * points at the project's server, or while there is no custom domain yet.
+ *
+ * @param domains - Domains of the project.
+ * @param dns - DNS status of each hostname, possibly not loaded yet.
+ * @returns False only when all custom domains already resolve to the right server.
+ */
+export function needsDnsHelp(
+  domains: readonly Pick<DomainItem, "hostname" | "automatic">[],
+  dns: ReadonlyMap<string, Pick<DomainDns, "status">>,
+): boolean {
+  const custom = domains.filter((domain) => domain.automatic === false);
+  if (custom.length === 0) {
+    return true;
+  }
+  return custom.some((domain) => dns.get(domain.hostname)?.status !== "ok");
+}

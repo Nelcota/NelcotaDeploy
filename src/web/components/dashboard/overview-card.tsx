@@ -40,7 +40,7 @@ export function OverviewCard({ data }: { readonly data: DashboardSummary | null 
 }
 
 function ApplicationTiles({ data }: { readonly data: DashboardSummary }) {
-  // Same rule as the "Precisam de atenção" filter: down, or running but failing its check.
+  // Same rule as the "Precisam de atenção" filter of the project list: down, or running but failing its check.
   const attention = data.offlineCount + data.unhealthyCount;
   return (
     <>
@@ -52,7 +52,7 @@ function ApplicationTiles({ data }: { readonly data: DashboardSummary }) {
       />
       <StatusTile
         value={attention}
-        label="Precisam de atenção"
+        label="Com problema"
         icon={CircleAlertIcon}
         iconClassName={toneWhenPositive(attention, "text-warning")}
       />
@@ -67,11 +67,7 @@ function DeploymentTiles({ data }: { readonly data: DashboardSummary }) {
   const failures = data.failuresLastDayCount;
   return (
     <>
-      <StatusTile
-        value={data.deploymentsLastDayCount}
-        label={"Deploys em 24 h"}
-        icon={RocketIcon}
-      />
+      <StatusTile value={data.deploymentsLastDayCount} label="Deploys 24 h" icon={RocketIcon} />
       <StatusTile
         value={active}
         label="Em andamento"
@@ -81,7 +77,7 @@ function DeploymentTiles({ data }: { readonly data: DashboardSummary }) {
       />
       <StatusTile
         value={failures}
-        label={"Falhas em 24 h"}
+        label="Falhas 24 h"
         icon={CircleXIcon}
         iconClassName={toneWhenPositive(failures, "text-destructive")}
         tone={failures > 0 ? "danger" : "default"}
