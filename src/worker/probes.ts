@@ -1,5 +1,7 @@
-const PROBE_TIMEOUT_IN_MS = 3000;
-const HTTP_SUCCESS_LIMIT = 400;
+/** Longest a single probe may take, on any server. */
+export const PROBE_TIMEOUT_IN_MS = 3000;
+/** HTTP statuses below this count as healthy (redirects included). */
+export const HTTP_SUCCESS_LIMIT = 400;
 
 /**
  * Network probes that tell whether a container answers. Each server has its own: direct

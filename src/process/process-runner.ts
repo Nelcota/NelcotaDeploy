@@ -170,3 +170,21 @@ export async function runProcess(
     aborted,
   };
 }
+
+/**
+ * Explains why a command failed, for an error message: a timeout, a cancellation, or the
+ * last line it wrote to stderr.
+ *
+ * @param result - Result of a command that did not exit with 0.
+ * @returns A short reason, in English for the logs.
+ */
+export function failureReason(result: ProcessResult): string {
+  if (result.timedOut) {
+    return "timed out";
+  }
+  if (result.aborted) {
+    return "cancelled";
+  }
+  const lastLine = result.stderr.trim().split("\n").at(-1) ?? "";
+  return lastLine === "" ? `exit code ${result.exitCode}` : lastLine;
+}

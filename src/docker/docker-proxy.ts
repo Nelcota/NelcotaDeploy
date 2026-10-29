@@ -1,4 +1,4 @@
-import type { CommandRunner } from "@/process";
+import { type CommandRunner, failureReason } from "@/process";
 
 import { PROXY_CONTAINER_NAME, proxyContainerArgs, type ProxyOptions } from "./docker.commands";
 import { DockerCommandError } from "./docker.errors";
@@ -14,9 +14,8 @@ async function runChecked(
 ): Promise<void> {
   const result = await runner(command, { timeoutInMs });
   if (result.exitCode !== 0) {
-    const reason = result.stderr.trim().split("\n").at(-1) ?? "";
     throw new DockerCommandError(
-      `docker ${command[1] ?? ""} proxy failed: ${reason}`,
+      `docker ${command[1] ?? ""} proxy failed: ${failureReason(result)}`,
       result.exitCode,
     );
   }

@@ -1,6 +1,6 @@
 import { posix } from "node:path";
 
-import type { CommandRunner, ProcessResult } from "@/process";
+import { type CommandRunner, failureReason, type ProcessResult } from "@/process";
 
 import { PathOutsideWorkspaceError, WorkspaceCommandError } from "../worker.errors";
 
@@ -15,8 +15,7 @@ async function runChecked(
 ): Promise<string> {
   const result: ProcessResult = await runner(command, { timeoutInMs });
   if (result.exitCode !== 0) {
-    const reason = result.stderr.trim().split("\n").at(-1) ?? "";
-    throw new WorkspaceCommandError(`${command[0] ?? ""} failed: ${reason}`);
+    throw new WorkspaceCommandError(`${command[0] ?? ""} failed: ${failureReason(result)}`);
   }
   return result.stdout;
 }
@@ -58,30 +57,39 @@ export async function resolveInsideWorkspace(
   return realCandidate;
 }
 
+/** Called when the workspace could not be removed; the deployment itself goes on. */
+type CleanupErrorHandler = (message: string) => void;
+
 /** A temporary directory for one deployment, removed when disposed. */
 export class DeploymentWorkspace implements AsyncDisposable {
   readonly path: string;
   readonly #runner: CommandRunner;
+  readonly #onCleanupError: CleanupErrorHandler;
 
-  private constructor(runner: CommandRunner, path: string) {
+  private constructor(runner: CommandRunner, path: string, onCleanupError: CleanupErrorHandler) {
     this.#runner = runner;
     this.path = path;
+    this.#onCleanupError = onCleanupError;
   }
 
   /**
    * Creates a fresh directory under the workspace root, on the server the runner reaches.
    *
    * @param runner - Where the deployment builds.
-   * @param workspaceRoot - Workspace directory on that server.
-   * @param prefix - Readable prefix, such as the project slug.
+   * @param location - The `root` workspace directory on that server, a readable `prefix`
+   *   such as the project slug, and `onCleanupError`, told when removal fails later.
    * @returns The workspace.
    * @throws {WorkspaceCommandError} When the directory cannot be created.
    */
   static async create(
     runner: CommandRunner,
-    workspaceRoot: string,
-    prefix: string,
+    location: {
+      readonly root: string;
+      readonly prefix: string;
+      readonly onCleanupError: CleanupErrorHandler;
+    },
   ): Promise<DeploymentWorkspace> {
+    const { root: workspaceRoot, prefix } = location;
     await runChecked(runner, ["mkdir", "-p", "--", workspaceRoot]);
     const output = await runChecked(runner, [
       "mktemp",
@@ -93,7 +101,7 @@ export class DeploymentWorkspace implements AsyncDisposable {
     if (path === "") {
       throw new WorkspaceCommandError("mktemp printed no directory");
     }
-    return new DeploymentWorkspace(runner, path);
+    return new DeploymentWorkspace(runner, path, location.onCleanupError);
   }
 
   /** Directory the repository is cloned into. */
@@ -101,7 +109,15 @@ export class DeploymentWorkspace implements AsyncDisposable {
     return posix.join(this.path, "repository");
   }
 
+  /**
+   * Removes the directory. A failure is reported, never thrown: it must not fail a deployment
+   * whose image was built, nor hide the real error of one that failed.
+   */
   async [Symbol.asyncDispose](): Promise<void> {
-    await runChecked(this.#runner, ["rm", "-rf", "--", this.path], REMOVE_TIMEOUT_IN_MS);
+    try {
+      await runChecked(this.#runner, ["rm", "-rf", "--", this.path], REMOVE_TIMEOUT_IN_MS);
+    } catch (error) {
+      this.#onCleanupError(error instanceof Error ? error.message : String(error));
+    }
   }
 }

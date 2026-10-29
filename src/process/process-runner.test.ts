@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { buildChildEnvironment, runProcess } from "./process-runner";
+import { buildChildEnvironment, failureReason, runProcess } from "./process-runner";
 
 describe("runProcess", () => {
   test("returns exit code and streams each output line", async () => {
@@ -52,5 +52,24 @@ describe("buildChildEnvironment", () => {
     expect(environment["NELCOTA_ENCRYPTION_KEY"]).toBeUndefined();
     expect(environment["EXTRA"]).toBe("1");
     delete process.env["NELCOTA_ENCRYPTION_KEY"];
+  });
+});
+
+describe("failureReason", () => {
+  const base = { exitCode: 1, stdout: "", stderr: "", timedOut: false, aborted: false };
+
+  test("reports the last stderr line", () => {
+    expect(failureReason({ ...base, stderr: "warning\nError: no space left\n" })).toBe(
+      "Error: no space left",
+    );
+  });
+
+  test("reports a timeout and a cancellation by name", () => {
+    expect(failureReason({ ...base, timedOut: true })).toBe("timed out");
+    expect(failureReason({ ...base, aborted: true })).toBe("cancelled");
+  });
+
+  test("falls back to the exit code when stderr is empty", () => {
+    expect(failureReason({ ...base, exitCode: 125 })).toBe("exit code 125");
   });
 });

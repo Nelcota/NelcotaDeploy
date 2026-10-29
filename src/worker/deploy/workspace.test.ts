@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { runProcess } from "@/process";
+import { type CommandRunner, runProcess } from "@/process";
 
 import { PathOutsideWorkspaceError, WorkspaceCommandError } from "../worker.errors";
 import { DeploymentWorkspace, resolveInsideWorkspace } from "./workspace";
@@ -52,7 +52,11 @@ describe("DeploymentWorkspace", () => {
     let created = "";
 
     {
-      await using workspace = await DeploymentWorkspace.create(runProcess, root, "api");
+      await using workspace = await DeploymentWorkspace.create(runProcess, {
+        root,
+        prefix: "api",
+        onCleanupError: () => undefined,
+      });
       created = workspace.path;
       expect((await stat(created)).isDirectory()).toBe(true);
     }
@@ -62,10 +66,39 @@ describe("DeploymentWorkspace", () => {
   });
 
   test("throws WorkspaceCommandError when the root cannot be created", async () => {
-    const error = await DeploymentWorkspace.create(runProcess, "/proc/nelcota", "api").catch(
-      (caught: unknown) => caught,
-    );
+    const error = await DeploymentWorkspace.create(runProcess, {
+      root: "/proc/nelcota",
+      prefix: "api",
+      onCleanupError: () => undefined,
+    }).catch((caught: unknown) => caught);
 
     expect(error).toBeInstanceOf(WorkspaceCommandError);
+  });
+});
+
+describe("DeploymentWorkspace cleanup", () => {
+  test("reports a failed removal instead of throwing", async () => {
+    const root = await mkdtemp(join(tmpdir(), "nelcota-root-"));
+    const reported: string[] = [];
+    const failingRemoval: CommandRunner = async (command, options) =>
+      command[0] === "rm"
+        ? await Promise.resolve({
+            exitCode: 1,
+            stdout: "",
+            stderr: "rm: cannot remove: Device or resource busy\n",
+            timedOut: false,
+            aborted: false,
+          })
+        : await runProcess(command, options);
+
+    const workspace = await DeploymentWorkspace.create(failingRemoval, {
+      root,
+      prefix: "api",
+      onCleanupError: (message) => reported.push(message),
+    });
+    await workspace[Symbol.asyncDispose]();
+
+    expect(reported).toHaveLength(1);
+    expect(reported[0]).toContain("Device or resource busy");
   });
 });

@@ -2,10 +2,8 @@ import type { ClientChannel } from "ssh2";
 
 import type { SshConnection } from "@/remote";
 
-import type { Probes } from "../probes";
+import { HTTP_SUCCESS_LIMIT, PROBE_TIMEOUT_IN_MS, type Probes } from "../probes";
 
-const PROBE_TIMEOUT_IN_MS = 3000;
-const HTTP_SUCCESS_LIMIT = 400;
 const MAX_STATUS_LINE_LENGTH = 1024;
 const DEFAULT_HTTP_PORT = 80;
 const STATUS_LINE_PATTERN = /^HTTP\/\d(?:\.\d)? (\d{3})(?: |$)/;

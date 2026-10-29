@@ -113,11 +113,12 @@ export async function buildFromSource(
   context: DeployContext,
   secrets: BuildSecrets,
 ): Promise<string> {
-  await using workspace = await DeploymentWorkspace.create(
-    dependencies.runner,
-    dependencies.config.workspaceDir,
-    context.project.slug,
-  );
+  await using workspace = await DeploymentWorkspace.create(dependencies.runner, {
+    root: dependencies.config.workspaceDir,
+    prefix: context.project.slug,
+    onCleanupError: (message) =>
+      context.logs.system(`Could not remove the build workspace: ${message}`, "warn"),
+  });
   await cloneRevision(dependencies, context, {
     workspace,
     repositoryToken: secrets.repositoryToken,
