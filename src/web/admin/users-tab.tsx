@@ -1,3 +1,4 @@
+import { useForm } from "@tanstack/react-form";
 import { useQuery } from "@tanstack/react-query";
 import { useRouteContext } from "@tanstack/react-router";
 import {
@@ -16,7 +17,7 @@ import { type Role, ROLES } from "@/shared/roles";
 import { newUserSchema, PASSWORD_MIN_LENGTH, passwordSchema } from "@/shared/user.schema";
 import { ConfirmDialog } from "@/web/components/confirm-dialog";
 import { CopyButton } from "@/web/components/copy-button";
-import { FormField } from "@/web/components/form-field";
+import { FormField, visibleErrors } from "@/web/components/form-field";
 import { ROLE_LABELS } from "@/web/components/labels";
 import { List, ListRow, Section, Tag } from "@/web/components/layout";
 import { EmptyState, ErrorState, ListSkeleton } from "@/web/components/states";
@@ -247,6 +248,10 @@ function PasswordInput({
 
 type NewUserForm = { name: string; email: string; role: Role; password: string };
 
+const resetPasswordSchema = z.object({ password: passwordSchema });
+
+const EMPTY_USER: NewUserForm = { name: "", email: "", role: "developer", password: "" };
+
 function CreateUserDialog({
   open,
   onOpenChange,
@@ -254,32 +259,17 @@ function CreateUserDialog({
   readonly open: boolean;
   readonly onOpenChange: (open: boolean) => void;
 }) {
-  const [form, setForm] = useState<NewUserForm>({
-    name: "",
-    email: "",
-    role: "developer",
-    password: "",
-  });
   const create = useAction({
-    action: (data: NewUserForm) => createUserFn({ data }),
+    action: (data: z.output<typeof newUserSchema>) => createUserFn({ data }),
     successMessage: "Usuário criado. Envie a senha por um canal seguro.",
     invalidate: [["users"]],
-    onSuccess: () => {
-      setForm({ name: "", email: "", role: "developer", password: "" });
-      onOpenChange(false);
-    },
+    onSuccess: () => onOpenChange(false),
   });
-  const [errors, setErrors] = useState<Partial<Record<keyof NewUserForm, string[]>>>({});
-  const update = (patch: Partial<NewUserForm>) => setForm((current) => ({ ...current, ...patch }));
-  const submit = () => {
-    const parsed = newUserSchema.safeParse(form);
-    if (parsed.success === false) {
-      setErrors(z.flattenError(parsed.error).fieldErrors);
-      return;
-    }
-    setErrors({});
-    create.mutate(parsed.data);
-  };
+  const form = useForm({
+    defaultValues: EMPTY_USER,
+    validators: { onChange: newUserSchema },
+    onSubmit: ({ value }) => create.mutate(newUserSchema.parse(value)),
+  });
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -295,64 +285,86 @@ function CreateUserDialog({
           noValidate
           onSubmit={(event) => {
             event.preventDefault();
-            submit();
+            void form.handleSubmit();
           }}
         >
-          <FormField id="user-name" label="Nome" errors={errors.name ?? []}>
-            {(props) => (
-              <Input
-                {...props}
-                value={form.name}
-                onChange={(event) => update({ name: event.target.value })}
-              />
+          <form.Field name="name">
+            {(field) => (
+              <FormField id="user-name" label="Nome" errors={visibleErrors(form, field.state.meta)}>
+                {(props) => (
+                  <Input
+                    {...props}
+                    value={field.state.value}
+                    onBlur={field.handleBlur}
+                    onChange={(event) => field.handleChange(event.target.value)}
+                  />
+                )}
+              </FormField>
             )}
-          </FormField>
-          <FormField id="user-email" label="E-mail" errors={errors.email ?? []}>
-            {(props) => (
-              <Input
-                {...props}
-                type="email"
-                autoComplete="off"
-                value={form.email}
-                onChange={(event) => update({ email: event.target.value })}
-              />
-            )}
-          </FormField>
-          <FormField id="user-role" label="Papel">
-            {(props) => (
-              <Select
-                value={form.role}
-                onValueChange={(value) =>
-                  update({ role: ROLES.find((role) => role === value) ?? "viewer" })
-                }
+          </form.Field>
+          <form.Field name="email">
+            {(field) => (
+              <FormField
+                id="user-email"
+                label="E-mail"
+                errors={visibleErrors(form, field.state.meta)}
               >
-                <SelectTrigger {...props} className="w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {ROLES.map((role) => (
-                    <SelectItem key={role} value={role}>
-                      {ROLE_LABELS[role]}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                {(props) => (
+                  <Input
+                    {...props}
+                    type="email"
+                    autoComplete="off"
+                    value={field.state.value}
+                    onBlur={field.handleBlur}
+                    onChange={(event) => field.handleChange(event.target.value)}
+                  />
+                )}
+              </FormField>
             )}
-          </FormField>
-          <FormField
-            id="user-password"
-            label="Senha inicial"
-            hint={`Mínimo de ${PASSWORD_MIN_LENGTH} caracteres.`}
-            errors={errors.password ?? []}
-          >
-            {(props) => (
-              <PasswordInput
-                props={props}
-                value={form.password}
-                onChange={(password) => update({ password })}
-              />
+          </form.Field>
+          <form.Field name="role">
+            {(field) => (
+              <FormField id="user-role" label="Papel">
+                {(props) => (
+                  <Select
+                    value={field.state.value}
+                    onValueChange={(value) =>
+                      field.handleChange(ROLES.find((role) => role === value) ?? "viewer")
+                    }
+                  >
+                    <SelectTrigger {...props} className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {ROLES.map((role) => (
+                        <SelectItem key={role} value={role}>
+                          {ROLE_LABELS[role]}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              </FormField>
             )}
-          </FormField>
+          </form.Field>
+          <form.Field name="password">
+            {(field) => (
+              <FormField
+                id="user-password"
+                label="Senha inicial"
+                hint={`Mínimo de ${PASSWORD_MIN_LENGTH} caracteres.`}
+                errors={visibleErrors(form, field.state.meta)}
+              >
+                {(props) => (
+                  <PasswordInput
+                    props={props}
+                    value={field.state.value}
+                    onChange={field.handleChange}
+                  />
+                )}
+              </FormField>
+            )}
+          </form.Field>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               Cancelar
@@ -375,12 +387,15 @@ function ResetPasswordDialog({
   readonly user: { readonly id: string; readonly name: string };
   readonly onClose: () => void;
 }) {
-  const [password, setPassword] = useState("");
-  const [errors, setErrors] = useState<string[]>([]);
   const reset = useAction({
-    action: () => resetUserPasswordFn({ data: { userId: user.id, password } }),
+    action: (password: string) => resetUserPasswordFn({ data: { userId: user.id, password } }),
     successMessage: "Senha redefinida. As sessões do usuário foram encerradas.",
     onSuccess: onClose,
+  });
+  const form = useForm({
+    defaultValues: { password: "" },
+    validators: { onChange: resetPasswordSchema },
+    onSubmit: ({ value }) => reset.mutate(value.password),
   });
   return (
     <Dialog open onOpenChange={(open) => (open ? undefined : onClose())}>
@@ -391,30 +406,36 @@ function ResetPasswordDialog({
         </DialogHeader>
         <form
           className="space-y-4"
+          noValidate
           onSubmit={(event) => {
             event.preventDefault();
-            const parsed = passwordSchema.safeParse(password);
-            if (parsed.success === false) {
-              setErrors(parsed.error.issues.map((issue) => issue.message));
-              return;
-            }
-            setErrors([]);
-            reset.mutate();
+            void form.handleSubmit();
           }}
         >
-          <FormField
-            id="reset-password"
-            label="Nova senha"
-            hint={`Mínimo de ${PASSWORD_MIN_LENGTH} caracteres.`}
-            errors={errors}
-          >
-            {(props) => <PasswordInput props={props} value={password} onChange={setPassword} />}
-          </FormField>
+          <form.Field name="password">
+            {(field) => (
+              <FormField
+                id="reset-password"
+                label="Nova senha"
+                hint={`Mínimo de ${PASSWORD_MIN_LENGTH} caracteres.`}
+                errors={visibleErrors(form, field.state.meta)}
+              >
+                {(props) => (
+                  <PasswordInput
+                    props={props}
+                    value={field.state.value}
+                    onChange={field.handleChange}
+                  />
+                )}
+              </FormField>
+            )}
+          </form.Field>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={onClose}>
               Cancelar
             </Button>
             <Button type="submit" disabled={reset.isPending}>
+              {reset.isPending ? <LoaderCircleIcon aria-hidden className="animate-spin" /> : null}
               Redefinir
             </Button>
           </DialogFooter>

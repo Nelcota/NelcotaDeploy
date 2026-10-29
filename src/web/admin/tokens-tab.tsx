@@ -1,3 +1,4 @@
+import { useForm } from "@tanstack/react-form";
 import { useQuery } from "@tanstack/react-query";
 import {
   BanIcon,
@@ -11,12 +12,13 @@ import {
   RocketIcon,
   ShieldPlusIcon,
 } from "lucide-react";
-import { type FormEvent, useState } from "react";
+import { useState } from "react";
+import { z } from "zod";
 
 import { formatDate, formatRelativeTime } from "@/shared/format";
 import { ConfirmDialog } from "@/web/components/confirm-dialog";
 import { CopyButton } from "@/web/components/copy-button";
-import { FormField } from "@/web/components/form-field";
+import { errorMessages, FormField, visibleErrors } from "@/web/components/form-field";
 import { List, ListRow, Section, Tag } from "@/web/components/layout";
 import { EmptyState, ErrorState, ListSkeleton } from "@/web/components/states";
 import { StatusPill } from "@/web/components/status-badge";
@@ -174,6 +176,27 @@ export function TokensTab() {
   );
 }
 
+const MAX_TOKEN_NAME_LENGTH = 80;
+
+const tokenFormSchema = z.object({
+  name: z
+    .string()
+    .trim()
+    .min(1, "Informe um nome")
+    .max(MAX_TOKEN_NAME_LENGTH, `Use no máximo ${MAX_TOKEN_NAME_LENGTH} caracteres`),
+  scopes: z.array(z.enum(["read", "deploy"])).min(1, "Escolha pelo menos um escopo"),
+  expiresInDays: z
+    .string()
+    .refine(
+      (days) => expiryFor(days, new Date(), MAX_TOKEN_DAYS) !== undefined,
+      `Informe de 1 a ${MAX_TOKEN_DAYS} dias inteiros, ou deixe em branco`,
+    ),
+});
+
+type TokenForm = z.input<typeof tokenFormSchema>;
+
+const EMPTY_TOKEN: TokenForm = { name: "", scopes: ["read"], expiresInDays: DEFAULT_TOKEN_DAYS };
+
 function CreateTokenDialog({
   onClose,
   onCreated,
@@ -181,14 +204,6 @@ function CreateTokenDialog({
   readonly onClose: () => void;
   readonly onCreated: (token: string) => void;
 }) {
-  const [name, setName] = useState("");
-  const [scopes, setScopes] = useState<ReadonlySet<TokenScope>>(new Set<TokenScope>(["read"]));
-  const [expiresInDays, setExpiresInDays] = useState(DEFAULT_TOKEN_DAYS);
-  const [errors, setErrors] = useState<{
-    readonly name?: string;
-    readonly scopes?: string;
-    readonly expiresInDays?: string;
-  }>({});
   const create = useAction({
     action: (data: { name: string; scopes: TokenScope[]; expiresInDays: number | null }) =>
       createApiTokenFn({ data }),
@@ -196,29 +211,20 @@ function CreateTokenDialog({
     invalidate: [["api-tokens"]],
     onSuccess: (result) => onCreated(result.token),
   });
+  const form = useForm({
+    defaultValues: EMPTY_TOKEN,
+    validators: { onChange: tokenFormSchema },
+    onSubmit: ({ value }) => {
+      const parsed = tokenFormSchema.parse(value);
+      const days = parsed.expiresInDays.trim();
+      create.mutate({
+        name: parsed.name,
+        scopes: parsed.scopes,
+        expiresInDays: days === "" ? null : Number(days),
+      });
+    },
+  });
   const now = new Date();
-  const expiry = expiryFor(expiresInDays, now, MAX_TOKEN_DAYS);
-  const toggleScope = (scope: TokenScope, checked: boolean) => {
-    setScopes((current) =>
-      checked ? current.union(new Set([scope])) : current.difference(new Set([scope])),
-    );
-  };
-  const submit = (event: FormEvent) => {
-    event.preventDefault();
-    const nextErrors = {
-      ...(name.trim() === "" ? { name: "Informe um nome" } : {}),
-      ...(scopes.size === 0 ? { scopes: "Escolha pelo menos um escopo" } : {}),
-      ...(expiry === undefined
-        ? { expiresInDays: `Informe de 1 a ${MAX_TOKEN_DAYS} dias inteiros, ou deixe em branco` }
-        : {}),
-    };
-    setErrors(nextErrors);
-    if (Object.keys(nextErrors).length > 0) {
-      return;
-    }
-    const days = expiresInDays.trim() === "" ? null : Number(expiresInDays.trim());
-    create.mutate({ name: name.trim(), scopes: [...scopes], expiresInDays: days });
-  };
   return (
     <Dialog open onOpenChange={(open) => (open ? undefined : onClose())}>
       <DialogContent>
@@ -228,69 +234,108 @@ function CreateTokenDialog({
             O token é exibido uma única vez, logo após a criação.
           </DialogDescription>
         </DialogHeader>
-        <form noValidate className="space-y-4" onSubmit={submit}>
-          <FormField id="token-name" label="Nome" errors={errors.name == null ? [] : [errors.name]}>
-            {(props) => (
-              <Input
-                {...props}
-                placeholder="claude-code-notebook"
-                value={name}
-                onChange={(event) => setName(event.target.value)}
-              />
+        <form
+          noValidate
+          className="space-y-4"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void form.handleSubmit();
+          }}
+        >
+          <form.Field name="name">
+            {(field) => (
+              <FormField
+                id="token-name"
+                label="Nome"
+                errors={visibleErrors(form, field.state.meta)}
+              >
+                {(props) => (
+                  <Input
+                    {...props}
+                    placeholder="claude-code-notebook"
+                    value={field.state.value}
+                    onBlur={field.handleBlur}
+                    onChange={(event) => field.handleChange(event.target.value)}
+                  />
+                )}
+              </FormField>
             )}
-          </FormField>
-          <fieldset className="space-y-3" aria-describedby="token-scopes-error">
-            <legend className="mb-2 text-sm font-medium">Escopos</legend>
-            {SCOPES.map((scope) => (
-              <div key={scope.value} className="flex items-start gap-2.5">
-                <Checkbox
-                  id={`token-scope-${scope.value}`}
-                  className="mt-0.5"
-                  checked={scopes.has(scope.value)}
-                  onCheckedChange={(checked) => toggleScope(scope.value, checked === true)}
-                  aria-describedby={`token-scope-${scope.value}-hint`}
-                />
-                <div className="space-y-0.5">
-                  <Label htmlFor={`token-scope-${scope.value}`}>{scope.label}</Label>
+          </form.Field>
+          <form.Field name="scopes">
+            {(field) => {
+              const [error] = errorMessages(
+                form.state.submissionAttempts > 0 ? field.state.meta.errors : [],
+              );
+              return (
+                <fieldset className="space-y-3" aria-describedby="token-scopes-error">
+                  <legend className="mb-2 text-sm font-medium">Escopos</legend>
+                  {SCOPES.map((scope) => (
+                    <div key={scope.value} className="flex items-start gap-2.5">
+                      <Checkbox
+                        id={`token-scope-${scope.value}`}
+                        className="mt-0.5"
+                        checked={field.state.value.includes(scope.value)}
+                        onCheckedChange={(checked) =>
+                          field.handleChange(
+                            checked === true
+                              ? [...field.state.value, scope.value]
+                              : field.state.value.filter((value) => value !== scope.value),
+                          )
+                        }
+                        aria-describedby={`token-scope-${scope.value}-hint`}
+                      />
+                      <div className="space-y-0.5">
+                        <Label htmlFor={`token-scope-${scope.value}`}>{scope.label}</Label>
+                        <p
+                          id={`token-scope-${scope.value}-hint`}
+                          className="text-xs text-muted-foreground"
+                        >
+                          {scope.description}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
                   <p
-                    id={`token-scope-${scope.value}-hint`}
-                    className="text-xs text-muted-foreground"
+                    id="token-scopes-error"
+                    aria-live="polite"
+                    className="text-xs font-medium text-destructive empty:hidden"
                   >
-                    {scope.description}
+                    {error ?? ""}
                   </p>
-                </div>
-              </div>
-            ))}
-            <p
-              id="token-scopes-error"
-              aria-live="polite"
-              className="text-xs font-medium text-destructive empty:hidden"
-            >
-              {errors.scopes ?? ""}
-            </p>
-          </fieldset>
-          <FormField
-            id="token-expiry"
-            label="Validade em dias"
-            hint={
-              typeof expiry === "string"
-                ? `Expira em ${formatDate(expiry)}.`
-                : "Deixe em branco para não expirar (não recomendado)."
-            }
-            errors={errors.expiresInDays == null ? [] : [errors.expiresInDays]}
-          >
-            {(props) => (
-              <Input
-                {...props}
-                type="number"
-                inputMode="numeric"
-                min={1}
-                max={MAX_TOKEN_DAYS}
-                value={expiresInDays}
-                onChange={(event) => setExpiresInDays(event.target.value)}
-              />
-            )}
-          </FormField>
+                </fieldset>
+              );
+            }}
+          </form.Field>
+          <form.Field name="expiresInDays">
+            {(field) => {
+              const expiry = expiryFor(field.state.value, now, MAX_TOKEN_DAYS);
+              return (
+                <FormField
+                  id="token-expiry"
+                  label="Validade em dias"
+                  hint={
+                    typeof expiry === "string"
+                      ? `Expira em ${formatDate(expiry)}.`
+                      : "Deixe em branco para não expirar (não recomendado)."
+                  }
+                  errors={visibleErrors(form, field.state.meta)}
+                >
+                  {(props) => (
+                    <Input
+                      {...props}
+                      type="number"
+                      inputMode="numeric"
+                      min={1}
+                      max={MAX_TOKEN_DAYS}
+                      value={field.state.value}
+                      onBlur={field.handleBlur}
+                      onChange={(event) => field.handleChange(event.target.value)}
+                    />
+                  )}
+                </FormField>
+              );
+            }}
+          </form.Field>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={onClose}>
               Cancelar
