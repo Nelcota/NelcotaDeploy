@@ -76,6 +76,7 @@ function dialogsFor(project: string) {
     ["modal-nova-variavel", `${project}/environment`, "Nova variável"],
     ["modal-importar-env", `${project}/environment`, "Importar .env"],
     ["modal-nova-task", `${project}/tasks`, "Nova task"],
+    ["modal-busca", "/", "Buscar projetos e páginas"],
   ].map(([name = "", path = "", opens = ""]) => ({ name, path, signedIn: true, opens }));
 }
 
