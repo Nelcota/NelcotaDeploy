@@ -1,3 +1,5 @@
+import { z } from "zod";
+
 import { type OutputStream, type ProcessResult, runProcess } from "@/process";
 
 import {
@@ -458,62 +460,84 @@ export type DockerEngine = {
   [K in keyof DockerCli]: DockerCli[K];
 };
 
-function asRecord(value: unknown): Record<string, unknown> {
-  return typeof value === "object" && value != null ? (value as Record<string, unknown>) : {};
-}
-
-function asString(value: unknown): string | null {
-  return typeof value === "string" && value !== "" ? value : null;
-}
-
-function asStringRecord(value: unknown): Record<string, string> {
-  const result: Record<string, string> = {};
-  for (const [key, entry] of Object.entries(asRecord(value))) {
-    if (typeof entry === "string") {
-      result[key] = entry;
-    }
-  }
-  return result;
-}
-
 const ZERO_DATE_PREFIX = "0001-01-01";
+
+// Docker's JSON is trusted but loosely shaped: missing or odd fields fall back to empty values
+// instead of failing the whole read.
+const text = z.string().optional().catch(undefined);
+
+const inspectSchema = z.array(
+  z.object({
+    Id: text,
+    Name: text,
+    RestartCount: z.number().optional().catch(undefined),
+    State: z
+      .object({
+        Status: text,
+        Running: z.boolean().optional().catch(undefined),
+        StartedAt: text,
+        Health: z.object({ Status: text }).nullish().catch(undefined),
+      })
+      .optional()
+      .catch(undefined),
+    Config: z
+      .object({
+        Image: text,
+        Labels: z.record(z.string(), z.unknown()).nullish().catch(undefined),
+      })
+      .optional()
+      .catch(undefined),
+    NetworkSettings: z
+      .object({
+        Networks: z
+          .record(z.string(), z.object({ IPAddress: text }))
+          .nullish()
+          .catch(undefined),
+      })
+      .optional()
+      .catch(undefined),
+  }),
+);
+
+const statsLineSchema = z.object({ Name: text, CPUPerc: text, MemUsage: text });
+
+function nonEmpty(value: string | undefined): string | null {
+  return value == null || value === "" ? null : value;
+}
 
 /**
  * Parses the JSON array printed by `docker container inspect`.
  *
  * @param output - Raw stdout.
- * @returns Parsed container information.
+ * @returns Parsed container information; nothing when the output is not a list.
  */
 export function parseInspectOutput(output: string): ContainerInfo[] {
-  const parsed: unknown = JSON.parse(output);
-  if (Array.isArray(parsed) === false) {
+  const parsed = inspectSchema.safeParse(JSON.parse(output));
+  if (parsed.success === false) {
     return [];
   }
-  return (parsed as unknown[]).map((item) => {
-    const container = asRecord(item);
-    const state = asRecord(container["State"]);
-    const config = asRecord(container["Config"]);
-    const networks = asRecord(asRecord(container["NetworkSettings"])["Networks"]);
-    const networkAddresses: Record<string, string> = {};
-    for (const [networkName, network] of Object.entries(networks)) {
-      const address = asString(asRecord(network)["IPAddress"]);
-      if (address != null) {
-        networkAddresses[networkName] = address;
-      }
-    }
-    const startedAt = asString(state["StartedAt"]);
-    const restartCount = container["RestartCount"];
+  return parsed.data.map((container) => {
+    const startedAt = nonEmpty(container.State?.StartedAt);
+    const labels = Object.entries(container.Config?.Labels ?? {}).filter(
+      (entry): entry is [string, string] => typeof entry[1] === "string",
+    );
+    const networkAddresses = Object.entries(container.NetworkSettings?.Networks ?? {}).flatMap(
+      ([name, network]) => {
+        const address = nonEmpty(network.IPAddress);
+        return address == null ? [] : [[name, address] as const];
+      },
+    );
     return {
-      id: asString(container["Id"]) ?? "",
-      name: (asString(container["Name"]) ?? "").replace(/^\//, ""),
-      image: asString(config["Image"]) ?? "",
-      status: asString(state["Status"]) ?? "unknown",
-      running: state["Running"] === true,
-      health: asString(asRecord(state["Health"])["Status"]),
-      restartCount: typeof restartCount === "number" ? restartCount : 0,
+      id: container.Id ?? "",
+      name: (container.Name ?? "").replace(/^\//, ""),
+      image: container.Config?.Image ?? "",
+      status: nonEmpty(container.State?.Status) ?? "unknown",
+      running: container.State?.Running === true,
+      health: nonEmpty(container.State?.Health?.Status),
+      restartCount: container.RestartCount ?? 0,
       startedAt: startedAt == null || startedAt.startsWith(ZERO_DATE_PREFIX) ? null : startedAt,
-      labels: asStringRecord(config["Labels"]),
-      networkAddresses,
+      labels: Object.fromEntries(labels),
+      networkAddresses: Object.fromEntries(networkAddresses),
     };
   });
 }
@@ -545,11 +569,11 @@ export function parseStatsOutput(output: string): ContainerStats[] {
     .split("\n")
     .filter((line) => line.trim() !== "")
     .map((line) => {
-      const row = asRecord(JSON.parse(line));
-      const cpuPercent = Number.parseFloat((asString(row["CPUPerc"]) ?? "").replace("%", ""));
-      const [usedText = "", limitText = ""] = (asString(row["MemUsage"]) ?? "").split("/");
+      const row = statsLineSchema.parse(JSON.parse(line));
+      const cpuPercent = Number.parseFloat((row.CPUPerc ?? "").replace("%", ""));
+      const [usedText = "", limitText = ""] = (row.MemUsage ?? "").split("/");
       return {
-        name: asString(row["Name"]) ?? "",
+        name: row.Name ?? "",
         cpuPercent: Number.isFinite(cpuPercent) ? cpuPercent : null,
         memoryUsedBytes: parseDockerSize(usedText),
         memoryLimitBytes: parseDockerSize(limitText),
