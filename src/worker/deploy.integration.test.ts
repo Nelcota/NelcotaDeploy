@@ -3,6 +3,7 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { getDeployment, requestDeployment } from "@/deployments";
 import { taskInputSchema } from "@/shared/schemas/task.schema";
 import { createTask, listTaskExecutions, runTask } from "@/tasks";
+import { addProjectVolume } from "@/volumes";
 
 import { runContainerAction } from "./container-action-runner";
 import { runDeployment } from "./deploy/deploy-runner";
@@ -71,13 +72,17 @@ async function expectContainerActionsWork(
   expect(await isRunning(environment, containerName)).toBe(true);
 }
 
-async function runHealthTask(environment: FixtureEnvironment): Promise<string> {
+/** Runs a command inside the live container through a task and returns its output. */
+async function runCommand(
+  environment: FixtureEnvironment,
+  task: { readonly name: string; readonly commandLine: string },
+): Promise<string> {
   const { database, docker, secretBox, project, actor } = environment;
   const taskId = createTask(database, {
     projectId: project.id,
     input: taskInputSchema.parse({
-      name: "health",
-      commandLine: "cat /srv/health",
+      name: task.name,
+      commandLine: task.commandLine,
       schedule: "",
       enabled: true,
       timeoutInSeconds: 30,
@@ -126,10 +131,47 @@ describe("deploy cycle with real Docker", () => {
       // The second deploy replaced the first container.
       expect(await environment.docker.inspectContainer(firstContainer)).toBeNull();
       const rollback = await deploy(environment, first);
-      const taskOutput = await runHealthTask(environment);
+      const taskOutput = await runCommand(environment, {
+        name: "health",
+        commandLine: "cat /srv/health",
+      });
 
       expect(getDeployment(environment.database, rollback).imageTag).toBe(firstDeployment.imageTag);
       expect(taskOutput).toBe("ok");
+    },
+    TEST_TIMEOUT_IN_MS,
+  );
+});
+
+describe("volumes with real Docker", () => {
+  const cleanups: Cleanup[] = [];
+
+  afterAll(async () => {
+    await runCleanupsInReverse(cleanups);
+  }, CLEANUP_TIMEOUT_IN_MS);
+
+  test(
+    "keeps the files written to a volume across deployments",
+    async () => {
+      const environment = await createFixtureEnvironment(`${NETWORK}-volumes`, cleanups);
+      addProjectVolume(environment.database, {
+        projectId: environment.project.id,
+        input: { mountPath: "/srv/data" },
+        actor: environment.actor,
+      });
+
+      await deploy(environment);
+      await runCommand(environment, {
+        name: "write",
+        commandLine: "sh -c 'echo kept > /srv/data/note'",
+      });
+      await deploy(environment);
+      const content = await runCommand(environment, {
+        name: "read",
+        commandLine: "cat /srv/data/note",
+      });
+
+      expect(content).toBe("kept");
     },
     TEST_TIMEOUT_IN_MS,
   );

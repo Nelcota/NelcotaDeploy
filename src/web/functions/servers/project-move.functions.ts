@@ -6,6 +6,7 @@ import { getDatabase } from "@/db";
 import { ProjectNotApprovedError, requestDeployment } from "@/deployments";
 import { getProject } from "@/projects";
 import { assignProjectServer } from "@/servers";
+import { assertProjectHasNoVolumes } from "@/volumes";
 import { authorize } from "@/web/server/authorization";
 
 import { idSchema } from "../ids";
@@ -27,6 +28,8 @@ export const moveProjectFn = createServerFn({ method: "POST" })
     if (project.currentDeploymentId != null && project.deploymentsApproved === false) {
       throw new ProjectNotApprovedError(project.id);
     }
+    // Volume data lives on the current server and would be left behind.
+    assertProjectHasNoVolumes(database, project.id);
     const actor = userActor(user);
     assignProjectServer(database, { projectId: project.id, serverId: data.serverId, actor });
     if (project.currentDeploymentId == null) {

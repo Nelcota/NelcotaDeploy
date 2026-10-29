@@ -4,6 +4,7 @@ import type { SecretBox } from "@/secrets";
 import { addServer, LOCAL_SERVER_ID, recordServerCheck, storePanelKeyPair } from "@/servers";
 import { taskInputSchema } from "@/shared/schemas/task.schema";
 import { createTask } from "@/tasks";
+import { addProjectVolume, setVolumeAttached } from "@/volumes";
 
 const ACTOR = { type: "system", label: "ui-review" } as const;
 
@@ -57,4 +58,20 @@ export function seedTasks(database: Database, projectId: string): void {
     }),
     ...taskContext,
   });
+}
+
+/**
+ * Adds a mounted volume and a detached one, so the settings show both states.
+ *
+ * @param database - Review database.
+ * @param projectId - Project that owns the volumes.
+ */
+export function seedVolumes(database: Database, projectId: string): void {
+  addProjectVolume(database, { projectId, input: { mountPath: "/app/uploads" }, actor: ACTOR });
+  const cache = addProjectVolume(database, {
+    projectId,
+    input: { mountPath: "/var/cache/app" },
+    actor: ACTOR,
+  });
+  setVolumeAttached(database, { projectId, volumeId: cache.id, actor: ACTOR, attached: false });
 }

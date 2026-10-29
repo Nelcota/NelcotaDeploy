@@ -5,9 +5,10 @@ import { listProjectDomains } from "@/domains";
 import { listEnvironmentVariables } from "@/environments";
 import { getProject } from "@/projects";
 import { getSystemSettings } from "@/settings";
+import { listMountedVolumes } from "@/volumes";
 
 /**
- * Fingerprints what a container receives besides its image: the variables and the domains.
+ * Fingerprints what a container receives besides its image: variables, domains and volumes.
  *
  * @remarks
  * Values are left out on purpose, so no secret ends up hashed in the database: a variable
@@ -28,8 +29,12 @@ export function runtimeConfigFingerprint(database: Database, projectId: string):
   const domains = listProjectDomains(database, projectId, getSystemSettings(database))
     .map((domain) => [domain.hostname, domain.httpsEnabled] as const)
     .toSorted(([left], [right]) => left.localeCompare(right));
+  const volumes = listMountedVolumes(database, projectId).map((volume) => [
+    volume.id,
+    volume.mountPath,
+  ]);
   const hasher = new Bun.CryptoHasher("sha256");
-  hasher.update(JSON.stringify({ variables, domains }));
+  hasher.update(JSON.stringify({ variables, domains, volumes }));
   return hasher.digest("hex");
 }
 

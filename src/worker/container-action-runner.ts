@@ -2,8 +2,9 @@ import { eq } from "drizzle-orm";
 
 import { type Database, tables } from "@/db";
 import { type ContainerAction, getDeployment } from "@/deployments";
-import { type DockerEngine, LABELS } from "@/docker";
+import { type DockerEngine, LABELS, volumeNameFor } from "@/docker";
 import type { RouteFiles } from "@/routing";
+import { failVolumeDeletion, finishVolumeDeletion } from "@/volumes";
 
 /** What cleaning a project off one server needs: its Docker and its proxy's route files. */
 type ProjectServer = { readonly docker: DockerEngine; readonly routes: RouteFiles | null };
@@ -38,18 +39,18 @@ export async function runContainerAction(
 }
 
 /**
- * Removes a project's routes, containers and images from one server. The routes go first, so
- * the proxy never sends requests to a container that is being removed.
+ * Removes a project's routes, containers, images and volumes from one server. The routes go
+ * first, so the proxy never sends requests to a container that is being removed.
  *
  * @param server - Docker and route files of that server.
  * @param projectId - Project whose resources go.
- * @returns How many containers and images were removed.
+ * @returns How many containers, images and volumes were removed.
  * @throws {RouteFileError} When the routes cannot be removed.
  */
 export async function removeProjectResources(
   { docker, routes }: ProjectServer,
   projectId: string,
-): Promise<{ containers: number; images: number }> {
+): Promise<{ containers: number; images: number; volumes: number }> {
   await routes?.remove(projectId);
   const containers = (await docker.listManagedContainers()).filter(
     (container) => container.labels[LABELS.projectId] === projectId,
@@ -58,13 +59,50 @@ export async function removeProjectResources(
     containers.map(async (container) => await docker.removeContainer(container.id)),
   );
   const images = await docker.listProjectImages(projectId);
-  const removals = await Promise.allSettled(
+  const imageRemovals = await Promise.allSettled(
     images.map(async (image) => await docker.removeImage(image)),
+  );
+  // Volumes go last: no container of the project uses them any more.
+  const volumes = await docker.volumes.listForProject(projectId);
+  const volumeRemovals = await Promise.allSettled(
+    volumes.map(async (volume) => await docker.volumes.remove(volume)),
   );
   return {
     containers: containers.length,
-    images: removals.filter((result) => result.status === "fulfilled").length,
+    images: imageRemovals.filter((result) => result.status === "fulfilled").length,
+    volumes: volumeRemovals.filter((result) => result.status === "fulfilled").length,
   };
+}
+
+/**
+ * Deletes the data of a detached volume on its project's server, then the volume itself.
+ *
+ * @param database - Database.
+ * @param volumes - Volumes of the project's server.
+ * @param request - Project and volume.
+ * @throws {DockerCommandError} When Docker refuses, for example while a container still uses
+ *   the volume; the reason is stored on the volume first.
+ */
+export async function runVolumeDeletion(
+  database: Database,
+  volumes: DockerEngine["volumes"],
+  request: { readonly projectId: string; readonly volumeId: string },
+): Promise<void> {
+  const name = volumeNameFor(request.volumeId);
+  try {
+    // A volume that was never mounted has no data on the server yet.
+    if ((await volumes.listForProject(request.projectId)).includes(name)) {
+      await volumes.remove(name);
+    }
+  } catch (error) {
+    failVolumeDeletion(
+      database,
+      request.volumeId,
+      error instanceof Error ? error.message : String(error),
+    );
+    throw error;
+  }
+  finishVolumeDeletion(database, request.volumeId);
 }
 
 /**
@@ -78,18 +116,19 @@ export async function removeProjectResources(
  * @param database - Database.
  * @param servers - Docker and route files of each server the project ran on.
  * @param projectId - Project being deleted.
- * @returns How many containers and images were removed, and the errors of unreachable servers.
+ * @returns How many containers, images and volumes were removed, and the errors of unreachable
+ *   servers.
  */
 export async function runProjectCleanup(
   database: Database,
   servers: readonly ProjectServer[],
   projectId: string,
-): Promise<{ containers: number; images: number; failures: unknown[] }> {
+): Promise<{ containers: number; images: number; volumes: number; failures: unknown[] }> {
   const results = await Promise.allSettled(
     servers.map(async (server) => await removeProjectResources(server, projectId)),
   );
   database.delete(tables.projects).where(eq(tables.projects.id, projectId)).run();
-  const removed = { containers: 0, images: 0, failures: [] as unknown[] };
+  const removed = { containers: 0, images: 0, volumes: 0, failures: [] as unknown[] };
   for (const result of results) {
     if (result.status === "rejected") {
       removed.failures.push(result.reason);
@@ -97,6 +136,7 @@ export async function runProjectCleanup(
     }
     removed.containers += result.value.containers;
     removed.images += result.value.images;
+    removed.volumes += result.value.volumes;
   }
   return removed;
 }
