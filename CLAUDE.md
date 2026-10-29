@@ -43,7 +43,7 @@ Regras complementares (mesma prioridade):
 ## Versões e dependências
 
 - Use sintaxe e APIs modernas (async/await, ES modules, fetch nativo). Evite padrões legados.
-- Prefira a versão estável mais recente das dependências, mas não use versões publicadas há menos de 14 dias (o `bunfig.toml` do projeto já bloqueia isso na instalação).
+- Use sempre a versão estável mais recente das dependências, mesmo que tenha acabado de sair.
 - Respeite as peerDependencies: não atualize um pacote para uma versão que quebre outro (ex: o TypeScript deve continuar compatível com o `oxlint-tsgolint`).
 - Use versões exatas no `package.json`, sem `^` ou `~` (o `bunfig.toml` já salva assim).
 - Se você não conhece bem a versão mais recente de uma biblioteca, consulte a documentação oficial antes de usar a API. Não invente métodos.
