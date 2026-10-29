@@ -37,20 +37,26 @@ export async function deploy(
 
   const reused =
     deployment.sourceDeploymentId == null ? null : await reuseImage(docker, deployment, logs);
-  const imageTag =
-    reused ??
-    (await buildFromSource(dependencies, context, {
-      buildValues: environment.build,
-      repositoryToken,
-    }));
+  const built =
+    reused == null
+      ? await buildFromSource(dependencies, context, {
+          buildValues: environment.build,
+          repositoryToken,
+        })
+      : { imageTag: reused, detectedPort: null };
   assertNotCancelled(signal);
 
-  const containerName = await startContainer(dependencies, context, {
-    imageTag,
+  // Routing and the health check use the port this build found in the Dockerfile.
+  const running: DeployContext =
+    built.detectedPort == null
+      ? context
+      : { ...context, project: { ...project, internalPort: built.detectedPort } };
+  const containerName = await startContainer(dependencies, running, {
+    imageTag: built.imageTag,
     runtimeValues: environment.runtime,
     runtimeConfigHash,
   });
-  await checkHealth(dependencies, context, containerName);
+  await checkHealth(dependencies, running, containerName);
 }
 
 async function checkHealth(

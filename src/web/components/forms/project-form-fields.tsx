@@ -162,7 +162,7 @@ export function AutoDeployField({
   );
 }
 
-/** Port the application listens on inside the container. */
+/** Port the application listens on inside the container; blank reads it from the Dockerfile. */
 export function PortField({ form }: { readonly form: ProjectFormApi }) {
   return (
     <form.Field name="internalPort">
@@ -170,7 +170,7 @@ export function PortField({ form }: { readonly form: ProjectFormApi }) {
         <FormField
           id="project-port"
           label="Porta interna"
-          hint="Porta em que a aplicação escuta dentro do contêiner."
+          hint="Em branco, cada deploy usa a porta do EXPOSE do Dockerfile."
           errors={visibleErrors(form, field.state.meta)}
         >
           {(props) => (
@@ -178,6 +178,7 @@ export function PortField({ form }: { readonly form: ProjectFormApi }) {
               {...props}
               inputMode="numeric"
               className="font-mono tabular-nums"
+              placeholder="Automática"
               value={field.state.value}
               onBlur={field.handleBlur}
               onChange={(event) => field.handleChange(event.target.value)}

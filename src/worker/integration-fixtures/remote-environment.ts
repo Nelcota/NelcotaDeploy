@@ -13,7 +13,6 @@ import { copyRepositoryInto, type FakeVps, startFakeVps, type VpsFlavor } from "
 import { type Cleanup, createFixtureRepository } from "./fixture-host";
 
 const FIXTURE_DIRECTORY = resolve(import.meta.dir, "../../../fixtures/hello-app");
-const FIXTURE_PORT = 8000;
 const USERNAME = "nelcota";
 /** Domain routed to the fixture app through the server's proxy. */
 const REMOTE_HOSTNAME = "app.example.test";
@@ -81,7 +80,8 @@ export async function createRemoteEnvironment(cleanups: Cleanup[], flavor: VpsFl
   });
   const project = createTestProject(database, {
     slug: "remote-it",
-    internalPort: FIXTURE_PORT,
+    // Automatic: the build reads 8000 from the fixture's EXPOSE, over SSH.
+    internalPort: null,
     healthCheckPath: "/health",
   });
   database

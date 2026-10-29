@@ -53,7 +53,11 @@ export function ConfigurationCard({ details }: { readonly details: ProjectDetail
         <Fact label="Dockerfile">
           <span className="font-mono">{project.dockerfilePath}</span>
         </Fact>
-        <Fact label="Porta interna">{project.internalPort}</Fact>
+        <Fact label="Porta interna">
+          {project.internalPortAuto
+            ? `${project.internalPort} (automática, do Dockerfile)`
+            : project.internalPort}
+        </Fact>
         <Fact label="Verificação de saúde">
           {project.healthCheckPath == null ? "Conexão TCP" : `HTTP ${project.healthCheckPath}`}
         </Fact>

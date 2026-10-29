@@ -26,6 +26,8 @@ export const projects = sqliteTable(
     dockerfilePath: text("dockerfile_path").notNull(),
     buildContext: text("build_context").notNull(),
     internalPort: integer("internal_port").notNull(),
+    // When set, each build reads the port from the Dockerfile's EXPOSE and stores it above.
+    internalPortAuto: integer("internal_port_auto", { mode: "boolean" }).notNull().default(false),
     healthCheckPath: text("health_check_path"),
     autoDeploy: integer("auto_deploy", { mode: "boolean" }).notNull().default(false),
     deploymentsApproved: integer("deployments_approved", { mode: "boolean" })

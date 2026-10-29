@@ -4,7 +4,6 @@ export {
   createProject,
   findProject,
   getProject,
-  listProjectIds,
   PRODUCTION_ENVIRONMENT,
   type Project,
   readRepositoryToken,
@@ -13,3 +12,4 @@ export {
   updateProject,
 } from "./project.service";
 export { listProjects } from "./project-listing.service";
+export { listProjectIds, recordDetectedPort } from "./project-worker.service";

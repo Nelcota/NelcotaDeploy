@@ -1,0 +1,1 @@
+ALTER TABLE `projects` ADD `internal_port_auto` integer DEFAULT false NOT NULL;

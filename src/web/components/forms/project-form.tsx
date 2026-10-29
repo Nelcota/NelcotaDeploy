@@ -36,8 +36,6 @@ export type ProjectFormValues = {
   readonly autoDeploy: boolean;
 };
 
-const DEFAULT_PORT = "3000";
-
 /** Input accepted by the project server functions. */
 export type ProjectFormInput = z.input<typeof projectInputSchema>;
 
@@ -68,7 +66,8 @@ export const EMPTY_PROJECT_FORM: ProjectFormValues = {
   branch: "main",
   dockerfilePath: "Dockerfile",
   buildContext: ".",
-  internalPort: DEFAULT_PORT,
+  // Blank: each build reads the port from the Dockerfile's EXPOSE.
+  internalPort: "",
   healthCheckPath: "",
   autoDeploy: true,
 };
@@ -87,6 +86,7 @@ export function projectToFormValues(project: {
   readonly dockerfilePath: string;
   readonly buildContext: string;
   readonly internalPort: number;
+  readonly internalPortAuto: boolean;
   readonly healthCheckPath: string | null;
   readonly autoDeploy: boolean;
 }): ProjectFormValues {
@@ -97,7 +97,7 @@ export function projectToFormValues(project: {
     branch: project.branch,
     dockerfilePath: project.dockerfilePath,
     buildContext: project.buildContext,
-    internalPort: String(project.internalPort),
+    internalPort: project.internalPortAuto ? "" : String(project.internalPort),
     healthCheckPath: project.healthCheckPath ?? "",
     autoDeploy: project.autoDeploy,
   };

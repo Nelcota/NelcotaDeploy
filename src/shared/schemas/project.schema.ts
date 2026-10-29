@@ -156,11 +156,18 @@ export const projectInputSchema = z.object({
     .refine((value) => value === "." || isSafeRelativePath(value), {
       message: "Use um caminho relativo dentro do repositório",
     }),
-  internalPort: z.coerce
-    .number()
-    .int("Informe um número inteiro")
-    .min(1, "A porta deve ser maior que 0")
-    .max(MAX_PORT, `A porta deve ser no máximo ${MAX_PORT}`),
+  // Blank means automatic: each build reads it from the Dockerfile's EXPOSE.
+  internalPort: z.union([
+    z
+      .literal("")
+      .or(z.null())
+      .transform(() => null),
+    z.coerce
+      .number()
+      .int("Informe um número inteiro")
+      .min(1, "A porta deve ser maior que 0")
+      .max(MAX_PORT, `A porta deve ser no máximo ${MAX_PORT}`),
+  ]),
   healthCheckPath: healthCheckPathSchema,
   autoDeploy: z.boolean(),
 });
