@@ -4,7 +4,6 @@ import { ListSkeleton } from "@/web/components/layout/states";
 import { projectQueryOptions } from "@/web/components/projects/project-query";
 import { useCan } from "@/web/components/shell/use-permissions";
 
-import { AddressesCard } from "./addresses-card";
 import { ConfigurationCard, ContainerCard } from "./fact-cards";
 import { RecentDeploymentsCard } from "./recent-deployments-card";
 import { ResourcesCard } from "./resources/resources-card";
@@ -39,8 +38,8 @@ export function ProjectOverview({ projectId }: { readonly projectId: string }) {
           canDeploy={can("deployment:create") && data.project.deploymentsApproved}
         />
       </div>
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-        <AddressesCard details={data} />
+      {/* Domains, repository and branch are already in the project header. */}
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <ContainerCard details={data} />
         <ConfigurationCard details={data} />
       </div>

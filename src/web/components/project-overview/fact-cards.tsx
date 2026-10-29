@@ -1,5 +1,5 @@
 import { Link } from "@tanstack/react-router";
-import { BoxIcon, ExternalLinkIcon, SlidersHorizontalIcon } from "lucide-react";
+import { BoxIcon, SlidersHorizontalIcon } from "lucide-react";
 import type { ReactNode } from "react";
 
 import { CardTitleRow, TEXT_LINK } from "@/web/components/layout/layout";
@@ -35,7 +35,7 @@ export function ContainerCard({ details }: { readonly details: ProjectDetails })
   );
 }
 
-/** Repository, build and deploy settings of the project. */
+/** Build and deploy settings of the project; the repository and branch are in the header. */
 export function ConfigurationCard({ details }: { readonly details: ProjectDetails }) {
   const { project } = details;
   return (
@@ -50,21 +50,6 @@ export function ConfigurationCard({ details }: { readonly details: ProjectDetail
         </Link>
       </CardTitleRow>
       <dl className="divide-y divide-border">
-        <Fact label="Repositório">
-          <a
-            href={`https://github.com/${project.repositoryFullName}`}
-            target="_blank"
-            rel="noreferrer noopener"
-            className="inline-flex min-w-0 items-center gap-1 rounded-sm underline-offset-4 hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
-          >
-            <span className="truncate">{project.repositoryFullName}</span>
-            <ExternalLinkIcon aria-hidden className="size-3.5 shrink-0" />
-            <span className="sr-only"> (abre em nova aba)</span>
-          </a>
-        </Fact>
-        <Fact label="Branch">
-          <span className="font-mono">{project.branch}</span>
-        </Fact>
         <Fact label="Dockerfile">
           <span className="font-mono">{project.dockerfilePath}</span>
         </Fact>
