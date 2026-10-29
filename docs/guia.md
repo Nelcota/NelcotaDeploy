@@ -412,7 +412,37 @@ que passam em todas as verificações são mesclados sozinhos.
 
 O worker faz um backup por dia (às 03:30 UTC, e ao iniciar se o último tiver mais de um dia) em
 `BACKUP_DIR`, mantendo os `BACKUPS_KEPT` mais novos. A data do último aparece em **Configurações →
-Sistema**. Copie essa pasta para fora da VPS de tempos em tempos.
+Sistema**.
+
+### Cópia externa (S3)
+
+Um backup no mesmo disco não sobrevive à perda da VPS. Com `BACKUP_S3_BUCKET` e as credenciais
+definidos, cada backup também vai para um bucket compatível com S3 (AWS S3, Cloudflare R2,
+Backblaze B2…):
+
+| Variável                                                  | Para quê                                                |
+| --------------------------------------------------------- | ------------------------------------------------------- |
+| `BACKUP_S3_BUCKET`                                        | liga a cópia externa                                    |
+| `BACKUP_S3_ACCESS_KEY_ID` / `BACKUP_S3_SECRET_ACCESS_KEY` | credenciais; obrigatórias com o bucket                  |
+| `BACKUP_S3_ENDPOINT` / `BACKUP_S3_REGION`                 | para provedores fora da AWS (ex.: R2 usa região `auto`) |
+| `BACKUP_S3_PREFIX`                                        | pasta no bucket (padrão `nelcota/`)                     |
+| `BACKUP_S3_KEPT`                                          | quantas cópias manter no bucket (padrão 30)             |
+
+- O arquivo é **criptografado antes de sair** (AES-256-GCM com a `NELCOTA_ENCRYPTION_KEY`), então o
+  provedor nunca vê o banco. Guarde a chave fora da VPS: sem ela, nenhum backup é restaurável.
+- Use credenciais que só leem e escrevem nesse bucket.
+- **Configurações → Sistema → Cópia externa** mostra o último envio. Uma falha não afeta o backup
+  local e manda um alerta, se houver webhook de alertas.
+
+Para restaurar, o comando grava o backup num arquivo novo; ele nunca mexe no banco em uso:
+
+```bash
+bun run db:restore --list                                  # backups no bucket
+bun run db:restore --latest --output ./restaurado.db       # ou --key nelcota/nelcota-….db.enc
+# depois: pare web e worker, troque o arquivo do banco por este, remova -wal/-shm antigos e suba
+```
+
+### Backup avulso
 
 Para um backup avulso, o banco está em WAL, então use a API de backup do SQLite em vez de copiar o
 arquivo:

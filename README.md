@@ -37,7 +37,7 @@ file. No Kubernetes, no external database, no agents to install.
 | **Metrics** | CPU and memory per container and for the host, with history.                                                           |
 | **Config**  | Variables and secrets (AES-256-GCM), applied to the running app as soon as they are saved.                             |
 | **Domains** | Automatic and custom domains, HTTPS by Let's Encrypt through Traefik, and a live check of each domain's DNS.           |
-| **Ops**     | Daily database backups and Discord or Slack alerts for failed deploys and unreachable servers.                         |
+| **Ops**     | Daily database backups, encrypted off-site copies to any S3 bucket, and Discord or Slack alerts.                       |
 | **Servers** | Add a VPS with one pasted command; builds and apps run there over a persistent SSH connection, moves keep sites up.    |
 | **Tasks**   | Commands that run inside the app container, on demand or on a cron schedule.                                           |
 | **Team**    | Admin, developer and viewer roles, API tokens, an MCP server for AI clients and an audit log.                          |
