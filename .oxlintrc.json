@@ -1,7 +1,15 @@
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["typescript", "import", "jsdoc", "unicorn", "oxc"],
-  "jsPlugins": ["./lint/no-negation.js"],
+  "plugins": ["typescript", "import", "jsdoc", "unicorn", "oxc", "react"],
+  "jsPlugins": [
+    "./lint/no-negation.js",
+    "./lint/no-local-date-parse.js",
+    "./lint/no-generic-helpers.js",
+    "./lint/duration-unit-suffix.js",
+    "./lint/no-skipped-tests.js",
+    "./lint/no-inner-html.js",
+    "./lint/no-and-in-names.js"
+  ],
   "categories": {
     "correctness": "error"
   },
@@ -14,6 +22,13 @@
   ],
   "rules": {
     "local/no-negation": "error",
+    "dates/no-local-date-parse": "error",
+    "files/no-generic-helpers": "error",
+    "durations/duration-unit-suffix": "error",
+    "tests/no-skipped-tests": "error",
+    "html/no-inner-html": "error",
+    "naming/no-and-in-names": "warn",
+    "react/no-danger": "error",
     "typescript/strict-boolean-expressions": [
       "error",
       {
@@ -89,14 +104,36 @@
     "no-restricted-imports": [
       "error",
       {
+        "paths": [
+          { "name": "dotenv", "message": "Bun loads .env files natively." },
+          { "name": "node-fetch", "message": "Use the native fetch." },
+          { "name": "jest", "message": "Use bun:test." },
+          { "name": "@jest/globals", "message": "Use bun:test." },
+          { "name": "vitest", "message": "Use bun:test." },
+          { "name": "ts-node", "message": "Bun runs TypeScript directly." },
+          { "name": "tsx", "message": "Bun runs TypeScript directly." }
+        ],
         "patterns": [
           {
-            "group": ["../*/*", "../../*/*", "!../shared/*", "!../../shared/*"],
+            "group": [
+              "../*/*",
+              "../../*/*",
+              "../../../*/*",
+              "../../../../*/*",
+              "!../shared/**",
+              "!../../shared/**",
+              "!../../../shared/**",
+              "!../../../../shared/**"
+            ],
             "message": "Import other packages only through their index.ts (e.g. '../orders'), never internal files."
           },
           {
-            "group": ["@/*/*", "!@/shared/*", "!@/web/**"],
+            "group": ["@/*/*", "!@/shared/**", "!@/web/**"],
             "message": "Import other packages only through their index.ts (e.g. '@/projects'), never internal files. Client-safe code lives in '@/shared/*'; the web app may import its own files via '@/web/...'."
+          },
+          {
+            "group": ["dotenv/*", "vitest/*", "ts-node/*"],
+            "message": "Bun already does this natively: .env loading, bun:test and running TypeScript."
           }
         ]
       }
@@ -123,9 +160,63 @@
     "unicorn/prefer-array-find": "error",
     "unicorn/prefer-array-flat-map": "error",
     "unicorn/no-useless-spread": "error",
-    "unicorn/no-unnecessary-await": "error"
+    "unicorn/no-unnecessary-await": "error",
+    "unicorn/no-array-sort": ["error", { "allowExpressionStatement": false }],
+    "unicorn/no-array-reverse": ["error", { "allowExpressionStatement": false }],
+    "unicorn/prefer-at": "error",
+    "unicorn/prefer-structured-clone": "error",
+    "unicorn/no-array-reduce": "error",
+    "prefer-object-has-own": "error",
+    "unicorn/filename-case": ["error", { "case": "kebabCase" }],
+    "unicorn/throw-new-error": "error",
+    "unicorn/error-message": "error",
+    "unicorn/custom-error-definition": "error",
+    "no-useless-catch": "error",
+    "typescript/prefer-promise-reject-errors": "error",
+    "typescript/no-unsafe-argument": "error",
+    "typescript/no-unsafe-assignment": "error",
+    "typescript/no-unsafe-member-access": "error",
+    "typescript/no-unsafe-return": "error",
+    "typescript/no-unsafe-call": "error",
+    "typescript/no-unnecessary-condition": "error",
+    "typescript/no-unnecessary-type-assertion": "error",
+    "max-params": ["error", 3],
+    "max-lines-per-function": ["warn", 50],
+    "complexity": ["warn", 10],
+    "max-lines": ["warn", { "max": 300, "skipBlankLines": true, "skipComments": true }],
+    "import/max-dependencies": ["warn", { "max": 10 }],
+    "max-classes-per-file": ["error", 1],
+    "typescript/prefer-readonly": "error",
+    "typescript/restrict-template-expressions": "error",
+    "typescript/no-base-to-string": "error",
+    "typescript/prefer-nullish-coalescing": "error",
+    "typescript/prefer-optional-chain": "error",
+    "unicorn/prefer-node-protocol": "error",
+    "unicorn/prefer-string-replace-all": "error"
   },
   "overrides": [
+    {
+      "files": ["**/*.errors.ts"],
+      "rules": {
+        "max-classes-per-file": "off"
+      }
+    },
+    {
+      "files": ["src/web/routes/**"],
+      "rules": {
+        "unicorn/filename-case": "off"
+      }
+    },
+    {
+      "files": ["lint/**/*.js"],
+      "rules": {
+        "typescript/no-unsafe-argument": "off",
+        "typescript/no-unsafe-assignment": "off",
+        "typescript/no-unsafe-member-access": "off",
+        "typescript/no-unsafe-return": "off",
+        "typescript/no-unsafe-call": "off"
+      }
+    },
     {
       "files": ["**/*.test.ts"],
       "rules": {
