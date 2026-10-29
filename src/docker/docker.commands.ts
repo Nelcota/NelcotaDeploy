@@ -13,7 +13,7 @@ export const LABELS = {
 /** Name of the reverse proxy container on servers the platform set up. */
 export const PROXY_CONTAINER_NAME = "nelcota-proxy";
 /** Same Traefik release the panel's own Docker Compose stack uses. */
-const PROXY_IMAGE = "traefik:v3.7.14";
+const PROXY_IMAGE = "traefik:v3.7.16";
 const PROXY_CERTIFICATE_VOLUME = "nelcota-letsencrypt";
 const COMPRESS_MIDDLEWARE = "nelcota-compress";
 

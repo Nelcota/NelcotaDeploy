@@ -4,7 +4,7 @@ name: nelcota
 
 services:
   traefik:
-    image: traefik:v3.7.14
+    image: traefik:v3.7.16
     restart: unless-stopped
     command:
       - --providers.docker=true
