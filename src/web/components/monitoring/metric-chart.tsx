@@ -100,17 +100,6 @@ function chartMargin(compact: boolean) {
   return { top: 6, right: 4, bottom: 0, left: compact ? COMPACT_INSET_IN_PX : 0 };
 }
 
-function AreaGradient({ id, color }: { readonly id: string; readonly color: string }) {
-  return (
-    <defs>
-      <linearGradient id={id} x1="0" y1="0" x2="0" y2="1">
-        <stop offset="0%" stopColor={color} stopOpacity={0.28} />
-        <stop offset="95%" stopColor={color} stopOpacity={0} />
-      </linearGradient>
-    </defs>
-  );
-}
-
 // Gaps stay gaps: a missing sample must not be drawn as a line through it.
 const AREA_STYLE = {
   type: "monotone",
@@ -165,7 +154,6 @@ export function MetricChart({
 }: MetricChartProps) {
   const color = `var(${colorVariable})`;
   const upperBound = maxValue ?? niceUpperBound(points);
-  const gradientId = `gradient-${colorVariable.replaceAll(/[^a-z0-9]/gi, "")}`;
   return (
     <ChartFigure
       label={label}
@@ -174,7 +162,6 @@ export function MetricChart({
     >
       {/* Not focusable: a click would draw a focus box, and the caption already reads it out. */}
       <AreaChart accessibilityLayer={false} data={[...points]} margin={chartMargin(compact)}>
-        <AreaGradient id={gradientId} color={color} />
         <CartesianGrid stroke="var(--border)" vertical={false} />
         <XAxis
           {...AXIS_STYLE}
@@ -196,7 +183,8 @@ export function MetricChart({
           labelFormatter={formatTooltipTime}
           formatter={(value) => [formatTooltipValue(value, formatValue), label]}
         />
-        <Area {...AREA_STYLE} stroke={color} fill={`url(#${gradientId})`} />
+        {/* A plain line: a gradient fill under it adds decoration, not information. */}
+        <Area {...AREA_STYLE} stroke={color} fill="none" />
       </AreaChart>
     </ChartFigure>
   );
