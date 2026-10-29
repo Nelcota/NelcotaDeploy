@@ -1,14 +1,16 @@
 import { describe, expect, test } from "bun:test";
 
 import { type Database, openMemoryDatabase } from "@/db";
+import { getProject } from "@/projects";
 import { createTestProject, TEST_ACTOR } from "@/testing";
 
 import {
   applicationServersReady,
+  assignProjectServer,
   chooseServerForNewProject,
   dedicatePanelHostIfUnused,
 } from "./server-placement.service";
-import { NoServerAvailableError } from "./server.errors";
+import { NoServerAvailableError, ServerNotReadyError } from "./server.errors";
 import {
   addServer,
   getServer,
@@ -31,6 +33,13 @@ function markReady(database: Database, serverId: string): void {
 describe("chooseServerForNewProject", () => {
   test("uses the panel's host while it is the only server", () => {
     const database = openMemoryDatabase();
+
+    expect(chooseServerForNewProject(database)).toBe(LOCAL_SERVER_ID);
+  });
+
+  test("keeps a server that never connected as the last choice", () => {
+    const database = openMemoryDatabase();
+    addRemote(database);
 
     expect(chooseServerForNewProject(database)).toBe(LOCAL_SERVER_ID);
   });
@@ -121,5 +130,29 @@ describe("applicationServersReady", () => {
     });
 
     expect(applicationServersReady(database)).toBe(false);
+  });
+});
+
+describe("assignProjectServer", () => {
+  test("places the project on a ready server", () => {
+    const database = openMemoryDatabase();
+    const project = createTestProject(database);
+    const remote = addRemote(database);
+    markReady(database, remote);
+
+    assignProjectServer(database, { projectId: project.id, serverId: remote, actor: TEST_ACTOR });
+
+    expect(getProject(database, project.id).serverId).toBe(remote);
+  });
+
+  test("throws ServerNotReadyError for a server that is not connected", () => {
+    const database = openMemoryDatabase();
+    const project = createTestProject(database);
+    const remote = addRemote(database);
+
+    const assign = () =>
+      assignProjectServer(database, { projectId: project.id, serverId: remote, actor: TEST_ACTOR });
+
+    expect(assign).toThrow(ServerNotReadyError);
   });
 });

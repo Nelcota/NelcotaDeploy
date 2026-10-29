@@ -2,6 +2,7 @@ export {
   NoServerAvailableError,
   ServerInUseError,
   ServerNotFoundError,
+  ServerNotReadyError,
   ServerTakenError,
 } from "./server.errors";
 export { buildInstallCommand, REMOTE_WORKSPACE_DIR } from "./install-script";

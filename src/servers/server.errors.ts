@@ -22,6 +22,14 @@ export class ServerInUseError extends Error {
   }
 }
 
+/** Thrown when a project is moved to a server that is not connected and prepared. */
+export class ServerNotReadyError extends Error {
+  constructor(serverId: string) {
+    super(`Server ${serverId} is not ready for applications`);
+    this.name = "ServerNotReadyError";
+  }
+}
+
 /** Thrown when no server can take a new project. */
 export class NoServerAvailableError extends Error {
   constructor() {

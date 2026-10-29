@@ -8,8 +8,8 @@ const PUBLIC_KEY_PATTERN = /^ssh-ed25519 [A-Za-z0-9+/=]+( [A-Za-z0-9@._-]+)?$/;
 const USERNAME_PATTERN = /^[a-z_][a-z0-9_-]{0,31}$/;
 
 // POSIX sh, run as root, safe to run again. It installs Docker and git, creates the account
-// the panel logs in with, authorizes the panel's key and lets that account open the SSH
-// channels and tunnels the panel uses, after validating the new sshd configuration.
+// the panel logs in with, lets that account open the SSH channels and tunnels the panel uses
+// (after validating the new sshd configuration) and only then authorizes the panel's key.
 const SCRIPT = `set -eu
 PUBLIC_KEY="$1"
 USER_NAME="$2"
@@ -24,12 +24,6 @@ fi
 if id "$USER_NAME" >/dev/null 2>&1; then :; else useradd --create-home --shell /bin/sh --password '*' "$USER_NAME"; fi
 usermod -aG docker "$USER_NAME"
 HOME_DIR=$(getent passwd "$USER_NAME" | cut -d: -f6)
-install -d -m 700 -o "$USER_NAME" -g "$USER_NAME" "$HOME_DIR/.ssh"
-KEYS="$HOME_DIR/.ssh/authorized_keys"
-touch "$KEYS"
-grep -qxF "$PUBLIC_KEY" "$KEYS" || printf '%s\\n' "$PUBLIC_KEY" >> "$KEYS"
-chown "$USER_NAME:$USER_NAME" "$KEYS"
-chmod 600 "$KEYS"
 install -d -m 750 -o "$USER_NAME" -g "$USER_NAME" /var/lib/nelcota ${REMOTE_WORKSPACE_DIR}
 CONFIG=/etc/ssh/sshd_config
 if grep -qx "Match User $USER_NAME" "$CONFIG"; then :; else
@@ -42,6 +36,14 @@ if grep -qx "Match User $USER_NAME" "$CONFIG"; then :; else
   fi
   systemctl reload ssh 2>/dev/null || systemctl reload sshd 2>/dev/null || service ssh reload 2>/dev/null || service sshd reload
 fi
+# The key goes in last: the panel retries every few seconds and keeps its connection open,
+# so it must not log in before the SSH settings above are live.
+install -d -m 700 -o "$USER_NAME" -g "$USER_NAME" "$HOME_DIR/.ssh"
+KEYS="$HOME_DIR/.ssh/authorized_keys"
+touch "$KEYS"
+grep -qxF "$PUBLIC_KEY" "$KEYS" || printf '%s\\n' "$PUBLIC_KEY" >> "$KEYS"
+chown "$USER_NAME:$USER_NAME" "$KEYS"
+chmod 600 "$KEYS"
 echo "Servidor pronto. O painel vai se conectar sozinho em alguns segundos."
 echo "Impressão digital deste servidor (confira no painel):"
 ssh-keygen -l -E sha256 -f /etc/ssh/ssh_host_ed25519_key.pub`;

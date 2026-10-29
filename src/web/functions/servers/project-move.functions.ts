@@ -3,7 +3,7 @@ import { z } from "zod";
 
 import { userActor } from "@/auth";
 import { getDatabase } from "@/db";
-import { requestDeployment } from "@/deployments";
+import { ProjectNotApprovedError, requestDeployment } from "@/deployments";
 import { getProject } from "@/projects";
 import { assignProjectServer } from "@/servers";
 import { authorize } from "@/web/server/authorization";
@@ -22,6 +22,10 @@ export const moveProjectFn = createServerFn({ method: "POST" })
     const project = getProject(database, data.projectId);
     if (project.serverId === data.serverId) {
       return { deploymentId: null };
+    }
+    // Checked first, so a move that cannot be deployed never changes where the project goes.
+    if (project.currentDeploymentId != null && project.deploymentsApproved === false) {
+      throw new ProjectNotApprovedError(project.id);
     }
     const actor = userActor(user);
     assignProjectServer(database, { projectId: project.id, serverId: data.serverId, actor });

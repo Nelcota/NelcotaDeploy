@@ -3,18 +3,38 @@ import { and, count, eq, isNull, ne } from "drizzle-orm";
 import { type Actor, recordAuditEvent } from "@/audit";
 import { type Database, tables } from "@/db";
 
-import { NoServerAvailableError } from "./server.errors";
+import { NoServerAvailableError, ServerNotReadyError } from "./server.errors";
 import { countProjectsOn, getServer, listServers, LOCAL_SERVER_ID } from "./server.service";
 
 type Candidate = {
   readonly status: string;
+  readonly kind: string;
+  readonly lastSeenAt: string | null;
   readonly projects: number;
   readonly name: string;
 };
 
-/** Ready servers first, then the one with fewer projects, then by name for a stable order. */
+const READY_RANK = 0;
+const KNOWN_RANK = 1;
+const NEVER_CONNECTED_RANK = 2;
+
+/**
+ * Ready servers first; then the panel's host or a server that worked before; last a server
+ * just added that never connected (its install command may never run).
+ */
+function readinessRank(candidate: Candidate): number {
+  if (candidate.status === "ready") {
+    return READY_RANK;
+  }
+  if (candidate.kind === "local" || candidate.lastSeenAt != null) {
+    return KNOWN_RANK;
+  }
+  return NEVER_CONNECTED_RANK;
+}
+
+/** Most ready first, then the one with fewer projects, then by name for a stable order. */
 function compareCandidates(first: Candidate, second: Candidate): number {
-  const readiness = Number(second.status === "ready") - Number(first.status === "ready");
+  const readiness = readinessRank(first) - readinessRank(second);
   if (readiness !== 0) {
     return readiness;
   }
@@ -116,6 +136,8 @@ export function chooseServerForNewProject(database: Database): string {
     .select({
       id: tables.servers.id,
       status: tables.servers.status,
+      kind: tables.servers.kind,
+      lastSeenAt: tables.servers.lastSeenAt,
       name: tables.servers.name,
       projects: count(tables.projects.id),
     })
@@ -144,6 +166,7 @@ export function chooseServerForNewProject(database: Database): string {
  * @param database - Database.
  * @param change - Project, target server and who moves it.
  * @throws {ServerNotFoundError} When the server does not exist.
+ * @throws {ServerNotReadyError} When the server is not connected and prepared.
  */
 export function assignProjectServer(
   database: Database,
@@ -154,6 +177,9 @@ export function assignProjectServer(
   }: { readonly projectId: string; readonly serverId: string; readonly actor: Actor },
 ): void {
   const server = getServer(database, serverId);
+  if (server.status !== "ready") {
+    throw new ServerNotReadyError(serverId);
+  }
   database.transaction((transaction) => {
     transaction
       .update(tables.projects)

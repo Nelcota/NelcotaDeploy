@@ -1,29 +1,14 @@
-import { lookup } from "node:dns/promises";
-
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 
 import { getConfig } from "@/config";
 import { getDatabase } from "@/db";
-import { resolvePublicAddress } from "@/domains";
+import { lookupWithTimeout, resolvePublicAddress } from "@/domains";
 import { getProject } from "@/projects";
 import { getServer } from "@/servers";
 import { authorize } from "@/web/server/authorization";
 
 import { idSchema } from "../ids";
-
-const LOOKUP_TIMEOUT_IN_MS = 3000;
-
-/** Resolves a hostname, giving up after a few seconds so a slow DNS never hangs the page. */
-async function lookupWithTimeout(hostname: string): Promise<{ readonly address: string }> {
-  const { promise, reject } = Promise.withResolvers<never>();
-  const timer = setTimeout(
-    () => reject(new Error(`DNS lookup of ${hostname} timed out`)),
-    LOOKUP_TIMEOUT_IN_MS,
-  );
-  using _timer = { [Symbol.dispose]: () => clearTimeout(timer) };
-  return await Promise.race([lookup(hostname), promise]);
-}
 
 /**
  * Public IP address of the server a project runs on, for the DNS record a custom domain

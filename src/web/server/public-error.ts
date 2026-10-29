@@ -20,6 +20,7 @@ import {
   NoServerAvailableError,
   ServerInUseError,
   ServerNotFoundError,
+  ServerNotReadyError,
   ServerTakenError,
 } from "@/servers";
 import { InvalidScheduleError, TaskNameTakenError, TaskNotFoundError } from "@/tasks";
@@ -54,6 +55,7 @@ const MESSAGES: readonly (readonly [ErrorClass, string])[] = [
   [InvalidScheduleError, "Expressão cron inválida. Use 5 campos, como */5 * * * *."],
   [ServerNotFoundError, "Servidor não encontrado."],
   [ServerTakenError, "Já existe um servidor com este nome ou endereço."],
+  [ServerNotReadyError, "Este servidor ainda não está conectado. Escolha um servidor pronto."],
   [
     ServerInUseError,
     "Este servidor não pode ser removido: ainda há projetos nele ou ele é o servidor do painel.",
