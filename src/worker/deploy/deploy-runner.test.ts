@@ -1,7 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
 
 import { type Database, openMemoryDatabase } from "@/db";
 import { getDeployment, requestDeployment } from "@/deployments";
@@ -17,8 +15,8 @@ type CloneOptions = Parameters<DeployRunnerDependencies["git"]["checkoutRevision
 
 const fakeGit = {
   async checkoutRevision(options: CloneOptions) {
-    await mkdir(options.directory, { recursive: true });
-    await writeFile(join(options.directory, "Dockerfile"), "FROM scratch\n");
+    // Bun.write creates the missing directories.
+    await Bun.write(`${options.directory}/Dockerfile`, "FROM scratch\n");
     return { sha: "c0ffee".padEnd(40, "0"), message: "feat: initial" };
   },
 };
@@ -45,7 +43,8 @@ async function setup(options: { probes?: typeof alwaysHealthy; healthTimeout?: n
     secretBox,
     probes: options.probes ?? alwaysHealthy,
     config: {
-      workspaceDir: await mkdtemp(join(tmpdir(), "nelcota-test-")),
+      // The workspace creates this directory itself.
+      workspaceDir: `${tmpdir()}/nelcota-test-${crypto.randomUUID()}`,
       network: "nelcota-test",
       buildTimeoutInSeconds: 60,
       healthCheckTimeoutInSeconds: options.healthTimeout ?? 10,

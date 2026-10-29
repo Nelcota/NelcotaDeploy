@@ -8,10 +8,8 @@ import { saveEnvironmentVariable } from "@/environments";
 import { createProject } from "@/projects";
 import { getSecretBox } from "@/secrets";
 import { saveSystemSettings } from "@/settings";
-import { taskInputSchema } from "@/shared/schemas/task.schema";
-import { createTask } from "@/tasks";
 
-import { seedServers } from "./seed-servers";
+import { seedServers, seedTasks } from "./seed-extras";
 
 const ACTOR = { type: "system", label: "ui-review" } as const;
 const MINUTE_IN_MS = 60_000;
@@ -134,29 +132,7 @@ addDomain(database, {
   actor: ACTOR,
 });
 
-const taskContext = { actor: ACTOR, userId: null, timeZone: "America/Sao_Paulo" };
-createTask(database, {
-  projectId: api.id,
-  input: taskInputSchema.parse({
-    name: "Migrar banco",
-    commandLine: "bun run db:migrate",
-    schedule: "",
-    enabled: true,
-    timeoutInSeconds: 300,
-  }),
-  ...taskContext,
-});
-createTask(database, {
-  projectId: api.id,
-  input: taskInputSchema.parse({
-    name: "Limpar cache",
-    commandLine: "bun run cache:clear --all",
-    schedule: "0 3 * * *",
-    enabled: false,
-    timeoutInSeconds: 60,
-  }),
-  ...taskContext,
-});
+seedTasks(database, api.id);
 
 const startedAt = new Date(now - CONTAINER_UPTIME_IN_MINUTES * MINUTE_IN_MS).toISOString();
 database

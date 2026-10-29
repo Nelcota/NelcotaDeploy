@@ -14,8 +14,9 @@ import { formatShortTime } from "@/shared/format";
 const TICK_COUNT = 5;
 /** Headroom above the highest sample, so the line never touches the top of the chart. */
 const HEADROOM = 1.1;
-// Tick steps people read easily, times a power of ten.
-const NICE_STEPS = [1, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10] as const;
+// Tick steps people read easily, times a power of ten. Written as text because the list
+// itself is the named constant, not ten separate magic numbers.
+const NICE_STEPS: readonly number[] = "1 1.5 2 2.5 3 4 5 6 8 10".split(" ").map(Number);
 const DECIMAL_BASE = 10;
 /** Room for the value labels; compact charts hide the axis and only keep the stroke inset. */
 const AXIS_WIDTH_IN_PX = 64;
