@@ -59,7 +59,7 @@ function logRouting(
  * @param dependencies - Database, Docker and settings.
  * @param context - Deployment being run.
  * @param release - The `imageTag` to run, its `runtimeValues` (environment variables) and the
- *   `runtimeConfigHash` they were taken with.
+ *   `runtimeConfigHash` they were taken with, and the `buildConfigHash` of a new build.
  * @returns The new container name.
  */
 export async function startContainer(
@@ -69,6 +69,8 @@ export async function startContainer(
     readonly imageTag: string;
     readonly runtimeValues: Readonly<Record<string, string>>;
     readonly runtimeConfigHash: string;
+    /** Null when the image was reused, which keeps the hash copied from its source. */
+    readonly buildConfigHash: string | null;
   },
 ): Promise<string> {
   const { database, docker, config } = dependencies;
@@ -79,6 +81,7 @@ export async function startContainer(
     imageTag: release.imageTag,
     containerName,
     runtimeConfigHash: release.runtimeConfigHash,
+    ...(release.buildConfigHash == null ? {} : { buildConfigHash: release.buildConfigHash }),
   });
   logs.system(`Starting container ${containerName}`);
   await docker.ensureNetwork(config.network);

@@ -135,6 +135,8 @@ export const deployments = sqliteTable(
     imageTag: text("image_tag"),
     // Fingerprint of the variables and domains the container started with (see runtime-config.ts).
     runtimeConfigHash: text("runtime_config_hash"),
+    // Fingerprint of the build-time variables baked into the image; a redeploy keeps its source's.
+    buildConfigHash: text("build_config_hash"),
     containerName: text("container_name"),
     // Server the deployment ran on, which is where its image and container live.
     serverId: text("server_id").notNull().default(LOCAL_SERVER_ID),

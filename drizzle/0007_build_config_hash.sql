@@ -1,0 +1,1 @@
+ALTER TABLE `deployments` ADD `build_config_hash` text;

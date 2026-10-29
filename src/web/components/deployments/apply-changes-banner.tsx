@@ -4,7 +4,7 @@ import { useState } from "react";
 import { shouldOfferApply } from "@/web/components/deployments/apply-changes";
 import { useAction } from "@/web/components/layout/use-action";
 import { Button } from "@/web/components/ui/button";
-import { redeployProjectFn } from "@/web/functions/deployments.functions";
+import { applyProjectChangesFn } from "@/web/functions/deployments.functions";
 
 /**
  * Notice shown after a change that only reaches the application when its container is
@@ -37,13 +37,13 @@ export function ApplyChangesBanner({
 }
 
 /**
- * Redeploy action plus whether to offer it: the server reports changes not yet applied, and
- * once a redeploy is queued the offer waits until the new container clears them.
+ * Action that applies saved changes plus whether to offer it: the server reports changes not yet
+ * applied, and once the apply is queued the offer waits until the new container clears them.
  *
  * @param projectId - Project being edited.
  * @param pending - The server's `pendingRuntimeChanges` for the project.
  * @param canRedeploy - The user may redeploy and the project has a live deployment.
- * @returns The redeploy action and whether to show the banner.
+ * @returns The apply action and whether to show the banner.
  */
 export function useApplyChanges(projectId: string, pending: boolean, canRedeploy: boolean) {
   const [requested, setRequested] = useState(false);
@@ -56,8 +56,9 @@ export function useApplyChanges(projectId: string, pending: boolean, canRedeploy
     }
   }
   const redeploy = useAction({
-    action: () => redeployProjectFn({ data: { projectId } }),
-    successMessage: "Redeploy colocado na fila",
+    action: () => applyProjectChangesFn({ data: { projectId } }),
+    successMessage: (deploymentId) =>
+      deploymentId == null ? "Nada novo para aplicar" : "Mudanças colocadas na fila",
     invalidate: [["project", projectId], ["deployments"]],
     onSuccess: () => setRequested(true),
   });

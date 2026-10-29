@@ -9,7 +9,11 @@ import { createTestProject, createTestSecretBox, TEST_ACTOR } from "@/testing";
 
 import { requestDeployment } from "./deployment-request.service";
 import { completeDeployment, transitionDeployment } from "./deployment.service";
-import { hasPendingRuntimeChanges, runtimeConfigFingerprint } from "./runtime-config";
+import {
+  buildConfigFingerprint,
+  hasPendingRuntimeChanges,
+  runtimeConfigFingerprint,
+} from "./runtime-config";
 
 const manual = { trigger: "manual" as const, actor: TEST_ACTOR, triggeredByUserId: null };
 
@@ -119,5 +123,31 @@ describe("hasPendingRuntimeChanges after a new deploy", () => {
     });
 
     expect(hasPendingRuntimeChanges(database, project.id)).toBe(false);
+  });
+});
+
+describe("buildConfigFingerprint", () => {
+  test("ignores variables that are not passed to the build", async () => {
+    const database = openMemoryDatabase();
+    const project = createTestProject(database);
+    const before = buildConfigFingerprint(database, project.id);
+
+    await saveVariable(database, project.id, "https://api.example.com");
+
+    expect(buildConfigFingerprint(database, project.id)).toBe(before);
+  });
+
+  test("changes when a build variable is added", async () => {
+    const database = openMemoryDatabase();
+    const project = createTestProject(database);
+    const before = buildConfigFingerprint(database, project.id);
+
+    await saveEnvironmentVariable(database, await createTestSecretBox(), {
+      projectId: project.id,
+      input: { key: "VITE_API", kind: "plain", value: "x", availableAtBuild: true },
+      actor: TEST_ACTOR,
+    });
+
+    expect(buildConfigFingerprint(database, project.id)).not.toBe(before);
   });
 });

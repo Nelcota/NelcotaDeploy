@@ -6,8 +6,12 @@ export {
 } from "./container-action.service";
 export { requestDeployment, retryDeployment } from "./deployment-request.service";
 export { summarizeDeployments } from "./deployment-stats.service";
-export { hasPendingRuntimeChanges, runtimeConfigFingerprint } from "./runtime-config";
-export { applyRuntimeChanges } from "./runtime-apply.service";
+export {
+  buildConfigFingerprint,
+  hasPendingRuntimeChanges,
+  runtimeConfigFingerprint,
+} from "./runtime-config";
+export { applyPendingChanges, applyRuntimeChanges } from "./runtime-apply.service";
 export {
   DeploymentNotFoundError,
   NoActiveContainerError,

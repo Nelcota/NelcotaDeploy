@@ -27,6 +27,7 @@ function finishSuccessfully(
     to: "starting",
     imageTag: "nelcota/api:abc",
     containerName: "nelcota-api-abc",
+    buildConfigHash: "build-hash",
   });
   transitionDeployment(database, deploymentId, { to: "health_checking" });
   completeDeployment(database, deploymentId);
@@ -155,6 +156,27 @@ describe("requestDeployment rollback", () => {
     });
 
     expect(getDeployment(database, rollback.deploymentId).imageTag).toBe("nelcota/api:abc");
+  });
+
+  test("a rollback keeps the build variables fingerprint of the image it reuses", () => {
+    const database = openMemoryDatabase();
+    const project = createTestProject(database);
+    const previous = requestDeployment(database, { projectId: project.id, ...manual });
+    finishSuccessfully(database, previous.deploymentId);
+
+    const rollback = requestDeployment(database, {
+      projectId: project.id,
+      ...manual,
+      trigger: "rollback",
+      sourceDeploymentId: previous.deploymentId,
+    });
+
+    const row = database
+      .select({ hash: tables.deployments.buildConfigHash })
+      .from(tables.deployments)
+      .where(eq(tables.deployments.id, rollback.deploymentId))
+      .get();
+    expect(row?.hash).toBe("build-hash");
   });
 });
 

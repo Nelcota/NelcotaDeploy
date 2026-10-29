@@ -59,6 +59,7 @@ function findReusableImage(
       commitSha: tables.deployments.commitSha,
       commitMessage: tables.deployments.commitMessage,
       branch: tables.deployments.branch,
+      buildConfigHash: tables.deployments.buildConfigHash,
     })
     .from(tables.deployments)
     .where(
@@ -153,13 +154,21 @@ function revisionOf(
 ) {
   const requestedMessage = request.commitMessage ?? null;
   if (source == null) {
-    return { branch, commitSha: null, commitMessage: requestedMessage, imageTag: null };
+    return {
+      branch,
+      commitSha: null,
+      commitMessage: requestedMessage,
+      imageTag: null,
+      buildConfigHash: null,
+    };
   }
   return {
     branch: source.branch,
     commitSha: source.commitSha,
     commitMessage: source.commitMessage ?? requestedMessage,
     imageTag: source.imageTag,
+    // The reused image carries the build variables of its source.
+    buildConfigHash: source.buildConfigHash,
   };
 }
 

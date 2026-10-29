@@ -1,4 +1,8 @@
-import { runtimeConfigFingerprint, transitionDeployment } from "@/deployments";
+import {
+  buildConfigFingerprint,
+  runtimeConfigFingerprint,
+  transitionDeployment,
+} from "@/deployments";
 import { resolveEnvironment } from "@/environments";
 import { appCloneToken } from "@/github";
 import { readRepositoryToken } from "@/projects";
@@ -32,6 +36,7 @@ export async function deploy(
   const environment = await resolveEnvironment(database, secretBox, project.id);
   // Taken with the variables it describes, so later edits show up as pending changes.
   const runtimeConfigHash = runtimeConfigFingerprint(database, project.id);
+  const buildConfigHash = buildConfigFingerprint(database, project.id);
   const repositoryToken = await cloneToken(dependencies, context);
   context.state.useRedactor(createRedactor([...environment.secretValues, repositoryToken ?? ""]));
   logs.useRedactor(context.state.redact);
@@ -56,6 +61,8 @@ export async function deploy(
     imageTag: built.imageTag,
     runtimeValues: environment.runtime,
     runtimeConfigHash,
+    // A reused image keeps the build variables it was built with, copied from its source.
+    buildConfigHash: reused == null ? buildConfigHash : null,
   });
   await checkHealth(dependencies, running, containerName);
 }
