@@ -8,7 +8,7 @@ import {
   PortField,
   RepositoryFields,
 } from "@/web/components/forms/project-form-fields";
-import { AutoDeployField } from "@/web/components/forms/project-switch-fields";
+import { AutoDeployField, SwitchGroup } from "@/web/components/forms/project-switch-fields";
 import { GitHubRepositoryPicker } from "@/web/components/github/github-repository-picker";
 import { SettingsSection } from "@/web/components/project-settings/settings-section";
 import { cn } from "@/web/components/ui/class-names";
@@ -57,7 +57,9 @@ export function ProjectFormSections({ form }: { readonly form: ProjectFormApi })
           <div className="sm:max-w-56">
             <PortField form={form} />
           </div>
-          <AutoDeployField form={form} />
+          <SwitchGroup>
+            <AutoDeployField form={form} />
+          </SwitchGroup>
         </div>
       </SettingsSection>
       <SettingsSection
