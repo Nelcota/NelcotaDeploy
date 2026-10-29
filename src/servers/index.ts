@@ -6,7 +6,7 @@ export {
   ServerTakenError,
 } from "./server.errors";
 export { buildInstallCommand, REMOTE_ROUTES_DIR, REMOTE_WORKSPACE_DIR } from "./install-script";
-export { ensurePanelPrivateKey, getPanelPublicKey, storePanelKeyPair } from "./server-key.service";
+export { getPanelPublicKey, readPanelPrivateKey, storePanelKeyPair } from "./server-key.service";
 export {
   applicationServersReady,
   assignProjectServer,
