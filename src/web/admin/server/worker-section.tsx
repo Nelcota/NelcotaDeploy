@@ -1,6 +1,7 @@
 import {
   ActivityIcon,
   ContainerIcon,
+  DatabaseIcon,
   GaugeIcon,
   GlobeIcon,
   HeartPulseIcon,
@@ -93,6 +94,9 @@ function ConfigurationRows({ server }: { readonly server: ServerData }) {
       <InfoRow icon={GlobeIcon} label="Fuso dos agendamentos">
         {server.scheduleTimeZone}
       </InfoRow>
+      <InfoRow icon={DatabaseIcon} label="Backup do banco">
+        <BackupStatus backup={server.backup} />
+      </InfoRow>
       <InfoRow icon={LockKeyholeIcon} label="Chave de criptografia">
         <ToggleStatusPill
           on={server.encryptionConfigured}
@@ -101,6 +105,19 @@ function ConfigurationRows({ server }: { readonly server: ServerData }) {
           offTone="danger"
         />
       </InfoRow>
+    </>
+  );
+}
+
+/** When the database was last copied, and how many copies are kept. */
+function BackupStatus({ backup }: { readonly backup: ServerData["backup"] }) {
+  const now = useNow();
+  if (backup.newestAt == null) {
+    return <StatusPill tone="warning" label="Ainda não feito" />;
+  }
+  return (
+    <>
+      {formatTimeAgo(backup.newestAt, now)} · {backup.count} de {backup.kept} guardados
     </>
   );
 }

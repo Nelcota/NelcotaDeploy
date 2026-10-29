@@ -19,6 +19,7 @@ import {
   PortField,
   RepositoryFields,
 } from "@/web/components/forms/project-form-fields";
+import { GitHubRepositoryPicker } from "@/web/components/github/github-repository-picker";
 import { SettingsSection } from "@/web/components/project-settings/settings-section";
 import { Button } from "@/web/components/ui/button";
 import { cn } from "@/web/components/ui/class-names";
@@ -34,9 +35,8 @@ export type ProjectFormValues = {
   readonly internalPort: string;
   readonly healthCheckPath: string;
   readonly autoDeploy: boolean;
+  readonly autoApplyChanges: boolean;
 };
-
-const DEFAULT_PORT = "3000";
 
 /** Input accepted by the project server functions. */
 export type ProjectFormInput = z.input<typeof projectInputSchema>;
@@ -68,9 +68,11 @@ export const EMPTY_PROJECT_FORM: ProjectFormValues = {
   branch: "main",
   dockerfilePath: "Dockerfile",
   buildContext: ".",
-  internalPort: DEFAULT_PORT,
+  // Blank: each build reads the port from the Dockerfile's EXPOSE.
+  internalPort: "",
   healthCheckPath: "",
   autoDeploy: true,
+  autoApplyChanges: true,
 };
 
 /**
@@ -87,8 +89,10 @@ export function projectToFormValues(project: {
   readonly dockerfilePath: string;
   readonly buildContext: string;
   readonly internalPort: number;
+  readonly internalPortAuto: boolean;
   readonly healthCheckPath: string | null;
   readonly autoDeploy: boolean;
+  readonly autoApplyChanges: boolean;
 }): ProjectFormValues {
   return {
     name: project.name,
@@ -97,9 +101,10 @@ export function projectToFormValues(project: {
     branch: project.branch,
     dockerfilePath: project.dockerfilePath,
     buildContext: project.buildContext,
-    internalPort: String(project.internalPort),
+    internalPort: project.internalPortAuto ? "" : String(project.internalPort),
     healthCheckPath: project.healthCheckPath ?? "",
     autoDeploy: project.autoDeploy,
+    autoApplyChanges: project.autoApplyChanges,
   };
 }
 
@@ -188,6 +193,7 @@ function ProjectFormSections({ form }: { readonly form: ProjectFormApi }) {
         description="Precisa ter um Dockerfile."
       >
         <div className="grid gap-x-5 gap-y-5 sm:grid-cols-[minmax(0,1fr)_minmax(0,11rem)]">
+          <GitHubRepositoryPicker form={form} />
           <RepositoryFields form={form} />
         </div>
       </SettingsSection>

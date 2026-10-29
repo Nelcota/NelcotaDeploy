@@ -17,8 +17,9 @@ contêiner, verifica a saúde e só então troca a versão anterior. Logs aparec
 - [Vários servidores](#vários-servidores)
 - [Primeiro administrador](#primeiro-administrador)
 - [Cadastrar uma aplicação e fazer deploy](#cadastrar-uma-aplicação-e-fazer-deploy)
-- [Webhook do GitHub (deploy automático)](#webhook-do-github-deploy-automático)
+- [GitHub (deploy automático e repositórios privados)](#github-deploy-automático-e-repositórios-privados)
 - [Domínios e HTTPS](#domínios-e-https)
+- [Alertas](#alertas)
 - [Tasks agendadas](#tasks-agendadas)
 - [MCP (Claude Code e outros clientes)](#mcp-claude-code-e-outros-clientes)
 - [Produção com Docker Compose](#produção-com-docker-compose)
@@ -92,23 +93,23 @@ drizzle/         migrations versionadas
 ```bash
 bun install
 bun run setup          # cria .env com BETTER_AUTH_SECRET, NELCOTA_ENCRYPTION_KEY e GITHUB_WEBHOOK_SECRET gerados
-bun run admin:create --email voce@empresa.com --name "Seu Nome"
-bun run dev            # aplica migrations e sobe o painel em http://localhost:3000
+bun run dev            # aplica migrations e sobe o painel em http://localhost:3000 (crie o admin nele)
 bun run worker         # em outro terminal: processa deploys, tasks e métricas
 ```
 
 `bun run setup` nunca sobrescreve um `.env` existente. Variáveis disponíveis estão documentadas
 em [`.env.example`](../.env.example).
 
-| Variável                          | Obrigatória            | Para quê                                                                                   |
-| --------------------------------- | ---------------------- | ------------------------------------------------------------------------------------------ |
-| `BETTER_AUTH_SECRET`              | sim (web)              | assina sessões (≥ 32 caracteres)                                                           |
-| `NELCOTA_ENCRYPTION_KEY`          | sim (web e worker)     | 32 bytes em base64; criptografa secrets e tokens de repositório. **Não perca esta chave.** |
-| `PUBLIC_URL`                      | sim                    | URL pública do painel (cookies, CSRF, URL do webhook)                                      |
-| `GITHUB_WEBHOOK_SECRET`           | para deploy automático | segredo HMAC do webhook                                                                    |
-| `DATABASE_PATH` / `WORKSPACE_DIR` | não                    | banco e diretório temporário de builds                                                     |
-| `TRAEFIK_ENABLED`                 | não                    | adiciona labels de roteamento aos contêineres                                              |
-| `NELCOTA_MCP_TOKEN`               | só no processo MCP     | token de API com escopo                                                                    |
+| Variável                          | Obrigatória        | Para quê                                                                                   |
+| --------------------------------- | ------------------ | ------------------------------------------------------------------------------------------ |
+| `BETTER_AUTH_SECRET`              | sim (web)          | assina sessões (≥ 32 caracteres)                                                           |
+| `NELCOTA_ENCRYPTION_KEY`          | sim (web e worker) | 32 bytes em base64; criptografa secrets e tokens de repositório. **Não perca esta chave.** |
+| `PUBLIC_URL`                      | sim                | URL pública do painel (cookies, CSRF, URL do webhook)                                      |
+| `GITHUB_WEBHOOK_SECRET`           | não                | segredo HMAC de webhooks criados à mão; com o GitHub App, o app traz o próprio segredo     |
+| `BACKUP_DIR` / `BACKUPS_KEPT`     | não                | pasta do backup diário do banco (padrão: `backups/` ao lado dele) e quantos manter (7)     |
+| `DATABASE_PATH` / `WORKSPACE_DIR` | não                | banco e diretório temporário de builds                                                     |
+| `TRAEFIK_ENABLED`                 | não                | adiciona labels de roteamento aos contêineres                                              |
+| `NELCOTA_MCP_TOKEN`               | só no processo MCP | token de API com escopo                                                                    |
 
 ## Banco de dados
 
@@ -204,7 +205,11 @@ banco, como os outros segredos.
 
 ## Primeiro administrador
 
-Não existe cadastro público nem usuário padrão. Crie o primeiro admin localmente:
+Não existe cadastro público nem usuário padrão. Enquanto o painel não tem nenhum admin, a página de
+login pede nome, e-mail e senha e cria o primeiro; depois disso ela só serve para entrar. Como quem
+abrir o painel primeiro vira admin, crie a conta logo após publicar o painel.
+
+Também dá para criar pelo terminal, sem abrir o navegador:
 
 ```bash
 bun run admin:create --email voce@empresa.com --name "Seu Nome"
@@ -225,34 +230,60 @@ o que o papel não permite.
 
 ## Cadastrar uma aplicação e fazer deploy
 
-1. **Projetos → Novo projeto**: nome (o identificador é sugerido automaticamente), URL HTTPS do
-   repositório GitHub, branch e porta interna. Dockerfile, contexto e health check ficam em _Avançado_.
+1. **Projetos → Novo projeto**: escolha o repositório na lista (com o GitHub App conectado) ou cole
+   a URL HTTPS; nome, identificador e branch são preenchidos. Deixe a porta interna em branco para
+   cada build ler o `EXPOSE` do Dockerfile (sem `EXPOSE`, vale a última porta usada ou 3000).
+   Dockerfile, contexto e health check ficam em _Build_.
 2. **Variáveis**: crie configurações (visíveis) ou secrets (criptografados, nunca exibidos de volta).
    Marque "Disponível no build" para passar como build arg.
 3. Clique em **Deploy** e acompanhe os logs ao vivo. O histórico fica em **Deploys**, com commit,
    autor, duração, status e **Rollback** para imagens anteriores ainda disponíveis.
-4. **Redeploy** recria o contêiner a partir da imagem atual aplicando variáveis e domínios novos,
-   sem rebuild. **Iniciar/Parar/Reiniciar** atuam no contêiner atual.
+4. Variáveis e domínios salvos são aplicados sozinhos: o painel recria o contêiner a partir da imagem
+   atual, sem rebuild. Se já houver um deploy na fila ou rodando, a mudança vai com ele ou logo depois
+   dele (nunca depois de uma falha, para não repetir uma configuração quebrada). Desligue em
+   **Ajustes → Aplicar mudanças automaticamente** para aplicar à mão com **Redeploy**.
+   **Iniciar/Parar/Reiniciar** atuam no contêiner atual.
 
 Segurança de código desconhecido: construir um repositório executa o Dockerfile dele. Projetos
 criados por desenvolvedores começam **aguardando aprovação** e só fazem deploy depois que um admin
 aprova; trocar o repositório de um projeto aprovado (por um não-admin) exige nova aprovação.
 
-Repositórios privados: um admin pode salvar um token de leitura do GitHub em **Configurações do
-projeto**. Ele é criptografado em repouso e entregue ao git apenas por `GIT_ASKPASS` — nunca em URL,
-argumento de processo ou log.
+Repositórios privados: com o GitHub App conectado, nada a fazer (veja abaixo). Sem ele, um admin
+pode salvar um token de leitura do GitHub em **Ajustes do projeto**; o token do projeto tem
+prioridade sobre o do app. Tokens são criptografados em repouso e entregues ao git só pelo
+credential helper — nunca em URL, argumento de processo ou log.
 
-## Webhook do GitHub (deploy automático)
+## GitHub (deploy automático e repositórios privados)
+
+### GitHub App (recomendado)
+
+Em **Configurações → Sistema → GitHub**, clique em **Conectar ao GitHub** (informe a organização se
+o app for dela). O painel abre o GitHub com o app já descrito — só leitura de código, evento de
+push e webhook apontando para `<PUBLIC_URL>/api/webhooks/github`. Confirme, escolha os repositórios
+e pronto:
+
+- **Novo projeto** lista os repositórios do app;
+- repositórios privados são clonados com tokens de instalação de 1 hora, sem token por projeto;
+- todo push chega ao painel, sem webhook por repositório.
+
+A chave privada e o segredo do webhook do app ficam criptografados com `NELCOTA_ENCRYPTION_KEY`.
+**Desconectar** só faz o painel esquecer o app; apague-o nas configurações do GitHub se quiser. O
+`PUBLIC_URL` precisa ser acessível pelo GitHub.
+
+### Webhook manual
+
+Sem o app, configure um webhook por repositório:
 
 1. Defina `GITHUB_WEBHOOK_SECRET` (o `bun run setup` já gera um).
 2. No repositório: _Settings → Webhooks → Add webhook_
-   - Payload URL: `<PUBLIC_URL>/api/webhooks/github` (também exibida em **Configurações → Servidor**)
+   - Payload URL: `<PUBLIC_URL>/api/webhooks/github` (também exibida em **Configurações → Sistema**)
    - Content type: `application/json`
    - Secret: o valor de `GITHUB_WEBHOOK_SECRET`
    - Eventos: _Just the push event_
 3. Ative "Deploy automático" no projeto.
 
-O endpoint valida a assinatura HMAC SHA-256 sobre o corpo bruto (limite de 1 MB), registra cada
+Os dois jeitos convivem. O endpoint valida a assinatura HMAC SHA-256 (com o segredo do app ou o
+manual) sobre o corpo bruto (limite de 1 MB), registra cada
 entrega pelo `X-GitHub-Delivery` (reentregas são ignoradas), confere repositório e branch e enfileira
 o deploy do **commit exato** do push. Entregas recebidas aparecem em **Configurações → Auditoria**.
 O deploy manual funciona independentemente do webhook.
@@ -263,13 +294,21 @@ O deploy manual funciona independentemente do webhook.
   (ex.: `apps.empresa.com`), cada projeto ganha automaticamente `<slug>.apps.empresa.com`.
 - Com `TRAEFIK_ENABLED=true`, o worker adiciona labels Traefik ao contêiner: um router por domínio,
   redirecionamento HTTP→HTTPS e certificado Let's Encrypt (`certresolver`). Mudanças de domínio
-  valem no próximo deploy ou redeploy.
+  são aplicadas sozinhas (veja o passo 4 de [Cadastrar uma aplicação](#cadastrar-uma-aplicação-e-fazer-deploy)).
+- Cada domínio mostra se o DNS já aponta para o servidor do projeto: _DNS ok_, _Sem DNS_ ou _DNS em
+  outro endereço_ (outro servidor ou um CDN na frente). A checagem se repete a cada minuto.
 - O Traefik só roteia contêineres com `io.nelcota.managed=true` (ou o próprio painel) — veja a
   constraint em `docker-compose.yml`.
 
 Para testar HTTPS: aponte um registro DNS `A` para a VPS, defina `ACME_EMAIL`, suba o Compose e
 acesse o domínio. Sem DNS público (desenvolvimento), deixe `TRAEFIK_ENABLED=false`; o health check
 e os logs funcionam normalmente, só não há roteamento externo.
+
+## Alertas
+
+Em **Configurações → Organização**, cole a URL de um webhook do Discord ou do Slack e use **Enviar
+alerta de teste**. O painel avisa quando um deploy falha e quando um servidor fica inacessível ou
+volta.
 
 ## Tasks agendadas
 
@@ -322,7 +361,7 @@ bun run setup                 # gere o .env e ajuste PUBLIC_URL, PANEL_DOMAIN, A
 echo "DOCKER_GID=$(stat -c %g /var/run/docker.sock)" >> .env
 docker compose build
 docker compose up -d
-docker compose exec web bun run admin:create --email voce@empresa.com
+# abra o PUBLIC_URL e crie o primeiro admin na página de login
 ```
 
 O Compose sobe **Traefik** (80/443, Let's Encrypt, socket somente leitura), **web** (sem socket,
@@ -348,11 +387,20 @@ bun run build        # build de produção
 ```
 
 O teste com Docker real fica fora do `bun run test` e roda só com `bun run test:docker`, porque
-constrói imagens e cria contêineres; ele remove tudo o que criou ao final.
+constrói imagens e cria contêineres; ele remove tudo o que criou ao final. No GitHub Actions ele roda
+em todo PR, ao lado do `check` e do `ui:review`.
+
+O Dependabot abre PRs diários com as versões mais novas de pacotes, actions e imagens Docker; os
+que passam em todas as verificações são mesclados sozinhos.
 
 ## Backup e restauração do SQLite
 
-O banco está em WAL, então copie com a API de backup do SQLite em vez de copiar o arquivo:
+O worker faz um backup por dia (às 03:30 UTC, e ao iniciar se o último tiver mais de um dia) em
+`BACKUP_DIR`, mantendo os `BACKUPS_KEPT` mais novos. A data do último aparece em **Configurações →
+Sistema**. Copie essa pasta para fora da VPS de tempos em tempos.
+
+Para um backup avulso, o banco está em WAL, então use a API de backup do SQLite em vez de copiar o
+arquivo:
 
 ```bash
 # backup a quente (pode rodar com a plataforma no ar)
@@ -378,8 +426,8 @@ Guarde também o `NELCOTA_ENCRYPTION_KEY`: sem ele, secrets e tokens do backup s
 | "precisa ser aprovado por um administrador" | projeto criado por desenvolvedor; um admin deve aprovar                                                            |
 | Health check falha                          | porta interna errada, app escutando em `127.0.0.1` em vez de `0.0.0.0`, ou caminho de health check retornando erro |
 | Certificado não emitido                     | DNS ainda não aponta para a VPS, porta 80 bloqueada ou `ACME_EMAIL` ausente                                        |
-| Webhook retorna 401                         | `GITHUB_WEBHOOK_SECRET` diferente do configurado no GitHub                                                         |
-| Webhook retorna 503                         | `GITHUB_WEBHOOK_SECRET` não definido                                                                               |
+| Webhook retorna 401                         | `GITHUB_WEBHOOK_SECRET` diferente do configurado no GitHub, ou o app foi recriado e o antigo ainda envia           |
+| Webhook retorna 503                         | nem GitHub App conectado nem `GITHUB_WEBHOOK_SECRET` definido                                                      |
 | "configuração incompleta"                   | falta `NELCOTA_ENCRYPTION_KEY` ou `BETTER_AUTH_SECRET`                                                             |
 
 ## Limitações conhecidas
@@ -389,7 +437,8 @@ Guarde também o `NELCOTA_ENCRYPTION_KEY`: sem ele, secrets e tokens do backup s
   preciso instalar o Docker ou o `useradd` à mão antes.
 - O domínio automático (`<slug>.<domínio base>`) usa um único curinga de DNS: com projetos em
   servidores diferentes, crie um registro `A` por projeto apontando para o IP do servidor dele.
-- Somente repositórios GitHub via HTTPS; privados exigem token de leitura (deploy keys SSH não implementadas).
+- Somente repositórios GitHub via HTTPS; privados pedem o GitHub App ou um token de leitura (deploy
+  keys SSH não implementadas). O app suporta até 20 instalações de 1.000 repositórios na lista.
 - Um ambiente (`production`) por projeto; a tabela `environments` já existe para mais ambientes.
 - Sem zero downtime garantido (veja [Troca de versão](#troca-de-versão-downtime)); sem portas publicadas
   no host — o tráfego entra pelo Traefik.

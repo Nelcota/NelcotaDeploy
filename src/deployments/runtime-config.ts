@@ -34,6 +34,23 @@ export function runtimeConfigFingerprint(database: Database, projectId: string):
 }
 
 /**
+ * Fingerprints the variables passed to the build, which only a new build applies.
+ *
+ * @param database - Database.
+ * @param projectId - Project whose build variables are fingerprinted.
+ * @returns A SHA-256 hex digest that changes when a build variable is saved, added or removed.
+ */
+export function buildConfigFingerprint(database: Database, projectId: string): string {
+  const variables = listEnvironmentVariables(database, projectId)
+    .filter((variable) => variable.availableAtBuild)
+    .map((variable) => [variable.key, variable.kind, variable.updatedAt] as const)
+    .toSorted(([left], [right]) => left.localeCompare(right));
+  const hasher = new Bun.CryptoHasher("sha256");
+  hasher.update(JSON.stringify(variables));
+  return hasher.digest("hex");
+}
+
+/**
  * Tells whether variables or domains changed since the live container was started, so the
  * interface can offer to apply them with a redeploy.
  *

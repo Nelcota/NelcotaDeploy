@@ -13,10 +13,17 @@ export function useProjectDomains(projectId: string) {
   const remove = useAction({
     action: (domainId: string) => removeDomainFn({ data: { projectId, domainId } }),
     successMessage: "Domínio removido",
-    invalidate: [["project", projectId]],
+    invalidate: [
+      ["project", projectId],
+      ["domains-dns", projectId],
+    ],
   });
   const details = project.data;
-  const canRedeploy = details?.project.currentDeploymentId != null && can("deployment:create");
+  // Projects that apply changes on their own queue the redeploy when the change is saved.
+  const canRedeploy =
+    details?.project.currentDeploymentId != null &&
+    details.project.autoApplyChanges === false &&
+    can("deployment:create");
   // Routing only changes when the container is recreated; the server tracks what is pending.
   const applyChanges = useApplyChanges(
     projectId,

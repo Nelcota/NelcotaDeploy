@@ -53,7 +53,7 @@ export type WebhookOutcome =
  *
  * @param database - Database.
  * @param delivery - Headers and raw body.
- * @param secret - Shared webhook secret.
+ * @param secrets - Accepted webhook secrets: the GitHub App's and the one set by hand.
  * @returns The outcome.
  * @throws {InvalidWebhookSignatureError} When the signature is missing or wrong.
  * @throws {InvalidWebhookRequestError} When the delivery id or event header is malformed.
@@ -61,9 +61,9 @@ export type WebhookOutcome =
 export async function handleGitHubDelivery(
   database: Database,
   delivery: GitHubDelivery,
-  secret: string,
+  secrets: readonly string[],
 ): Promise<WebhookOutcome> {
-  const { deliveryId, event } = await verifyDelivery(delivery, secret);
+  const { deliveryId, event } = await verifyDelivery(delivery, secrets);
   const claimed = claimDelivery(database, deliveryId, event);
   if (claimed === false) {
     return { status: "duplicate" };
@@ -73,14 +73,26 @@ export async function handleGitHubDelivery(
   return outcome.result;
 }
 
+async function isSignedWithAny(
+  delivery: GitHubDelivery & { readonly signature: string },
+  secrets: readonly string[],
+): Promise<boolean> {
+  const checks = await Promise.all(
+    secrets.map(
+      async (secret) => await new Webhooks({ secret }).verify(delivery.rawBody, delivery.signature),
+    ),
+  );
+  return checks.includes(true);
+}
+
 async function verifyDelivery(
   delivery: GitHubDelivery,
-  secret: string,
+  secrets: readonly string[],
 ): Promise<{ readonly deliveryId: string; readonly event: string }> {
   if (delivery.signature == null || delivery.signature === "") {
     throw new InvalidWebhookSignatureError();
   }
-  const valid = await new Webhooks({ secret }).verify(delivery.rawBody, delivery.signature);
+  const valid = await isSignedWithAny({ ...delivery, signature: delivery.signature }, secrets);
   if (valid === false) {
     throw new InvalidWebhookSignatureError();
   }

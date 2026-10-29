@@ -59,8 +59,8 @@ export function IdentityFields({ form }: { readonly form: ProjectFormApi }) {
   );
 }
 
-/** Fills an empty name and identifier from the repository a user just pasted. */
-function fillIdentityFromRepository(form: ProjectFormApi, url: string): void {
+/** Fills an empty name and identifier from the repository a user just pasted or picked. */
+export function fillIdentityFromRepository(form: ProjectFormApi, url: string): void {
   const identity = identityFromRepository(url, {
     name: form.getFieldValue("name"),
     slug: form.getFieldValue("slug"),
@@ -125,6 +125,49 @@ export function RepositoryFields({ form }: { readonly form: ProjectFormApi }) {
   );
 }
 
+function SwitchRow({
+  form,
+  name,
+  label,
+  hint,
+  className,
+}: {
+  readonly form: ProjectFormApi;
+  readonly name: "autoDeploy" | "autoApplyChanges";
+  readonly label: string;
+  readonly hint: string;
+  readonly className?: string | undefined;
+}) {
+  const id = `project-${name}`;
+  return (
+    <form.Field name={name}>
+      {(field) => (
+        <div
+          className={cn(
+            "flex items-center justify-between gap-6 rounded-xl px-4 py-3.5 ring-1 ring-border/70 ring-inset",
+            className,
+          )}
+        >
+          <div className="min-w-0 space-y-0.5">
+            <label htmlFor={id} className="text-sm font-medium">
+              {label}
+            </label>
+            <p id={`${id}-hint`} className="text-xs text-muted-foreground">
+              {hint}
+            </p>
+          </div>
+          <Switch
+            id={id}
+            checked={field.state.value}
+            onCheckedChange={(checked) => field.handleChange(checked)}
+            aria-describedby={`${id}-hint`}
+          />
+        </div>
+      )}
+    </form.Field>
+  );
+}
+
 /** Switch that turns deploys on push on or off. */
 export function AutoDeployField({
   form,
@@ -134,35 +177,36 @@ export function AutoDeployField({
   readonly className?: string;
 }) {
   return (
-    <form.Field name="autoDeploy">
-      {(field) => (
-        <div
-          className={cn(
-            "flex items-center justify-between gap-6 rounded-xl px-4 py-3.5 ring-1 ring-border/70 ring-inset",
-            className,
-          )}
-        >
-          <div className="min-w-0 space-y-0.5">
-            <label htmlFor="project-auto-deploy" className="text-sm font-medium">
-              Deploy automático
-            </label>
-            <p id="project-auto-deploy-hint" className="text-xs text-muted-foreground">
-              Faz deploy a cada push na branch, via webhook do GitHub.
-            </p>
-          </div>
-          <Switch
-            id="project-auto-deploy"
-            checked={field.state.value}
-            onCheckedChange={(checked) => field.handleChange(checked)}
-            aria-describedby="project-auto-deploy-hint"
-          />
-        </div>
-      )}
-    </form.Field>
+    <SwitchRow
+      form={form}
+      name="autoDeploy"
+      label="Deploy automático"
+      hint="Faz deploy a cada push na branch, via webhook do GitHub."
+      className={className}
+    />
   );
 }
 
-/** Port the application listens on inside the container. */
+/** Switch that recreates the live container whenever variables or domains change. */
+export function AutoApplyField({
+  form,
+  className,
+}: {
+  readonly form: ProjectFormApi;
+  readonly className?: string;
+}) {
+  return (
+    <SwitchRow
+      form={form}
+      name="autoApplyChanges"
+      label="Aplicar mudanças automaticamente"
+      hint="Recria o contêiner ao salvar variáveis ou domínios."
+      className={className}
+    />
+  );
+}
+
+/** Port the application listens on inside the container; blank reads it from the Dockerfile. */
 export function PortField({ form }: { readonly form: ProjectFormApi }) {
   return (
     <form.Field name="internalPort">
@@ -170,7 +214,7 @@ export function PortField({ form }: { readonly form: ProjectFormApi }) {
         <FormField
           id="project-port"
           label="Porta interna"
-          hint="Porta em que a aplicação escuta dentro do contêiner."
+          hint="Em branco, cada deploy usa a porta do EXPOSE do Dockerfile."
           errors={visibleErrors(form, field.state.meta)}
         >
           {(props) => (
@@ -178,6 +222,7 @@ export function PortField({ form }: { readonly form: ProjectFormApi }) {
               {...props}
               inputMode="numeric"
               className="font-mono tabular-nums"
+              placeholder="Automática"
               value={field.state.value}
               onBlur={field.handleBlur}
               onChange={(event) => field.handleChange(event.target.value)}

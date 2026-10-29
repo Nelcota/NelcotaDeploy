@@ -6,9 +6,11 @@ export {
   verifyApiToken,
 } from "./api-token.service";
 export { getAuth } from "./auth";
+export { createFirstAdmin, needsFirstAdmin } from "./first-admin.service";
 export {
   ForbiddenError,
   InvalidAvatarError,
+  SetupAlreadyDoneError,
   UnauthenticatedError,
   UserOperationError,
 } from "./auth.errors";

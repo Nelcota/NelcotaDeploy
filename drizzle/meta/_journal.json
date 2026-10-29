@@ -29,6 +29,34 @@
       "when": 1793273204524,
       "tag": "0003_servers",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1793289746266,
+      "tag": "0004_port_auto",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1793290853809,
+      "tag": "0005_auto_apply",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1793291075287,
+      "tag": "0006_github_app",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1793294400698,
+      "tag": "0007_build_config_hash",
+      "breakpoints": true
     }
   ]
 }

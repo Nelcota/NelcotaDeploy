@@ -4,6 +4,7 @@ import { z } from "zod";
 import { userActor } from "@/auth";
 import { getDatabase } from "@/db";
 import {
+  applyPendingChanges,
   cancelDeployment,
   CONTAINER_ACTIONS,
   DEPLOYMENT_STATUSES,
@@ -92,6 +93,17 @@ export const redeployProjectFn = createServerFn({ method: "POST" })
       actor: userActor(user),
       triggeredByUserId: user.id,
       sourceDeploymentId: project.currentDeploymentId,
+    });
+  });
+
+/** Applies saved variables and domains, rebuilding when a build variable changed. */
+export const applyProjectChangesFn = createServerFn({ method: "POST" })
+  .validator(projectIdInput)
+  .handler(async ({ data }) => {
+    const user = await authorize("deployment:create");
+    return applyPendingChanges(getDatabase(), data.projectId, {
+      actor: userActor(user),
+      triggeredByUserId: user.id,
     });
   });
 

@@ -26,8 +26,12 @@ export const projects = sqliteTable(
     dockerfilePath: text("dockerfile_path").notNull(),
     buildContext: text("build_context").notNull(),
     internalPort: integer("internal_port").notNull(),
+    // When set, each build reads the port from the Dockerfile's EXPOSE and stores it above.
+    internalPortAuto: integer("internal_port_auto", { mode: "boolean" }).notNull().default(false),
     healthCheckPath: text("health_check_path"),
     autoDeploy: integer("auto_deploy", { mode: "boolean" }).notNull().default(false),
+    // When set, saving variables or domains recreates the live container with them.
+    autoApplyChanges: integer("auto_apply_changes", { mode: "boolean" }).notNull().default(true),
     deploymentsApproved: integer("deployments_approved", { mode: "boolean" })
       .notNull()
       .default(false),
@@ -131,6 +135,8 @@ export const deployments = sqliteTable(
     imageTag: text("image_tag"),
     // Fingerprint of the variables and domains the container started with (see runtime-config.ts).
     runtimeConfigHash: text("runtime_config_hash"),
+    // Fingerprint of the build-time variables baked into the image; a redeploy keeps its source's.
+    buildConfigHash: text("build_config_hash"),
     containerName: text("container_name"),
     // Server the deployment ran on, which is where its image and container live.
     serverId: text("server_id").notNull().default(LOCAL_SERVER_ID),

@@ -18,6 +18,7 @@ const validInput = {
   internalPort: "3000",
   healthCheckPath: "",
   autoDeploy: false,
+  autoApplyChanges: true,
 };
 
 describe("projectInputSchema", () => {

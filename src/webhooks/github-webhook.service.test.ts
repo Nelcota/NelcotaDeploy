@@ -46,22 +46,48 @@ describe("handleGitHubDelivery signature checks", () => {
     const result = handleGitHubDelivery(
       database,
       delivery(body, { signature: sign(body, "other") }),
-      SECRET,
+      [SECRET],
     );
 
     expect(await result.catch((error: unknown) => error)).toBeInstanceOf(
       InvalidWebhookSignatureError,
     );
   });
+});
 
+describe("handleGitHubDelivery with several secrets", () => {
+  test("accepts a delivery signed with any of the secrets", async () => {
+    const database = openMemoryDatabase();
+    const body = pushBody();
+
+    const outcome = await handleGitHubDelivery(
+      database,
+      delivery(body, { signature: sign(body, "app-secret") }),
+      [SECRET, "app-secret"],
+    );
+
+    expect(outcome.status).not.toBe("duplicate");
+  });
+
+  test("throws InvalidWebhookSignatureError when no secret is accepted", async () => {
+    const database = openMemoryDatabase();
+    const body = pushBody();
+
+    const result = handleGitHubDelivery(database, delivery(body), []);
+
+    expect(await result.catch((error: unknown) => error)).toBeInstanceOf(
+      InvalidWebhookSignatureError,
+    );
+  });
+});
+
+describe("handleGitHubDelivery without a signature", () => {
   test("throws InvalidWebhookSignatureError when the signature is missing", async () => {
     const database = openMemoryDatabase();
 
-    const result = handleGitHubDelivery(
-      database,
-      delivery(pushBody(), { signature: null }),
+    const result = handleGitHubDelivery(database, delivery(pushBody(), { signature: null }), [
       SECRET,
-    );
+    ]);
 
     expect(await result.catch((error: unknown) => error)).toBeInstanceOf(
       InvalidWebhookSignatureError,
@@ -72,11 +98,9 @@ describe("handleGitHubDelivery signature checks", () => {
     const database = openMemoryDatabase();
     const body = pushBody();
 
-    const result = handleGitHubDelivery(
-      database,
-      { ...delivery(body), rawBody: `${body} ` },
+    const result = handleGitHubDelivery(database, { ...delivery(body), rawBody: `${body} ` }, [
       SECRET,
-    );
+    ]);
 
     expect(await result.catch((error: unknown) => error)).toBeInstanceOf(
       InvalidWebhookSignatureError,
@@ -89,7 +113,7 @@ describe("handleGitHubDelivery push events", () => {
     const database = openMemoryDatabase();
     const project = createTestProject(database);
 
-    const outcome = await handleGitHubDelivery(database, delivery(pushBody()), SECRET);
+    const outcome = await handleGitHubDelivery(database, delivery(pushBody()), [SECRET]);
 
     expect(outcome.status).toBe("accepted");
     const [deployment] = listDeployments(database, { projectId: project.id, limit: 10 });
@@ -101,9 +125,9 @@ describe("handleGitHubDelivery push events", () => {
   test("processes a redelivered delivery id only once", async () => {
     const database = openMemoryDatabase();
     const project = createTestProject(database);
-    await handleGitHubDelivery(database, delivery(pushBody()), SECRET);
+    await handleGitHubDelivery(database, delivery(pushBody()), [SECRET]);
 
-    const second = await handleGitHubDelivery(database, delivery(pushBody()), SECRET);
+    const second = await handleGitHubDelivery(database, delivery(pushBody()), [SECRET]);
 
     expect(second.status).toBe("duplicate");
     expect(listDeployments(database, { projectId: project.id, limit: 10 })).toHaveLength(1);
@@ -118,7 +142,7 @@ describe("handleGitHubDelivery ignored events", () => {
     const outcome = await handleGitHubDelivery(
       database,
       delivery(pushBody({ ref: "refs/heads/develop" })),
-      SECRET,
+      [SECRET],
     );
 
     expect(outcome.status).toBe("ignored");
@@ -131,7 +155,7 @@ describe("handleGitHubDelivery ignored events", () => {
     const database = openMemoryDatabase();
     createTestProject(database, { autoDeploy: false });
 
-    const outcome = await handleGitHubDelivery(database, delivery(pushBody()), SECRET);
+    const outcome = await handleGitHubDelivery(database, delivery(pushBody()), [SECRET]);
 
     expect(outcome.status).toBe("ignored");
   });
@@ -143,7 +167,7 @@ describe("handleGitHubDelivery ignored events", () => {
     const outcome = await handleGitHubDelivery(
       database,
       delivery(pushBody({ deleted: true, after: "0".repeat(40) })),
-      SECRET,
+      [SECRET],
     );
 
     expect(outcome.status).toBe("ignored");
@@ -153,7 +177,9 @@ describe("handleGitHubDelivery ignored events", () => {
     const database = openMemoryDatabase();
     const body = JSON.stringify({ zen: "Keep it simple" });
 
-    const outcome = await handleGitHubDelivery(database, delivery(body, { event: "ping" }), SECRET);
+    const outcome = await handleGitHubDelivery(database, delivery(body, { event: "ping" }), [
+      SECRET,
+    ]);
 
     expect(outcome).toEqual({ status: "ignored", reason: "ping" });
   });

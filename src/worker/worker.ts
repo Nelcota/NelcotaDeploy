@@ -9,13 +9,12 @@ import {
   releaseWorkerJobs,
   renewJobLeases,
 } from "@/jobs";
-import { pruneLogs } from "@/logs";
-import { pruneMetricSamples, recordWorkerHeartbeat } from "@/monitoring";
-import { scheduleDueTasks } from "@/tasks";
+import { recordWorkerHeartbeat } from "@/monitoring";
 
 import { dispatchJob } from "./job-dispatch";
 import { handleRecoveredJobs } from "./job-recovery";
-import { finishProjectMoves } from "./project-moves";
+import { finishProjectMoves } from "./maintenance/project-moves";
+import { startScheduledDuties } from "./maintenance/scheduled-duties";
 import { ServerFleet } from "./servers/server-fleet";
 import type { WorkerDependencies } from "./worker.types";
 
@@ -28,7 +27,6 @@ const MOVE_CHECK_INTERVAL_IN_MS = 60_000;
 const SHUTDOWN_GRACE_IN_MS = 90_000;
 const ABORT_GRACE_IN_MS = 10_000;
 const MILLISECONDS_PER_SECOND = 1000;
-const MILLISECONDS_PER_HOUR = 3_600_000;
 
 type PeriodicDuty = () => Promise<void> | void;
 
@@ -164,18 +162,7 @@ export class Worker {
       "metrics",
       async () => await this.#fleet.collectMetrics(),
     );
-    this.#timers.push(
-      Bun.cron(
-        "* * * * *",
-        guard("scheduler", () => this.#scheduleTasks()),
-      ),
-    );
-    this.#timers.push(
-      Bun.cron(
-        "17 * * * *",
-        guard("retention", () => this.#applyRetention()),
-      ),
-    );
+    this.#timers.push(...startScheduledDuties(this.#dependencies, guard));
   }
 
   #heartbeat(): void {
@@ -188,29 +175,6 @@ export class Worker {
     });
     renewJobLeases(database, { workerId, jobIds: [...this.#active.keys()] });
     handleRecoveredJobs(database, this.#dependencies.logger, recoverExpiredJobs(database));
-  }
-
-  #scheduleTasks(): void {
-    const { database, config, logger } = this.#dependencies;
-    const queued = scheduleDueTasks(database, new Date(), config.SCHEDULE_TIME_ZONE);
-    if (queued.length > 0) {
-      logger.info({ executions: queued.length }, "scheduled tasks queued");
-    }
-  }
-
-  #applyRetention(): void {
-    const { database, config, logger } = this.#dependencies;
-    const now = new Date();
-    const pruned = pruneLogs(database, {
-      runtimeLinesPerProject: config.RUNTIME_LOG_RETENTION_LINES,
-      deploymentLogRetentionDays: config.DEPLOYMENT_LOG_RETENTION_DAYS,
-      now,
-    });
-    pruneMetricSamples(
-      database,
-      new Date(now.getTime() - config.METRICS_RETENTION_HOURS * MILLISECONDS_PER_HOUR),
-    );
-    logger.info(pruned, "retention applied");
   }
 
   async #drain(): Promise<void> {

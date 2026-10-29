@@ -34,3 +34,11 @@ export class InvalidAvatarError extends Error {
     this.name = "InvalidAvatarError";
   }
 }
+
+/** Thrown when someone tries the first-run setup after an admin already exists. */
+export class SetupAlreadyDoneError extends Error {
+  constructor() {
+    super("The first admin already exists");
+    this.name = "SetupAlreadyDoneError";
+  }
+}

@@ -11,7 +11,11 @@ import { useCan } from "@/web/components/shell/use-permissions";
 export function ApplyVariableChanges({ projectId }: { readonly projectId: string }) {
   const can = useCan();
   const project = useQuery(projectQueryOptions(projectId));
-  const canRedeploy = project.data?.project.currentDeploymentId != null && can("deployment:create");
+  // Projects that apply changes on their own queue the redeploy when the change is saved.
+  const canRedeploy =
+    project.data?.project.currentDeploymentId != null &&
+    project.data.project.autoApplyChanges === false &&
+    can("deployment:create");
   const { redeploy, showBanner } = useApplyChanges(
     projectId,
     project.data?.pendingRuntimeChanges === true,

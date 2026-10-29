@@ -221,6 +221,7 @@ export type DeploymentProgress = {
   readonly imageTag?: string;
   readonly containerName?: string;
   readonly runtimeConfigHash?: string;
+  readonly buildConfigHash?: string;
   readonly errorMessage?: string | null;
 };
 

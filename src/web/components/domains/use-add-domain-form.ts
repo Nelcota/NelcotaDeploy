@@ -11,7 +11,10 @@ export function useAddDomainForm(projectId: string) {
     action: (domain: z.output<typeof domainInputSchema>) =>
       addDomainFn({ data: { projectId, domain } }),
     successMessage: "Domínio adicionado",
-    invalidate: [["project", projectId]],
+    invalidate: [
+      ["project", projectId],
+      ["domains-dns", projectId],
+    ],
     onSuccess: () => form.reset(),
   });
   const form = useForm({

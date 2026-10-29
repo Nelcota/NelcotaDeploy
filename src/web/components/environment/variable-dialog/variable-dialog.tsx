@@ -69,7 +69,7 @@ function VariableDialogHeader({ variable }: { readonly variable: EnvironmentVari
       <DialogDescription>
         {variable == null
           ? "Entra no ambiente do contêiner. O nome fica em maiúsculas sozinho."
-          : "Mudanças entram no ambiente do contêiner no próximo deploy."}
+          : "O novo valor entra no ambiente do contêiner."}
       </DialogDescription>
     </DialogHeader>
   );

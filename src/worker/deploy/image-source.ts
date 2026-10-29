@@ -1,5 +1,6 @@
 import { type Deployment, transitionDeployment } from "@/deployments";
 import { type DockerEngine, imageTagFor, managedLabels } from "@/docker";
+import { recordDetectedPort } from "@/projects";
 
 import {
   assertNotCancelled,
@@ -8,6 +9,7 @@ import {
   MILLISECONDS_PER_SECOND,
 } from "./deploy-context";
 import type { DeploymentLogWriter } from "./deployment-log-writer";
+import { detectExposedPort } from "./exposed-port";
 import { DeploymentWorkspace, resolveInsideWorkspace } from "./workspace";
 
 const DISPLAYED_SHA_LENGTH = 12;
@@ -53,6 +55,40 @@ async function cloneRevision(
   });
 }
 
+const READ_DOCKERFILE_TIMEOUT_IN_MS = 10_000;
+
+/**
+ * For a project whose port is automatic, reads it from the Dockerfile's EXPOSE and stores it.
+ *
+ * @returns The detected port, or null when the port is not automatic or no EXPOSE names one.
+ */
+async function detectPort(
+  dependencies: DeployRunnerDependencies,
+  context: DeployContext,
+  dockerfilePath: string,
+): Promise<number | null> {
+  const { project, logs } = context;
+  if (project.internalPortAuto === false) {
+    return null;
+  }
+  const result = await dependencies.runner(["cat", dockerfilePath], {
+    timeoutInMs: READ_DOCKERFILE_TIMEOUT_IN_MS,
+  });
+  const port = result.exitCode === 0 ? detectExposedPort(result.stdout) : null;
+  if (port == null) {
+    logs.system(
+      `No EXPOSE with a port in the Dockerfile; using port ${project.internalPort}`,
+      "warn",
+    );
+    return null;
+  }
+  if (port !== project.internalPort) {
+    recordDetectedPort(dependencies.database, project.id, port);
+  }
+  logs.system(`Using port ${port} from the Dockerfile's EXPOSE`);
+  return port;
+}
+
 async function buildImage(
   dependencies: DeployRunnerDependencies,
   context: DeployContext,
@@ -63,7 +99,7 @@ async function buildImage(
     readonly workspace: DeploymentWorkspace;
     readonly buildValues: Readonly<Record<string, string>>;
   },
-): Promise<string> {
+): Promise<{ imageTag: string; detectedPort: number | null }> {
   const { docker, config, runner } = dependencies;
   const { deployment, project, logs, signal } = context;
 
@@ -77,6 +113,7 @@ async function buildImage(
     workspace.repositoryPath,
     project.buildContext,
   );
+  const detectedPort = await detectPort(dependencies, context, dockerfilePath);
   const imageTag = imageTagFor(project.slug, deployment.id);
   logs.system(`Building image ${imageTag} from ${project.dockerfilePath}`);
   await docker.buildImage(
@@ -100,19 +137,20 @@ async function buildImage(
     },
   );
   logs.system("Image built");
-  return imageTag;
+  return { imageTag, detectedPort };
 }
 
 /**
  * Clones the requested revision into a fresh workspace and builds its image.
  *
- * @returns The built image tag.
+ * @returns The built image tag, and the port read from the Dockerfile when the project's port
+ *   is automatic.
  */
 export async function buildFromSource(
   dependencies: DeployRunnerDependencies,
   context: DeployContext,
   secrets: BuildSecrets,
-): Promise<string> {
+): Promise<{ imageTag: string; detectedPort: number | null }> {
   await using workspace = await DeploymentWorkspace.create(dependencies.runner, {
     root: dependencies.config.workspaceDir,
     prefix: context.project.slug,

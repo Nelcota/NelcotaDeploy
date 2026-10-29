@@ -21,6 +21,7 @@ import { createLocalHost, ServerHosts } from "./servers/server-hosts";
 // Boots a Docker-in-Docker "VPS", runs the real install command on it and deploys there over
 // SSH, so the default `bun run test` ignores it. Run it with:
 //   bun run test:docker
+const CLEANUP_TIMEOUT_IN_MS = 120_000;
 const TEST_TIMEOUT_IN_MS = 600_000;
 
 async function setup(cleanups: Cleanup[], flavor: (typeof VPS_FLAVORS)[number]) {
@@ -40,9 +41,10 @@ async function setup(cleanups: Cleanup[], flavor: (typeof VPS_FLAVORS)[number]) 
 describe("deploy to a server reached over SSH", () => {
   const cleanups: Cleanup[] = [];
 
+  // Removing the VPS containers and images outlasts the default 5 s hook timeout on CI runners.
   afterAll(async () => {
     await runCleanupsInReverse(cleanups);
-  });
+  }, CLEANUP_TIMEOUT_IN_MS);
 
   test.each(VPS_FLAVORS)(
     "sets up a fresh %s server with the install command and deploys an app on it",

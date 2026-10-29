@@ -6,6 +6,7 @@ import { getDeployment, requestDeployment } from "@/deployments";
 import { saveEnvironmentVariable } from "@/environments";
 import { listDeploymentLogs } from "@/logs";
 import { runProcess } from "@/process";
+import { getProject } from "@/projects";
 import { createTestProject, createTestSecretBox, FakeDocker, TEST_ACTOR } from "@/testing";
 
 import { runDeployment } from "./deploy-runner";
@@ -13,13 +14,16 @@ import { runDeployment } from "./deploy-runner";
 type DeployRunnerDependencies = Parameters<typeof runDeployment>[0];
 type CloneOptions = Parameters<DeployRunnerDependencies["git"]["checkoutRevision"]>[0];
 
-const fakeGit = {
-  async checkoutRevision(options: CloneOptions) {
-    // Bun.write creates the missing directories.
-    await Bun.write(`${options.directory}/Dockerfile`, "FROM scratch\n");
-    return { sha: "c0ffee".padEnd(40, "0"), message: "feat: initial" };
-  },
-};
+/** Clones a repository holding only the given Dockerfile. */
+function fakeGit(dockerfile = "FROM scratch\n") {
+  return {
+    async checkoutRevision(options: CloneOptions) {
+      // Bun.write creates the missing directories.
+      await Bun.write(`${options.directory}/Dockerfile`, dockerfile);
+      return { sha: "c0ffee".padEnd(40, "0"), message: "feat: initial" };
+    },
+  };
+}
 
 const alwaysHealthy = {
   http: async () => await Promise.resolve(true),
@@ -30,16 +34,25 @@ const neverHealthy = {
   tcp: async () => await Promise.resolve(false),
 };
 
-async function setup(options: { probes?: typeof alwaysHealthy; healthTimeout?: number } = {}) {
+async function setup(
+  options: {
+    probes?: DeployRunnerDependencies["probes"];
+    healthTimeout?: number;
+    dockerfile?: string;
+    internalPort?: number | null;
+  } = {},
+) {
   const database = openMemoryDatabase();
   const docker = new FakeDocker();
   const secretBox = await createTestSecretBox();
-  const project = createTestProject(database);
+  // null asks for an automatic port; leaving it out keeps the usual 3000.
+  const internalPort = options.internalPort === undefined ? 3000 : options.internalPort;
+  const project = createTestProject(database, { internalPort });
   const dependencies: DeployRunnerDependencies = {
     database,
     runner: runProcess,
     docker,
-    git: fakeGit,
+    git: fakeGit(options.dockerfile),
     secretBox,
     probes: options.probes ?? alwaysHealthy,
     config: {
@@ -124,6 +137,44 @@ describe("runDeployment success", () => {
     expect(logs).toContain("[REDACTED]");
     expect(getDeployment(database, deploymentId).errorMessage).not.toContain("super-secret-value");
   }, 15_000);
+});
+
+describe("runDeployment port", () => {
+  test("uses and stores the Dockerfile's EXPOSE when the port is automatic", async () => {
+    const probedPorts: number[] = [];
+    const { database, project, dependencies } = await setup({
+      dockerfile: "FROM scratch\nEXPOSE 8080\n",
+      internalPort: null,
+      probes: {
+        http: async () => await Promise.resolve(true),
+        tcp: async (_host: string, port: number) => {
+          probedPorts.push(port);
+          return await Promise.resolve(true);
+        },
+      },
+    });
+
+    const status = await runDeployment(
+      dependencies,
+      deploy(database, project.id),
+      new AbortController().signal,
+    );
+
+    expect(status).toBe("succeeded");
+    expect(getProject(database, project.id).internalPort).toBe(8080);
+    expect(probedPorts.at(-1)).toBe(8080);
+  });
+
+  test("keeps a port the user chose even when the Dockerfile exposes another", async () => {
+    const { database, project, dependencies } = await setup({
+      dockerfile: "FROM scratch\nEXPOSE 8080\n",
+      internalPort: 4000,
+    });
+
+    await runDeployment(dependencies, deploy(database, project.id), new AbortController().signal);
+
+    expect(getProject(database, project.id).internalPort).toBe(4000);
+  });
 });
 
 describe("runDeployment failures", () => {

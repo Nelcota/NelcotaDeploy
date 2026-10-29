@@ -2,6 +2,7 @@ import { GitBranchIcon, HammerIcon, IdCardIcon, TriangleAlertIcon } from "lucide
 
 import type { ProjectFormApi } from "@/web/components/forms/project-form";
 import {
+  AutoApplyField,
   AutoDeployField,
   BuildFields,
   HealthCheckField,
@@ -60,6 +61,7 @@ export function BuildSection({ form }: { readonly form: ProjectFormApi }) {
         <PortField form={form} />
         <HealthCheckField form={form} />
         <BuildFields form={form} />
+        <AutoApplyField form={form} className="sm:col-span-2" />
       </div>
     </SettingsSection>
   );

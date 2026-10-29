@@ -3,9 +3,8 @@ import { z } from "zod";
 
 import { getConfig } from "@/config";
 import { getDatabase } from "@/db";
-import { lookupWithTimeout, resolvePublicAddress } from "@/domains";
-import { getProject } from "@/projects";
-import { getServer } from "@/servers";
+import { checkDomainsDns, listProjectDomains, projectServerAddress } from "@/domains";
+import { getSystemSettings } from "@/settings";
 import { authorize } from "@/web/server/authorization";
 
 import { idSchema } from "../ids";
@@ -19,10 +18,19 @@ export const getServerAddressFn = createServerFn({ method: "GET" })
   .validator(z.object({ projectId: idSchema }))
   .handler(async ({ data }) => {
     await authorize("project:read");
+    return await projectServerAddress(getDatabase(), data.projectId, getConfig().PUBLIC_URL);
+  });
+
+/** Where each domain of a project points, checked against the project's server address. */
+export const getDomainsDnsFn = createServerFn({ method: "GET" })
+  .validator(z.object({ projectId: idSchema }))
+  .handler(async ({ data }) => {
+    await authorize("project:read");
     const database = getDatabase();
-    const server = getServer(database, getProject(database, data.projectId).serverId);
-    if (server.kind === "ssh") {
-      return server.publicAddress;
-    }
-    return await resolvePublicAddress(getConfig().PUBLIC_URL, lookupWithTimeout);
+    const domains = listProjectDomains(database, data.projectId, getSystemSettings(database));
+    const expected = await projectServerAddress(database, data.projectId, getConfig().PUBLIC_URL);
+    return await checkDomainsDns(
+      domains.map((domain) => domain.hostname),
+      expected,
+    );
   });

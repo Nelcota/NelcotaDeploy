@@ -33,6 +33,21 @@ describe("parseConfig", () => {
     expect(() => parseConfig({ ACME_EMAIL: "not-an-email" })).toThrow(InvalidConfigError);
   });
 
+  test("keeps backups next to the database by default", () => {
+    const config = parseConfig({ DATABASE_PATH: "/data/nelcota.db" });
+
+    expect(config.BACKUP_DIR).toBe("/data/backups");
+    expect(config.BACKUPS_KEPT).toBe(7);
+  });
+
+  test("has no backup directory for an in-memory database", () => {
+    expect(parseConfig({ DATABASE_PATH: ":memory:" }).BACKUP_DIR).toBeUndefined();
+  });
+
+  test("throws InvalidConfigError for BACKUPS_KEPT below 1", () => {
+    expect(() => parseConfig({ BACKUPS_KEPT: "0" })).toThrow(InvalidConfigError);
+  });
+
   test("keeps the in-memory database path unchanged", () => {
     expect(parseConfig({ DATABASE_PATH: ":memory:" }).DATABASE_PATH).toBe(":memory:");
   });

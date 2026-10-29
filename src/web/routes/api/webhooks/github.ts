@@ -2,7 +2,9 @@ import { createFileRoute } from "@tanstack/react-router";
 
 import { getConfig } from "@/config";
 import { getDatabase } from "@/db";
+import { getGitHubApp, readGitHubAppCredentials } from "@/github";
 import { createLogger } from "@/logging";
+import { getSecretBox } from "@/secrets";
 import {
   handleGitHubDelivery,
   InvalidWebhookRequestError,
@@ -15,12 +17,30 @@ const MAX_BODY_BYTES = 1_048_576;
 const HTTP_ACCEPTED = 202;
 const HTTP_OK = 200;
 
+/** The connected GitHub App signs its deliveries; repositories set up by hand use the env secret. */
+async function acceptedSecrets(): Promise<string[]> {
+  const secrets: string[] = [];
+  const manualSecret = getConfig().GITHUB_WEBHOOK_SECRET;
+  if (manualSecret != null) {
+    secrets.push(manualSecret);
+  }
+  const database = getDatabase();
+  if (getGitHubApp(database) == null) {
+    return secrets;
+  }
+  const app = await readGitHubAppCredentials(database, await getSecretBox());
+  if (app?.webhookSecret != null) {
+    secrets.push(app.webhookSecret);
+  }
+  return secrets;
+}
+
 export const Route = createFileRoute("/api/webhooks/github")({
   server: {
     handlers: {
       POST: async ({ request }) => {
-        const secret = getConfig().GITHUB_WEBHOOK_SECRET;
-        if (secret == null) {
+        const secrets = await acceptedSecrets();
+        if (secrets.length === 0) {
           return Response.json({ error: "webhook secret not configured" }, { status: 503 });
         }
         const declaredLength = Number(request.headers.get("content-length") ?? "0");
@@ -40,7 +60,7 @@ export const Route = createFileRoute("/api/webhooks/github")({
               signature: request.headers.get("x-hub-signature-256"),
               rawBody,
             },
-            secret,
+            secrets,
           );
           return Response.json(outcome, {
             status: outcome.status === "accepted" ? HTTP_ACCEPTED : HTTP_OK,

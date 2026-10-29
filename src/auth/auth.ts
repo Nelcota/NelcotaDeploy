@@ -43,7 +43,7 @@ const RATE_LIMIT = {
  * @param options - Signing secret and the public URL of the panel.
  * @returns The auth instance.
  */
-function createAuth(
+export function createAuth(
   database: Database,
   options: { readonly secret: string; readonly baseURL: string },
 ) {

@@ -38,7 +38,7 @@ export function ScheduleCell({ task, now }: { readonly task: TaskRow; readonly n
         </p>
       ) : null}
       {note?.kind === "paused" ? (
-        <p className="truncate pl-5 text-muted-foreground">não roda enquanto pausada</p>
+        <p className="truncate pl-5 text-muted-foreground">sem próxima execução</p>
       ) : null}
     </div>
   );

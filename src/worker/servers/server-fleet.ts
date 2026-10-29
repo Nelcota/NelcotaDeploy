@@ -1,3 +1,4 @@
+import { notify } from "@/alerts";
 import { type ContainerInfo, LABELS } from "@/docker";
 import { listProjectIds } from "@/projects";
 import {
@@ -118,6 +119,7 @@ export class ServerFleet implements Disposable {
     if (server.id === LOCAL_SERVER_ID) {
       this.#localDockerVersion = check.dockerVersion;
     }
+    await this.#alertOnChange(server, check.status);
     // Only when a server works for the first time: later, the admin's choice stands.
     const firstTimeReady =
       server.kind === "ssh" && server.lastSeenAt == null && check.status === "ready";
@@ -125,6 +127,26 @@ export class ServerFleet implements Disposable {
       logger.info("panel host dedicated to the panel; new projects go to the other servers");
     }
     this.#setReady(server, check.status === "ready");
+  }
+
+  /** Tells the admins when a server that worked goes down, and when it comes back. */
+  async #alertOnChange(server: Server, status: Server["status"]): Promise<void> {
+    const { database, logger, config } = this.#dependencies;
+    const link = `${config.PUBLIC_URL}/settings?tab=servers`;
+    if (server.status === "ready" && status === "unreachable") {
+      await notify(database, logger, {
+        title: "Servidor inacessível",
+        text: `O painel perdeu o acesso ao servidor ${server.name}.`,
+        link,
+      });
+    }
+    if (server.status === "unreachable" && status === "ready") {
+      await notify(database, logger, {
+        title: "Servidor de volta",
+        text: `O servidor ${server.name} voltou a responder.`,
+        link,
+      });
+    }
   }
 
   /** Starts or stops observing a server after its check. */

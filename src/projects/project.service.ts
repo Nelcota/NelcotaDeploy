@@ -9,6 +9,9 @@ import { parseGitHubRepository, type ProjectInput } from "@/shared/schemas/proje
 
 import { ProjectNotFoundError, ProjectSlugTakenError } from "./project.errors";
 
+/** Port assumed until a build finds an EXPOSE in the Dockerfile. */
+const DEFAULT_INTERNAL_PORT = 3000;
+
 /** Name of the single environment every project has today. */
 export const PRODUCTION_ENVIRONMENT = "production";
 
@@ -24,8 +27,10 @@ export const projectColumns = {
   dockerfilePath: tables.projects.dockerfilePath,
   buildContext: tables.projects.buildContext,
   internalPort: tables.projects.internalPort,
+  internalPortAuto: tables.projects.internalPortAuto,
   healthCheckPath: tables.projects.healthCheckPath,
   autoDeploy: tables.projects.autoDeploy,
+  autoApplyChanges: tables.projects.autoApplyChanges,
   deploymentsApproved: tables.projects.deploymentsApproved,
   currentDeploymentId: tables.projects.currentDeploymentId,
   hasRepositoryToken: sql<boolean>`${tables.projects.encryptedRepositoryToken} IS NOT NULL`.mapWith(
@@ -47,8 +52,11 @@ export type Project = {
   readonly dockerfilePath: string;
   readonly buildContext: string;
   readonly internalPort: number;
+  /** The port comes from the Dockerfile's EXPOSE on each build. */
+  readonly internalPortAuto: boolean;
   readonly healthCheckPath: string | null;
   readonly autoDeploy: boolean;
+  readonly autoApplyChanges: boolean;
   readonly deploymentsApproved: boolean;
   readonly currentDeploymentId: string | null;
   readonly hasRepositoryToken: boolean;
@@ -116,6 +124,8 @@ export function createProject(
         ...input,
         repositoryUrl: repository.cloneUrl,
         repositoryFullName: repository.fullName,
+        internalPort: input.internalPort ?? DEFAULT_INTERNAL_PORT,
+        internalPortAuto: input.internalPort == null,
         serverId,
         deploymentsApproved: creator.isAdmin,
         createdByUserId: creator.userId,
@@ -176,6 +186,9 @@ export function updateProject(
         ...input,
         repositoryUrl: repository.cloneUrl,
         repositoryFullName: repository.fullName,
+        // Automatic keeps the port the last build detected until the next build reads it again.
+        internalPort: input.internalPort ?? current.internalPort,
+        internalPortAuto: input.internalPort == null,
         deploymentsApproved,
         updatedAt: new Date().toISOString(),
       })
@@ -322,6 +335,7 @@ function findActiveProjectRow(database: Database | Transaction, projectId: strin
       slug: tables.projects.slug,
       repositoryFullName: tables.projects.repositoryFullName,
       deploymentsApproved: tables.projects.deploymentsApproved,
+      internalPort: tables.projects.internalPort,
     })
     .from(tables.projects)
     .where(and(eq(tables.projects.id, projectId), isNull(tables.projects.deletionRequestedAt)))
@@ -375,20 +389,4 @@ export function findProject(database: Database, idOrSlug: string): Project {
     throw new ProjectNotFoundError(idOrSlug);
   }
   return project;
-}
-
-/**
- * Lists the ids of every project that exists, including ones being deleted.
- *
- * @param database - Database.
- * @returns Project ids.
- */
-export function listProjectIds(database: Database): Set<string> {
-  return new Set(
-    database
-      .select({ id: tables.projects.id })
-      .from(tables.projects)
-      .all()
-      .map((project) => project.id),
-  );
 }

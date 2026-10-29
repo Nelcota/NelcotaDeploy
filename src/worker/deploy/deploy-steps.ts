@@ -1,5 +1,10 @@
-import { runtimeConfigFingerprint, transitionDeployment } from "@/deployments";
+import {
+  buildConfigFingerprint,
+  runtimeConfigFingerprint,
+  transitionDeployment,
+} from "@/deployments";
 import { resolveEnvironment } from "@/environments";
+import { appCloneToken } from "@/github";
 import { readRepositoryToken } from "@/projects";
 import { createRedactor } from "@/secrets";
 
@@ -31,26 +36,54 @@ export async function deploy(
   const environment = await resolveEnvironment(database, secretBox, project.id);
   // Taken with the variables it describes, so later edits show up as pending changes.
   const runtimeConfigHash = runtimeConfigFingerprint(database, project.id);
-  const repositoryToken = await readRepositoryToken(database, secretBox, project.id);
+  const buildConfigHash = buildConfigFingerprint(database, project.id);
+  const repositoryToken = await cloneToken(dependencies, context);
   context.state.useRedactor(createRedactor([...environment.secretValues, repositoryToken ?? ""]));
   logs.useRedactor(context.state.redact);
 
   const reused =
     deployment.sourceDeploymentId == null ? null : await reuseImage(docker, deployment, logs);
-  const imageTag =
-    reused ??
-    (await buildFromSource(dependencies, context, {
-      buildValues: environment.build,
-      repositoryToken,
-    }));
+  const built =
+    reused == null
+      ? await buildFromSource(dependencies, context, {
+          buildValues: environment.build,
+          repositoryToken,
+        })
+      : { imageTag: reused, detectedPort: null };
   assertNotCancelled(signal);
 
-  const containerName = await startContainer(dependencies, context, {
-    imageTag,
+  // Routing and the health check use the port this build found in the Dockerfile.
+  const running: DeployContext =
+    built.detectedPort == null
+      ? context
+      : { ...context, project: { ...project, internalPort: built.detectedPort } };
+  const containerName = await startContainer(dependencies, running, {
+    imageTag: built.imageTag,
     runtimeValues: environment.runtime,
     runtimeConfigHash,
+    // A reused image keeps the build variables it was built with, copied from its source.
+    buildConfigHash: reused == null ? buildConfigHash : null,
   });
-  await checkHealth(dependencies, context, containerName);
+  await checkHealth(dependencies, running, containerName);
+}
+
+/** A token saved on the project wins; otherwise the GitHub App provides one when installed. */
+async function cloneToken(
+  { database, secretBox }: DeployRunnerDependencies,
+  { deployment, project, logs }: DeployContext,
+): Promise<string | null> {
+  const savedToken = await readRepositoryToken(database, secretBox, project.id);
+  // Reusing an image clones nothing.
+  if (savedToken != null || deployment.sourceDeploymentId != null) {
+    return savedToken;
+  }
+  return await appCloneToken(database, secretBox, project.repositoryFullName).catch(
+    (error: unknown) => {
+      // A public repository still clones without a token, so the deploy goes on.
+      logs.system(`Could not get a token from the GitHub App: ${String(error)}`);
+      return null;
+    },
+  );
 }
 
 async function checkHealth(

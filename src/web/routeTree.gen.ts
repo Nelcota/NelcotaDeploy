@@ -29,6 +29,8 @@ import { Route as AppProjectsProjectIdMetricsRouteImport } from './routes/_app/p
 import { Route as AppProjectsProjectIdSettingsRouteImport } from './routes/_app/projects/$projectId/settings'
 import { Route as AppProjectsProjectIdTasksRouteImport } from './routes/_app/projects/$projectId/tasks'
 import { Route as ApiDeploymentsDeploymentIdLogsRouteImport } from './routes/api/deployments/$deploymentId/logs'
+import { Route as ApiGithubAppCallbackRouteImport } from './routes/api/github/app/callback'
+import { Route as ApiGithubAppNewRouteImport } from './routes/api/github/app/new'
 import { Route as ApiProjectsProjectIdRuntimeLogsRouteImport } from './routes/api/projects/$projectId/runtime-logs'
 import { Route as AppProjectsProjectIdDeploymentsIndexRouteImport } from './routes/_app/projects/$projectId/deployments/index'
 import { Route as AppProjectsProjectIdDeploymentsDeploymentIdRouteImport } from './routes/_app/projects/$projectId/deployments/$deploymentId'
@@ -140,6 +142,16 @@ const ApiDeploymentsDeploymentIdLogsRoute =
     path: '/api/deployments/$deploymentId/logs',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiGithubAppCallbackRoute = ApiGithubAppCallbackRouteImport.update({
+  id: '/api/github/app/callback',
+  path: '/api/github/app/callback',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiGithubAppNewRoute = ApiGithubAppNewRouteImport.update({
+  id: '/api/github/app/new',
+  path: '/api/github/app/new',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiProjectsProjectIdRuntimeLogsRoute =
   ApiProjectsProjectIdRuntimeLogsRouteImport.update({
     id: '/api/projects/$projectId/runtime-logs',
@@ -178,6 +190,8 @@ export interface FileRoutesByFullPath {
   '/projects/$projectId/settings': typeof AppProjectsProjectIdSettingsRoute
   '/projects/$projectId/tasks': typeof AppProjectsProjectIdTasksRoute
   '/api/deployments/$deploymentId/logs': typeof ApiDeploymentsDeploymentIdLogsRoute
+  '/api/github/app/callback': typeof ApiGithubAppCallbackRoute
+  '/api/github/app/new': typeof ApiGithubAppNewRoute
   '/api/projects/$projectId/runtime-logs': typeof ApiProjectsProjectIdRuntimeLogsRoute
   '/projects/$projectId/': typeof AppProjectsProjectIdIndexRoute
   '/projects/$projectId/deployments/$deploymentId': typeof AppProjectsProjectIdDeploymentsDeploymentIdRoute
@@ -201,6 +215,8 @@ export interface FileRoutesByTo {
   '/projects/$projectId/settings': typeof AppProjectsProjectIdSettingsRoute
   '/projects/$projectId/tasks': typeof AppProjectsProjectIdTasksRoute
   '/api/deployments/$deploymentId/logs': typeof ApiDeploymentsDeploymentIdLogsRoute
+  '/api/github/app/callback': typeof ApiGithubAppCallbackRoute
+  '/api/github/app/new': typeof ApiGithubAppNewRoute
   '/api/projects/$projectId/runtime-logs': typeof ApiProjectsProjectIdRuntimeLogsRoute
   '/projects/$projectId': typeof AppProjectsProjectIdIndexRoute
   '/projects/$projectId/deployments/$deploymentId': typeof AppProjectsProjectIdDeploymentsDeploymentIdRoute
@@ -227,6 +243,8 @@ export interface FileRoutesById {
   '/_app/projects/$projectId/settings': typeof AppProjectsProjectIdSettingsRoute
   '/_app/projects/$projectId/tasks': typeof AppProjectsProjectIdTasksRoute
   '/api/deployments/$deploymentId/logs': typeof ApiDeploymentsDeploymentIdLogsRoute
+  '/api/github/app/callback': typeof ApiGithubAppCallbackRoute
+  '/api/github/app/new': typeof ApiGithubAppNewRoute
   '/api/projects/$projectId/runtime-logs': typeof ApiProjectsProjectIdRuntimeLogsRoute
   '/_app/projects/$projectId/': typeof AppProjectsProjectIdIndexRoute
   '/_app/projects/$projectId/deployments/$deploymentId': typeof AppProjectsProjectIdDeploymentsDeploymentIdRoute
@@ -253,6 +271,8 @@ export interface FileRouteTypes {
     | '/projects/$projectId/settings'
     | '/projects/$projectId/tasks'
     | '/api/deployments/$deploymentId/logs'
+    | '/api/github/app/callback'
+    | '/api/github/app/new'
     | '/api/projects/$projectId/runtime-logs'
     | '/projects/$projectId/'
     | '/projects/$projectId/deployments/$deploymentId'
@@ -276,6 +296,8 @@ export interface FileRouteTypes {
     | '/projects/$projectId/settings'
     | '/projects/$projectId/tasks'
     | '/api/deployments/$deploymentId/logs'
+    | '/api/github/app/callback'
+    | '/api/github/app/new'
     | '/api/projects/$projectId/runtime-logs'
     | '/projects/$projectId'
     | '/projects/$projectId/deployments/$deploymentId'
@@ -301,6 +323,8 @@ export interface FileRouteTypes {
     | '/_app/projects/$projectId/settings'
     | '/_app/projects/$projectId/tasks'
     | '/api/deployments/$deploymentId/logs'
+    | '/api/github/app/callback'
+    | '/api/github/app/new'
     | '/api/projects/$projectId/runtime-logs'
     | '/_app/projects/$projectId/'
     | '/_app/projects/$projectId/deployments/$deploymentId'
@@ -315,6 +339,8 @@ export interface RootRouteChildren {
   ApiAvatarsUserIdRoute: typeof ApiAvatarsUserIdRoute
   ApiWebhooksGithubRoute: typeof ApiWebhooksGithubRoute
   ApiDeploymentsDeploymentIdLogsRoute: typeof ApiDeploymentsDeploymentIdLogsRoute
+  ApiGithubAppCallbackRoute: typeof ApiGithubAppCallbackRoute
+  ApiGithubAppNewRoute: typeof ApiGithubAppNewRoute
   ApiProjectsProjectIdRuntimeLogsRoute: typeof ApiProjectsProjectIdRuntimeLogsRoute
 }
 
@@ -460,6 +486,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiDeploymentsDeploymentIdLogsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/github/app/callback': {
+      id: '/api/github/app/callback'
+      path: '/api/github/app/callback'
+      fullPath: '/api/github/app/callback'
+      preLoaderRoute: typeof ApiGithubAppCallbackRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/github/app/new': {
+      id: '/api/github/app/new'
+      path: '/api/github/app/new'
+      fullPath: '/api/github/app/new'
+      preLoaderRoute: typeof ApiGithubAppNewRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/projects/$projectId/runtime-logs': {
       id: '/api/projects/$projectId/runtime-logs'
       path: '/api/projects/$projectId/runtime-logs'
@@ -541,6 +581,8 @@ const rootRouteChildren: RootRouteChildren = {
   ApiAvatarsUserIdRoute: ApiAvatarsUserIdRoute,
   ApiWebhooksGithubRoute: ApiWebhooksGithubRoute,
   ApiDeploymentsDeploymentIdLogsRoute: ApiDeploymentsDeploymentIdLogsRoute,
+  ApiGithubAppCallbackRoute: ApiGithubAppCallbackRoute,
+  ApiGithubAppNewRoute: ApiGithubAppNewRoute,
   ApiProjectsProjectIdRuntimeLogsRoute: ApiProjectsProjectIdRuntimeLogsRoute,
 }
 export const routeTree = rootRouteImport

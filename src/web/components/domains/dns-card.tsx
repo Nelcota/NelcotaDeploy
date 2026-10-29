@@ -6,13 +6,33 @@ import { CardTitleRow } from "@/web/components/layout/layout";
 import { Card } from "@/web/components/ui/card";
 import { getServerAddressFn } from "@/web/functions/servers/server-address.functions";
 
-import { dnsRecordType } from "./domains";
+import { type DomainDns, type DomainItem, dnsRecordType, needsDnsHelp } from "./domains";
 
 // The server's address rarely changes; asking once per visit (ten minutes) is enough.
 const SERVER_ADDRESS_STALE_IN_MS = 600_000;
 
-/** The DNS record a custom domain needs, pointing at the automatic hostname when there is one. */
+/**
+ * The DNS record a custom domain needs, pointing at the automatic hostname when there is one.
+ * Hidden once every custom domain already points at the project's server.
+ */
 export function DnsCard({
+  projectId,
+  automaticHostname,
+  domains,
+  dns,
+}: {
+  readonly projectId: string;
+  readonly automaticHostname: string | null;
+  readonly domains: readonly DomainItem[];
+  readonly dns: ReadonlyMap<string, DomainDns>;
+}) {
+  if (needsDnsHelp(domains, dns) === false) {
+    return null;
+  }
+  return <DnsRecordCard projectId={projectId} automaticHostname={automaticHostname} />;
+}
+
+function DnsRecordCard({
   projectId,
   automaticHostname,
 }: {
