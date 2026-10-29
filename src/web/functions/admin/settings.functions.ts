@@ -3,6 +3,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { sendAlert } from "@/alerts";
 import { getConfig } from "@/config";
 import { getDatabase, listBackups } from "@/db";
+import { getGitHubApp } from "@/github";
 import { getWorkerStatus } from "@/monitoring";
 import { getSystemSettings, saveSystemSettings } from "@/settings";
 import { systemSettingsSchema } from "@/shared/schemas/settings.schema";
@@ -20,6 +21,7 @@ export const getSettingsFn = createServerFn({ method: "GET" }).handler(async () 
       publicUrl: config.PUBLIC_URL,
       webhookUrl: `${config.PUBLIC_URL}/api/webhooks/github`,
       webhookConfigured: config.GITHUB_WEBHOOK_SECRET != null,
+      githubApp: getGitHubApp(database),
       encryptionConfigured: config.NELCOTA_ENCRYPTION_KEY != null,
       dockerNetwork: config.DOCKER_NETWORK,
       traefikEnabled: config.TRAEFIK_ENABLED,

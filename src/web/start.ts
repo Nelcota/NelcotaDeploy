@@ -20,10 +20,13 @@ const securityHeadersMiddleware = createMiddleware().server(async ({ next, reque
   headers.set("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
   if (process.env["NODE_ENV"] === "production") {
     // Hydration and the theme bootstrap use inline scripts, so 'unsafe-inline' is needed.
-    headers.set(
-      "Content-Security-Policy",
-      "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
-    );
+    // Routes that set a stricter policy of their own (avatars, the GitHub App pages) keep it.
+    if (headers.has("Content-Security-Policy") === false) {
+      headers.set(
+        "Content-Security-Policy",
+        "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
+      );
+    }
     if (new URL(request.url).protocol === "https:") {
       headers.set(
         "Strict-Transport-Security",

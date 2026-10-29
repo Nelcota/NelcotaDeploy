@@ -3,6 +3,7 @@ import { z } from "zod";
 
 import { userActor } from "@/auth";
 import { getDatabase } from "@/db";
+import { getGitHubApp, listConnectedRepositories } from "@/github";
 import {
   approveProject,
   createProject,
@@ -25,6 +26,17 @@ export const listProjectsFn = createServerFn({ method: "GET" })
     await authorize("project:read");
     return listProjects(getDatabase(), { search: data.search ?? "" });
   });
+
+/** Repositories the GitHub App can read, for the new-project picker; null without an app. */
+export const listGitHubRepositoriesFn = createServerFn({ method: "GET" }).handler(async () => {
+  await authorize("project:write");
+  const database = getDatabase();
+  // Checked first so a panel without an app never needs the encryption key here.
+  if (getGitHubApp(database) == null) {
+    return null;
+  }
+  return await listConnectedRepositories(database, await getSecretBox());
+});
 
 export const createProjectFn = createServerFn({ method: "POST" })
   .validator(projectInputSchema)

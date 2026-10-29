@@ -59,8 +59,8 @@ export function IdentityFields({ form }: { readonly form: ProjectFormApi }) {
   );
 }
 
-/** Fills an empty name and identifier from the repository a user just pasted. */
-function fillIdentityFromRepository(form: ProjectFormApi, url: string): void {
+/** Fills an empty name and identifier from the repository a user just pasted or picked. */
+export function fillIdentityFromRepository(form: ProjectFormApi, url: string): void {
   const identity = identityFromRepository(url, {
     name: form.getFieldValue("name"),
     slug: form.getFieldValue("slug"),

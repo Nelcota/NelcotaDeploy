@@ -1,5 +1,6 @@
 import { runtimeConfigFingerprint, transitionDeployment } from "@/deployments";
 import { resolveEnvironment } from "@/environments";
+import { appCloneToken } from "@/github";
 import { readRepositoryToken } from "@/projects";
 import { createRedactor } from "@/secrets";
 
@@ -31,7 +32,7 @@ export async function deploy(
   const environment = await resolveEnvironment(database, secretBox, project.id);
   // Taken with the variables it describes, so later edits show up as pending changes.
   const runtimeConfigHash = runtimeConfigFingerprint(database, project.id);
-  const repositoryToken = await readRepositoryToken(database, secretBox, project.id);
+  const repositoryToken = await cloneToken(dependencies, context);
   context.state.useRedactor(createRedactor([...environment.secretValues, repositoryToken ?? ""]));
   logs.useRedactor(context.state.redact);
 
@@ -57,6 +58,25 @@ export async function deploy(
     runtimeConfigHash,
   });
   await checkHealth(dependencies, running, containerName);
+}
+
+/** A token saved on the project wins; otherwise the GitHub App provides one when installed. */
+async function cloneToken(
+  { database, secretBox }: DeployRunnerDependencies,
+  { deployment, project, logs }: DeployContext,
+): Promise<string | null> {
+  const savedToken = await readRepositoryToken(database, secretBox, project.id);
+  // Reusing an image clones nothing.
+  if (savedToken != null || deployment.sourceDeploymentId != null) {
+    return savedToken;
+  }
+  return await appCloneToken(database, secretBox, project.repositoryFullName).catch(
+    (error: unknown) => {
+      // A public repository still clones without a token, so the deploy goes on.
+      logs.system(`Could not get a token from the GitHub App: ${String(error)}`);
+      return null;
+    },
+  );
 }
 
 async function checkHealth(

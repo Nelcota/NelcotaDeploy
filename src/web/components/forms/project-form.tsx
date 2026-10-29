@@ -19,6 +19,7 @@ import {
   PortField,
   RepositoryFields,
 } from "@/web/components/forms/project-form-fields";
+import { GitHubRepositoryPicker } from "@/web/components/github/github-repository-picker";
 import { SettingsSection } from "@/web/components/project-settings/settings-section";
 import { Button } from "@/web/components/ui/button";
 import { cn } from "@/web/components/ui/class-names";
@@ -192,6 +193,7 @@ function ProjectFormSections({ form }: { readonly form: ProjectFormApi }) {
         description="Precisa ter um Dockerfile."
       >
         <div className="grid gap-x-5 gap-y-5 sm:grid-cols-[minmax(0,1fr)_minmax(0,11rem)]">
+          <GitHubRepositoryPicker form={form} />
           <RepositoryFields form={form} />
         </div>
       </SettingsSection>

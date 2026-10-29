@@ -43,6 +43,13 @@
       "when": 1793290853809,
       "tag": "0005_auto_apply",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1793291075287,
+      "tag": "0006_github_app",
+      "breakpoints": true
     }
   ]
 }

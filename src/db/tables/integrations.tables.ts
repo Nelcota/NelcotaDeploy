@@ -57,3 +57,16 @@ export const systemSettings = sqliteTable("system_settings", {
   value: text("value", { mode: "json" }).$type<unknown>().notNull(),
   updatedAt: updatedAt(),
 });
+
+// The GitHub App created from the panel; at most one row. Its private key and webhook secret
+// are encrypted with NELCOTA_ENCRYPTION_KEY.
+export const githubApps = sqliteTable("github_apps", {
+  id: text("id").primaryKey(),
+  slug: text("slug").notNull(),
+  name: text("name").notNull(),
+  htmlUrl: text("html_url").notNull(),
+  ownerLogin: text("owner_login").notNull(),
+  encryptedPrivateKey: text("encrypted_private_key").notNull(),
+  encryptedWebhookSecret: text("encrypted_webhook_secret"),
+  createdAt: createdAt(),
+});
