@@ -24,7 +24,18 @@ export type ProcessResult = {
   readonly aborted: boolean;
 };
 
-const DEFAULT_MAX_CAPTURED_BYTES = 1_048_576;
+/**
+ * Runs an argument vector somewhere: on this host ({@link runProcess}) or on another server.
+ * Callers stay the same wherever the command runs.
+ */
+export type CommandRunner = (
+  command: readonly string[],
+  options: RunProcessOptions,
+) => Promise<ProcessResult>;
+
+/** Bytes of output kept in a result when the caller sets no limit. */
+export const DEFAULT_MAX_CAPTURED_BYTES = 1_048_576;
+
 /** Variables a child process may inherit. Platform secrets are deliberately not in this list. */
 const INHERITED_VARIABLES = [
   "PATH",
@@ -58,8 +69,14 @@ export function buildChildEnvironment(
   return { ...environment, ...extra };
 }
 
-async function readLines(
-  stream: ReadableStream<Uint8Array>,
+/**
+ * Splits a byte stream into lines, accepting LF, CRLF and CR endings.
+ *
+ * @param stream - Output of a process.
+ * @param onLine - Receives each line without its ending, including a last unterminated one.
+ */
+export async function readLines(
+  stream: AsyncIterable<Uint8Array>,
   onLine: (line: string) => void,
 ): Promise<void> {
   const decoder = new TextDecoder();
@@ -78,7 +95,8 @@ async function readLines(
   }
 }
 
-class CapturedOutput {
+/** Keeps output up to a byte limit; later lines are dropped from the captured text. */
+export class CapturedOutput {
   readonly #limit: number;
   #text = "";
   #truncated = false;
