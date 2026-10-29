@@ -4,7 +4,7 @@ import { ServerIcon } from "lucide-react";
 import { CopyButton } from "@/web/components/layout/copy-button";
 import { CardTitleRow } from "@/web/components/layout/layout";
 import { Card } from "@/web/components/ui/card";
-import { getServerAddressFn } from "@/web/functions/domains.functions";
+import { getServerAddressFn } from "@/web/functions/servers/server-address.functions";
 
 import { dnsRecordType } from "./domains";
 
@@ -12,13 +12,19 @@ import { dnsRecordType } from "./domains";
 const SERVER_ADDRESS_STALE_IN_MS = 600_000;
 
 /** The DNS record a custom domain needs, pointing at the automatic hostname when there is one. */
-export function DnsCard({ automaticHostname }: { readonly automaticHostname: string | null }) {
+export function DnsCard({
+  projectId,
+  automaticHostname,
+}: {
+  readonly projectId: string;
+  readonly automaticHostname: string | null;
+}) {
   const serverAddressQuery = useQuery({
-    queryKey: ["server-address"],
-    queryFn: () => getServerAddressFn(),
+    queryKey: ["server-address", projectId],
+    queryFn: () => getServerAddressFn({ data: { projectId } }),
     staleTime: SERVER_ADDRESS_STALE_IN_MS,
   });
-  // Public IP of this server, when it could be found from PUBLIC_URL.
+  // Public IP of the server the project runs on, when it is known.
   const serverAddress = serverAddressQuery.data ?? null;
   return (
     <Card className="gap-4 p-5">
@@ -46,7 +52,7 @@ export function DnsCard({ automaticHostname }: { readonly automaticHostname: str
       {automaticHostname == null ? null : (
         <p className="text-xs text-faint">
           O CNAME aponta para o domínio automático do projeto. Para a raiz do domínio (sem
-          subdomínio), use um registro A com o IP deste servidor
+          subdomínio), use um registro A com o IP do servidor do projeto
           {serverAddress == null ? "" : `: ${serverAddress}`}.
         </p>
       )}
@@ -70,7 +76,7 @@ function DnsRecordValue({
     );
   }
   if (serverAddress == null) {
-    return <span className="text-sm">IP deste servidor</span>;
+    return <span className="text-sm">IP do servidor do projeto</span>;
   }
   return (
     <>

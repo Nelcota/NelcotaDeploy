@@ -1,14 +1,13 @@
-import { CpuIcon, HardDriveIcon, MemoryStickIcon, ServerIcon } from "lucide-react";
+import { CpuIcon, HardDriveIcon, MemoryStickIcon } from "lucide-react";
 
-import { formatBytes, formatRelativeTime } from "@/shared/format";
-import { useNow } from "@/web/components/clock/use-now";
-import { Section, StatRow } from "@/web/components/layout/layout";
+import { formatBytes } from "@/shared/format";
+import { StatRow } from "@/web/components/layout/layout";
 import { usagePercent } from "@/web/components/monitoring/usage-meter";
 
-import type { ServerData } from "./server-data";
 import { formatPercent, usageTone } from "./usage-tone";
+import type { ServerView } from "./use-servers";
 
-type HostSample = ServerData["hostSample"];
+type HostSample = ServerView["hostSample"];
 
 function usageDetails(host: HostSample) {
   if (host == null) {
@@ -44,20 +43,7 @@ function hostStats(host: HostSample) {
   ];
 }
 
-/** CPU, memory and disk usage of the latest host sample. */
-export function HostUsageSection({ host }: { readonly host: HostSample }) {
-  const now = useNow();
-  return (
-    <Section
-      icon={ServerIcon}
-      title="Servidor (VPS)"
-      description={
-        host == null
-          ? "Nenhuma amostra coletada ainda."
-          : `Última amostra ${formatRelativeTime(host.createdAt, now)}.`
-      }
-    >
-      <StatRow stats={hostStats(host)} />
-    </Section>
-  );
+/** CPU, memory and disk usage of a server's latest sample. */
+export function ServerUsage({ host }: { readonly host: HostSample }) {
+  return <StatRow stats={hostStats(host)} />;
 }

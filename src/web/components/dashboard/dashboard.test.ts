@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { hostSeriesValue } from "./dashboard";
+import { defaultChartServerId, hostSeriesValue } from "./dashboard";
 
 const SAMPLE = { cpuPercent: 12.5, memoryUsedBytes: 512, memoryTotalBytes: 2048 };
 
@@ -21,5 +21,26 @@ describe("hostSeriesValue", () => {
     const value = hostSeriesValue(undefined, "cpu");
 
     expect(value).toBeNull();
+  });
+});
+
+describe("defaultChartServerId", () => {
+  test("opens the connected server that runs applications", () => {
+    const servers = [
+      { id: "local", status: "ready", acceptsApplications: false },
+      { id: "apps", status: "ready", acceptsApplications: true },
+    ] as const;
+
+    expect(defaultChartServerId(servers)).toBe("apps");
+  });
+
+  test("falls back to the panel's own server when no server takes applications", () => {
+    const servers = [{ id: "local", status: "ready", acceptsApplications: false }] as const;
+
+    expect(defaultChartServerId(servers)).toBe("local");
+  });
+
+  test("returns null without servers", () => {
+    expect(defaultChartServerId([])).toBeNull();
   });
 });

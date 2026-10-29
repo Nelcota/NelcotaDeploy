@@ -39,7 +39,7 @@ export function DomainsPage({ projectId }: { readonly projectId: string }) {
           />
         </List>
       )}
-      <DnsCard automaticHostname={automaticHostnameOf(details)} />
+      <DnsCard projectId={projectId} automaticHostname={automaticHostnameOf(details)} />
     </>
   );
 }

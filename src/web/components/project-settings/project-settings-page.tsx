@@ -8,6 +8,7 @@ import { useCan } from "@/web/components/shell/use-permissions";
 import { DangerZone } from "./danger-zone";
 import { ProjectSettingsForm } from "./project-settings-form";
 import { RepositoryTokenSection } from "./repository-token-section";
+import { ServerSection } from "./server-section";
 
 /** Repository, build and runtime settings of one project, plus its token and deletion. */
 export function ProjectSettingsPage({ projectId }: { readonly projectId: string }) {
@@ -41,6 +42,13 @@ export function ProjectSettingsPage({ projectId }: { readonly projectId: string 
       >
         {can("project:approve") ? (
           <RepositoryTokenSection projectId={projectId} hasToken={project.hasRepositoryToken} />
+        ) : null}
+        {can("settings:write") ? (
+          <ServerSection
+            projectId={projectId}
+            serverId={project.serverId}
+            deployed={project.currentDeploymentId != null}
+          />
         ) : null}
         {can("project:delete") ? <DangerZone projectId={projectId} slug={project.slug} /> : null}
       </ProjectSettingsForm>

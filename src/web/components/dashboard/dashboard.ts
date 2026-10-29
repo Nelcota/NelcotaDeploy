@@ -24,3 +24,24 @@ export function hostSeriesValue(
   }
   return usagePercent(sample?.memoryUsedBytes, sample?.memoryTotalBytes);
 }
+
+/** What the dashboard needs to pick which server's chart to show first. */
+type ChartServer = {
+  readonly id: string;
+  readonly status: "pending" | "ready" | "unreachable";
+  readonly acceptsApplications: boolean;
+};
+
+/**
+ * Picks the server whose chart opens first: one that runs applications and is connected.
+ *
+ * @param servers - Servers, the panel's own first.
+ * @returns Server id, or null when there are none.
+ */
+export function defaultChartServerId(servers: readonly ChartServer[]): string | null {
+  const preferred =
+    servers.find((server) => server.acceptsApplications && server.status === "ready") ??
+    servers.find((server) => server.acceptsApplications) ??
+    servers[0];
+  return preferred?.id ?? null;
+}

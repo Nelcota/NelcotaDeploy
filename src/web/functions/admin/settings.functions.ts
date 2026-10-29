@@ -2,7 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 
 import { getConfig } from "@/config";
 import { getDatabase } from "@/db";
-import { getLatestHostSample, getWorkerStatus } from "@/monitoring";
+import { getWorkerStatus } from "@/monitoring";
 import { getSystemSettings, saveSystemSettings } from "@/settings";
 import { systemSettingsSchema } from "@/shared/schemas/settings.schema";
 import { authorize } from "@/web/server/authorization";
@@ -25,7 +25,6 @@ export const getSettingsFn = createServerFn({ method: "GET" }).handler(async () 
       metricsRetentionInHours: config.METRICS_RETENTION_HOURS,
       scheduleTimeZone: config.SCHEDULE_TIME_ZONE,
       worker: getWorkerStatus(database),
-      hostSample: getLatestHostSample(database),
     },
   };
 });

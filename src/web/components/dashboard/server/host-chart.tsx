@@ -17,11 +17,12 @@ const SERIES_STYLES = {
   memory: { label: "Memória", color: "--chart-2" },
 } as const satisfies Record<HostSeries, { readonly label: string; readonly color: string }>;
 
-/** Server CPU and memory samples of the last `hours`, refreshed with the dashboard. */
-export function useHostMetrics(hours: number) {
+/** CPU and memory samples of a server over the last `hours`, refreshed with the dashboard. */
+export function useHostMetrics(serverId: string | null, hours: number) {
   return useQuery({
-    queryKey: ["host-metrics", hours],
-    queryFn: () => getHostMetricsFn({ data: { hours } }),
+    queryKey: ["host-metrics", serverId, hours],
+    queryFn: () => getHostMetricsFn({ data: { serverId: serverId ?? "", hours } }),
+    enabled: serverId != null,
     refetchInterval: REFRESH_INTERVAL_IN_MS,
   });
 }

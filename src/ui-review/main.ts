@@ -58,7 +58,8 @@ function pagesFor(projectId: string, deploymentId: string) {
     { name: "projeto-ajustes", path: `${project}/settings`, signedIn: true },
     { name: "admin-organizacao", path: "/settings?tab=organization", signedIn: true },
     { name: "admin-usuarios", path: "/settings?tab=users", signedIn: true },
-    { name: "admin-servidor", path: "/settings?tab=server", signedIn: true },
+    { name: "admin-servidores", path: "/settings?tab=servers", signedIn: true },
+    { name: "admin-sistema", path: "/settings?tab=server", signedIn: true },
     { name: "admin-tokens", path: "/settings?tab=tokens", signedIn: true },
     { name: "admin-auditoria", path: "/settings?tab=audit", signedIn: true },
   ];

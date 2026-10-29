@@ -59,11 +59,11 @@ function WorkerRows({ worker }: { readonly worker: ServerData["worker"] }) {
       <InfoRow icon={HeartPulseIcon} label="Último sinal do worker">
         {formatTimeAgo(worker?.lastSeenAt, now)}
       </InfoRow>
-      <InfoRow icon={ContainerIcon} label="Docker">
+      <InfoRow icon={ContainerIcon} label="Servidores de aplicações">
         {worker?.dockerAvailable === true ? (
-          (worker.dockerVersion ?? "Disponível")
+          <StatusPill tone="success" label="Prontos" />
         ) : (
-          <StatusPill tone="danger" label="Indisponível" />
+          <StatusPill tone="danger" label="Com problema" />
         )}
       </InfoRow>
     </>

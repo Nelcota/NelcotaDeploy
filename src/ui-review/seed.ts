@@ -11,6 +11,8 @@ import { saveSystemSettings } from "@/settings";
 import { taskInputSchema } from "@/shared/schemas/task.schema";
 import { createTask } from "@/tasks";
 
+import { seedServers } from "./seed-servers";
+
 const ACTOR = { type: "system", label: "ui-review" } as const;
 const MINUTE_IN_MS = 60_000;
 const METRIC_SAMPLES = 60;
@@ -257,6 +259,8 @@ database
     })),
   )
   .run();
+
+await seedServers(database, secretBox);
 
 // The last line is read by main.ts to know which pages to open.
 process.stdout.write(`${JSON.stringify({ projectId: api.id, deploymentId: liveDeploymentId })}\n`);
