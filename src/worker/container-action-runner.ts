@@ -3,8 +3,12 @@ import { eq } from "drizzle-orm";
 import { type Database, tables } from "@/db";
 import { type ContainerAction, getDeployment } from "@/deployments";
 import { type DockerEngine, LABELS, volumeNameFor } from "@/docker";
+import type { Job } from "@/jobs";
+import { getProject } from "@/projects";
 import type { RouteFiles } from "@/routing";
 import { failVolumeDeletion, finishVolumeDeletion } from "@/volumes";
+
+import type { WorkerDependencies } from "./worker.types";
 
 /** What cleaning a project off one server needs: its Docker and its proxy's route files. */
 type ProjectServer = { readonly docker: DockerEngine; readonly routes: RouteFiles | null };
@@ -139,4 +143,25 @@ export async function runProjectCleanup(
     removed.volumes += result.value.volumes;
   }
   return removed;
+}
+
+/**
+ * Runs a `volume_delete` job on the server of the volume's project.
+ *
+ * @param dependencies - Worker dependencies.
+ * @param job - The claimed job; its payload names the volume.
+ * @throws {Error} When the payload has no volume id, or the deletion fails.
+ */
+export async function runVolumeDeleteJob(
+  dependencies: Pick<WorkerDependencies, "database" | "hosts">,
+  job: Job,
+): Promise<void> {
+  const volumeId = job.payload["volumeId"];
+  if (typeof volumeId !== "string" || volumeId === "") {
+    throw new Error(`Job ${job.id} of kind ${job.kind} is missing its volume id`);
+  }
+  const { database, hosts } = dependencies;
+  // Projects with volumes cannot move, so the data is on the project's current server.
+  const host = hosts.hostOf(database, getProject(database, job.projectId).serverId);
+  await runVolumeDeletion(database, host.docker.volumes, { projectId: job.projectId, volumeId });
 }
