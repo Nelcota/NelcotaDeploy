@@ -25,10 +25,7 @@ export function ProjectSettingsPage({ projectId }: { readonly projectId: string 
 
   return (
     <div className="space-y-6">
-      <TabHeader
-        title="Ajustes do projeto"
-        description="Repositório, build e porta. Ao alterar um campo, aparece a opção de salvar; as mudanças valem no próximo deploy."
-      />
+      <TabHeader title="Ajustes do projeto" description="As mudanças valem no próximo deploy." />
       {can("project:write") ? null : (
         <p role="status" className="text-sm text-muted-foreground">
           Você pode ver estes ajustes, mas só quem tem permissão de edição pode alterá-los.

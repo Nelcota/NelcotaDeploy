@@ -45,11 +45,7 @@ export function OrganizationForm({
 }) {
   const { form, isPending } = useOrganizationForm(initial);
   return (
-    <Section
-      icon={Building2Icon}
-      title="Organização"
-      description="Preferências que valem para todos os projetos."
-    >
+    <Section icon={Building2Icon} title="Organização">
       <Card className="p-5">
         <form
           noValidate

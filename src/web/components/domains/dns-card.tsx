@@ -30,8 +30,7 @@ export function DnsCard({
     <Card className="gap-4 p-5">
       <CardTitleRow icon={ServerIcon} title="Configurar DNS" />
       <p className="text-sm text-muted-foreground">
-        No provedor do domínio, crie o registro abaixo. Com HTTPS ativo, o certificado Let&apos;s
-        Encrypt é emitido sozinho assim que o DNS responder.
+        Crie este registro no provedor do domínio. O HTTPS sai sozinho quando o DNS responder.
       </p>
       <dl className="grid gap-x-8 gap-y-4 rounded-lg p-4 ring-1 ring-border/70 sm:grid-cols-[auto_auto_minmax(0,1fr)] sm:items-start">
         <div className="space-y-1">
@@ -51,9 +50,8 @@ export function DnsCard({
       </dl>
       {automaticHostname == null ? null : (
         <p className="text-xs text-faint">
-          O CNAME aponta para o domínio automático do projeto. Para a raiz do domínio (sem
-          subdomínio), use um registro A com o IP do servidor do projeto
-          {serverAddress == null ? "" : `: ${serverAddress}`}.
+          Na raiz do domínio, use um registro A
+          {serverAddress == null ? " com o IP do servidor" : ` para ${serverAddress}`}.
         </p>
       )}
     </Card>

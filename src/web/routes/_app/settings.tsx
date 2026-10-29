@@ -52,15 +52,6 @@ const SECTION_PERMISSIONS: Record<
   audit: "audit:read",
 };
 
-const SETTINGS_DESCRIPTIONS: Record<(typeof SETTINGS_SECTIONS)[number], string> = {
-  organization: "Nome da organização e domínio base dos projetos.",
-  users: "Quem acessa o painel e o que cada pessoa pode fazer.",
-  servers: "As VPSs onde as aplicações rodam, com uso de recursos e estado da conexão.",
-  server: "Estado do worker e configuração do webhook.",
-  tokens: "Tokens para o servidor MCP e outras integrações.",
-  audit: "Registro de quem fez o quê, e webhooks recebidos.",
-};
-
 function SettingsPage() {
   const can = useCan();
   const navigate = Route.useNavigate();
@@ -74,7 +65,7 @@ function SettingsPage() {
   const tabListRef = useActiveTabInView(activeTab);
   return (
     <>
-      <PageHeader title="Administração" description={SETTINGS_DESCRIPTIONS[activeTab]} />
+      <PageHeader title="Administração" />
       <Tabs
         value={activeTab}
         onValueChange={(value) => {

@@ -29,7 +29,6 @@ export function DangerZone({
     <SettingsSection
       icon={TriangleAlertIcon}
       title={<span className="text-destructive">Zona de perigo</span>}
-      description="Ações que não podem ser desfeitas."
     >
       <div className="flex flex-col gap-4 rounded-lg p-4 ring-1 ring-destructive/40 sm:flex-row sm:items-center sm:justify-between">
         <div className="space-y-1">

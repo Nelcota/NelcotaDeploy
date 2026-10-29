@@ -49,15 +49,5 @@ function automaticHostnameOf(details: ProjectDetails | undefined): string | null
 }
 
 function DomainsHeader({ details }: { readonly details: ProjectDetails | undefined }) {
-  return (
-    <TabHeader
-      title="Domínios"
-      count={details?.domains.length ?? null}
-      description={
-        details == null
-          ? "Endereços públicos da aplicação."
-          : `Endereços públicos da aplicação, encaminhados à porta ${details.project.internalPort} do contêiner.`
-      }
-    />
-  );
+  return <TabHeader title="Domínios" count={details?.domains.length ?? null} />;
 }

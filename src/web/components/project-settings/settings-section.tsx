@@ -13,7 +13,7 @@ export function SettingsSection({
 }: {
   readonly icon: LucideIcon;
   readonly title: ReactNode;
-  readonly description: ReactNode;
+  readonly description?: ReactNode;
   readonly children: ReactNode;
 }) {
   return (
@@ -23,7 +23,9 @@ export function SettingsSection({
           <Icon aria-hidden className="size-4 shrink-0 text-muted-foreground" />
           {title}
         </h3>
-        <div className="text-sm text-muted-foreground">{description}</div>
+        {description == null ? null : (
+          <div className="text-sm text-muted-foreground">{description}</div>
+        )}
       </div>
       <div className="min-w-0">{children}</div>
     </section>

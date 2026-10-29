@@ -5,9 +5,7 @@ import { EnvImportDialog } from "@/web/components/forms/env-import-dialog";
 import { TabHeader } from "@/web/components/projects/project-header";
 import { Button } from "@/web/components/ui/button";
 
-import { describeKinds } from "./variable-draft";
-
-/** Title, variable counts and, for editors, the import and create buttons. */
+/** Title, variable count and, for editors, the import and create buttons. */
 export function EnvironmentHeader({
   projectId,
   variables,
@@ -25,12 +23,7 @@ export function EnvironmentHeader({
     <TabHeader
       title="Variáveis"
       count={variables?.length ?? null}
-      description={
-        <>
-          Configurações e secrets entregues ao contêiner. As mudanças valem no próximo deploy
-          {variables == null ? "." : ` · ${describeKinds(variables)}.`}
-        </>
-      }
+      description="As mudanças valem no próximo deploy."
       actions={
         canEdit ? (
           <>

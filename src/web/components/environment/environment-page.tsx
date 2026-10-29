@@ -5,7 +5,6 @@ import { useCan } from "@/web/components/shell/use-permissions";
 
 import { ApplyVariableChanges } from "./apply-variable-changes";
 import { EnvironmentHeader } from "./environment-header";
-import { SecretsHelp } from "./secrets-help";
 import { useEnvironmentVariables } from "./use-environment-variables";
 import { VariableDialog } from "./variable-dialog/variable-dialog";
 import { VariablesList } from "./variables-list";
@@ -39,7 +38,6 @@ export function EnvironmentPage({ projectId }: { readonly projectId: string }) {
         onEdit={openEditor}
         onDelete={(variableId) => remove.mutate(variableId)}
       />
-      <SecretsHelp />
       <VariableDialog
         key={editing?.id ?? "new"}
         projectId={projectId}

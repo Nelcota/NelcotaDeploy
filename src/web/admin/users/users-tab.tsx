@@ -14,7 +14,6 @@ export function UsersTab() {
     <Section
       icon={UsersIcon}
       title="Usuários"
-      description="Administradores têm acesso total; desenvolvedores fazem deploys e gerenciam projetos; leitores só visualizam."
       action={
         <Button onClick={() => setCreateOpen(true)}>
           <PlusIcon aria-hidden />

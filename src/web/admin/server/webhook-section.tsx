@@ -16,11 +16,7 @@ export function WebhookSection({
   readonly webhookConfigured: boolean;
 }) {
   return (
-    <Section
-      icon={WebhookIcon}
-      title="Webhook do GitHub"
-      description="Deploy automático a cada push na branch configurada de projetos com deploy automático ativo."
-    >
+    <Section icon={WebhookIcon} title="Webhook do GitHub">
       <div className="flex max-w-2xl gap-2">
         <Input readOnly aria-label="URL do webhook" className="font-mono" value={webhookUrl} />
         <CopyButton text={webhookUrl} label="Copiar" />

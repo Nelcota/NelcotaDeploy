@@ -30,7 +30,6 @@ export function ProjectsPage({
     <>
       <PageHeader
         title="Projetos"
-        description="Aplicações implantadas a partir de repositórios GitHub."
         actions={canCreate ? <NewProjectButton label="Novo projeto" size="default" /> : null}
       />
       <div className="space-y-4">

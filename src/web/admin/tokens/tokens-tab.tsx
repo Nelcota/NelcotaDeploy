@@ -16,7 +16,7 @@ export function TokensTab() {
     <Section
       icon={KeyRoundIcon}
       title="Tokens de API"
-      description="Usados pelo servidor MCP. Dê a cada cliente o menor escopo possível; só o hash do token é guardado."
+      description="Para o servidor MCP e outras integrações."
       action={
         <Button onClick={() => setCreateOpen(true)}>
           <PlusIcon aria-hidden />

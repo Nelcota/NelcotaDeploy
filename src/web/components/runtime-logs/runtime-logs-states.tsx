@@ -35,9 +35,7 @@ export function RuntimeLogsHeader({
     <TabHeader
       title="Logs"
       description={
-        details == null || hasLiveDeploy === false ? (
-          "Saída do contêiner em tempo real. Valores de secrets são ocultados."
-        ) : (
+        details == null || hasLiveDeploy === false ? null : (
           <SourceDescription details={details} selected={selected} now={now} />
         )
       }

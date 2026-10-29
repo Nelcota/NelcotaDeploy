@@ -12,7 +12,7 @@ export const Route = createFileRoute("/_app/deployments")({
 function DeploymentsPage() {
   return (
     <>
-      <PageHeader title="Deploys" description="Builds e publicações de todos os projetos." />
+      <PageHeader title="Deploys" />
       <DeploymentsSummary />
       <DeploymentsHistory />
     </>
