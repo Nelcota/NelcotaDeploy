@@ -1,7 +1,6 @@
 import { inArray } from "drizzle-orm";
 
 import { type Database, tables } from "@/db";
-import { generateSshKeyPair } from "@/remote";
 import type { SecretBox } from "@/secrets";
 
 const PUBLIC_KEY_SETTING = "ssh.publicKey";
@@ -34,7 +33,7 @@ export function getPanelPublicKey(database: Database): string | null {
  * @param secretBox - Encryption box.
  * @returns The OpenSSH private key, or null when none was generated yet.
  */
-async function readPanelPrivateKey(
+export async function readPanelPrivateKey(
   database: Database,
   secretBox: SecretBox,
 ): Promise<string | null> {
@@ -77,28 +76,4 @@ export async function storePanelKeyPair(
       ])
       .run();
   });
-}
-
-/**
- * Returns the panel's SSH private key, generating the pair on the very first start.
- *
- * @param database - Database.
- * @param secretBox - Encrypts the private key at rest.
- * @returns The private key.
- * @throws {Error} When the generated pair could not be stored.
- */
-export async function ensurePanelPrivateKey(
-  database: Database,
-  secretBox: SecretBox,
-): Promise<string> {
-  const existing = await readPanelPrivateKey(database, secretBox);
-  if (existing != null) {
-    return existing;
-  }
-  await storePanelKeyPair(database, secretBox, generateSshKeyPair());
-  const stored = await readPanelPrivateKey(database, secretBox);
-  if (stored == null) {
-    throw new Error("The panel SSH key pair was not stored");
-  }
-  return stored;
 }

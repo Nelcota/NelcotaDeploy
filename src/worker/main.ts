@@ -6,8 +6,8 @@ import { getConfig } from "@/config";
 import { getDatabase } from "@/db";
 import { createLogger } from "@/logging";
 import { getSecretBox } from "@/secrets";
-import { ensurePanelPrivateKey } from "@/servers";
 
+import { ensurePanelPrivateKey } from "./servers/panel-key";
 import { ServerHosts } from "./servers/server-hosts";
 import { Worker } from "./worker";
 
