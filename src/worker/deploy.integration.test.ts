@@ -13,6 +13,7 @@ import { runTaskExecution } from "./task-runner";
 // Builds and runs real containers, so the default `bun run test` ignores it. Run it with:
 //   bun run test:docker
 const NETWORK = `nelcota-it-${Date.now()}`;
+const CLEANUP_TIMEOUT_IN_MS = 120_000;
 const TEST_TIMEOUT_IN_MS = 180_000;
 const HEALTH_REQUEST_TIMEOUT_IN_MS = 5000;
 
@@ -106,9 +107,10 @@ async function runHealthTask(environment: FixtureEnvironment): Promise<string> {
 describe("deploy cycle with real Docker", () => {
   const cleanups: Cleanup[] = [];
 
+  // Removing the containers and images outlasts the default 5 s hook timeout on CI runners.
   afterAll(async () => {
     await runCleanupsInReverse(cleanups);
-  });
+  }, CLEANUP_TIMEOUT_IN_MS);
 
   test(
     "deploys a fixture app, controls its container, rolls back and runs a task",
