@@ -1,7 +1,7 @@
 import { ErrorState, ListSkeleton } from "@/web/components/layout/states";
 
 import { useSettings } from "../use-settings";
-import { GitHubAppSection } from "./github-app-section";
+import { GitHubAppSection } from "./github/github-app-section";
 import { WorkerSection } from "./worker-section";
 
 const SKELETON_ROWS = 4;

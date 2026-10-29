@@ -9,3 +9,4 @@ export {
 } from "./github-app.service";
 export { appCloneToken, listConnectedRepositories } from "./github-access.service";
 export { GitHubApiError } from "./github.errors";
+export { accountsMissingStatusPermission, reportCommitStatus } from "./github-status.service";

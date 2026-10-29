@@ -8,7 +8,11 @@ describe("buildAppManifest", () => {
 
     expect(manifest.hook_attributes.url).toBe("https://deploy.example.com/api/webhooks/github");
     expect(manifest.redirect_url).toBe("https://deploy.example.com/api/github/app/callback");
-    expect(manifest.default_permissions).toEqual({ contents: "read", metadata: "read" });
+    expect(manifest.default_permissions).toEqual({
+      contents: "read",
+      metadata: "read",
+      statuses: "write",
+    });
     expect(manifest.default_events).toEqual(["push"]);
   });
 

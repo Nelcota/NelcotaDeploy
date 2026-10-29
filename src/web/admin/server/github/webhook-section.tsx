@@ -3,8 +3,8 @@ import { ChevronRightIcon, TriangleAlertIcon } from "lucide-react";
 import { CopyButton } from "@/web/components/layout/copy-button";
 import { Input } from "@/web/components/ui/input";
 
-import { isUnreachableFromInternet } from "./public-url";
-import { ToggleStatusPill } from "./toggle-status-pill";
+import { isUnreachableFromInternet } from "../public-url";
+import { ToggleStatusPill } from "../toggle-status-pill";
 
 /** Warns when GitHub cannot reach the panel, which both the app and the webhook need. */
 export function UnreachableWarning({ webhookUrl }: { readonly webhookUrl: string }) {

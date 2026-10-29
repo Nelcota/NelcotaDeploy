@@ -1,4 +1,3 @@
-import { notify } from "@/alerts";
 import type { AppConfig } from "@/config";
 import {
   applyRuntimeChanges,
@@ -17,6 +16,10 @@ import {
 } from "./container-action-runner";
 import type { DeployRunnerConfig, DeployRunnerDependencies } from "./deploy/deploy-context";
 import { runDeployment } from "./deploy/deploy-runner";
+import {
+  notifyFailedDeployment,
+  reportDeploymentStatus,
+} from "./notifications/deployment-notifications";
 import type { ServerHost } from "./server-host";
 import { runTaskExecution } from "./task-runner";
 import type { WorkerDependencies } from "./worker.types";
@@ -93,20 +96,13 @@ function hostOfDeployment(dependencies: WorkerDependencies, deploymentId: string
   }
 }
 
-const SHORT_SHA_LENGTH = 7;
 const AUTO_APPLY_ACTOR = { type: "system", label: "auto-apply" } as const;
-
-async function notifyFailedDeployment(
-  dependencies: WorkerDependencies,
-  deployment: ReturnType<typeof getDeployment>,
-): Promise<void> {
-  const commit = deployment.commitSha?.slice(0, SHORT_SHA_LENGTH);
-  await notify(dependencies.database, dependencies.logger, {
-    title: "Deploy falhou",
-    text: `O deploy de ${deployment.projectName}${commit == null ? "" : ` (${commit})`} falhou.`,
-    link: `${dependencies.config.PUBLIC_URL}/projects/${deployment.projectId}/deployments/${deployment.id}`,
-  });
-}
+/** How each outcome of a deploy job shows on its commit. */
+const FINAL_COMMIT_STATES = {
+  succeeded: "success",
+  failed: "failure",
+  cancelled: "error",
+} as const;
 
 async function runDeployJob(
   dependencies: WorkerDependencies,
@@ -116,12 +112,17 @@ async function runDeployJob(
   const deploymentId = requireId(job.deploymentId, job);
   // The server was chosen when the deployment was queued; a retry after a crash stays there.
   const host = hostOfDeployment(dependencies, deploymentId);
+  await reportDeploymentStatus(dependencies, deploymentId, "pending");
   const status = await runDeployment(
     deployRunnerDependencies(dependencies, host),
     deploymentId,
     run.signal,
   );
   await run.refreshContainers(host.serverId);
+  // A skipped job found the deployment already finished; its status was published then.
+  if (status !== "skipped") {
+    await reportDeploymentStatus(dependencies, deploymentId, FINAL_COMMIT_STATES[status]);
+  }
   if (status === "failed") {
     const deployment = getDeployment(dependencies.database, deploymentId);
     await notifyFailedDeployment(dependencies, deployment);
