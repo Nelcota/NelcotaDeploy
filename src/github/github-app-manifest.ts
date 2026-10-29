@@ -25,8 +25,15 @@ export function buildAppManifest(publicUrl: string) {
     setup_url: `${publicUrl}/settings?tab=server`,
     setup_on_update: true,
     public: false,
-    // Statuses: the result of each deployment shows on its commit and pull request.
-    default_permissions: { contents: "read", metadata: "read", statuses: "write" },
+    // Statuses: the result of each deployment shows on its commit and pull request. E-mail
+    // addresses: "Sign in with GitHub" matches the verified e-mail with a panel account.
+    default_permissions: {
+      contents: "read",
+      metadata: "read",
+      statuses: "write",
+      email_addresses: "read",
+    },
+    callback_urls: [`${publicUrl}/api/auth/callback/github`],
     default_events: ["push"],
   };
 }

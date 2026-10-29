@@ -5,7 +5,7 @@ export {
   revokeApiToken,
   verifyApiToken,
 } from "./api-token.service";
-export { getAuth } from "./auth";
+export { configureGitHubLogin, getAuth, isGitHubLoginEnabled } from "./auth";
 export { createFirstAdmin, needsFirstAdmin } from "./first-admin.service";
 export {
   ForbiddenError,

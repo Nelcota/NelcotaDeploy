@@ -7,15 +7,9 @@ import { Button } from "@/web/components/ui/button";
 import { Input } from "@/web/components/ui/input";
 import { Label } from "@/web/components/ui/label";
 
-const TOO_MANY_REQUESTS = 429;
+import { safeRedirectTarget } from "./sign-in-redirect";
 
-/** Only same-site paths are followed after login, never full URLs. */
-function safeRedirectTarget(target: string | undefined): string {
-  if (target == null || target.startsWith("/") === false || target.startsWith("//")) {
-    return "/";
-  }
-  return target;
-}
+const TOO_MANY_REQUESTS = 429;
 
 function signInErrorMessage(status: number): string {
   if (status === TOO_MANY_REQUESTS) {

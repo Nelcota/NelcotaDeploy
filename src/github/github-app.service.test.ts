@@ -10,6 +10,7 @@ import {
   removeGitHubApp,
   saveGitHubApp,
 } from "./github-app.service";
+import { readGitHubLoginCredentials } from "./github-login.service";
 import { GitHubApiError } from "./github.errors";
 
 const CONVERSION = {
@@ -20,6 +21,8 @@ const CONVERSION = {
   owner: { login: "acme" },
   pem: "-----BEGIN RSA PRIVATE KEY-----\nabc\n-----END RSA PRIVATE KEY-----\n",
   webhook_secret: "hook-secret",
+  client_id: "Iv1.abc",
+  client_secret: "client-secret",
 };
 const server = Bun.serve({
   port: 0,
@@ -63,6 +66,7 @@ describe("saveGitHubApp", () => {
     const summary = await saveGitHubApp(database, box, { app: CONVERSION, actor: TEST_ACTOR });
 
     expect(summary.installUrl).toBe("https://github.com/apps/nelcota-deploy/installations/new");
+    expect(summary.loginReady).toBe(true);
     expect(getGitHubApp(database)).toEqual(summary);
     expect(await readGitHubAppCredentials(database, box)).toEqual({
       appId: "42",
@@ -79,6 +83,25 @@ describe("saveGitHubApp", () => {
     await saveGitHubApp(database, box, { app: { ...CONVERSION, id: 43 }, actor: TEST_ACTOR });
 
     expect(getGitHubApp(database)?.id).toBe("43");
+  });
+});
+
+describe("readGitHubLoginCredentials", () => {
+  test("decrypts the OAuth client stored with the app", async () => {
+    const database = openMemoryDatabase();
+    const box = await createTestSecretBox();
+    await saveGitHubApp(database, box, { app: CONVERSION, actor: TEST_ACTOR });
+
+    expect(await readGitHubLoginCredentials(database, box)).toEqual({
+      clientId: "Iv1.abc",
+      clientSecret: "client-secret",
+    });
+  });
+
+  test("returns null without a connected app", async () => {
+    expect(
+      await readGitHubLoginCredentials(openMemoryDatabase(), await createTestSecretBox()),
+    ).toBeNull();
   });
 });
 

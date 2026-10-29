@@ -280,6 +280,13 @@ e pronto:
   concluído, falhou ou cancelado, com link para os logs no painel. Redeploys e rollbacks não mudam o
   status, porque não dizem nada novo sobre o commit.
 
+### Entrar com o GitHub
+
+Com o app conectado, a página de login mostra **Entrar com GitHub**. Ele nunca cria contas: só entra
+quem já tem conta no painel com o mesmo e-mail, e o GitHub precisa informar esse e-mail como
+verificado. Contas desativadas continuam bloqueadas. Apps conectados antes dessa função não têm o
+cliente OAuth: desconecte e conecte o GitHub de novo para ativá-la (e apague o app antigo no GitHub).
+
 Apps criados antes do status pedem uma permissão a mais uma única vez: no GitHub, abra as
 configurações do app → _Permissions_, marque _Commit statuses: Read and write_ e aceite a mudança em
 cada instalação. Enquanto isso, **Configurações → Sistema → GitHub** mostra quais contas faltam, e o

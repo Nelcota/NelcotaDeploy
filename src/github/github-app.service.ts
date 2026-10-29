@@ -18,6 +18,8 @@ const conversionSchema = z.object({
   owner: z.object({ login: z.string().min(1).max(MAX_NAME_LENGTH) }),
   pem: z.string().includes("PRIVATE KEY"),
   webhook_secret: z.string().min(1).nullable(),
+  client_id: z.string().min(1).max(MAX_NAME_LENGTH),
+  client_secret: z.string().min(1),
 });
 
 /** The app GitHub created from the panel's manifest, with its credentials. */
@@ -31,6 +33,8 @@ export type GitHubAppSummary = {
   readonly htmlUrl: string;
   /** Page where the user picks the repositories the app can read. */
   readonly installUrl: string;
+  /** Whether people can sign in with GitHub; apps created before that need reconnecting. */
+  readonly loginReady: boolean;
 };
 
 /** Credentials the server uses to act as the app. */
@@ -46,6 +50,16 @@ function privateKeyContext(appId: string): string {
 
 function webhookSecretContext(appId: string): string {
   return `github-app:${appId}:webhook-secret`;
+}
+
+/**
+ * Encryption context of the app's OAuth client secret.
+ *
+ * @param appId - Id of the GitHub App.
+ * @returns The associated data the secret is bound to.
+ */
+export function clientSecretContext(appId: string): string {
+  return `github-app:${appId}:client-secret`;
 }
 
 /**
@@ -96,6 +110,10 @@ export async function saveGitHubApp(
     app.webhook_secret == null
       ? null
       : await secretBox.encrypt(app.webhook_secret, webhookSecretContext(appId));
+  const encryptedClientSecret = await secretBox.encrypt(
+    app.client_secret,
+    clientSecretContext(appId),
+  );
   database.transaction((transaction) => {
     transaction.delete(tables.githubApps).run();
     transaction
@@ -108,6 +126,8 @@ export async function saveGitHubApp(
         ownerLogin: app.owner.login,
         encryptedPrivateKey,
         encryptedWebhookSecret,
+        clientId: app.client_id,
+        encryptedClientSecret,
         createdAt: new Date().toISOString(),
       })
       .run();
@@ -124,6 +144,7 @@ export async function saveGitHubApp(
     name: app.name,
     ownerLogin: app.owner.login,
     htmlUrl: app.html_url,
+    loginReady: true,
   });
 }
 
@@ -144,10 +165,15 @@ export function getGitHubApp(database: Database): GitHubAppSummary | null {
       name: tables.githubApps.name,
       ownerLogin: tables.githubApps.ownerLogin,
       htmlUrl: tables.githubApps.htmlUrl,
+      clientId: tables.githubApps.clientId,
     })
     .from(tables.githubApps)
     .get();
-  return row == null ? null : summaryOf(row);
+  if (row == null) {
+    return null;
+  }
+  const { clientId, ...app } = row;
+  return summaryOf({ ...app, loginReady: clientId != null });
 }
 
 /**

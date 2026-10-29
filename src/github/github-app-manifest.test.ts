@@ -12,7 +12,9 @@ describe("buildAppManifest", () => {
       contents: "read",
       metadata: "read",
       statuses: "write",
+      email_addresses: "read",
     });
+    expect(manifest.callback_urls).toEqual(["https://deploy.example.com/api/auth/callback/github"]);
     expect(manifest.default_events).toEqual(["push"]);
   });
 

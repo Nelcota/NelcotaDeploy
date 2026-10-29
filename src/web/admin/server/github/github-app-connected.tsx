@@ -58,6 +58,17 @@ export function ConnectedGitHubApp({
         ) : null}
       </div>
       {canEdit ? <GitHubPermissionNotice appUrl={app.htmlUrl} /> : null}
+      <GitHubLoginNote ready={app.loginReady} />
     </div>
+  );
+}
+
+function GitHubLoginNote({ ready }: { readonly ready: boolean }) {
+  return (
+    <p className="text-sm text-muted-foreground">
+      {ready
+        ? "Quem tem conta no painel com o mesmo e-mail verificado no GitHub pode entrar com o GitHub."
+        : "Este app foi criado antes do login com GitHub. Para ativá-lo, desconecte e conecte o GitHub de novo."}
+    </p>
   );
 }
