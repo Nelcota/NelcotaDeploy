@@ -10,7 +10,6 @@ import {
   LoaderCircleIcon,
   type LucideIcon,
   SaveIcon,
-  SettingsIcon,
   Trash2Icon,
   TriangleAlertIcon,
   Undo2Icon,
@@ -68,7 +67,6 @@ function ProjectSettingsPage() {
   return (
     <div className="space-y-6">
       <TabHeader
-        icon={SettingsIcon}
         title="Ajustes do projeto"
         description="Repositório, build e porta. Ao alterar um campo, aparece a opção de salvar; as mudanças valem no próximo deploy."
       />

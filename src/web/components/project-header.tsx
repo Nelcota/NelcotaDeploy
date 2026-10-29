@@ -6,7 +6,6 @@ import {
   ExternalLinkIcon,
   GitBranchIcon,
   GlobeIcon,
-  type LucideIcon,
   PlayIcon,
   RefreshCwIcon,
   RocketIcon,
@@ -150,17 +149,15 @@ function ProjectTabs({ projectId }: { readonly projectId: string }) {
 }
 
 /**
- * Title row of a project tab: the tab's icon, a heading with an optional count, one line of
- * description and the actions on the right.
+ * Title row of a project tab: a heading with an optional count, one line of description and
+ * the actions on the right. No icon here: the selected tab right above already shows it.
  */
 export function TabHeader({
-  icon: Icon,
   title,
   count,
   description,
   actions,
 }: {
-  readonly icon: LucideIcon;
   readonly title: ReactNode;
   /** Number of items listed in the tab; omitted while loading. */
   readonly count?: number | null;
@@ -169,10 +166,7 @@ export function TabHeader({
 }) {
   return (
     <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-      <div className="flex min-w-0 flex-1 items-start gap-3.5">
-        <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-card text-muted-foreground ring-1 ring-border/70">
-          <Icon aria-hidden className="size-[1.15rem]" />
-        </span>
+      <div className="min-w-0 flex-1">
         <div className="min-w-0 space-y-0.5">
           <h2 className="flex items-center gap-2.5 text-xl leading-tight font-semibold tracking-tight">
             {title}

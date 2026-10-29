@@ -280,12 +280,6 @@ function HistoryRow({ deployment }: { readonly deployment: DeploymentItem }) {
       : sha.slice(0, SHORT_SHA_LENGTH);
   return (
     <DeploymentListRow projectId={deployment.projectId} deploymentId={deployment.id}>
-      <span
-        aria-hidden
-        className="hidden size-9 shrink-0 items-center justify-center rounded-lg bg-well text-sm font-semibold uppercase ring-1 ring-border/70 sm:flex"
-      >
-        {deployment.projectName.charAt(0)}
-      </span>
       <div className="min-w-0 flex-1 space-y-1">
         <p className="flex min-w-0 items-baseline gap-2">
           <Link

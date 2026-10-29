@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { ClockIcon, ContainerIcon, RotateCwIcon, ScrollTextIcon } from "lucide-react";
+import { ClockIcon, ContainerIcon, RotateCwIcon } from "lucide-react";
 import { useState } from "react";
 
 import { formatDateTime, formatRelativeTime, pluralize } from "@/shared/format";
@@ -51,7 +51,6 @@ function RuntimeLogsPage() {
 
   const header = (
     <TabHeader
-      icon={ScrollTextIcon}
       title="Logs"
       description={
         details == null || currentDeploymentId == null ? (

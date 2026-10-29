@@ -12,7 +12,6 @@ import {
   PlusIcon,
   SearchIcon,
   Trash2Icon,
-  VariableIcon,
 } from "lucide-react";
 import { useState } from "react";
 import type { z } from "zod";
@@ -112,7 +111,6 @@ function EnvironmentPage() {
   return (
     <>
       <TabHeader
-        icon={VariableIcon}
         title="Variáveis"
         count={variables.data?.length ?? null}
         description={

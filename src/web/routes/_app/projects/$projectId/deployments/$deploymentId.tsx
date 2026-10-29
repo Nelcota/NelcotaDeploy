@@ -14,7 +14,6 @@ import {
   type LucideIcon,
   OctagonXIcon,
   PackageIcon,
-  RocketIcon,
   RotateCwIcon,
   ScrollTextIcon,
   TimerIcon,
@@ -237,7 +236,6 @@ function DeploymentDetailPage() {
       <div className="space-y-3">
         {backLink}
         <TabHeader
-          icon={RocketIcon}
           title={
             <>
               <span>

@@ -98,7 +98,6 @@ function ProjectDeploymentsPage() {
 
   const header = (
     <TabHeader
-      icon={RocketIcon}
       title="Deploys"
       description="Histórico de builds e publicações deste projeto."
       actions={

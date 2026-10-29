@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
-import { ClockIcon, InfoIcon, ListChecksIcon, PlusIcon } from "lucide-react";
+import { InfoIcon, ListChecksIcon, PlusIcon } from "lucide-react";
 import { useState } from "react";
 
 import type { Task } from "@/tasks";
@@ -85,7 +85,6 @@ function TasksPage() {
   return (
     <>
       <TabHeader
-        icon={ClockIcon}
         title="Tasks"
         count={tasksQuery.data == null ? null : tasks.length}
         description="Comandos que rodam dentro do contêiner da aplicação, sob demanda ou agendados."
