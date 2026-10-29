@@ -16,8 +16,8 @@ export type VpsFlavor = "alpine" | "debian" | "ubuntu";
 
 const IMAGES: Record<VpsFlavor, string> = {
   alpine: "docker:29-dind",
-  debian: "debian:12",
-  ubuntu: "ubuntu:24.04",
+  debian: "debian:13",
+  ubuntu: "ubuntu:26.04",
 };
 const PORT_OFFSETS: Record<VpsFlavor, number> = { alpine: 0, debian: 1000, ubuntu: 2000 };
 

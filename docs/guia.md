@@ -340,8 +340,8 @@ Sem Compose: `bun run build`, depois `bun run db:migrate && bun run start` e `bu
 bun run check        # formatação, oxlint, TypeScript, knip e testes
 bun test             # testes unitários e de integração (SQLite em memória, Docker simulado)
 bun run test:docker  # ciclo completo com Docker real: build, health check, start/stop/restart,
-                     # rollback, task e limpeza usando fixtures/hello-app (python:3.13-alpine); e
-                     # VPSs simuladas (Alpine, Debian 12 e Ubuntu 24.04 com sshd) que recebem o
+                     # rollback, task e limpeza usando fixtures/hello-app (python:3.15-alpine); e
+                     # VPSs simuladas (Alpine, Debian 13 e Ubuntu 26.04 com sshd) que recebem o
                      # comando de instalação e um deploy completo por SSH, com roteamento pelo
                      # Traefik
 bun run build        # build de produção
@@ -384,7 +384,7 @@ Guarde também o `NELCOTA_ENCRYPTION_KEY`: sem ele, secrets e tokens do backup s
 
 ## Limitações conhecidas
 
-- O comando de instalação é testado automaticamente em Debian 12 e Ubuntu 24.04 limpos (instalando o
+- O comando de instalação é testado automaticamente em Debian 13 e Ubuntu 26.04 limpos (instalando o
   Docker pelo `get.docker.com`) e em Alpine com o pacote `shadow`. Em outras distribuições pode ser
   preciso instalar o Docker ou o `useradd` à mão antes.
 - O domínio automático (`<slug>.<domínio base>`) usa um único curinga de DNS: com projetos em

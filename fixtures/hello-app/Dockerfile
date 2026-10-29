@@ -1,5 +1,5 @@
 # Minimal app used by the deploy integration test.
-FROM python:3.13-alpine
+FROM python:3.15-alpine
 WORKDIR /srv
 COPY site/ .
 ARG GREETING=hello

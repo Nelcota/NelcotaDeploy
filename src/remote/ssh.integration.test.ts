@@ -80,7 +80,7 @@ beforeAll(async () => {
     `127.0.0.1:${SSH_PORT}:22`,
     "--env",
     `PUBLIC_KEY=${keys.publicKey}`,
-    "alpine:3.22",
+    "alpine:3.24",
     "sh",
     "-c",
     SERVER_SCRIPT,
