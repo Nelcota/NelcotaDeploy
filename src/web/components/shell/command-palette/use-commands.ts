@@ -17,7 +17,7 @@ function pageCommands(navigate: Navigate, permissions: readonly string[]): Comma
     id: `page-${item.to}`,
     group: "Páginas" as const,
     label: item.label,
-    hint: "Página",
+    hint: null,
     icon: item.icon,
     run: async () => await navigate({ to: item.to }),
   }));
@@ -25,7 +25,7 @@ function pageCommands(navigate: Navigate, permissions: readonly string[]): Comma
     id: "page-new-project",
     group: "Páginas" as const,
     label: "Novo projeto",
-    hint: "Criar projeto",
+    hint: null,
     icon: PlusIcon,
     run: async () => await navigate({ to: "/projects/new" }),
   };
@@ -33,9 +33,9 @@ function pageCommands(navigate: Navigate, permissions: readonly string[]): Comma
     (section) => section.permission == null || permissions.includes(section.permission),
   ).map((section) => ({
     id: `settings-${section.tab}`,
-    group: "Páginas" as const,
-    label: `Administração · ${section.label}`,
-    hint: "Administração",
+    group: "Administração" as const,
+    label: section.label,
+    hint: null,
     icon: section.icon,
     run: async () => await navigate({ to: "/settings", search: { tab: section.tab } }),
   }));

@@ -8,8 +8,8 @@ import {
   moveSelection,
 } from "@/web/components/shell/command-palette/command-search";
 
-function command(label: string, hint: string): Command {
-  return { id: label, group: "Páginas", label, hint, icon: BoxesIcon, run: async () => {} };
+function command(label: string, hint: string | null, group: Command["group"] = "Páginas"): Command {
+  return { id: label, group, label, hint, icon: BoxesIcon, run: async () => {} };
 }
 
 describe("filterCommands", () => {
@@ -27,6 +27,22 @@ describe("filterCommands", () => {
     const result = filterCommands(commands, "ADMINISTRACAO");
 
     expect(result.map((item) => item.label)).toEqual(["Usuários"]);
+  });
+
+  test("matches the group name ignoring case and accents", () => {
+    const commands = [command("Usuários", null, "Administração"), command("Painel", null)];
+
+    const result = filterCommands(commands, "administracao");
+
+    expect(result.map((item) => item.label)).toEqual(["Usuários"]);
+  });
+
+  test("matches the label when the command has no hint", () => {
+    const commands = [command("Novo projeto", null), command("Painel", null)];
+
+    const result = filterCommands(commands, "novo");
+
+    expect(result.map((item) => item.label)).toEqual(["Novo projeto"]);
   });
 
   test("returns nothing when no command matches", () => {
