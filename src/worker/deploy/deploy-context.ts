@@ -1,13 +1,10 @@
 import type { Database } from "@/db";
 import type { Deployment } from "@/deployments";
-import type { DockerEngine } from "@/docker";
-import type { GitClient } from "@/git";
-import type { CommandRunner } from "@/process";
 import type { Project } from "@/projects";
 import type { SecretBox } from "@/secrets";
 
-import type { Probes } from "../probes";
 import { DeploymentCancelledError } from "../worker.errors";
+import type { ServerHost } from "../worker.types";
 import type { DeploymentLogWriter } from "./deployment-log-writer";
 
 /** Settings the deploy runner reads from configuration and from the target server. */
@@ -18,8 +15,9 @@ export type DeployRunnerConfig = {
   readonly buildTimeoutInSeconds: number;
   readonly healthCheckTimeoutInSeconds: number;
   readonly imagesKeptPerProject: number;
+  /** Wait after switching the routes, so the proxy applies them before the old container stops. */
+  readonly routingSettleInMs: number;
   readonly traefik: {
-    readonly enabled: boolean;
     readonly httpEntrypoint: string;
     readonly httpsEntrypoint: string;
     readonly certResolver: string;
@@ -32,16 +30,12 @@ export type DeployRunnerConfig = {
  * Everything the deploy runner talks to, all on the server the deployment runs on. Tests
  * replace Docker, git and probes.
  */
-export type DeployRunnerDependencies = {
-  readonly database: Database;
-  /** Runs commands (workspace setup) on that server. */
-  readonly runner: CommandRunner;
-  readonly docker: DockerEngine;
-  readonly git: Pick<GitClient, "checkoutRevision">;
-  readonly secretBox: SecretBox;
-  readonly config: DeployRunnerConfig;
-  readonly probes?: Probes;
-};
+export type DeployRunnerDependencies = Pick<ServerHost, "runner" | "docker" | "git" | "routes"> &
+  Partial<Pick<ServerHost, "probes">> & {
+    readonly database: Database;
+    readonly secretBox: SecretBox;
+    readonly config: DeployRunnerConfig;
+  };
 
 /** Facts learned while deploying that the failure path needs. */
 export class DeployState {

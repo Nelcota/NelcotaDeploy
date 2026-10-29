@@ -62,14 +62,16 @@ async function setup(
       buildTimeoutInSeconds: 60,
       healthCheckTimeoutInSeconds: options.healthTimeout ?? 10,
       imagesKeptPerProject: 2,
+      routingSettleInMs: 0,
       traefik: {
-        enabled: true,
         httpEntrypoint: "web",
         httpsEntrypoint: "websecure",
         certResolver: "le",
         compress: false,
       },
     },
+    // Routing is covered by container-start.test.ts and the end-to-end test.
+    routes: null,
   };
   return { database, docker, secretBox, project, dependencies };
 }
@@ -103,7 +105,9 @@ describe("runDeployment success", () => {
     expect(docker.calls.some((call) => call.startsWith("build nelcota/api:"))).toBe(true);
     expect(docker.containers.size).toBe(1);
   }, 15_000);
+});
 
+describe("runDeployment version switch", () => {
   test("replaces the previous container after the new one is healthy", async () => {
     const { database, docker, project, dependencies } = await setup();
     await runDeployment(dependencies, deploy(database, project.id), new AbortController().signal);
@@ -113,6 +117,18 @@ describe("runDeployment success", () => {
 
     expect(docker.containers.size).toBe(1);
     expect(docker.containers.has(firstContainer ?? "")).toBe(false);
+  }, 20_000);
+
+  test("stops the previous container gracefully before removing it", async () => {
+    const { database, docker, project, dependencies } = await setup();
+    await runDeployment(dependencies, deploy(database, project.id), new AbortController().signal);
+    const [firstContainer = ""] = docker.containers.keys();
+
+    await runDeployment(dependencies, deploy(database, project.id), new AbortController().signal);
+
+    const stop = docker.calls.indexOf(`stop(30s) ${firstContainer}`);
+    expect(stop).toBeGreaterThan(-1);
+    expect(docker.calls.indexOf(`rm ${firstContainer}`)).toBeGreaterThan(stop);
   }, 20_000);
 
   test("passes variables to the container by name and redacts secrets from logs", async () => {

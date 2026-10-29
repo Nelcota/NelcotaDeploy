@@ -4,6 +4,8 @@ import { type DeployRunnerDependencies, errorMessageOf } from "./deploy-context"
 import type { DeploymentLogWriter } from "./deployment-log-writer";
 
 const FAILED_CONTAINER_LOG_LINES = 50;
+/** Time an old container gets to finish in-flight requests after SIGTERM. */
+const STOP_GRACE_IN_SECONDS = 30;
 
 /**
  * Copies the last lines of a failed container into the deployment log, then removes it.
@@ -44,6 +46,8 @@ async function removeContainer(
   logs: DeploymentLogWriter,
 ): Promise<void> {
   try {
+    // The routes no longer point here; a graceful stop lets requests still running finish.
+    await docker.stopContainer(container.id, STOP_GRACE_IN_SECONDS);
     await docker.removeContainer(container.id);
     logs.system(`Removed previous container ${container.name}`);
   } catch (error) {
@@ -69,7 +73,8 @@ async function removeContainersInOrder(
 }
 
 /**
- * Removes the project's containers from earlier deployments, one at a time.
+ * Retires the project's containers from earlier deployments, one at a time, once the routes
+ * point at the new one: stops each old container gracefully, then removes it.
  *
  * @param dependencies - Docker access.
  * @param logs - Deployment log.

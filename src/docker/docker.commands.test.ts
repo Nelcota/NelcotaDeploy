@@ -7,7 +7,7 @@ import {
   managedLabels,
   proxyContainerArgs,
   runContainerArgs,
-  traefikLabels,
+  stopContainerArgs,
 } from "./docker.commands";
 import { InvalidDockerArgumentError } from "./docker.errors";
 
@@ -101,81 +101,13 @@ describe("runContainerArgs", () => {
   });
 });
 
-const TRAEFIK_BASE = {
-  projectSlug: "api",
-  internalPort: 8080,
-  network: "nelcota",
-  httpEntrypoint: "web",
-  httpsEntrypoint: "websecure",
-  certResolver: "letsencrypt",
-  compress: false,
-};
-
-describe("traefikLabels routing", () => {
-  const base = TRAEFIK_BASE;
-
-  test("returns no labels when the project has no domains", () => {
-    expect(traefikLabels({ ...base, domains: [] })).toEqual({});
-  });
-
-  test("routes an HTTPS domain with a certificate and an HTTP redirect", () => {
-    const labels = traefikLabels({
-      ...base,
-      domains: [{ hostname: "api.example.com", httpsEnabled: true }],
-    });
-
-    expect(labels["traefik.http.routers.nelcota-api-0.rule"]).toBe("Host(`api.example.com`)");
-    expect(labels["traefik.http.routers.nelcota-api-0.tls.certresolver"]).toBe("letsencrypt");
-    expect(labels["traefik.http.routers.nelcota-api-0-http.middlewares"]).toBe(
-      "nelcota-https-redirect",
-    );
-    expect(labels["traefik.http.services.nelcota-api.loadbalancer.server.port"]).toBe("8080");
-  });
-
-  test("routes an HTTP-only domain on the web entrypoint", () => {
-    const labels = traefikLabels({
-      ...base,
-      domains: [{ hostname: "api.local.test", httpsEnabled: false }],
-    });
-
-    expect(labels["traefik.http.routers.nelcota-api-0.entrypoints"]).toBe("web");
-    expect(labels["traefik.http.routers.nelcota-api-0.tls"]).toBeUndefined();
-  });
-});
-
-describe("traefikLabels compression", () => {
-  const base = TRAEFIK_BASE;
-
-  test("compresses responses through its own middleware when asked to", () => {
-    const labels = traefikLabels({
-      ...base,
-      compress: true,
-      domains: [{ hostname: "api.example.com", httpsEnabled: true }],
-    });
-
-    expect(labels["traefik.http.routers.nelcota-api-0.middlewares"]).toBe("nelcota-compress");
-    expect(labels["traefik.http.middlewares.nelcota-compress.compress"]).toBe("true");
-    expect(labels["traefik.http.routers.nelcota-api-0-http.middlewares"]).toBe(
-      "nelcota-https-redirect",
-    );
-  });
-
-  test("leaves compression to the proxy entrypoint when not asked to", () => {
-    const labels = traefikLabels({
-      ...base,
-      domains: [{ hostname: "api.example.com", httpsEnabled: true }],
-    });
-
-    expect(labels["traefik.http.middlewares.nelcota-compress.compress"]).toBeUndefined();
-  });
-});
-
 const PROXY_BASE = {
   network: "nelcota",
   httpEntrypoint: "web",
   httpsEntrypoint: "websecure",
   certResolver: "letsencrypt",
   acmeEmail: "ops@example.com",
+  routesDirectory: "/var/lib/nelcota/routes",
 };
 
 describe("proxyContainerArgs", () => {
@@ -188,6 +120,23 @@ describe("proxyContainerArgs", () => {
     expect(args).toContain("--providers.docker.constraints=Label(`io.nelcota.managed`,`true`)");
     expect(args).toContain("--certificatesresolvers.letsencrypt.acme.email=ops@example.com");
   });
+
+  test("reads application routes from the route directory, read-only", () => {
+    const args = proxyContainerArgs(PROXY_BASE);
+
+    expect(args).toContain("/var/lib/nelcota/routes:/routes:ro");
+    expect(args).toContain("--providers.file.directory=/routes");
+    expect(args).toContain("io.nelcota.proxy-version=2");
+  });
+
+  test.each([["relative"], ["/var/lib/../etc"], ["/var/lib/nelcota/routes:/etc"]])(
+    "throws InvalidDockerArgumentError for the route directory %p",
+    (routesDirectory) => {
+      expect(() => proxyContainerArgs({ ...PROXY_BASE, routesDirectory })).toThrow(
+        InvalidDockerArgumentError,
+      );
+    },
+  );
 
   test("creates the certificate account without an e-mail when none is set", () => {
     const args = proxyContainerArgs({ ...PROXY_BASE, acmeEmail: null });
@@ -208,20 +157,29 @@ describe("proxyContainerArgs", () => {
   });
 });
 
-describe("traefikLabels validation", () => {
-  const base = TRAEFIK_BASE;
-
-  test("throws InvalidDockerArgumentError for a hostname that could break the rule", () => {
-    const labels = () =>
-      traefikLabels({ ...base, domains: [{ hostname: "a`) || Host(`b", httpsEnabled: false }] });
-
-    expect(labels).toThrow(InvalidDockerArgumentError);
+describe("stopContainerArgs", () => {
+  test("leaves the grace period to Docker when none is given", () => {
+    expect(stopContainerArgs("abc123")).toEqual(["container", "stop", "abc123"]);
   });
 
-  test.each([0, 65_536, 1.5])("throws InvalidDockerArgumentError for port %p", (internalPort) => {
-    const labels = () =>
-      traefikLabels({ ...base, internalPort, domains: [{ hostname: "a.b", httpsEnabled: false }] });
+  test("gives the app the grace period to finish", () => {
+    expect(stopContainerArgs("abc123", 30)).toEqual([
+      "container",
+      "stop",
+      "--time",
+      "30",
+      "abc123",
+    ]);
+  });
 
-    expect(labels).toThrow(InvalidDockerArgumentError);
+  test.each([-1, 301, 1.5, Number.NaN])(
+    "throws InvalidDockerArgumentError for a grace period of %p",
+    (grace) => {
+      expect(() => stopContainerArgs("abc123", grace)).toThrow(InvalidDockerArgumentError);
+    },
+  );
+
+  test("throws InvalidDockerArgumentError for an id that could be read as an option", () => {
+    expect(() => stopContainerArgs("--all")).toThrow(InvalidDockerArgumentError);
   });
 });

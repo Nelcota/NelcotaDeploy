@@ -3,6 +3,10 @@ import { eq } from "drizzle-orm";
 import { type Database, tables } from "@/db";
 import { type ContainerAction, getDeployment } from "@/deployments";
 import { type DockerEngine, LABELS } from "@/docker";
+import type { RouteFiles } from "@/routing";
+
+/** What cleaning a project off one server needs: its Docker and its proxy's route files. */
+type ProjectServer = { readonly docker: DockerEngine; readonly routes: RouteFiles | null };
 
 /**
  * Starts, stops or restarts the container of a deployment.
@@ -34,16 +38,19 @@ export async function runContainerAction(
 }
 
 /**
- * Removes every container and image of a project from one server.
+ * Removes a project's routes, containers and images from one server. The routes go first, so
+ * the proxy never sends requests to a container that is being removed.
  *
- * @param docker - Docker of that server.
+ * @param server - Docker and route files of that server.
  * @param projectId - Project whose resources go.
  * @returns How many containers and images were removed.
+ * @throws {RouteFileError} When the routes cannot be removed.
  */
 export async function removeProjectResources(
-  docker: DockerEngine,
+  { docker, routes }: ProjectServer,
   projectId: string,
 ): Promise<{ containers: number; images: number }> {
+  await routes?.remove(projectId);
   const containers = (await docker.listManagedContainers()).filter(
     (container) => container.labels[LABELS.projectId] === projectId,
   );
@@ -69,17 +76,17 @@ export async function removeProjectResources(
  * and the worker removes containers of deleted projects when that server is back.
  *
  * @param database - Database.
- * @param dockers - Docker of each server the project ran on.
+ * @param servers - Docker and route files of each server the project ran on.
  * @param projectId - Project being deleted.
  * @returns How many containers and images were removed, and the errors of unreachable servers.
  */
 export async function runProjectCleanup(
   database: Database,
-  dockers: readonly DockerEngine[],
+  servers: readonly ProjectServer[],
   projectId: string,
 ): Promise<{ containers: number; images: number; failures: unknown[] }> {
   const results = await Promise.allSettled(
-    dockers.map(async (docker) => await removeProjectResources(docker, projectId)),
+    servers.map(async (server) => await removeProjectResources(server, projectId)),
   );
   database.delete(tables.projects).where(eq(tables.projects.id, projectId)).run();
   const removed = { containers: 0, images: 0, failures: [] as unknown[] };

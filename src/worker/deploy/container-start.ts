@@ -1,60 +1,63 @@
 import { transitionDeployment } from "@/deployments";
-import { containerNameFor, managedLabels, traefikLabels } from "@/docker";
+import { containerNameFor, managedLabels } from "@/docker";
 import { listProjectDomains } from "@/domains";
+import { projectRouteConfig } from "@/routing";
 import { getSystemSettings } from "@/settings";
 
-import type { DeployContext, DeployRunnerDependencies } from "./deploy-context";
+import type { DeployContext, DeployRunnerConfig, DeployRunnerDependencies } from "./deploy-context";
 
-type ProjectDomain = ReturnType<typeof listProjectDomains>[number];
-
-function containerLabels(
-  dependencies: DeployRunnerDependencies,
-  context: DeployContext,
-  domains: readonly ProjectDomain[],
-): Record<string, string> {
-  const { config } = dependencies;
-  const { deployment, project } = context;
-  const managed = managedLabels({
-    projectId: project.id,
-    projectSlug: project.slug,
-    deploymentId: deployment.id,
-  });
-  if (config.traefik.enabled === false) {
-    return managed;
-  }
-  return {
-    ...managed,
-    ...traefikLabels({
-      projectSlug: project.slug,
-      domains,
-      internalPort: project.internalPort,
-      network: config.network,
-      httpEntrypoint: config.traefik.httpEntrypoint,
-      httpsEntrypoint: config.traefik.httpsEntrypoint,
-      certResolver: config.traefik.certResolver,
-      compress: config.traefik.compress,
-    }),
-  };
-}
-
-function logRouting(
-  dependencies: DeployRunnerDependencies,
-  context: DeployContext,
-  domains: readonly ProjectDomain[],
-): void {
+/**
+ * Points the project's routes at the new container, alone, once it is healthy. Requests that
+ * already reached the old container finish there; new ones go to the new container.
+ *
+ * @param dependencies - Database, route files and settings.
+ * @param context - Deployment being run.
+ * @param containerName - The healthy new container.
+ * @throws {RouteFileError} When the routes cannot be written on the server.
+ * @throws {InvalidRouteError} When a hostname or name could not go into the routes.
+ */
+export async function routeTrafficTo(
+  dependencies: Pick<DeployRunnerDependencies, "database" | "routes"> & {
+    readonly config: Pick<DeployRunnerConfig, "routingSettleInMs" | "traefik">;
+  },
+  context: Pick<DeployContext, "project" | "logs">,
+  containerName: string,
+): Promise<void> {
+  const { database, routes, config } = dependencies;
+  const { project, logs } = context;
+  const domains = listProjectDomains(database, project.id, getSystemSettings(database));
   if (domains.length === 0) {
+    await routes?.remove(project.id);
     return;
   }
   const hostnames = domains.map((domain) => domain.hostname).join(", ");
-  if (dependencies.config.traefik.enabled) {
-    context.logs.system(`Routing ${hostnames}`);
+  if (routes == null) {
+    logs.system(`Proxy disabled; domains not routed: ${hostnames}`, "warn");
     return;
   }
-  context.logs.system(`Proxy disabled; domains not routed: ${hostnames}`, "warn");
+  await routes.write(
+    project.id,
+    projectRouteConfig({
+      projectSlug: project.slug,
+      domains,
+      containerName,
+      internalPort: project.internalPort,
+      entrypoints: {
+        http: config.traefik.httpEntrypoint,
+        https: config.traefik.httpsEntrypoint,
+        certResolver: config.traefik.certResolver,
+      },
+      compress: config.traefik.compress,
+    }),
+  );
+  logs.system(`Routing ${hostnames} to ${containerName}`);
+  // The proxy applies new routes after a short delay; the old container must still answer.
+  await Bun.sleep(config.routingSettleInMs);
 }
 
 /**
- * Starts the new container next to the running one, attached to the proxy network.
+ * Starts the new container next to the running one, attached to the proxy network. It gets
+ * no traffic until {@link routeTrafficTo} switches the routes to it.
  *
  * @param dependencies - Database, Docker and settings.
  * @param context - Deployment being run.
@@ -90,18 +93,20 @@ export async function startContainer(
     // Left behind by a previous attempt of this same deployment that crashed.
     await docker.removeContainer(containerName);
   }
-  const domains = listProjectDomains(database, project.id, getSystemSettings(database));
   context.state.useContainer(containerName);
   await docker.runContainer(
     {
       containerName,
       imageTag: release.imageTag,
       network: config.network,
-      labels: containerLabels(dependencies, context, domains),
+      labels: managedLabels({
+        projectId: project.id,
+        projectSlug: project.slug,
+        deploymentId: deployment.id,
+      }),
       environmentKeys: Object.keys(release.runtimeValues),
     },
     release.runtimeValues,
   );
-  logRouting(dependencies, context, domains);
   return containerName;
 }

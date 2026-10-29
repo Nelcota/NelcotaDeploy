@@ -9,7 +9,7 @@ import { readRepositoryToken } from "@/projects";
 import { createRedactor } from "@/secrets";
 
 import { networkProbes } from "../probes";
-import { startContainer } from "./container-start";
+import { routeTrafficTo, startContainer } from "./container-start";
 import {
   assertNotCancelled,
   type DeployContext,
@@ -65,6 +65,7 @@ export async function deploy(
     buildConfigHash: reused == null ? buildConfigHash : null,
   });
   await checkHealth(dependencies, running, containerName);
+  await routeTrafficTo(dependencies, running, containerName);
 }
 
 /** A token saved on the project wins; otherwise the GitHub App provides one when installed. */

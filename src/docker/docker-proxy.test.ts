@@ -11,10 +11,11 @@ const OPTIONS = {
   httpsEntrypoint: "websecure",
   certResolver: "letsencrypt",
   acmeEmail: null,
+  routesDirectory: "/var/lib/nelcota/routes",
 };
 
 /** Answers `container inspect` with the given state and records every command. */
-function fakeDocker(state: "running" | "stopped" | "missing", failRun = false) {
+function fakeDocker(state: "running" | "stopped" | "missing" | "outdated", failRun = false) {
   const commands: string[] = [];
   const reply = (exitCode: number, stdout = ""): ProcessResult => ({
     exitCode,
@@ -23,12 +24,17 @@ function fakeDocker(state: "running" | "stopped" | "missing", failRun = false) {
     timedOut: false,
     aborted: false,
   });
+  const inspectReplies = {
+    running: reply(0, "true 2\n"),
+    stopped: reply(0, "false 2\n"),
+    // Proxies created before route files carry no version label.
+    outdated: reply(0, "true <no value>\n"),
+    missing: reply(1),
+  };
   const runner: CommandRunner = async (command) => {
     commands.push(command.slice(1, 3).join(" "));
     if (command[2] === "inspect") {
-      return await Promise.resolve(
-        state === "missing" ? reply(1) : reply(0, state === "running" ? "true\n" : "false\n"),
-      );
+      return await Promise.resolve(inspectReplies[state]);
     }
     return await Promise.resolve(reply(failRun ? 1 : 0));
   };
@@ -58,6 +64,14 @@ describe("ensureProxy", () => {
     await ensureProxy(docker.runner, "docker", OPTIONS);
 
     expect(docker.commands).toEqual(["container inspect", "run --detach"]);
+  });
+
+  test("replaces a proxy created with older settings", async () => {
+    const docker = fakeDocker("outdated");
+
+    await ensureProxy(docker.runner, "docker", OPTIONS);
+
+    expect(docker.commands).toEqual(["container inspect", "container rm", "run --detach"]);
   });
 
   test("throws DockerCommandError when docker cannot create it", async () => {

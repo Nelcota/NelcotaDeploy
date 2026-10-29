@@ -1,6 +1,12 @@
 import { type CommandRunner, failureReason } from "@/process";
 
-import { PROXY_CONTAINER_NAME, proxyContainerArgs, type ProxyOptions } from "./docker.commands";
+import {
+  LABELS,
+  PROXY_CONTAINER_NAME,
+  PROXY_VERSION,
+  proxyContainerArgs,
+  type ProxyOptions,
+} from "./docker.commands";
 import { DockerCommandError } from "./docker.errors";
 
 const INSPECT_TIMEOUT_IN_MS = 30_000;
@@ -22,8 +28,13 @@ async function runChecked(
 }
 
 /**
- * Starts a server's reverse proxy (Traefik with HTTPS) unless it already runs. Its label
- * marks it as the proxy, so the platform never mistakes it for an application container.
+ * Starts a server's reverse proxy (Traefik with HTTPS) unless it already runs with the
+ * current settings. Its label marks it as the proxy, so the platform never mistakes it for an
+ * application container.
+ *
+ * @remarks
+ * A proxy created with older settings is replaced, which interrupts the server's sites for
+ * the few seconds the new one takes to start.
  *
  * @param runner - Reaches the server.
  * @param binary - Docker CLI executable on that server.
@@ -35,11 +46,22 @@ export async function ensureProxy(
   binary: string,
   options: ProxyOptions,
 ): Promise<void> {
+  const format = `{{.State.Running}} {{index .Config.Labels "${LABELS.proxyVersion}"}}`;
   const inspect = await runner(
-    [binary, "container", "inspect", "--format", "{{.State.Running}}", PROXY_CONTAINER_NAME],
+    [binary, "container", "inspect", "--format", format, PROXY_CONTAINER_NAME],
     { timeoutInMs: INSPECT_TIMEOUT_IN_MS },
   );
-  if (inspect.exitCode === 0 && inspect.stdout.trim() === "true") {
+  const [running, version] = inspect.stdout.trim().split(" ");
+  if (inspect.exitCode === 0 && version !== PROXY_VERSION) {
+    await runChecked(
+      runner,
+      [binary, "container", "rm", "--force", PROXY_CONTAINER_NAME],
+      START_TIMEOUT_IN_MS,
+    );
+    await runChecked(runner, [binary, ...proxyContainerArgs(options)], START_TIMEOUT_IN_MS);
+    return;
+  }
+  if (inspect.exitCode === 0 && running === "true") {
     return;
   }
   if (inspect.exitCode === 0) {

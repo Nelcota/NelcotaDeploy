@@ -13,9 +13,12 @@ import type { Job } from "@/jobs";
 import { runContainerAction, runProjectCleanup } from "./container-action-runner";
 import type { DeployRunnerConfig, DeployRunnerDependencies } from "./deploy/deploy-context";
 import { runDeployment } from "./deploy/deploy-runner";
-import type { ServerHost } from "./servers/server-hosts";
 import { runTaskExecution } from "./task-runner";
-import type { WorkerDependencies } from "./worker.types";
+import type { ServerHost, WorkerDependencies } from "./worker.types";
+
+// Traefik applies provider changes after a 2 s throttle; a little more lets it switch to the
+// new container before the old one stops.
+const ROUTING_SETTLE_IN_MS = 3000;
 
 /** What a job needs from the worker running it. */
 export type JobRun = {
@@ -32,9 +35,8 @@ function deployRunnerConfig(config: AppConfig, host: ServerHost): DeployRunnerCo
     buildTimeoutInSeconds: config.BUILD_TIMEOUT_SECONDS,
     healthCheckTimeoutInSeconds: config.HEALTH_CHECK_TIMEOUT_SECONDS,
     imagesKeptPerProject: config.IMAGES_KEPT_PER_PROJECT,
+    routingSettleInMs: ROUTING_SETTLE_IN_MS,
     traefik: {
-      // Servers the platform set up always run its proxy; the local one only with Compose.
-      enabled: config.TRAEFIK_ENABLED || host.platformProxy,
       httpEntrypoint: config.TRAEFIK_HTTP_ENTRYPOINT,
       httpsEntrypoint: config.TRAEFIK_HTTPS_ENTRYPOINT,
       certResolver: config.TRAEFIK_CERT_RESOLVER,
@@ -55,6 +57,7 @@ function deployRunnerDependencies(
     probes: host.probes,
     secretBox: dependencies.secretBox,
     config: deployRunnerConfig(dependencies.config, host),
+    routes: host.routes,
   };
 }
 
@@ -171,7 +174,7 @@ async function runProjectCleanupJob(dependencies: WorkerDependencies, job: Job):
   const hosts = dependencies.hosts.hostsOf(dependencies.database, serverIds);
   const { failures, ...removed } = await runProjectCleanup(
     dependencies.database,
-    hosts.map((host) => host.docker),
+    hosts,
     job.projectId,
   );
   for (const failure of failures) {

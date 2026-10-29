@@ -102,7 +102,7 @@ export async function finishProjectMoves(
         return;
       }
       const removed = await removeProjectResources(
-        dependencies.hosts.hostFor(previous).docker,
+        dependencies.hosts.hostFor(previous),
         leftover.projectId,
       );
       dependencies.logger.info(

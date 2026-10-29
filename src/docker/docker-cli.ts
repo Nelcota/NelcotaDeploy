@@ -8,6 +8,7 @@ import {
   LABELS,
   runContainerArgs,
   type RunContainerOptions,
+  stopContainerArgs,
 } from "./docker.commands";
 import { DockerCommandError, UnmanagedResourceError } from "./docker.errors";
 import {
@@ -19,6 +20,7 @@ import {
 
 const QUICK_COMMAND_TIMEOUT_IN_MS = 30_000;
 const STOP_TIMEOUT_IN_MS = 60_000;
+const MS_PER_SECOND = 1000;
 
 /** Callback for streamed command output. */
 export type OutputHandler = (line: string, stream: OutputStream) => void;
@@ -290,16 +292,20 @@ export class DockerCli {
   }
 
   /**
-   * Stops a platform container.
+   * Stops a platform container: SIGTERM, then SIGKILL once the grace period ends.
    *
    * @param reference - Name or id.
+   * @param graceInSeconds - Time the app gets to finish, between 0 and 300; Docker's default
+   *   (10 s) when omitted.
    * @throws {UnmanagedResourceError} When the container is not managed by the platform.
+   * @throws {InvalidDockerArgumentError} When the grace period is out of range.
    */
-  async stopContainer(reference: string): Promise<void> {
+  async stopContainer(reference: string, graceInSeconds?: number): Promise<void> {
     const info = await this.#assertManaged(reference);
-    await this.#runChecked(["container", "stop", info.id], "stop", {
-      timeoutInMs: STOP_TIMEOUT_IN_MS,
-    });
+    const args = stopContainerArgs(info.id, graceInSeconds);
+    // The command itself waits for the grace period, so its timeout must outlast it.
+    const timeoutInMs = STOP_TIMEOUT_IN_MS + (graceInSeconds ?? 0) * MS_PER_SECOND;
+    await this.#runChecked(args, "stop", { timeoutInMs });
   }
 
   /**

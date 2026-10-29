@@ -50,7 +50,7 @@ export async function createFixtureEnvironment(network: string, cleanups: Cleanu
     .where(eq(tables.projects.id, project.id))
     .run();
   cleanups.push(async () => {
-    await runProjectCleanup(database, [docker], project.id);
+    await runProjectCleanup(database, [{ docker, routes: null }], project.id);
     await removeDockerNetwork(network);
   });
   const workspaceDir = await createTemporaryDirectory("nelcota-workspaces-", cleanups);
@@ -66,14 +66,16 @@ export async function createFixtureEnvironment(network: string, cleanups: Cleanu
       buildTimeoutInSeconds: BUILD_TIMEOUT_IN_SECONDS,
       healthCheckTimeoutInSeconds: HEALTH_CHECK_TIMEOUT_IN_SECONDS,
       imagesKeptPerProject: IMAGES_KEPT_PER_PROJECT,
+      routingSettleInMs: 0,
       traefik: {
-        enabled: false,
         httpEntrypoint: "web",
         httpsEntrypoint: "websecure",
         certResolver: "le",
         compress: false,
       },
     },
+    // No proxy runs in this test; the container is health checked directly.
+    routes: null,
   };
   return { database, docker, secretBox, project, actor: TEST_ACTOR, dependencies };
 }

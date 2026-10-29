@@ -1,9 +1,11 @@
 import type { AppConfig } from "@/config";
 import { ensureProxy } from "@/docker";
 import { isPublicIpAddress, lookupWithTimeout } from "@/domains";
-import type { Server, ServerCheck } from "@/servers";
+import { sharedRouteConfig } from "@/routing";
+import { REMOTE_ROUTES_DIR, type Server, type ServerCheck } from "@/servers";
 
-import { REMOTE_DOCKER_BINARY, type ServerHost } from "./server-hosts";
+import type { ServerHost } from "../worker.types";
+import { REMOTE_DOCKER_BINARY } from "./server-hosts";
 
 const COMMAND_TIMEOUT_IN_MS = 10_000;
 const PROXY_HTTP_PORT = 80;
@@ -50,13 +52,7 @@ async function detectPublicAddress(server: Server, host: ServerHost): Promise<st
  */
 async function prepareRemoteServer(config: AppConfig, host: ServerHost): Promise<void> {
   await host.docker.ensureNetwork(config.DOCKER_NETWORK);
-  await ensureProxy(host.runner, REMOTE_DOCKER_BINARY, {
-    network: config.DOCKER_NETWORK,
-    httpEntrypoint: config.TRAEFIK_HTTP_ENTRYPOINT,
-    httpsEntrypoint: config.TRAEFIK_HTTPS_ENTRYPOINT,
-    certResolver: config.TRAEFIK_CERT_RESOLVER,
-    acmeEmail: config.ACME_EMAIL ?? null,
-  });
+  await ensureRouting(config, host);
   if ((await host.probes.tcp("127.0.0.1", PROXY_HTTP_PORT)) === false) {
     throw new Error(
       "The SSH account cannot open tunnels (AllowTcpForwarding); run the install command again",
@@ -67,6 +63,23 @@ async function prepareRemoteServer(config: AppConfig, host: ServerHost): Promise
 function failedStatus(server: Server): ServerCheck["status"] {
   // A server that never worked stays pending: the install command probably has not run yet.
   return server.status === "pending" && server.lastSeenAt == null ? "pending" : "unreachable";
+}
+
+/**
+ * Keeps a remote server's proxy current: writes the shared routes first, which also creates
+ * the route directory with the panel's account as owner, then starts or replaces the proxy.
+ */
+async function ensureRouting(config: AppConfig, host: ServerHost): Promise<void> {
+  // Routes on servers the platform set up compress responses themselves.
+  await host.routes?.writeShared(sharedRouteConfig(true));
+  await ensureProxy(host.runner, REMOTE_DOCKER_BINARY, {
+    network: config.DOCKER_NETWORK,
+    httpEntrypoint: config.TRAEFIK_HTTP_ENTRYPOINT,
+    httpsEntrypoint: config.TRAEFIK_HTTPS_ENTRYPOINT,
+    certResolver: config.TRAEFIK_CERT_RESOLVER,
+    acmeEmail: config.ACME_EMAIL ?? null,
+    routesDirectory: REMOTE_ROUTES_DIR,
+  });
 }
 
 /**
@@ -93,7 +106,14 @@ export async function checkServer(
         dockerVersion: null,
       };
     }
-    if (server.kind === "local" || server.status === "ready") {
+    if (server.kind === "local") {
+      // The panel's proxy compresses on its entrypoint, so its routes do not.
+      await host.routes?.writeShared(sharedRouteConfig(false));
+      return { status: "ready", message: null, dockerVersion };
+    }
+    if (server.status === "ready") {
+      // Cheap when nothing changed; replaces a proxy left by an older version of the panel.
+      await ensureRouting(config, host);
       return { status: "ready", message: null, dockerVersion };
     }
     await prepareRemoteServer(config, host);

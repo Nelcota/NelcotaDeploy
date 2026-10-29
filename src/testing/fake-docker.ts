@@ -113,8 +113,12 @@ export class FakeDocker implements DockerEngine {
     await this.#setRunning(reference, true, "start");
   }
 
-  async stopContainer(reference: string): Promise<void> {
-    await this.#setRunning(reference, false, "stop");
+  async stopContainer(reference: string, graceInSeconds?: number): Promise<void> {
+    await this.#setRunning(
+      reference,
+      false,
+      graceInSeconds == null ? "stop" : `stop(${graceInSeconds}s)`,
+    );
   }
 
   async restartContainer(reference: string): Promise<void> {

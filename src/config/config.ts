@@ -66,6 +66,8 @@ const configSchema = z.object({
   TRAEFIK_HTTPS_ENTRYPOINT: z.string().min(1).default("websecure"),
   TRAEFIK_CERT_RESOLVER: z.string().min(1).default("letsencrypt"),
   TRAEFIK_ENABLED: booleanFromString,
+  // Directory, shared with the panel's proxy, where the worker writes application routes.
+  TRAEFIK_ROUTES_DIR: z.string().trim().min(1).optional(),
   // Let's Encrypt account e-mail for the proxies the platform starts on other servers.
   ACME_EMAIL: z.union([z.email(), z.literal("").transform(() => undefined)]).optional(),
   WORKER_CONCURRENCY: boundedInteger(WORKER_CONCURRENCY_RANGE),

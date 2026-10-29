@@ -1,69 +1,31 @@
 import type { AppConfig } from "@/config";
 import type { Database } from "@/db";
-import { DockerCli, type DockerEngine } from "@/docker";
+import { DockerCli } from "@/docker";
 import { GitClient } from "@/git";
-import { type CommandRunner, runProcess } from "@/process";
 import { createRemoteRunner, SshConnection } from "@/remote";
-import { getServer, listServers, REMOTE_WORKSPACE_DIR, type Server } from "@/servers";
+import { RouteFiles } from "@/routing";
+import {
+  getServer,
+  listServers,
+  LOCAL_SERVER_ID,
+  REMOTE_ROUTES_DIR,
+  REMOTE_WORKSPACE_DIR,
+  type Server,
+} from "@/servers";
 
-import { networkProbes, type Probes } from "../probes";
+import type { ServerHost } from "../worker.types";
+import { createLocalHost } from "./local-host";
 import { tunnelProbes } from "./tunnel-probes";
 
 /** Docker binary on servers the install script prepared. */
 export const REMOTE_DOCKER_BINARY = "docker";
 const REMOTE_GIT_BINARY = "git";
 
-/** Everything the worker uses to work on one server, wherever it is. */
-export type ServerHost = {
-  readonly serverId: string;
-  /** Runs commands on the server. */
-  readonly runner: CommandRunner;
-  readonly docker: DockerEngine;
-  readonly git: Pick<GitClient, "checkoutRevision">;
-  /** Health probes that reach containers on the server's Docker network. */
-  readonly probes: Probes;
-  /** Where builds run on the server; its filesystem is the disk reported for the server. */
-  readonly workspaceDir: string;
-  /**
-   * Whether the platform runs this server's proxy itself (servers reached over SSH). That
-   * proxy always routes, and does not compress on its entrypoint like the panel's own does,
-   * so application containers bring their own compression middleware.
-   */
-  readonly platformProxy: boolean;
-  /** Opens the connection now; does nothing for the local host. */
-  readonly connect: () => Promise<void>;
-  /** Host key the server presented on the last connection; null for the local host. */
-  readonly hostKeyFingerprint: () => string | null;
-};
-
 type RemoteEntry = {
   readonly key: string;
   readonly host: ServerHost;
   readonly dispose: () => void;
 };
-
-/**
- * Builds the host for the server the worker runs on.
- *
- * @param config - Worker configuration.
- * @param serverId - Id of the panel's own server.
- * @returns The local host.
- */
-export function createLocalHost(config: AppConfig, serverId: string): ServerHost {
-  return {
-    serverId,
-    runner: runProcess,
-    docker: new DockerCli(config.DOCKER_BINARY),
-    git: new GitClient(config.GIT_BINARY),
-    probes: networkProbes,
-    workspaceDir: config.WORKSPACE_DIR,
-    platformProxy: false,
-    connect: async () => {
-      await Promise.resolve();
-    },
-    hostKeyFingerprint: () => null,
-  };
-}
 
 // The host key is not part of the key: a connection pins the first key it sees by itself, so
 // replacing it when that key is stored would only break commands running on it.
@@ -83,11 +45,14 @@ export class ServerHosts implements Disposable {
   readonly #remotes = new Map<string, RemoteEntry>();
 
   /**
-   * @param local - Host of the panel's own server.
+   * Creates the host of the panel's own server; remote ones are created on first use.
+   *
+   * @param config - Worker configuration.
    * @param privateKey - The panel's SSH private key.
+   * @throws {InvalidConfigError} When the proxy is enabled without a route directory.
    */
-  constructor(local: ServerHost, privateKey: string) {
-    this.#local = local;
+  constructor(config: AppConfig, privateKey: string) {
+    this.#local = createLocalHost(config, LOCAL_SERVER_ID);
     this.#privateKey = privateKey;
   }
 
@@ -173,6 +138,7 @@ export class ServerHosts implements Disposable {
       probes: tunnelProbes(connection),
       workspaceDir: REMOTE_WORKSPACE_DIR,
       platformProxy: true,
+      routes: new RouteFiles(runner, REMOTE_ROUTES_DIR),
       connect: async () => await connection.connect(),
       hostKeyFingerprint: () => connection.hostKeyFingerprint,
     };
