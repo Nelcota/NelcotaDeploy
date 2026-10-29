@@ -62,7 +62,21 @@ function pagesFor(projectId: string, deploymentId: string) {
     { name: "admin-sistema", path: "/settings?tab=server", signedIn: true },
     { name: "admin-tokens", path: "/settings?tab=tokens", signedIn: true },
     { name: "admin-auditoria", path: "/settings?tab=audit", signedIn: true },
+    ...dialogsFor(project),
   ];
+}
+
+/** Modals, opened by clicking the button named in `opens` on their page. */
+function dialogsFor(project: string) {
+  return [
+    ["modal-adicionar-servidor", "/settings?tab=servers", "Adicionar servidor"],
+    ["modal-remover-servidor", "/settings?tab=servers", "Remover"],
+    ["modal-novo-token", "/settings?tab=tokens", "Novo token"],
+    ["modal-novo-usuario", "/settings?tab=users", "Novo usuário"],
+    ["modal-nova-variavel", `${project}/environment`, "Nova variável"],
+    ["modal-importar-env", `${project}/environment`, "Importar .env"],
+    ["modal-nova-task", `${project}/tasks`, "Nova task"],
+  ].map(([name = "", path = "", opens = ""]) => ({ name, path, signedIn: true, opens }));
 }
 
 async function seed(environment: Record<string, string>) {
@@ -129,7 +143,14 @@ type PageEntry = ReturnType<typeof pagesFor>[number];
 async function capture(page: Page, directory: string, entry: PageEntry): Promise<void> {
   await page.goto(`${BASE_URL}${entry.path}`);
   await page.waitForTimeout(SETTLE_DELAY_IN_MS);
-  await page.screenshot({ path: join(directory, `${entry.name}.png`), fullPage: true });
+  const opens = "opens" in entry ? entry.opens : null;
+  if (opens != null) {
+    await page.getByRole("button", { name: opens, exact: true }).first().click();
+    await page.getByRole("dialog").or(page.getByRole("alertdialog")).first().waitFor();
+    await page.waitForTimeout(SETTLE_DELAY_IN_MS);
+  }
+  // A modal sits over the viewport, so it is shot as the user sees it.
+  await page.screenshot({ path: join(directory, `${entry.name}.png`), fullPage: opens == null });
 }
 
 async function accessibilityFindings(page: Page, entry: PageEntry, theme: Theme) {
