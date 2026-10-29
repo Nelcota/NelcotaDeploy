@@ -1,3 +1,5 @@
+import { KeyRoundIcon } from "lucide-react";
+
 import { CopyButton } from "@/web/components/layout/copy-button";
 import { Button } from "@/web/components/ui/button";
 import {
@@ -31,7 +33,7 @@ export function CreatedTokenDialog({
         onInteractOutside={(event) => event.preventDefault()}
         onEscapeKeyDown={(event) => event.preventDefault()}
       >
-        <DialogHeader>
+        <DialogHeader icon={<KeyRoundIcon />}>
           <DialogTitle>Copie o token agora</DialogTitle>
           <DialogDescription>
             Ele não será exibido novamente. Guarde-o em um gerenciador de senhas.

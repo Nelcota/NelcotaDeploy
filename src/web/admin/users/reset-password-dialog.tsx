@@ -1,4 +1,5 @@
 import { useForm } from "@tanstack/react-form";
+import { LockKeyholeIcon } from "lucide-react";
 import { z } from "zod";
 
 import { PASSWORD_MIN_LENGTH, passwordSchema } from "@/shared/schemas/user.schema";
@@ -44,7 +45,7 @@ export function ResetPasswordDialog({
   return (
     <Dialog open onOpenChange={(open) => (open ? undefined : onClose())}>
       <DialogContent>
-        <DialogHeader>
+        <DialogHeader icon={<LockKeyholeIcon />}>
           <DialogTitle>Redefinir senha de {user.name}</DialogTitle>
           <DialogDescription>As sessões abertas desse usuário serão encerradas.</DialogDescription>
         </DialogHeader>

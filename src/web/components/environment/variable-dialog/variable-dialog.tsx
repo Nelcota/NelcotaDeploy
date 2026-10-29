@@ -1,4 +1,4 @@
-import { LoaderCircleIcon } from "lucide-react";
+import { LoaderCircleIcon, VariableIcon } from "lucide-react";
 
 import type { EnvironmentVariableView } from "@/environments";
 import { Button } from "@/web/components/ui/button";
@@ -62,7 +62,7 @@ export function VariableDialog({
 
 function VariableDialogHeader({ variable }: { readonly variable: EnvironmentVariableView | null }) {
   return (
-    <DialogHeader>
+    <DialogHeader icon={<VariableIcon />}>
       <DialogTitle>{variable == null ? "Nova variável" : `Editar ${variable.key}`}</DialogTitle>
       <DialogDescription>
         O nome vira maiúsculo automaticamente; use letras, números e _.
