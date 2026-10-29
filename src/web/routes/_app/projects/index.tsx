@@ -7,7 +7,7 @@ import {
 } from "@/web/components/project-list/project-list";
 import { ProjectsPage } from "@/web/components/project-list/projects-page";
 
-// The status filter lives in the URL so links such as the top bar shortcuts open the list filtered.
+// The status filter lives in the URL, so a filtered list survives a reload and can be shared.
 export const Route = createFileRoute("/_app/projects/")({
   validateSearch: z.object({ status: z.enum(STATUS_FILTER_VALUES).optional().catch(undefined) }),
   head: () => ({ meta: [{ title: "Projetos · Nelcota Deploy" }] }),
