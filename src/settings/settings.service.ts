@@ -1,4 +1,4 @@
-import { inArray } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 
 import { type Database, tables } from "@/db";
 import { DEFAULT_SYSTEM_SETTINGS, type SystemSettings } from "@/shared/schemas/settings.schema";
@@ -28,6 +28,7 @@ export function getSystemSettings(database: Database): SystemSettings {
       stored.get("httpsByDefault"),
       DEFAULT_SYSTEM_SETTINGS.httpsByDefault,
     ),
+    alertWebhookUrl: readNullableString(stored.get("alertWebhookUrl")),
   };
 }
 
@@ -41,6 +42,11 @@ export function saveSystemSettings(database: Database, settings: SystemSettings)
   const updatedAt = new Date().toISOString();
   database.transaction((transaction) => {
     for (const key of SETTING_KEYS) {
+      // The column cannot hold NULL; a missing row already reads back as "not set".
+      if (settings[key] == null) {
+        transaction.delete(tables.systemSettings).where(eq(tables.systemSettings.key, key)).run();
+        continue;
+      }
       transaction
         .insert(tables.systemSettings)
         .values({ key, value: settings[key], updatedAt })
