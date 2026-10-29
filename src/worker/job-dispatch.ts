@@ -1,3 +1,4 @@
+import { notify } from "@/alerts";
 import type { AppConfig } from "@/config";
 import {
   getDeployment,
@@ -83,6 +84,20 @@ function hostOfDeployment(dependencies: WorkerDependencies, deploymentId: string
   }
 }
 
+const SHORT_SHA_LENGTH = 7;
+
+async function notifyFailedDeployment(
+  dependencies: WorkerDependencies,
+  deployment: ReturnType<typeof getDeployment>,
+): Promise<void> {
+  const commit = deployment.commitSha?.slice(0, SHORT_SHA_LENGTH);
+  await notify(dependencies.database, dependencies.logger, {
+    title: "Deploy falhou",
+    text: `O deploy de ${deployment.projectName}${commit == null ? "" : ` (${commit})`} falhou.`,
+    link: `${dependencies.config.PUBLIC_URL}/projects/${deployment.projectId}/deployments/${deployment.id}`,
+  });
+}
+
 async function runDeployJob(
   dependencies: WorkerDependencies,
   job: Job,
@@ -98,9 +113,9 @@ async function runDeployJob(
   );
   await run.refreshContainers(host.serverId);
   if (status === "failed") {
-    throw new Error(
-      getDeployment(dependencies.database, deploymentId).errorMessage ?? "Deployment failed",
-    );
+    const deployment = getDeployment(dependencies.database, deploymentId);
+    await notifyFailedDeployment(dependencies, deployment);
+    throw new Error(deployment.errorMessage ?? "Deployment failed");
   }
 }
 

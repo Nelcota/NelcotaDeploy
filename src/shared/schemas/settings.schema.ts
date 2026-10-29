@@ -20,7 +20,25 @@ export const systemSettingsSchema = z.object({
     })
     .transform((value) => (value === "" ? null : value)),
   httpsByDefault: z.boolean(),
+  /** Discord or Slack incoming webhook that hears about failed deploys and servers going down. */
+  alertWebhookUrl: z
+    .string()
+    .trim()
+    .refine((value) => value === "" || isWebhookUrl(value), {
+      message: "Informe uma URL https://, como a de um webhook do Discord ou do Slack",
+    })
+    .transform((value) => (value === "" ? null : value)),
 });
+
+const MAX_URL_LENGTH = 2000;
+
+function isWebhookUrl(value: string): boolean {
+  if (value.length > MAX_URL_LENGTH || URL.canParse(value) === false) {
+    return false;
+  }
+  const protocol = new URL(value).protocol;
+  return protocol === "https:" || protocol === "http:";
+}
 
 export type SystemSettings = z.output<typeof systemSettingsSchema>;
 
@@ -28,4 +46,5 @@ export const DEFAULT_SYSTEM_SETTINGS: SystemSettings = {
   organizationName: "Minha organização",
   baseDomain: null,
   httpsByDefault: true,
+  alertWebhookUrl: null,
 };

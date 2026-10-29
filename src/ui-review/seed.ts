@@ -40,6 +40,7 @@ saveSystemSettings(database, {
   organizationName: "Nelcota",
   baseDomain: "apps.exemplo.com",
   httpsByDefault: true,
+  alertWebhookUrl: null,
 });
 
 const api = createProject(

@@ -1,3 +1,4 @@
+import { AlertDeliveryError } from "@/alerts";
 import {
   ForbiddenError,
   InvalidAvatarError,
@@ -53,6 +54,7 @@ const MESSAGES: readonly (readonly [ErrorClass, string])[] = [
   [TaskNotFoundError, "Task não encontrada."],
   [TaskNameTakenError, "Já existe uma task com este nome neste projeto."],
   [InvalidScheduleError, "Expressão cron inválida. Use 5 campos, como */5 * * * *."],
+  [AlertDeliveryError, "O webhook de alertas não aceitou a mensagem. Confira a URL."],
   [ServerNotFoundError, "Servidor não encontrado."],
   [ServerTakenError, "Já existe um servidor com este nome ou endereço."],
   [ServerNotReadyError, "Este servidor ainda não está conectado. Escolha um servidor pronto."],

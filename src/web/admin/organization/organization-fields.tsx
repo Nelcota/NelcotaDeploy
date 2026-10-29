@@ -106,3 +106,32 @@ export function AutomaticDomainFields({ form, canEdit }: FieldsProps) {
     </form.Subscribe>
   );
 }
+
+/** Discord or Slack webhook that hears about failed deploys and servers going down. */
+export function AlertWebhookField({ form, canEdit }: FieldsProps) {
+  return (
+    <form.Field name="alertWebhookUrl">
+      {(field) => (
+        <FormField
+          id="alert-webhook"
+          label="Webhook de alertas"
+          hint="Discord ou Slack. Avisa quando um deploy falha e quando um servidor cai ou volta."
+          errors={visibleErrors(form, field.state.meta)}
+        >
+          {(props) => (
+            <Input
+              {...props}
+              type="url"
+              className="font-mono"
+              placeholder="https://discord.com/api/webhooks/…"
+              disabled={canEdit === false}
+              value={field.state.value}
+              onBlur={field.handleBlur}
+              onChange={(event) => field.handleChange(event.target.value)}
+            />
+          )}
+        </FormField>
+      )}
+    </form.Field>
+  );
+}
