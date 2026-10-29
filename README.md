@@ -32,10 +32,12 @@ file. No Kubernetes, no external database, no agents to install.
 | Area        | What it does                                                                                                         |
 | ----------- | -------------------------------------------------------------------------------------------------------------------- |
 | **Deploys** | Build the exact commit from GitHub, on push or by hand. Health check before switching, rollback, redeploy and retry. |
+| **GitHub**  | One-click GitHub App: pick repositories from a list, clone private ones and get pushes without per-repo webhooks.    |
 | **Logs**    | Live build and runtime logs with search, level filter and jump to the first error.                                   |
 | **Metrics** | CPU and memory per container and for the host, with history.                                                         |
-| **Config**  | Variables and secrets (AES-256-GCM), with a warning when saved changes are not live yet.                             |
-| **Domains** | Automatic and custom domains, HTTPS by Let's Encrypt through Traefik.                                                |
+| **Config**  | Variables and secrets (AES-256-GCM), applied to the running app as soon as they are saved.                           |
+| **Domains** | Automatic and custom domains, HTTPS by Let's Encrypt through Traefik, and a live check of each domain's DNS.         |
+| **Ops**     | Daily database backups and Discord or Slack alerts for failed deploys and unreachable servers.                       |
 | **Servers** | Add a VPS with one pasted command; builds and apps run there over a persistent SSH connection, moves keep sites up.  |
 | **Tasks**   | Commands that run inside the app container, on demand or on a cron schedule.                                         |
 | **Team**    | Admin, developer and viewer roles, API tokens, an MCP server for AI clients and an audit log.                        |
@@ -53,10 +55,9 @@ Requires Linux with [Bun](https://bun.sh) 1.4+, git and Docker 23+.
 
 ```bash
 bun install
-bun run setup                                  # writes .env with generated secrets
-bun run admin:create --email you@example.com   # first admin; prints the password once
-bun run dev                                    # panel on http://localhost:3000
-bun run worker                                 # in another terminal: builds, tasks, metrics
+bun run setup    # writes .env with generated secrets
+bun run dev      # panel on http://localhost:3000; the first visit creates the admin
+bun run worker   # in another terminal: builds, tasks, metrics, backups
 ```
 
 ## Production
@@ -66,8 +67,7 @@ Docker Compose starts Traefik, the panel and the worker. Only the worker can rea
 ```bash
 bun run setup        # then set PUBLIC_URL, PANEL_DOMAIN and ACME_EMAIL in .env
 echo "DOCKER_GID=$(stat -c %g /var/run/docker.sock)" >> .env
-docker compose up -d --build
-docker compose exec web bun run admin:create --email you@example.com
+docker compose up -d --build   # then open PUBLIC_URL and create the admin
 ```
 
 ## Development
@@ -79,5 +79,5 @@ bun run ui:review    # screenshots of every screen plus an accessibility report
 
 Built with Bun, TanStack Start, React, Tailwind, Drizzle, Better Auth and Traefik.
 
-The full guide (architecture, GitHub webhook, MCP, backup, troubleshooting) is in
+The full guide (architecture, GitHub App, MCP, backup, troubleshooting) is in
 [docs/guia.md](docs/guia.md), in Portuguese.
