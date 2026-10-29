@@ -1,11 +1,17 @@
 import { transitionDeployment } from "@/deployments";
-import { containerNameFor, managedLabels, volumeNameFor } from "@/docker";
+import { containerNameFor, volumeNameFor } from "@/docker";
 import { listProjectDomains } from "@/domains";
+import { getPreview, previewHostname, previewRouteName } from "@/previews";
 import { projectRouteConfig } from "@/routing";
 import { getSystemSettings } from "@/settings";
 import { listMountedVolumes } from "@/volumes";
 
-import type { DeployContext, DeployRunnerConfig, DeployRunnerDependencies } from "./deploy-context";
+import {
+  type DeployContext,
+  type DeployRunnerConfig,
+  type DeployRunnerDependencies,
+  deploymentLabels,
+} from "./deploy-context";
 
 /**
  * Points the project's routes at the new container, alone, once it is healthy. Requests that
@@ -21,28 +27,28 @@ export async function routeTrafficTo(
   dependencies: Pick<DeployRunnerDependencies, "database" | "routes"> & {
     readonly config: Pick<DeployRunnerConfig, "routingSettleInMs" | "traefik">;
   },
-  context: Pick<DeployContext, "project" | "logs">,
+  context: Pick<DeployContext, "deployment" | "project" | "logs">,
   containerName: string,
 ): Promise<void> {
-  const { database, routes, config } = dependencies;
-  const { project, logs } = context;
-  const domains = listProjectDomains(database, project.id, getSystemSettings(database));
-  if (domains.length === 0) {
-    await routes?.remove(project.id);
+  const { routes, config } = dependencies;
+  const { logs } = context;
+  const target = routeTarget(dependencies.database, context);
+  if (target.domains.length === 0) {
+    await routes?.remove(target.fileName);
     return;
   }
-  const hostnames = domains.map((domain) => domain.hostname).join(", ");
+  const hostnames = target.domains.map((domain) => domain.hostname).join(", ");
   if (routes == null) {
     logs.system(`Proxy disabled; domains not routed: ${hostnames}`, "warn");
     return;
   }
   await routes.write(
-    project.id,
+    target.fileName,
     projectRouteConfig({
-      projectSlug: project.slug,
-      domains,
+      routeName: target.routeName,
+      domains: target.domains,
       containerName,
-      internalPort: project.internalPort,
+      internalPort: context.project.internalPort,
       entrypoints: {
         http: config.traefik.httpEntrypoint,
         https: config.traefik.httpsEntrypoint,
@@ -54,6 +60,41 @@ export async function routeTrafficTo(
   logs.system(`Routing ${hostnames} to ${containerName}`);
   // The proxy applies new routes after a short delay; the old container must still answer.
   await Bun.sleep(config.routingSettleInMs);
+}
+
+/**
+ * Where a deployment's routes go: the project's domains for production, or the preview's own
+ * address, in route files and routers that never overlap.
+ */
+function routeTarget(
+  database: DeployRunnerDependencies["database"],
+  { deployment, project }: Pick<DeployContext, "deployment" | "project">,
+) {
+  const settings = getSystemSettings(database);
+  const preview = deployment.previewId == null ? null : getPreview(database, deployment.previewId);
+  if (preview == null) {
+    return {
+      fileName: project.id,
+      routeName: project.slug,
+      domains: listProjectDomains(database, project.id, settings),
+    };
+  }
+  const number = preview.pullRequestNumber;
+  // Without a base domain a preview has no address; the webhook refuses to create one then.
+  const domains =
+    settings.baseDomain == null
+      ? []
+      : [
+          {
+            hostname: previewHostname(project.slug, number, settings.baseDomain),
+            httpsEnabled: settings.httpsByDefault,
+          },
+        ];
+  return {
+    fileName: previewRouteName(project.id, number),
+    routeName: `${project.slug}-pr-${number}`,
+    domains,
+  };
 }
 
 /**
@@ -96,18 +137,15 @@ export async function startContainer(
     // Left behind by a previous attempt of this same deployment that crashed.
     await docker.removeContainer(containerName);
   }
-  const volumes = await prepareVolumes(dependencies, context);
+  // Previews never mount production's data.
+  const volumes = deployment.previewId == null ? await prepareVolumes(dependencies, context) : [];
   context.state.useContainer(containerName);
   await docker.runContainer(
     {
       containerName,
       imageTag: release.imageTag,
       network: config.network,
-      labels: managedLabels({
-        projectId: project.id,
-        projectSlug: project.slug,
-        deploymentId: deployment.id,
-      }),
+      labels: deploymentLabels(context),
       environmentKeys: Object.keys(release.runtimeValues),
       volumes,
     },

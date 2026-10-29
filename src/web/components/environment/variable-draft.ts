@@ -9,9 +9,16 @@ export type VariableDraft = {
   readonly kind: VariableKind;
   readonly value: string;
   readonly availableAtBuild: boolean;
+  readonly excludeFromPreviews: boolean;
 };
 
-const EMPTY_DRAFT: VariableDraft = { key: "", kind: "plain", value: "", availableAtBuild: false };
+const EMPTY_DRAFT: VariableDraft = {
+  key: "",
+  kind: "plain",
+  value: "",
+  availableAtBuild: false,
+  excludeFromPreviews: false,
+};
 
 /**
  * Starting values of the variable form: empty for a new variable, the saved fields otherwise.
@@ -28,5 +35,6 @@ export function draftFromVariable(variable: EnvironmentVariableView | null): Var
     kind: variable.kind,
     value: variable.value ?? "",
     availableAtBuild: variable.availableAtBuild,
+    excludeFromPreviews: variable.excludeFromPreviews,
   };
 }

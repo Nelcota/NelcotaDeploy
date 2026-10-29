@@ -37,3 +37,11 @@ export class RetryUnavailableError extends Error {
     this.name = "RetryUnavailableError";
   }
 }
+
+/** Thrown when deploying a pull request preview that does not exist or was closed. */
+export class PreviewNotActiveError extends Error {
+  constructor(previewId: string) {
+    super(`Preview ${previewId} does not exist or is closed`);
+    this.name = "PreviewNotActiveError";
+  }
+}

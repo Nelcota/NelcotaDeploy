@@ -6,6 +6,15 @@ import { type Database, tables } from "@/db";
 import { requestDeployment } from "@/deployments";
 import { createLogger, singleLine } from "@/logging";
 
+import { processPullRequest } from "./pull-request-event";
+import {
+  commitSubject,
+  ignored,
+  INVALID_JSON,
+  parseJsonBody,
+  type ProcessedEvent,
+  type WebhookOutcome,
+} from "./webhook-event";
 import { InvalidWebhookRequestError, InvalidWebhookSignatureError } from "./webhook.errors";
 
 const DELIVERY_ID_PATTERN = /^[A-Za-z0-9-]{1,100}$/;
@@ -15,7 +24,6 @@ const BRANCH_REF_PREFIX = "refs/heads/";
 const MAX_LIST_SIZE = 100;
 const MAX_REF_LENGTH = 300;
 const MAX_GITHUB_NAME_LENGTH = 200;
-const MAX_COMMIT_SUBJECT_LENGTH = 500;
 const logger = createLogger("github-webhook");
 
 const pushPayloadSchema = z.object({
@@ -35,12 +43,6 @@ export type GitHubDelivery = {
   /** Unparsed request body; the signature covers these exact bytes. */
   readonly rawBody: string;
 };
-
-/** How a delivery was handled. */
-export type WebhookOutcome =
-  | { readonly status: "duplicate" }
-  | { readonly status: "ignored"; readonly reason: string }
-  | { readonly status: "accepted"; readonly deploymentIds: readonly string[] };
 
 /**
  * Verifies and processes a GitHub webhook delivery.
@@ -141,27 +143,14 @@ function recordOutcome(database: Database, deliveryId: string, outcome: Processe
     .run();
 }
 
-type ProcessedEvent = {
-  readonly result: Exclude<WebhookOutcome, { status: "duplicate" }>;
-  readonly repositoryFullName: string | null;
-  readonly ref: string | null;
-  readonly commitSha: string | null;
-};
-
 type PushPayload = z.infer<typeof pushPayloadSchema>;
-
-function ignored(reason: string, details: Partial<ProcessedEvent> = {}): ProcessedEvent {
-  return {
-    result: { status: "ignored", reason },
-    repositoryFullName: details.repositoryFullName ?? null,
-    ref: details.ref ?? null,
-    commitSha: details.commitSha ?? null,
-  };
-}
 
 function processEvent(database: Database, event: string, rawBody: string): ProcessedEvent {
   if (event === "ping") {
     return ignored("ping");
+  }
+  if (event === "pull_request") {
+    return processPullRequest(database, rawBody);
   }
   if (event !== "push") {
     return ignored(`event ${event} is not handled`);
@@ -175,10 +164,8 @@ function processEvent(database: Database, event: string, rawBody: string): Proce
 
 /** Returns the parsed push payload, or the reason it was rejected. */
 function parsePushPayload(rawBody: string): PushPayload | string {
-  let json: unknown;
-  try {
-    json = JSON.parse(rawBody);
-  } catch {
+  const json = parseJsonBody(rawBody);
+  if (json === INVALID_JSON) {
     return "payload is not valid JSON";
   }
   const parsed = pushPayloadSchema.safeParse(json);
@@ -256,11 +243,6 @@ function queueDeployments(
         commitMessage,
       }).deploymentId,
   );
-}
-
-/** Like `git log --format=%s`: only the subject line is kept. */
-function commitSubject(message: string): string {
-  return (message.split("\n")[0] ?? "").trim().slice(0, MAX_COMMIT_SUBJECT_LENGTH);
 }
 
 /**

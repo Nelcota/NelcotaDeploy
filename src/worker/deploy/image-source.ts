@@ -1,11 +1,12 @@
 import { type Deployment, transitionDeployment } from "@/deployments";
-import { type DockerEngine, imageTagFor, managedLabels } from "@/docker";
+import { type DockerEngine, imageTagFor } from "@/docker";
 import { recordDetectedPort } from "@/projects";
 
 import {
   assertNotCancelled,
   type DeployContext,
   type DeployRunnerDependencies,
+  deploymentLabels,
   MILLISECONDS_PER_SECOND,
 } from "./deploy-context";
 import type { DeploymentLogWriter } from "./deployment-log-writer";
@@ -59,6 +60,7 @@ const READ_DOCKERFILE_TIMEOUT_IN_MS = 10_000;
 
 /**
  * For a project whose port is automatic, reads it from the Dockerfile's EXPOSE and stores it.
+ * A preview only uses it: the pull request must not change production's port.
  *
  * @returns The detected port, or null when the port is not automatic or no EXPOSE names one.
  */
@@ -67,7 +69,7 @@ async function detectPort(
   context: DeployContext,
   dockerfilePath: string,
 ): Promise<number | null> {
-  const { project, logs } = context;
+  const { project, logs, deployment } = context;
   if (project.internalPortAuto === false) {
     return null;
   }
@@ -82,7 +84,7 @@ async function detectPort(
     );
     return null;
   }
-  if (port !== project.internalPort) {
+  if (port !== project.internalPort && deployment.previewId == null) {
     recordDetectedPort(dependencies.database, project.id, port);
   }
   logs.system(`Using port ${port} from the Dockerfile's EXPOSE`);
@@ -121,11 +123,7 @@ async function buildImage(
       dockerfilePath,
       contextPath,
       imageTag,
-      labels: managedLabels({
-        projectId: project.id,
-        projectSlug: project.slug,
-        deploymentId: deployment.id,
-      }),
+      labels: deploymentLabels(context),
       buildArgKeys: Object.keys(buildValues),
     },
     buildValues,
@@ -180,7 +178,7 @@ export async function reuseImage(
   if (imageTag == null) {
     throw new Error("The source deployment has no image to reuse");
   }
-  if (await docker.imageExists(imageTag)) {
+  if (await docker.images.exists(imageTag)) {
     logs.system(`Reusing image ${imageTag} without rebuilding`);
     return imageTag;
   }

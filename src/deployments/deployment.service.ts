@@ -1,4 +1,4 @@
-import { and, count, desc, eq, inArray, isNotNull, lt, ne, sql } from "drizzle-orm";
+import { and, count, desc, eq, inArray, isNotNull, isNull, lt, ne, sql } from "drizzle-orm";
 
 import { type Actor, recordAuditEvent } from "@/audit";
 import { type Database, tables, type Transaction } from "@/db";
@@ -34,6 +34,7 @@ const deploymentColumns = {
   containerName: tables.deployments.containerName,
   serverId: tables.deployments.serverId,
   sourceDeploymentId: tables.deployments.sourceDeploymentId,
+  previewId: tables.deployments.previewId,
   errorMessage: tables.deployments.errorMessage,
   cancelRequestedAt: tables.deployments.cancelRequestedAt,
   createdAt: tables.deployments.createdAt,
@@ -65,6 +66,8 @@ export type Deployment = {
   /** Server the deployment ran on, where its image and container live. */
   readonly serverId: string;
   readonly sourceDeploymentId: string | null;
+  /** Pull request preview the deployment belongs to; null for production. */
+  readonly previewId: string | null;
   readonly errorMessage: string | null;
   readonly cancelRequestedAt: string | null;
   readonly createdAt: string;
@@ -167,6 +170,8 @@ export function listDeployments(
     readonly status?: DeploymentStatus | undefined;
     readonly limit: number;
     readonly before?: string | undefined;
+    /** Deployments of this preview; production ones when omitted. */
+    readonly previewId?: string | undefined;
   },
 ): Deployment[] {
   const limit = Math.min(Math.max(Math.trunc(options.limit), 1), MAX_PAGE_SIZE);
@@ -179,6 +184,9 @@ export function listDeployments(
         options.projectId == null ? undefined : eq(tables.deployments.projectId, options.projectId),
         options.status == null ? undefined : eq(tables.deployments.status, options.status),
         options.before == null ? undefined : lt(tables.deployments.createdAt, options.before),
+        options.previewId == null
+          ? isNull(tables.deployments.previewId)
+          : eq(tables.deployments.previewId, options.previewId),
       ),
     )
     .orderBy(desc(tables.deployments.createdAt), desc(tables.deployments.id))
@@ -201,6 +209,7 @@ export function listRollbackCandidates(database: Database, projectId: string): D
     .innerJoin(tables.projects, eq(tables.projects.id, tables.deployments.projectId))
     .where(
       and(
+        isNull(tables.deployments.previewId),
         eq(tables.deployments.projectId, projectId),
         eq(tables.deployments.status, "succeeded"),
         isNotNull(tables.deployments.imageTag),
@@ -262,7 +271,8 @@ export function transitionDeployment(
 }
 
 /**
- * Marks a deployment as succeeded and makes it the project's current deployment.
+ * Marks a deployment as succeeded and makes it the current deployment of its project, or of
+ * its pull request preview.
  *
  * @param database - Database.
  * @param deploymentId - Deployment id.
@@ -272,12 +282,21 @@ export function completeDeployment(database: Database, deploymentId: string): vo
   database.transaction((transaction) => {
     transitionDeployment(transaction, deploymentId, { to: "succeeded", errorMessage: null });
     const deployment = transaction
-      .select({ projectId: tables.deployments.projectId })
+      .select({ projectId: tables.deployments.projectId, previewId: tables.deployments.previewId })
       .from(tables.deployments)
       .where(eq(tables.deployments.id, deploymentId))
       .get();
     if (deployment == null) {
       throw new DeploymentNotFoundError(deploymentId);
+    }
+    // A preview serves its own address; production keeps serving the project's domains.
+    if (deployment.previewId != null) {
+      transaction
+        .update(tables.previews)
+        .set({ currentDeploymentId: deploymentId, updatedAt: new Date().toISOString() })
+        .where(eq(tables.previews.id, deployment.previewId))
+        .run();
+      return;
     }
     transaction
       .update(tables.projects)

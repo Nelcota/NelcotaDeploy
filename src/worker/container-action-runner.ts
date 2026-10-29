@@ -4,6 +4,7 @@ import { type Database, tables } from "@/db";
 import { type ContainerAction, getDeployment } from "@/deployments";
 import { type DockerEngine, LABELS, volumeNameFor } from "@/docker";
 import type { Job } from "@/jobs";
+import { previewRoutePrefix } from "@/previews";
 import { getProject } from "@/projects";
 import type { RouteFiles } from "@/routing";
 import { failVolumeDeletion, finishVolumeDeletion } from "@/volumes";
@@ -56,15 +57,16 @@ export async function removeProjectResources(
   projectId: string,
 ): Promise<{ containers: number; images: number; volumes: number }> {
   await routes?.remove(projectId);
+  await routes?.removePrefixed(previewRoutePrefix(projectId));
   const containers = (await docker.listManagedContainers()).filter(
     (container) => container.labels[LABELS.projectId] === projectId,
   );
   await Promise.all(
     containers.map(async (container) => await docker.removeContainer(container.id)),
   );
-  const images = await docker.listProjectImages(projectId);
+  const images = await docker.images.listForProject(projectId, "all");
   const imageRemovals = await Promise.allSettled(
-    images.map(async (image) => await docker.removeImage(image)),
+    images.map(async (image) => await docker.images.remove(image)),
   );
   // Volumes go last: no container of the project uses them any more.
   const volumes = await docker.volumes.listForProject(projectId);

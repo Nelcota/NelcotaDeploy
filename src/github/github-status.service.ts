@@ -95,20 +95,30 @@ export async function reportCommitStatus(
   return await publishCommitStatus(GITHUB_API, credentials, status);
 }
 
+/** Permissions the panel needs that apps created before them must still accept. */
+const REQUIRED_PERMISSIONS: Readonly<Record<string, "read" | "write">> = {
+  statuses: "write",
+  pull_requests: "read",
+};
+
+function grants(granted: string | undefined, required: "read" | "write"): boolean {
+  return granted === "write" || (required === "read" && granted === "read");
+}
+
 /**
- * Finds the installations that have not granted a permission the panel needs yet. GitHub
- * asks the account owner to accept new permissions after the app asks for them.
+ * Finds the installations that have not granted every permission the panel needs. GitHub asks
+ * the account owner to accept new permissions after the app asks for them.
  *
  * @param api - API location.
  * @param credentials - The connected app.
- * @param permission - Permission name, such as "statuses".
- * @returns Logins of the accounts whose installation lacks write access to it.
+ * @param required - Permission names and the level each needs.
+ * @returns Logins of the accounts whose installation lacks one of them.
  * @throws {GitHubApiError} When GitHub cannot be reached or answers with an error.
  */
-export async function installationsMissingPermission(
+export async function installationsMissingPermissions(
   api: GitHubApi,
   credentials: GitHubAppCredentials,
-  permission: string,
+  required: Readonly<Record<string, "read" | "write">>,
 ): Promise<string[]> {
   const answer = await githubRequest(api, {
     path: "/app/installations",
@@ -119,19 +129,24 @@ export async function installationsMissingPermission(
     throw new GitHubApiError("GitHub answered the installations with an unexpected body", null);
   }
   return parsed.data
-    .filter((installation) => installation.permissions[permission] !== "write")
+    .filter((installation) =>
+      Object.entries(required).some(
+        ([permission, level]) => grants(installation.permissions[permission], level) === false,
+      ),
+    )
     .flatMap((installation) => (installation.account == null ? [] : [installation.account.login]));
 }
 
 /**
- * Lists the accounts whose installation of the connected app cannot publish commit statuses.
+ * Lists the accounts whose installation of the connected app has not accepted the permissions
+ * for commit statuses and pull request previews.
  *
  * @param database - Database.
  * @param secretBox - Encryption box.
  * @returns Account logins; empty without an app or when every installation allows it.
  * @throws {GitHubApiError} When GitHub cannot be reached or answers with an error.
  */
-export async function accountsMissingStatusPermission(
+export async function accountsMissingPermissions(
   database: Database,
   secretBox: SecretBox,
 ): Promise<string[]> {
@@ -139,5 +154,5 @@ export async function accountsMissingStatusPermission(
   if (credentials == null) {
     return [];
   }
-  return await installationsMissingPermission(GITHUB_API, credentials, "statuses");
+  return await installationsMissingPermissions(GITHUB_API, credentials, REQUIRED_PERMISSIONS);
 }

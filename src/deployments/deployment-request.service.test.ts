@@ -114,6 +114,7 @@ describe("requestDeployment validation", () => {
         healthCheckPath: null,
         autoDeploy: false,
         autoApplyChanges: true,
+        previewsEnabled: false,
       },
       { actor: TEST_ACTOR, userId: null, isAdmin: false },
     );

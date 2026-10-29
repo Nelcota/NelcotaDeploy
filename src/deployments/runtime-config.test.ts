@@ -38,7 +38,13 @@ async function saveVariable(database: Database, projectId: string, value: string
   const box = await createTestSecretBox();
   await saveEnvironmentVariable(database, box, {
     projectId,
-    input: { key: "API_URL", kind: "plain", value, availableAtBuild: false },
+    input: {
+      key: "API_URL",
+      kind: "plain",
+      value,
+      availableAtBuild: false,
+      excludeFromPreviews: false,
+    },
     actor: TEST_ACTOR,
   });
 }
@@ -159,7 +165,13 @@ describe("buildConfigFingerprint", () => {
 
     await saveEnvironmentVariable(database, await createTestSecretBox(), {
       projectId: project.id,
-      input: { key: "VITE_API", kind: "plain", value: "x", availableAtBuild: true },
+      input: {
+        key: "VITE_API",
+        kind: "plain",
+        value: "x",
+        availableAtBuild: true,
+        excludeFromPreviews: false,
+      },
       actor: TEST_ACTOR,
     });
 

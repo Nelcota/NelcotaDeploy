@@ -141,6 +141,7 @@ describe("runDeployment version switch", () => {
         kind: "secret",
         value: "super-secret-value",
         availableAtBuild: true,
+        excludeFromPreviews: false,
       },
       actor: TEST_ACTOR,
     });

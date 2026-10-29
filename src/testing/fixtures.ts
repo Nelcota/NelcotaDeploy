@@ -36,6 +36,7 @@ export function createTestProject(
       healthCheckPath: null,
       autoDeploy: true,
       autoApplyChanges: true,
+      previewsEnabled: false,
       ...overrides,
     },
     { actor: TEST_ACTOR, userId: null, isAdmin: true },

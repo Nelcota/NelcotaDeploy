@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { summarizeEnvImport } from "@/web/components/forms/env-import-result";
+import { summarizeEnvImport } from "@/web/components/forms/env-import/env-import-result";
 
 describe("summarizeEnvImport", () => {
   test("counts every variable as saved when nothing failed", () => {

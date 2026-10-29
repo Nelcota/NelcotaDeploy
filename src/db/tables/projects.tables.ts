@@ -1,4 +1,3 @@
-import { sql } from "drizzle-orm";
 import {
   type AnySQLiteColumn,
   index,
@@ -32,6 +31,8 @@ export const projects = sqliteTable(
     autoDeploy: integer("auto_deploy", { mode: "boolean" }).notNull().default(false),
     // When set, saving variables or domains recreates the live container with them.
     autoApplyChanges: integer("auto_apply_changes", { mode: "boolean" }).notNull().default(true),
+    // When set, pull requests to the project's branch get their own temporary deployment.
+    previewsEnabled: integer("previews_enabled", { mode: "boolean" }).notNull().default(false),
     deploymentsApproved: integer("deployments_approved", { mode: "boolean" })
       .notNull()
       .default(false),
@@ -80,6 +81,10 @@ export const environmentVariables = sqliteTable(
     plainValue: text("plain_value"),
     encryptedValue: text("encrypted_value"),
     availableAtBuild: integer("available_at_build", { mode: "boolean" }).notNull().default(false),
+    // Kept out of pull request previews, such as the production database URL.
+    excludeFromPreviews: integer("exclude_from_previews", { mode: "boolean" })
+      .notNull()
+      .default(false),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
@@ -159,6 +164,10 @@ export const deployments = sqliteTable(
     // Server the deployment ran on, which is where its image and container live.
     serverId: text("server_id").notNull().default(LOCAL_SERVER_ID),
     sourceDeploymentId: text("source_deployment_id"),
+    // Set for the deployments of a pull request preview; null for production.
+    previewId: text("preview_id").references((): AnySQLiteColumn => previews.id, {
+      onDelete: "cascade",
+    }),
     errorMessage: text("error_message"),
     cancelRequestedAt: text("cancel_requested_at"),
     createdAt: createdAt(),
@@ -170,6 +179,33 @@ export const deployments = sqliteTable(
     index("deployments_created_idx").on(table.createdAt),
     index("deployments_status_idx").on(table.status),
     index("deployments_project_server_idx").on(table.projectId, table.serverId),
+    index("deployments_preview_idx").on(table.previewId),
+  ],
+);
+
+// A temporary deployment of a pull request, at its own address, removed when the pull request
+// closes. Only pull requests from the project's own repository get one, never forks.
+export const previews = sqliteTable(
+  "previews",
+  {
+    id: text("id").primaryKey(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    pullRequestNumber: integer("pull_request_number").notNull(),
+    branch: text("branch").notNull(),
+    headSha: text("head_sha").notNull(),
+    status: text("status", { enum: ["active", "closed"] }).notNull(),
+    currentDeploymentId: text("current_deployment_id").references(
+      (): AnySQLiteColumn => deployments.id,
+      { onDelete: "set null" },
+    ),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+    closedAt: text("closed_at"),
+  },
+  (table) => [
+    uniqueIndex("previews_project_number_idx").on(table.projectId, table.pullRequestNumber),
   ],
 );
 
@@ -203,106 +239,5 @@ export const runtimeLogs = sqliteTable(
   (table) => [
     index("runtime_logs_project_id_idx").on(table.projectId, table.id),
     index("runtime_logs_created_idx").on(table.createdAt),
-  ],
-);
-
-export const jobs = sqliteTable(
-  "jobs",
-  {
-    id: text("id").primaryKey(),
-    kind: text("kind", {
-      enum: ["deploy", "container_action", "task_run", "project_cleanup", "volume_delete"],
-    }).notNull(),
-    status: text("status", {
-      enum: ["queued", "running", "succeeded", "failed", "cancelled"],
-    }).notNull(),
-    projectId: text("project_id")
-      .notNull()
-      .references(() => projects.id, { onDelete: "cascade" }),
-    deploymentId: text("deployment_id").references(() => deployments.id, {
-      onDelete: "cascade",
-    }),
-    taskExecutionId: text("task_execution_id").references(() => taskExecutions.id, {
-      onDelete: "cascade",
-    }),
-    payload: text("payload", { mode: "json" }).$type<Record<string, unknown>>().notNull(),
-    dedupeKey: text("dedupe_key"),
-    attempts: integer("attempts").notNull().default(0),
-    maxAttempts: integer("max_attempts").notNull().default(1),
-    runAfter: text("run_after").notNull(),
-    leaseExpiresAt: text("lease_expires_at"),
-    workerId: text("worker_id"),
-    lastError: text("last_error"),
-    createdAt: createdAt(),
-    startedAt: text("started_at"),
-    finishedAt: text("finished_at"),
-  },
-  (table) => [
-    index("jobs_status_run_after_idx").on(table.status, table.runAfter),
-    index("jobs_project_id_idx").on(table.projectId),
-    // The database itself refuses a second running job for the same project.
-    uniqueIndex("jobs_one_running_per_project_idx")
-      .on(table.projectId)
-      .where(sql`status = 'running'`),
-    uniqueIndex("jobs_active_dedupe_key_idx")
-      .on(table.dedupeKey)
-      .where(sql`status IN ('queued', 'running') AND dedupe_key IS NOT NULL`),
-  ],
-);
-
-export const tasks = sqliteTable(
-  "tasks",
-  {
-    id: text("id").primaryKey(),
-    projectId: text("project_id")
-      .notNull()
-      .references(() => projects.id, { onDelete: "cascade" }),
-    name: text("name").notNull(),
-    command: text("command", { mode: "json" }).$type<string[]>().notNull(),
-    schedule: text("schedule"),
-    enabled: integer("enabled", { mode: "boolean" }).notNull().default(true),
-    timeoutInSeconds: integer("timeout_in_seconds").notNull(),
-    nextRunAt: text("next_run_at"),
-    createdByUserId: text("created_by_user_id").references(() => users.id, {
-      onDelete: "set null",
-    }),
-    createdAt: createdAt(),
-    updatedAt: updatedAt(),
-  },
-  (table) => [
-    uniqueIndex("tasks_project_name_idx").on(table.projectId, table.name),
-    index("tasks_next_run_at_idx").on(table.enabled, table.nextRunAt),
-  ],
-);
-
-export const taskExecutions = sqliteTable(
-  "task_executions",
-  {
-    id: text("id").primaryKey(),
-    taskId: text("task_id")
-      .notNull()
-      .references(() => tasks.id, { onDelete: "cascade" }),
-    projectId: text("project_id")
-      .notNull()
-      .references(() => projects.id, { onDelete: "cascade" }),
-    trigger: text("trigger", { enum: ["manual", "schedule", "mcp"] }).notNull(),
-    scheduledFor: text("scheduled_for"),
-    status: text("status", {
-      enum: ["queued", "running", "succeeded", "failed"],
-    }).notNull(),
-    exitCode: integer("exit_code"),
-    output: text("output").notNull().default(""),
-    errorMessage: text("error_message"),
-    triggeredByUserId: text("triggered_by_user_id").references(() => users.id, {
-      onDelete: "set null",
-    }),
-    createdAt: createdAt(),
-    startedAt: text("started_at"),
-    finishedAt: text("finished_at"),
-  },
-  (table) => [
-    index("task_executions_task_created_idx").on(table.taskId, table.createdAt),
-    // A scheduled slot runs at most once, even if the scheduler restarts mid-tick.
-    uniqueIndex("task_executions_task_slot_idx").on(table.taskId, table.scheduledFor),
   ],
 );

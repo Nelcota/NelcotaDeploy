@@ -1,4 +1,6 @@
 import type { Database } from "@/db";
+import { requestDeployment } from "@/deployments";
+import { openPreview } from "@/previews";
 import { generateSshKeyPair } from "@/remote";
 import type { SecretBox } from "@/secrets";
 import { addServer, LOCAL_SERVER_ID, recordServerCheck, storePanelKeyPair } from "@/servers";
@@ -7,6 +9,7 @@ import { createTask } from "@/tasks";
 import { addProjectVolume, setVolumeAttached } from "@/volumes";
 
 const ACTOR = { type: "system", label: "ui-review" } as const;
+const PREVIEW_COMMIT = "4f2c9a1b7d3e8f6a0c5b2d9e1f7a3c8b6d4e0f2a";
 
 /**
  * Marks the panel's host as connected and adds a second server that waits for its install
@@ -74,4 +77,28 @@ export function seedVolumes(database: Database, projectId: string): void {
     actor: ACTOR,
   });
   setVolumeAttached(database, { projectId, volumeId: cache.id, actor: ACTOR, attached: false });
+}
+
+/**
+ * Opens a pull request preview with a deployment in the queue, so the project page shows it.
+ *
+ * @param database - Review database.
+ * @param projectId - Project with previews on.
+ */
+export function seedPreview(database: Database, projectId: string): void {
+  const previewId = openPreview(database, {
+    projectId,
+    number: 42,
+    branch: "feature/checkout-pix",
+    headSha: PREVIEW_COMMIT,
+  });
+  requestDeployment(database, {
+    projectId,
+    trigger: "webhook",
+    actor: { type: "webhook", label: "github:ana" },
+    triggeredByUserId: null,
+    commitSha: PREVIEW_COMMIT,
+    commitMessage: "#42 Checkout com Pix",
+    previewId,
+  });
 }

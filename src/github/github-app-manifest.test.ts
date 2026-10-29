@@ -12,10 +12,11 @@ describe("buildAppManifest", () => {
       contents: "read",
       metadata: "read",
       statuses: "write",
+      pull_requests: "read",
       email_addresses: "read",
     });
     expect(manifest.callback_urls).toEqual(["https://deploy.example.com/api/auth/callback/github"]);
-    expect(manifest.default_events).toEqual(["push"]);
+    expect(manifest.default_events).toEqual(["push", "pull_request"]);
   });
 
   test("keeps the name within GitHub's 34 characters", () => {

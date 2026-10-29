@@ -91,6 +91,7 @@ function findLatestDeployments(database: Database, projectIds: readonly string[]
           sql`(
             SELECT latest.id FROM deployments AS latest
             WHERE latest.project_id = ${tables.deployments.projectId}
+              AND latest.preview_id IS NULL
             ORDER BY latest.created_at DESC, latest.id DESC
             LIMIT 1
           )`,

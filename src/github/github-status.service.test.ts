@@ -1,7 +1,7 @@
 import { afterAll, describe, expect, test } from "bun:test";
 import { generateKeyPairSync } from "node:crypto";
 
-import { installationsMissingPermission, publishCommitStatus } from "./github-status.service";
+import { installationsMissingPermissions, publishCommitStatus } from "./github-status.service";
 import { GitHubApiError } from "./github.errors";
 
 const { privateKey } = generateKeyPairSync("rsa", {
@@ -37,8 +37,11 @@ const github = Bun.serve({
     }
     if (path === "/app/installations") {
       return Response.json([
-        { account: { login: "acme" }, permissions: { contents: "read", statuses: "write" } },
-        { account: { login: "beta" }, permissions: { contents: "read" } },
+        {
+          account: { login: "acme" },
+          permissions: { contents: "read", statuses: "write", pull_requests: "write" },
+        },
+        { account: { login: "beta" }, permissions: { contents: "read", statuses: "write" } },
       ]);
     }
     return Response.json({ message: "Not Found" }, { status: 404 });
@@ -109,10 +112,18 @@ describe("publishCommitStatus", () => {
   });
 });
 
-describe("installationsMissingPermission", () => {
-  test("lists the accounts that have not granted the permission", async () => {
-    expect(await installationsMissingPermission(api, credentials("16"), "statuses")).toEqual([
+describe("installationsMissingPermissions", () => {
+  test("lists the accounts that have not granted every permission", async () => {
+    const required = { statuses: "write", pull_requests: "read" } as const;
+
+    expect(await installationsMissingPermissions(api, credentials("16"), required)).toEqual([
       "beta",
     ]);
+  });
+
+  test("accepts write access where read is required", async () => {
+    expect(
+      await installationsMissingPermissions(api, credentials("17"), { pull_requests: "read" }),
+    ).toEqual(["beta"]);
   });
 });

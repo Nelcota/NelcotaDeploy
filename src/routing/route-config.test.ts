@@ -5,7 +5,7 @@ import { InvalidRouteError } from "./routing.errors";
 
 const ENTRYPOINTS = { http: "web", https: "websecure", certResolver: "letsencrypt" };
 const BASE = {
-  projectSlug: "api",
+  routeName: "api",
   containerName: "nelcota-api-0c1d2e3f4a5b",
   internalPort: 8080,
   entrypoints: ENTRYPOINTS,
@@ -64,6 +64,25 @@ describe("projectRouteConfig compression", () => {
     });
 
     expect(config.http.routers?.["nelcota-api-0"]?.middlewares).toEqual(["nelcota-compress"]);
+  });
+});
+
+describe("projectRouteConfig names", () => {
+  test("keeps a preview's routers apart from production's", () => {
+    const config = projectRouteConfig({
+      ...BASE,
+      routeName: "api-pr-12",
+      domains: [{ hostname: "pr-12-api.apps.example.com", httpsEnabled: false }],
+    });
+
+    expect(Object.keys(config.http.services ?? {})).toEqual(["nelcota-api-pr-12"]);
+    expect(Object.keys(config.http.routers ?? {})).toEqual(["nelcota-api-pr-12-0"]);
+  });
+
+  test("throws InvalidRouteError for a name that is not a plain slug", () => {
+    expect(() => projectRouteConfig({ ...BASE, routeName: "api.evil", domains: [] })).toThrow(
+      InvalidRouteError,
+    );
   });
 });
 

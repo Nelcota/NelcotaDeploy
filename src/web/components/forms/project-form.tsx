@@ -1,28 +1,11 @@
 import { useForm } from "@tanstack/react-form";
 import { Link } from "@tanstack/react-router";
-import {
-  ChevronRightIcon,
-  GitBranchIcon,
-  HammerIcon,
-  IdCardIcon,
-  LoaderCircleIcon,
-  RocketIcon,
-} from "lucide-react";
+import { LoaderCircleIcon } from "lucide-react";
 import type { z } from "zod";
 
 import { projectInputSchema } from "@/shared/schemas/project.schema";
-import {
-  AutoDeployField,
-  BuildFields,
-  HealthCheckField,
-  IdentityFields,
-  PortField,
-  RepositoryFields,
-} from "@/web/components/forms/project-form-fields";
-import { GitHubRepositoryPicker } from "@/web/components/github/github-repository-picker";
-import { SettingsSection } from "@/web/components/project-settings/settings-section";
+import { ProjectFormSections } from "@/web/components/forms/project-form-sections";
 import { Button } from "@/web/components/ui/button";
-import { cn } from "@/web/components/ui/class-names";
 
 /** Values as typed in the form; the server parses them with `projectInputSchema`. */
 export type ProjectFormValues = {
@@ -36,6 +19,7 @@ export type ProjectFormValues = {
   readonly healthCheckPath: string;
   readonly autoDeploy: boolean;
   readonly autoApplyChanges: boolean;
+  readonly previewsEnabled: boolean;
 };
 
 /** Input accepted by the project server functions. */
@@ -73,6 +57,7 @@ export const EMPTY_PROJECT_FORM: ProjectFormValues = {
   healthCheckPath: "",
   autoDeploy: true,
   autoApplyChanges: true,
+  previewsEnabled: false,
 };
 
 /**
@@ -93,6 +78,7 @@ export function projectToFormValues(project: {
   readonly healthCheckPath: string | null;
   readonly autoDeploy: boolean;
   readonly autoApplyChanges: boolean;
+  readonly previewsEnabled: boolean;
 }): ProjectFormValues {
   return {
     name: project.name,
@@ -105,6 +91,7 @@ export function projectToFormValues(project: {
     healthCheckPath: project.healthCheckPath ?? "",
     autoDeploy: project.autoDeploy,
     autoApplyChanges: project.autoApplyChanges,
+    previewsEnabled: project.previewsEnabled,
   };
 }
 
@@ -134,26 +121,6 @@ export function useProjectForm({
 /** Form state returned by {@link useProjectForm}. */
 export type ProjectFormApi = ReturnType<typeof useProjectForm>;
 
-const PAIR_GRID = "grid gap-x-5 gap-y-5 sm:grid-cols-2";
-
-function AdvancedSettings({ form }: { readonly form: ProjectFormApi }) {
-  return (
-    <details className="group">
-      <summary className="flex w-fit cursor-pointer list-none items-center gap-1.5 rounded-md text-sm font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none [&::-webkit-details-marker]:hidden">
-        <ChevronRightIcon
-          aria-hidden
-          className="size-4 transition-transform group-open:rotate-90 motion-reduce:transition-none"
-        />
-        Mostrar Dockerfile, diretório e health check
-      </summary>
-      <div className={cn(PAIR_GRID, "mt-5")}>
-        <BuildFields form={form} />
-        <HealthCheckField form={form} />
-      </div>
-    </details>
-  );
-}
-
 function FormActions({
   form,
   submitLabel,
@@ -180,44 +147,6 @@ function FormActions({
         </form.Subscribe>
       </div>
     </div>
-  );
-}
-
-/** The sections of the form: repository, identity, runtime and build. */
-function ProjectFormSections({ form }: { readonly form: ProjectFormApi }) {
-  return (
-    <>
-      <SettingsSection
-        icon={GitBranchIcon}
-        title="Repositório"
-        description="Precisa ter um Dockerfile."
-      >
-        <div className="grid gap-x-5 gap-y-5 sm:grid-cols-[minmax(0,1fr)_minmax(0,11rem)]">
-          <GitHubRepositoryPicker form={form} />
-          <RepositoryFields form={form} />
-        </div>
-      </SettingsSection>
-      <SettingsSection icon={IdCardIcon} title="Identificação">
-        <div className={PAIR_GRID}>
-          <IdentityFields form={form} />
-        </div>
-      </SettingsSection>
-      <SettingsSection icon={RocketIcon} title="Execução">
-        <div className="space-y-5">
-          <div className="sm:max-w-56">
-            <PortField form={form} />
-          </div>
-          <AutoDeployField form={form} />
-        </div>
-      </SettingsSection>
-      <SettingsSection
-        icon={HammerIcon}
-        title="Build"
-        description="Opcional. Os padrões servem para a maioria."
-      >
-        <AdvancedSettings form={form} />
-      </SettingsSection>
-    </>
   );
 }
 

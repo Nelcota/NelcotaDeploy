@@ -9,7 +9,7 @@ import { createProject } from "@/projects";
 import { getSecretBox } from "@/secrets";
 import { saveSystemSettings } from "@/settings";
 
-import { seedServers, seedTasks, seedVolumes } from "./seed-extras";
+import { seedPreview, seedServers, seedTasks, seedVolumes } from "./seed-extras";
 
 const ACTOR = { type: "system", label: "ui-review" } as const;
 const MINUTE_IN_MS = 60_000;
@@ -56,6 +56,7 @@ const api = createProject(
     healthCheckPath: "/health",
     autoDeploy: true,
     autoApplyChanges: true,
+    previewsEnabled: true,
   },
   { actor: ACTOR, userId: null, isAdmin: true },
 );
@@ -72,6 +73,7 @@ createProject(
     healthCheckPath: null,
     autoDeploy: false,
     autoApplyChanges: true,
+    previewsEnabled: false,
   },
   { actor: ACTOR, userId: null, isAdmin: false },
 );
@@ -124,7 +126,13 @@ await Promise.all(
     async ([key, kind, value]) =>
       await saveEnvironmentVariable(database, secretBox, {
         projectId: api.id,
-        input: { key, kind, value, availableAtBuild: key === "NODE_ENV" },
+        input: {
+          key,
+          kind,
+          value,
+          availableAtBuild: key === "NODE_ENV",
+          excludeFromPreviews: false,
+        },
         actor: ACTOR,
       }),
   ),
@@ -137,6 +145,7 @@ addDomain(database, {
 
 seedTasks(database, api.id);
 seedVolumes(database, api.id);
+seedPreview(database, api.id);
 
 const startedAt = new Date(now - CONTAINER_UPTIME_IN_MINUTES * MINUTE_IN_MS).toISOString();
 database

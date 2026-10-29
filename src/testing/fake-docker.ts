@@ -1,13 +1,14 @@
 import type { ContainerInfo, DockerEngine, OutputHandler } from "@/docker";
 import type { ProcessResult } from "@/process";
 
+import { FakeImages } from "./fake-images";
 import { FakeVolumes } from "./fake-volumes";
 
 /** In-memory Docker double that records calls and simulates containers. */
 export class FakeDocker implements DockerEngine {
   readonly calls: string[] = [];
   readonly containers = new Map<string, ContainerInfo>();
-  readonly images = new Set<string>();
+  readonly images = new FakeImages(this.calls);
   readonly volumes = new FakeVolumes(this.calls, (name) =>
     [...this.mounts.entries()].some(
       ([container, volumes]) =>
@@ -36,21 +37,7 @@ export class FakeDocker implements DockerEngine {
       run.onLine?.(this.buildFailure, "stderr");
       throw new Error(`docker build failed: ${this.buildFailure}`);
     }
-    this.images.add(options.imageTag);
-    await Promise.resolve();
-  }
-
-  async imageExists(imageTag: string): Promise<boolean> {
-    return await Promise.resolve(this.images.has(imageTag));
-  }
-
-  async listProjectImages(): Promise<string[]> {
-    return await Promise.resolve([...this.images].toReversed());
-  }
-
-  async removeImage(imageTag: string): Promise<void> {
-    this.calls.push(`rmi ${imageTag}`);
-    this.images.delete(imageTag);
+    this.images.tags.add(options.imageTag);
     await Promise.resolve();
   }
 

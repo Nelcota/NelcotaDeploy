@@ -1,7 +1,7 @@
 import { InvalidRouteError } from "./routing.errors";
 
 const HOSTNAME_PATTERN = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+$/;
-const SLUG_PATTERN = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/;
+const ROUTE_NAME_PATTERN = /^[a-z0-9](?:[a-z0-9-]{0,98}[a-z0-9])?$/;
 const CONTAINER_NAME_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,127}$/;
 const NAME_PATTERN = /^[A-Za-z0-9_-]{1,64}$/;
 const MAX_PORT = 65_535;
@@ -113,21 +113,22 @@ function domainRouters(
  * version take all traffic at once: the old container stops receiving requests before it is
  * asked to stop.
  *
- * @param input - Project slug, hostnames, the container and its port, the server's entrypoints
- *   and whether routes compress responses.
- * @returns The project's dynamic configuration; no routers when it has no hostname.
- * @throws {InvalidRouteError} When a slug, hostname, container name, port or entrypoint is
- *   invalid.
+ * @param input - Route name (unique per project or preview), hostnames, the container and its
+ *   port, the server's entrypoints and whether routes compress responses.
+ * @returns The dynamic configuration; no routers when there is no hostname.
+ * @throws {InvalidRouteError} When the name, a hostname, the container name, the port or an
+ *   entrypoint is invalid.
  */
 export function projectRouteConfig(input: {
-  readonly projectSlug: string;
+  /** Base of the service and router names, such as "api" or "api-pr-12". */
+  readonly routeName: string;
   readonly domains: readonly RoutedDomain[];
   readonly containerName: string;
   readonly internalPort: number;
   readonly entrypoints: ProxyEntrypoints;
   readonly compress: boolean;
 }): DynamicConfig {
-  assertMatches(input.projectSlug, SLUG_PATTERN, "project slug");
+  assertMatches(input.routeName, ROUTE_NAME_PATTERN, "route name");
   assertMatches(input.containerName, CONTAINER_NAME_PATTERN, "container name");
   assertEntrypoints(input.entrypoints);
   if (
@@ -137,7 +138,7 @@ export function projectRouteConfig(input: {
   ) {
     throw new InvalidRouteError(`Invalid internal port: ${input.internalPort}`);
   }
-  const service = `nelcota-${input.projectSlug}`;
+  const service = `nelcota-${input.routeName}`;
   const routers: Record<string, Router> = {};
   input.domains.forEach((domain, index) => {
     Object.assign(

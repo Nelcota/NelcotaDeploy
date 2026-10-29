@@ -33,7 +33,10 @@ export async function deploy(
   const { database, docker, secretBox } = dependencies;
   const { deployment, project, logs, signal } = context;
 
-  const environment = await resolveEnvironment(database, secretBox, project.id);
+  const environment = await resolveEnvironment(database, secretBox, {
+    projectId: project.id,
+    forPreview: deployment.previewId != null,
+  });
   // Taken with the variables it describes, so later edits show up as pending changes.
   const runtimeConfigHash = runtimeConfigFingerprint(database, project.id);
   const buildConfigHash = buildConfigFingerprint(database, project.id);

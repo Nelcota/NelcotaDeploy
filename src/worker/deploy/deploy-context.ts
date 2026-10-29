@@ -1,5 +1,6 @@
 import type { Database } from "@/db";
 import type { Deployment } from "@/deployments";
+import { managedLabels } from "@/docker";
 import type { Project } from "@/projects";
 import type { SecretBox } from "@/secrets";
 
@@ -61,6 +62,22 @@ export type DeployContext = {
 };
 
 export const MILLISECONDS_PER_SECOND = 1000;
+
+/**
+ * Platform labels of the image and container a deployment creates, marking its project, the
+ * deployment and its pull request preview, if any.
+ *
+ * @param context - The deployment being run.
+ * @returns Label map.
+ */
+export function deploymentLabels(context: Pick<DeployContext, "deployment" | "project">) {
+  return managedLabels({
+    projectId: context.project.id,
+    projectSlug: context.project.slug,
+    deploymentId: context.deployment.id,
+    previewId: context.deployment.previewId,
+  });
+}
 
 export function assertNotCancelled(signal: AbortSignal): void {
   if (signal.aborted) {

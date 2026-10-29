@@ -6,6 +6,8 @@ export const LABELS = {
   projectId: "io.nelcota.project-id",
   projectSlug: "io.nelcota.project-slug",
   deploymentId: "io.nelcota.deployment-id",
+  /** Pull request preview of a container or image; absent on production ones. */
+  previewId: "io.nelcota.preview-id",
   /** The reverse proxy the platform runs on a remote server. Never an application. */
   proxy: "io.nelcota.proxy",
   /** Version of the proxy's settings; a proxy with another version is replaced. */
@@ -93,19 +95,21 @@ export function volumeNameFor(volumeId: string): string {
 /**
  * Builds the platform labels for a deployment's image and container.
  *
- * @param input - Owning project and deployment.
+ * @param input - Owning project, deployment and its pull request preview, if any.
  * @returns Label map.
  */
 export function managedLabels(input: {
   readonly projectId: string;
   readonly projectSlug: string;
   readonly deploymentId: string;
+  readonly previewId: string | null;
 }): Record<string, string> {
   return {
     [LABELS.managed]: "true",
     [LABELS.projectId]: input.projectId,
     [LABELS.projectSlug]: input.projectSlug,
     [LABELS.deploymentId]: input.deploymentId,
+    ...(input.previewId == null ? {} : { [LABELS.previewId]: input.previewId }),
   };
 }
 

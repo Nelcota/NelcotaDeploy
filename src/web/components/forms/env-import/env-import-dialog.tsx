@@ -2,9 +2,9 @@ import { FileUpIcon, LoaderCircleIcon } from "lucide-react";
 import { useMemo, useState } from "react";
 
 import { parseDotenv } from "@/shared/dotenv";
-import { EnvImportSummary } from "@/web/components/forms/env-import-summary";
+import { EnvImportSummary } from "@/web/components/forms/env-import/env-import-summary";
+import { useEnvImport } from "@/web/components/forms/env-import/use-env-import";
 import { type VariableKind, VariableKindToggle } from "@/web/components/forms/env-kind-toggle";
-import { useEnvImport } from "@/web/components/forms/use-env-import";
 import { Button } from "@/web/components/ui/button";
 import {
   Dialog,

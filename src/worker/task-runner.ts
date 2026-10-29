@@ -53,7 +53,9 @@ export async function runTaskExecution(
     });
     return "failed";
   }
-  const environment = await resolveEnvironment(database, dependencies.secretBox, project.id);
+  const environment = await resolveEnvironment(database, dependencies.secretBox, {
+    projectId: project.id,
+  });
   updateTaskExecution(database, executionId, { status: "running" });
   return await executeInContainer(
     { database, docker: dependencies.dockerOf(container.serverId) },
