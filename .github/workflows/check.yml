@@ -14,7 +14,8 @@ env:
 
 concurrency:
   group: check-${{ github.ref }}
-  cancel-in-progress: true
+  # Every push to main gets a full result; on pull requests only the latest push matters.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   check:
