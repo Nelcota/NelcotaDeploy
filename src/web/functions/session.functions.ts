@@ -1,9 +1,18 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 
-import { MAX_AVATAR_BYTES, removeUserAvatar, saveUserAvatar, UnauthenticatedError } from "@/auth";
+import {
+  createFirstAdmin,
+  getAuth,
+  MAX_AVATAR_BYTES,
+  needsFirstAdmin,
+  removeUserAvatar,
+  saveUserAvatar,
+  UnauthenticatedError,
+} from "@/auth";
 import { getDatabase } from "@/db";
 import { hasPermission, type Permission } from "@/shared/roles";
+import { firstAdminSchema } from "@/shared/schemas/user.schema";
 import { currentUser } from "@/web/server/authorization";
 
 const UI_PERMISSIONS: Permission[] = [
@@ -63,3 +72,18 @@ export const removeAvatarFn = createServerFn({ method: "POST" }).handler(async (
   }
   removeUserAvatar(getDatabase(), user.id);
 });
+
+// No session exists yet on a fresh panel, so these run without one; creating the admin is
+// refused as soon as any admin exists.
+
+/** Whether the login page should offer to create the first admin instead of signing in. */
+export const getSetupStatusFn = createServerFn({ method: "GET" }).handler(() => ({
+  needsFirstAdmin: needsFirstAdmin(getDatabase()),
+}));
+
+/** Creates the first admin of a fresh panel. */
+export const createFirstAdminFn = createServerFn({ method: "POST" })
+  .validator(firstAdminSchema)
+  .handler(async ({ data }) => {
+    await createFirstAdmin(getAuth(), getDatabase(), data);
+  });

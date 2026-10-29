@@ -13,6 +13,17 @@ export const passwordSchema = z
   .min(PASSWORD_MIN_LENGTH, `A senha precisa ter pelo menos ${PASSWORD_MIN_LENGTH} caracteres`)
   .max(MAX_PASSWORD_LENGTH, `A senha pode ter no máximo ${MAX_PASSWORD_LENGTH} caracteres`);
 
+/** The admin a fresh panel asks for on its login page. */
+export const firstAdminSchema = z.object({
+  name: z
+    .string()
+    .trim()
+    .min(1, "Informe o nome")
+    .max(MAX_NAME_LENGTH, `Use no máximo ${MAX_NAME_LENGTH} caracteres`),
+  email: z.email("E-mail inválido").trim().toLowerCase(),
+  password: passwordSchema,
+});
+
 /** Fields of the "Novo usuário" form, validated in the browser and again on the server. */
 export const newUserSchema = z.object({
   name: z
