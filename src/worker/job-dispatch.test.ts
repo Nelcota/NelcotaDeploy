@@ -40,6 +40,7 @@ describe("dispatchJob deploy", () => {
       secretBox: await createTestSecretBox(),
       config,
       logger: createLogger("test"),
+      offsiteStore: null,
     };
 
     const error = await dispatchJob(dependencies, job, {

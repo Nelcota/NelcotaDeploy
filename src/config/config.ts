@@ -19,6 +19,9 @@ const RUNTIME_LOG_RETENTION_LINES_RANGE: IntegerRange = { min: 100, max: 100_000
 const DEPLOYMENT_LOG_RETENTION_DAYS_RANGE: IntegerRange = { min: 1, max: 365, fallback: 30 };
 const IMAGES_KEPT_PER_PROJECT_RANGE: IntegerRange = { min: 1, max: 50, fallback: 5 };
 const BACKUPS_KEPT_RANGE: IntegerRange = { min: 1, max: 365, fallback: 7 };
+const OFFSITE_BACKUPS_KEPT_RANGE: IntegerRange = { min: 1, max: 3650, fallback: 30 };
+// Folders ending in "/"; a "." or ".." folder would make keys that read like relative paths.
+const S3_PREFIX_PATTERN = /^(?:(?!\.{1,2}\/)[A-Za-z0-9._-]+\/)*$/;
 
 function boundedInteger(range: IntegerRange) {
   return z.coerce.number().int().min(range.min).max(range.max).default(range.fallback);
@@ -45,48 +48,74 @@ function isKnownTimeZone(timeZone: string): boolean {
   }
 }
 
-const configSchema = z.object({
-  NODE_ENV: z.enum(["development", "production", "test"]).default("development"),
-  LOG_LEVEL: z.enum(["trace", "debug", "info", "warn", "error", "fatal", "silent"]).default("info"),
-  LOG_STREAM: z.enum(["stdout", "stderr"]).default("stdout"),
-  PORT: z.coerce.number().int().min(1).max(MAX_PORT).default(DEFAULT_PORT),
-  DATABASE_PATH: z.string().trim().min(1).default("./data/nelcota.db"),
-  WORKSPACE_DIR: z.string().trim().min(1).default("./data/workspaces"),
-  PUBLIC_URL: z.url({ protocol: /^https?$/ }).default(`http://localhost:${DEFAULT_PORT}`),
-  BETTER_AUTH_SECRET: z.string().min(MIN_AUTH_SECRET_LENGTH).optional(),
-  NELCOTA_ENCRYPTION_KEY: encryptionKeySchema.optional(),
-  GITHUB_WEBHOOK_SECRET: z.string().min(1).optional(),
-  DOCKER_BINARY: z.string().trim().min(1).default("docker"),
-  GIT_BINARY: z.string().trim().min(1).default("git"),
-  DOCKER_NETWORK: z
-    .string()
-    .regex(/^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,62}$/)
-    .default("nelcota"),
-  TRAEFIK_HTTP_ENTRYPOINT: z.string().min(1).default("web"),
-  TRAEFIK_HTTPS_ENTRYPOINT: z.string().min(1).default("websecure"),
-  TRAEFIK_CERT_RESOLVER: z.string().min(1).default("letsencrypt"),
-  TRAEFIK_ENABLED: booleanFromString,
-  // Directory, shared with the panel's proxy, where the worker writes application routes.
-  TRAEFIK_ROUTES_DIR: z.string().trim().min(1).optional(),
-  // Let's Encrypt account e-mail for the proxies the platform starts on other servers.
-  ACME_EMAIL: z.union([z.email(), z.literal("").transform(() => undefined)]).optional(),
-  WORKER_CONCURRENCY: boundedInteger(WORKER_CONCURRENCY_RANGE),
-  BUILD_TIMEOUT_SECONDS: boundedInteger(BUILD_TIMEOUT_SECONDS_RANGE),
-  HEALTH_CHECK_TIMEOUT_SECONDS: boundedInteger(HEALTH_CHECK_TIMEOUT_SECONDS_RANGE),
-  METRICS_INTERVAL_SECONDS: boundedInteger(METRICS_INTERVAL_SECONDS_RANGE),
-  METRICS_RETENTION_HOURS: boundedInteger(METRICS_RETENTION_HOURS_RANGE),
-  RUNTIME_LOG_RETENTION_LINES: boundedInteger(RUNTIME_LOG_RETENTION_LINES_RANGE),
-  DEPLOYMENT_LOG_RETENTION_DAYS: boundedInteger(DEPLOYMENT_LOG_RETENTION_DAYS_RANGE),
-  IMAGES_KEPT_PER_PROJECT: boundedInteger(IMAGES_KEPT_PER_PROJECT_RANGE),
-  // Daily database copies; the directory defaults to "backups" next to the database file.
-  BACKUP_DIR: z.string().trim().min(1).optional(),
-  BACKUPS_KEPT: boundedInteger(BACKUPS_KEPT_RANGE),
-  NELCOTA_MCP_TOKEN: z.string().min(1).optional(),
-  SCHEDULE_TIME_ZONE: z
-    .string()
-    .refine(isKnownTimeZone, { message: "must be an IANA time zone" })
-    .default("America/Sao_Paulo"),
-});
+const configSchema = z
+  .object({
+    NODE_ENV: z.enum(["development", "production", "test"]).default("development"),
+    LOG_LEVEL: z
+      .enum(["trace", "debug", "info", "warn", "error", "fatal", "silent"])
+      .default("info"),
+    LOG_STREAM: z.enum(["stdout", "stderr"]).default("stdout"),
+    PORT: z.coerce.number().int().min(1).max(MAX_PORT).default(DEFAULT_PORT),
+    DATABASE_PATH: z.string().trim().min(1).default("./data/nelcota.db"),
+    WORKSPACE_DIR: z.string().trim().min(1).default("./data/workspaces"),
+    PUBLIC_URL: z.url({ protocol: /^https?$/ }).default(`http://localhost:${DEFAULT_PORT}`),
+    BETTER_AUTH_SECRET: z.string().min(MIN_AUTH_SECRET_LENGTH).optional(),
+    NELCOTA_ENCRYPTION_KEY: encryptionKeySchema.optional(),
+    GITHUB_WEBHOOK_SECRET: z.string().min(1).optional(),
+    DOCKER_BINARY: z.string().trim().min(1).default("docker"),
+    GIT_BINARY: z.string().trim().min(1).default("git"),
+    DOCKER_NETWORK: z
+      .string()
+      .regex(/^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,62}$/)
+      .default("nelcota"),
+    TRAEFIK_HTTP_ENTRYPOINT: z.string().min(1).default("web"),
+    TRAEFIK_HTTPS_ENTRYPOINT: z.string().min(1).default("websecure"),
+    TRAEFIK_CERT_RESOLVER: z.string().min(1).default("letsencrypt"),
+    TRAEFIK_ENABLED: booleanFromString,
+    // Directory, shared with the panel's proxy, where the worker writes application routes.
+    TRAEFIK_ROUTES_DIR: z.string().trim().min(1).optional(),
+    // Let's Encrypt account e-mail for the proxies the platform starts on other servers.
+    ACME_EMAIL: z.union([z.email(), z.literal("").transform(() => undefined)]).optional(),
+    WORKER_CONCURRENCY: boundedInteger(WORKER_CONCURRENCY_RANGE),
+    BUILD_TIMEOUT_SECONDS: boundedInteger(BUILD_TIMEOUT_SECONDS_RANGE),
+    HEALTH_CHECK_TIMEOUT_SECONDS: boundedInteger(HEALTH_CHECK_TIMEOUT_SECONDS_RANGE),
+    METRICS_INTERVAL_SECONDS: boundedInteger(METRICS_INTERVAL_SECONDS_RANGE),
+    METRICS_RETENTION_HOURS: boundedInteger(METRICS_RETENTION_HOURS_RANGE),
+    RUNTIME_LOG_RETENTION_LINES: boundedInteger(RUNTIME_LOG_RETENTION_LINES_RANGE),
+    DEPLOYMENT_LOG_RETENTION_DAYS: boundedInteger(DEPLOYMENT_LOG_RETENTION_DAYS_RANGE),
+    IMAGES_KEPT_PER_PROJECT: boundedInteger(IMAGES_KEPT_PER_PROJECT_RANGE),
+    // Daily database copies; the directory defaults to "backups" next to the database file.
+    BACKUP_DIR: z.string().trim().min(1).optional(),
+    BACKUPS_KEPT: boundedInteger(BACKUPS_KEPT_RANGE),
+    // Encrypted copies of each backup in an S3-compatible bucket, kept outside the server.
+    BACKUP_S3_BUCKET: z.string().trim().min(1).optional(),
+    BACKUP_S3_ENDPOINT: z.url({ protocol: /^https?$/ }).optional(),
+    BACKUP_S3_REGION: z.string().trim().min(1).optional(),
+    BACKUP_S3_ACCESS_KEY_ID: z.string().trim().min(1).optional(),
+    BACKUP_S3_SECRET_ACCESS_KEY: z.string().min(1).optional(),
+    BACKUP_S3_PREFIX: z
+      .string()
+      .trim()
+      .regex(S3_PREFIX_PATTERN, "must be folders ending in /, such as nelcota/backups/")
+      .default("nelcota/"),
+    BACKUP_S3_KEPT: boundedInteger(OFFSITE_BACKUPS_KEPT_RANGE),
+    NELCOTA_MCP_TOKEN: z.string().min(1).optional(),
+    SCHEDULE_TIME_ZONE: z
+      .string()
+      .refine(isKnownTimeZone, { message: "must be an IANA time zone" })
+      .default("America/Sao_Paulo"),
+  })
+  .superRefine((config, context) => {
+    const hasCredentials =
+      config.BACKUP_S3_ACCESS_KEY_ID != null && config.BACKUP_S3_SECRET_ACCESS_KEY != null;
+    if (config.BACKUP_S3_BUCKET != null && hasCredentials === false) {
+      context.addIssue({
+        code: "custom",
+        path: ["BACKUP_S3_BUCKET"],
+        message: "needs BACKUP_S3_ACCESS_KEY_ID and BACKUP_S3_SECRET_ACCESS_KEY",
+      });
+    }
+  });
 
 /** Validated process configuration. Paths are absolute. */
 export type AppConfig = z.infer<typeof configSchema>;

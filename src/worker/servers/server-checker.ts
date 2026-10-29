@@ -4,7 +4,7 @@ import { isPublicIpAddress, lookupWithTimeout } from "@/domains";
 import { sharedRouteConfig } from "@/routing";
 import { REMOTE_ROUTES_DIR, type Server, type ServerCheck } from "@/servers";
 
-import type { ServerHost } from "../worker.types";
+import type { ServerHost } from "../server-host";
 import { REMOTE_DOCKER_BINARY } from "./server-hosts";
 
 const COMMAND_TIMEOUT_IN_MS = 10_000;

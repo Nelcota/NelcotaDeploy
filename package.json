@@ -12,6 +12,7 @@
     "admin:create": "bun run src/auth/bootstrap-admin.ts",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "bun run src/db/migrate.ts",
+    "db:restore": "bun run src/backups/restore-backup.ts",
     "format": "oxfmt",
     "format:check": "oxfmt --check",
     "lint": "oxlint --type-aware",

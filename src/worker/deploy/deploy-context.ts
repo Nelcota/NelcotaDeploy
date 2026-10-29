@@ -3,8 +3,8 @@ import type { Deployment } from "@/deployments";
 import type { Project } from "@/projects";
 import type { SecretBox } from "@/secrets";
 
+import type { ServerHost } from "../server-host";
 import { DeploymentCancelledError } from "../worker.errors";
-import type { ServerHost } from "../worker.types";
 import type { DeploymentLogWriter } from "./deployment-log-writer";
 
 /** Settings the deploy runner reads from configuration and from the target server. */

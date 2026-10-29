@@ -1,5 +1,6 @@
 import {
   ActivityIcon,
+  CloudUploadIcon,
   ContainerIcon,
   DatabaseIcon,
   GaugeIcon,
@@ -18,6 +19,7 @@ import { useNow } from "@/web/components/clock/use-now";
 import { Section } from "@/web/components/layout/layout";
 import { StatusPill } from "@/web/components/layout/status-badge";
 
+import { offsiteBackupState } from "./offsite-backup-state";
 import type { ServerData } from "./server-data";
 import { ToggleStatusPill } from "./toggle-status-pill";
 
@@ -97,6 +99,9 @@ function ConfigurationRows({ server }: { readonly server: ServerData }) {
       <InfoRow icon={DatabaseIcon} label="Backup do banco">
         <BackupStatus backup={server.backup} />
       </InfoRow>
+      <InfoRow icon={CloudUploadIcon} label="Cópia externa">
+        <OffsiteStatus offsite={server.backup.offsite} />
+      </InfoRow>
       <InfoRow icon={LockKeyholeIcon} label="Chave de criptografia">
         <ToggleStatusPill
           on={server.encryptionConfigured}
@@ -107,6 +112,13 @@ function ConfigurationRows({ server }: { readonly server: ServerData }) {
       </InfoRow>
     </>
   );
+}
+
+/** Whether backups also go to a bucket outside the server, and how the last upload went. */
+function OffsiteStatus({ offsite }: { readonly offsite: ServerData["backup"]["offsite"] }) {
+  const now = useNow();
+  const state = offsiteBackupState(offsite, now);
+  return <StatusPill tone={state.tone} label={state.label} />;
 }
 
 /** When the database was last copied, and how many copies are kept. */

@@ -26,6 +26,7 @@ export async function createWorkerDependencies(
     secretBox: await createTestSecretBox(),
     config: getConfig(),
     logger: createLogger("remote-it"),
+    offsiteStore: null,
   };
 }
 

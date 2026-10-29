@@ -5,7 +5,7 @@ import { Section } from "@/web/components/layout/layout";
 import { useAction } from "@/web/components/layout/use-action";
 import { Button } from "@/web/components/ui/button";
 import { Card } from "@/web/components/ui/card";
-import { sendTestAlertFn } from "@/web/functions/admin/settings.functions";
+import { sendTestAlertFn } from "@/web/functions/admin/alerts.functions";
 
 import {
   AlertWebhookField,
