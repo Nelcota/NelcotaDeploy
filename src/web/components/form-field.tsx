@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import { Label } from "./ui/label";
 
 /** Extracts readable messages from TanStack Form / Zod errors. */
-function errorMessages(errors: readonly unknown[]): string[] {
+export function errorMessages(errors: readonly unknown[]): string[] {
   return errors
     .map((error) => {
       if (typeof error === "string") {
@@ -20,6 +20,21 @@ function errorMessages(errors: readonly unknown[]): string[] {
       return "";
     })
     .filter((message) => message !== "");
+}
+
+/**
+ * Errors worth showing for a field: only once the user left it or tried to submit, so a
+ * half-typed form is not covered in red.
+ *
+ * @param form - Anything exposing the form's submission count, such as a TanStack form.
+ * @param meta - The field's blur state and current errors.
+ * @returns The errors to display, or none yet.
+ */
+export function visibleErrors(
+  form: { readonly state: { readonly submissionAttempts: number } },
+  meta: { readonly isBlurred: boolean; readonly errors: readonly unknown[] },
+): readonly unknown[] {
+  return meta.isBlurred || form.state.submissionAttempts > 0 ? meta.errors : [];
 }
 
 /**

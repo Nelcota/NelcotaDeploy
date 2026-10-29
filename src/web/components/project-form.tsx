@@ -6,7 +6,7 @@ import type { z } from "zod";
 
 import { projectInputSchema, slugify } from "@/shared/project.schema";
 
-import { FormField } from "./form-field";
+import { FormField, visibleErrors } from "./form-field";
 import { Button } from "./ui/button";
 import { cn } from "./ui/class-names";
 import { Input } from "./ui/input";
@@ -116,17 +116,6 @@ export function useProjectForm({
 }
 
 type ProjectFormApi = ReturnType<typeof useProjectForm>;
-
-/**
- * Errors worth showing for a field: only once the user left it or tried to submit, so a
- * half-typed form is not covered in red.
- */
-function visibleErrors(
-  form: ProjectFormApi,
-  meta: { readonly isBlurred: boolean; readonly errors: readonly unknown[] },
-): readonly unknown[] {
-  return meta.isBlurred || form.state.submissionAttempts > 0 ? meta.errors : [];
-}
 
 /** Name and slug; a new project derives its slug from the name until the slug is edited. */
 export function IdentityFields({ form }: { readonly form: ProjectFormApi }) {

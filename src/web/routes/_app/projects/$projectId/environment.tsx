@@ -1,3 +1,4 @@
+import { useForm } from "@tanstack/react-form";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import {
@@ -14,7 +15,7 @@ import {
   VariableIcon,
 } from "lucide-react";
 import { useState } from "react";
-import { z } from "zod";
+import type { z } from "zod";
 
 import type { EnvironmentVariableView } from "@/environments";
 import { normalizeVariableKey } from "@/shared/dotenv";
@@ -24,7 +25,7 @@ import { ApplyChangesBanner, useApplyChanges } from "@/web/components/apply-chan
 import { ConfirmDialog } from "@/web/components/confirm-dialog";
 import { EnvImportDialog } from "@/web/components/env-import-dialog";
 import { type VariableKind, VariableKindToggle } from "@/web/components/env-kind-toggle";
-import { FormField } from "@/web/components/form-field";
+import { FormField, visibleErrors } from "@/web/components/form-field";
 import { List, ListRow, Tag } from "@/web/components/layout";
 import { TabHeader } from "@/web/components/project-header";
 import { projectQueryOptions } from "@/web/components/project-query";
@@ -316,17 +317,12 @@ function VariableDialog({
   readonly variable: EnvironmentVariableView | null;
   readonly onSaved: () => void;
 }) {
-  const [draft, setDraft] = useState<VariableDraft>(
-    variable == null
-      ? EMPTY_DRAFT
-      : {
-          key: variable.key,
-          kind: variable.kind,
-          value: variable.value ?? "",
-          availableAtBuild: variable.availableAtBuild,
-        },
+  const savedSecret = variable?.kind === "secret";
+  // A saved secret keeps its value when left blank; a new one needs a value.
+  const schema = environmentVariableInputSchema.refine(
+    (input) => input.kind !== "secret" || input.value !== "" || savedSecret,
+    { path: ["value"], message: "Informe o valor do secret" },
   );
-  const [errors, setErrors] = useState<Partial<Record<keyof VariableDraft, string[]>>>({});
   const save = useAction({
     action: (input: z.output<typeof environmentVariableInputSchema>) =>
       saveEnvironmentVariableFn({ data: { projectId, variable: input } }),
@@ -337,31 +333,19 @@ function VariableDialog({
       onOpenChange(false);
     },
   });
-  const editingSecret = variable?.kind === "secret" && draft.kind === "secret";
-
-  const submit = () => {
-    const parsed = environmentVariableInputSchema.safeParse(draft);
-    if (parsed.success === false) {
-      setErrors(z.flattenError(parsed.error).fieldErrors);
-      return;
-    }
-    if (parsed.data.kind === "secret" && parsed.data.value === "" && editingSecret === false) {
-      setErrors({ value: ["Informe o valor do secret"] });
-      return;
-    }
-    setErrors({});
-    save.mutate(parsed.data);
-  };
-
-  const update = (patch: Partial<VariableDraft>) => {
-    setDraft((current) => ({ ...current, ...patch }));
-    // An error stays only until the user changes that field.
-    setErrors((current) =>
-      Object.fromEntries(
-        Object.entries(current).filter(([field]) => Object.hasOwn(patch, field) === false),
-      ),
-    );
-  };
+  const form = useForm({
+    defaultValues:
+      variable == null
+        ? EMPTY_DRAFT
+        : {
+            key: variable.key,
+            kind: variable.kind,
+            value: variable.value ?? "",
+            availableAtBuild: variable.availableAtBuild,
+          },
+    validators: { onChange: schema },
+    onSubmit: ({ value }) => save.mutate(schema.parse(value)),
+  });
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -373,52 +357,81 @@ function VariableDialog({
           </DialogDescription>
         </DialogHeader>
         <form
+          noValidate
           className="space-y-4"
           onSubmit={(event) => {
             event.preventDefault();
-            submit();
+            void form.handleSubmit();
           }}
         >
-          <FormField id="variable-key" label="Nome" errors={errors.key ?? []}>
-            {(props) => (
-              <Input
-                {...props}
-                className="font-mono"
-                autoComplete="off"
-                disabled={variable != null}
-                value={draft.key}
-                onChange={(event) => update({ key: normalizeVariableKey(event.target.value) })}
-              />
+          <form.Field name="key">
+            {(field) => (
+              <FormField
+                id="variable-key"
+                label="Nome"
+                errors={visibleErrors(form, field.state.meta)}
+              >
+                {(props) => (
+                  <Input
+                    {...props}
+                    className="font-mono"
+                    autoComplete="off"
+                    disabled={variable != null}
+                    value={field.state.value}
+                    onBlur={field.handleBlur}
+                    onChange={(event) =>
+                      field.handleChange(normalizeVariableKey(event.target.value))
+                    }
+                  />
+                )}
+              </FormField>
             )}
-          </FormField>
-          <FormField id="variable-kind" label="Tipo" errors={errors.kind ?? []}>
-            {(props) => (
-              <VariableKindToggle
-                id={props.id}
-                describedBy={props["aria-describedby"]}
-                value={draft.kind}
-                onChange={(kind) => update({ kind })}
-              />
+          </form.Field>
+          <form.Field name="kind">
+            {(field) => (
+              <FormField
+                id="variable-kind"
+                label="Tipo"
+                errors={visibleErrors(form, field.state.meta)}
+              >
+                {(props) => (
+                  <VariableKindToggle
+                    id={props.id}
+                    describedBy={props["aria-describedby"]}
+                    value={field.state.value}
+                    onChange={field.handleChange}
+                  />
+                )}
+              </FormField>
             )}
-          </FormField>
-          <FormField
-            id="variable-value"
-            label="Valor"
-            hint={editingSecret ? "Deixe em branco para manter o valor atual." : undefined}
-            errors={errors.value ?? []}
-          >
-            {(props) => (
-              <Textarea
-                {...props}
-                className="font-mono text-sm"
-                autoComplete="off"
-                spellCheck={false}
-                placeholder={editingSecret ? MASKED_VALUE : undefined}
-                value={draft.value}
-                onChange={(event) => update({ value: event.target.value })}
-              />
+          </form.Field>
+          <form.Subscribe selector={(state) => savedSecret && state.values.kind === "secret"}>
+            {(editingSecret) => (
+              <form.Field name="value">
+                {(field) => (
+                  <FormField
+                    id="variable-value"
+                    label="Valor"
+                    hint={editingSecret ? "Deixe em branco para manter o valor atual." : undefined}
+                    errors={visibleErrors(form, field.state.meta)}
+                  >
+                    {(props) => (
+                      <Textarea
+                        {...props}
+                        className="font-mono text-sm"
+                        autoComplete="off"
+                        spellCheck={false}
+                        placeholder={editingSecret ? MASKED_VALUE : undefined}
+                        value={field.state.value}
+                        onBlur={field.handleBlur}
+                        onChange={(event) => field.handleChange(event.target.value)}
+                      />
+                    )}
+                  </FormField>
+                )}
+              </form.Field>
             )}
-          </FormField>
+          </form.Subscribe>
           <div className="flex items-start justify-between gap-4 rounded-lg bg-secondary p-3 ring-1 ring-border ring-inset">
             <div className="space-y-1">
               <Label htmlFor="variable-build">Disponível no build</Label>
@@ -426,12 +439,16 @@ function VariableDialog({
                 Também entregue ao build da imagem (ARG no Dockerfile).
               </p>
             </div>
-            <Switch
-              id="variable-build"
-              aria-describedby="variable-build-hint"
-              checked={draft.availableAtBuild}
-              onCheckedChange={(checked) => update({ availableAtBuild: checked })}
-            />
+            <form.Field name="availableAtBuild">
+              {(field) => (
+                <Switch
+                  id="variable-build"
+                  aria-describedby="variable-build-hint"
+                  checked={field.state.value}
+                  onCheckedChange={field.handleChange}
+                />
+              )}
+            </form.Field>
           </div>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>

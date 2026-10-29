@@ -1,3 +1,4 @@
+import { useForm } from "@tanstack/react-form";
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import {
@@ -11,13 +12,13 @@ import {
   StarIcon,
   Trash2Icon,
 } from "lucide-react";
-import { type FormEvent, useState } from "react";
-import { z } from "zod";
+import type { z } from "zod";
 
 import { domainInputSchema } from "@/shared/domain.schema";
 import { ApplyChangesBanner, useApplyChanges } from "@/web/components/apply-changes-banner";
 import { ConfirmDialog } from "@/web/components/confirm-dialog";
 import { CopyButton } from "@/web/components/copy-button";
+import { errorMessages, visibleErrors } from "@/web/components/form-field";
 import { CardTitleRow, List, ListRow, Tag } from "@/web/components/layout";
 import { TabHeader } from "@/web/components/project-header";
 import { projectQueryOptions } from "@/web/components/project-query";
@@ -190,86 +191,95 @@ function RemoveDomainButton({
 }
 
 function AddDomainForm({ projectId }: { readonly projectId: string }) {
-  const [hostname, setHostname] = useState("");
-  const [httpsEnabled, setHttpsEnabled] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const add = useAction({
     action: (domain: z.output<typeof domainInputSchema>) =>
       addDomainFn({ data: { projectId, domain } }),
     successMessage: "Domínio adicionado",
     invalidate: [["project", projectId]],
-    onSuccess: () => setHostname(""),
+    onSuccess: () => form.reset(),
   });
-
-  const submit = (event: FormEvent) => {
-    event.preventDefault();
-    const parsed = domainInputSchema.safeParse({ hostname, httpsEnabled });
-    if (parsed.success === false) {
-      setError(z.flattenError(parsed.error).fieldErrors.hostname?.[0] ?? "Domínio inválido.");
-      return;
-    }
-    setError(null);
-    add.mutate(parsed.data);
-  };
+  const form = useForm({
+    defaultValues: { hostname: "", httpsEnabled: true },
+    validators: { onChange: domainInputSchema },
+    onSubmit: ({ value }) => add.mutate(domainInputSchema.parse(value)),
+  });
 
   return (
     <form
       noValidate
       className="space-y-2 bg-well/40 px-5 py-4"
-      onSubmit={submit}
+      onSubmit={(event) => {
+        event.preventDefault();
+        void form.handleSubmit();
+      }}
       aria-label="Adicionar domínio"
     >
       <label htmlFor="domain-hostname" className="text-sm font-medium">
         Adicionar domínio
       </label>
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-        <div
-          className={cn(
-            "flex h-11 min-w-0 flex-1 items-center rounded-lg bg-secondary ring-1 ring-border transition-[box-shadow,background-color] ring-inset focus-within:bg-surface focus-within:ring-3 focus-within:ring-ring/25 hover:ring-input",
-            error == null ? "" : "ring-destructive/60",
-          )}
-        >
-          <span aria-hidden className="pl-3.5 font-mono text-sm text-faint select-none">
-            {httpsEnabled ? "https://" : "http://"}
-          </span>
-          <Input
-            id="domain-hostname"
-            placeholder="app.exemplo.com"
-            autoComplete="off"
-            spellCheck={false}
-            aria-invalid={error != null}
-            aria-describedby="domain-hostname-error"
-            className="h-full rounded-none bg-transparent pl-0.5 font-mono ring-0 hover:ring-0 focus-visible:bg-transparent focus-visible:ring-0"
-            value={hostname}
-            onChange={(event) => {
-              setHostname(event.target.value);
-              setError(null);
-            }}
-          />
-        </div>
-        <div className="flex items-center gap-2">
-          <Switch
-            id="domain-https"
-            checked={httpsEnabled}
-            onCheckedChange={setHttpsEnabled}
-            title="Certificado Let's Encrypt emitido automaticamente"
-          />
-          <label htmlFor="domain-https" className="text-sm">
-            HTTPS
-          </label>
-        </div>
-        <Button type="submit" disabled={add.isPending || hostname.trim() === ""}>
-          <PlusIcon aria-hidden />
-          Adicionar
-        </Button>
-      </div>
-      <p
-        id="domain-hostname-error"
-        aria-live="polite"
-        className="text-xs font-medium text-destructive empty:hidden"
-      >
-        {error ?? ""}
-      </p>
+      <form.Field name="hostname">
+        {(field) => {
+          const [error] = errorMessages(visibleErrors(form, field.state.meta));
+          return (
+            <>
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                <div
+                  className={cn(
+                    "flex h-11 min-w-0 flex-1 items-center rounded-lg bg-secondary ring-1 ring-border transition-[box-shadow,background-color] ring-inset focus-within:bg-surface focus-within:ring-3 focus-within:ring-ring/25 hover:ring-input",
+                    error == null ? "" : "ring-destructive/60",
+                  )}
+                >
+                  <form.Subscribe selector={(state) => state.values.httpsEnabled}>
+                    {(httpsEnabled) => (
+                      <span aria-hidden className="pl-3.5 font-mono text-sm text-faint select-none">
+                        {httpsEnabled ? "https://" : "http://"}
+                      </span>
+                    )}
+                  </form.Subscribe>
+                  <Input
+                    id="domain-hostname"
+                    placeholder="app.exemplo.com"
+                    autoComplete="off"
+                    spellCheck={false}
+                    aria-invalid={error != null}
+                    aria-describedby="domain-hostname-error"
+                    className="h-full rounded-none bg-transparent pl-0.5 font-mono ring-0 hover:ring-0 focus-visible:bg-transparent focus-visible:ring-0"
+                    value={field.state.value}
+                    onBlur={field.handleBlur}
+                    onChange={(event) => field.handleChange(event.target.value)}
+                  />
+                </div>
+                <form.Field name="httpsEnabled">
+                  {(httpsField) => (
+                    <div className="flex items-center gap-2">
+                      <Switch
+                        id="domain-https"
+                        checked={httpsField.state.value}
+                        onCheckedChange={httpsField.handleChange}
+                        title="Certificado Let's Encrypt emitido automaticamente"
+                      />
+                      <label htmlFor="domain-https" className="text-sm">
+                        HTTPS
+                      </label>
+                    </div>
+                  )}
+                </form.Field>
+                <Button type="submit" disabled={add.isPending || field.state.value.trim() === ""}>
+                  <PlusIcon aria-hidden />
+                  Adicionar
+                </Button>
+              </div>
+              <p
+                id="domain-hostname-error"
+                aria-live="polite"
+                className="text-xs font-medium text-destructive empty:hidden"
+              >
+                {error ?? ""}
+              </p>
+            </>
+          );
+        }}
+      </form.Field>
     </form>
   );
 }
