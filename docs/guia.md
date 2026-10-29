@@ -275,7 +275,15 @@ e pronto:
 
 - **Novo projeto** lista os repositórios do app;
 - repositórios privados são clonados com tokens de instalação de 1 hora, sem token por projeto;
-- todo push chega ao painel, sem webhook por repositório.
+- todo push chega ao painel, sem webhook por repositório;
+- cada deploy aparece no commit e no PR do GitHub (“Nelcota Deploy (slug)”): em andamento,
+  concluído, falhou ou cancelado, com link para os logs no painel. Redeploys e rollbacks não mudam o
+  status, porque não dizem nada novo sobre o commit.
+
+Apps criados antes do status pedem uma permissão a mais uma única vez: no GitHub, abra as
+configurações do app → _Permissions_, marque _Commit statuses: Read and write_ e aceite a mudança em
+cada instalação. Enquanto isso, **Configurações → Sistema → GitHub** mostra quais contas faltam, e o
+deploy segue normalmente, só sem o status no commit.
 
 A chave privada e o segredo do webhook do app ficam criptografados com `NELCOTA_ENCRYPTION_KEY`.
 **Desconectar** só faz o painel esquecer o app; apague-o nas configurações do GitHub se quiser. O

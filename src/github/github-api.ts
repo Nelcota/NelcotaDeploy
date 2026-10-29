@@ -42,7 +42,7 @@ export function createAppJwt(appId: string, privateKeyPem: string, now: Date): s
  * Calls the GitHub REST API.
  *
  * @param api - API location.
- * @param request - Path (starting with `/`), method, `Bearer` credential and JSON body.
+ * @param request - Path (starting with `/`), method, `Bearer` credential and JSON `body`.
  * @returns The parsed JSON answer.
  * @throws {GitHubApiError} When the request fails, times out or GitHub answers with an error.
  */
@@ -52,6 +52,7 @@ export async function githubRequest(
     readonly path: string;
     readonly method?: "GET" | "POST";
     readonly bearer?: string;
+    readonly body?: Readonly<Record<string, unknown>>;
   },
 ): Promise<unknown> {
   const method = request.method ?? "GET";
@@ -63,9 +64,13 @@ export async function githubRequest(
   if (request.bearer != null) {
     headers["Authorization"] = `Bearer ${request.bearer}`;
   }
+  if (request.body != null) {
+    headers["Content-Type"] = "application/json";
+  }
   const response = await fetch(`${api.baseUrl}${request.path}`, {
     method,
     headers,
+    ...(request.body == null ? {} : { body: JSON.stringify(request.body) }),
     signal: AbortSignal.timeout(REQUEST_TIMEOUT_IN_MS),
   }).catch((error: unknown) => {
     throw new GitHubApiError(`GitHub ${method} ${request.path} failed: ${String(error)}`, null);

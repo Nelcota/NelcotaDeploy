@@ -8,8 +8,8 @@ const GITHUB_APP_CALLBACK_PATH = "/api/github/app/callback";
 const GITHUB_WEBHOOK_PATH = "/api/webhooks/github";
 
 /**
- * Describes the GitHub App the panel needs: read access to code, and push events delivered to
- * the panel's webhook, so no repository needs a webhook of its own.
+ * Describes the GitHub App the panel needs: read access to code, commit statuses, and push
+ * events delivered to the panel's webhook, so no repository needs a webhook of its own.
  *
  * @param publicUrl - The panel's PUBLIC_URL, without a trailing slash.
  * @returns The manifest GitHub's "create app from manifest" flow expects.
@@ -25,7 +25,8 @@ export function buildAppManifest(publicUrl: string) {
     setup_url: `${publicUrl}/settings?tab=server`,
     setup_on_update: true,
     public: false,
-    default_permissions: { contents: "read", metadata: "read" },
+    // Statuses: the result of each deployment shows on its commit and pull request.
+    default_permissions: { contents: "read", metadata: "read", statuses: "write" },
     default_events: ["push"],
   };
 }

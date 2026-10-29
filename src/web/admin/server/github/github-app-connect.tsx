@@ -4,7 +4,7 @@ import { Button } from "@/web/components/ui/button";
 import { Input } from "@/web/components/ui/input";
 import { Label } from "@/web/components/ui/label";
 
-import type { ServerData } from "./server-data";
+import type { ServerData } from "../server-data";
 import { ManualWebhook, UnreachableWarning } from "./webhook-section";
 
 function connectUrl(organization: string): string {
