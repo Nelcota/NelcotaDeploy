@@ -108,7 +108,8 @@ em [`.env.example`](../.env.example).
 | `GITHUB_WEBHOOK_SECRET`           | não                | segredo HMAC de webhooks criados à mão; com o GitHub App, o app traz o próprio segredo     |
 | `BACKUP_DIR` / `BACKUPS_KEPT`     | não                | pasta do backup diário do banco (padrão: `backups/` ao lado dele) e quantos manter (7)     |
 | `DATABASE_PATH` / `WORKSPACE_DIR` | não                | banco e diretório temporário de builds                                                     |
-| `TRAEFIK_ENABLED`                 | não                | adiciona labels de roteamento aos contêineres                                              |
+| `TRAEFIK_ENABLED`                 | não                | roteia os domínios das apps pelo Traefik do painel                                         |
+| `TRAEFIK_ROUTES_DIR`              | com o Traefik      | pasta, compartilhada com o Traefik, onde o worker grava as rotas (`/routes` no Compose)    |
 | `NELCOTA_MCP_TOKEN`               | só no processo MCP | token de API com escopo                                                                    |
 
 ## Banco de dados
@@ -149,12 +150,21 @@ Garantias da engine:
 - Recuperação: jobs têm lease renovado a cada 10 s. Se o worker morrer, o job volta para a fila
   (deploys têm uma nova tentativa) ou falha com mensagem clara; tasks interrompidas são marcadas como falhas.
 
-### Troca de versão (downtime)
+### Troca de versão sem queda
 
-O contêiner novo sobe ao lado do antigo; só depois do health check passar o antigo é removido.
-Se o novo falhar, ele é removido e o antigo continua no ar. Durante a troca os dois podem receber
-tráfego por alguns segundos. **Não há promessa de zero downtime**: apps com estado local, migrations
-incompatíveis ou portas fixas podem ter uma pequena indisponibilidade.
+As rotas das apps ficam em arquivos que o worker grava e o Traefik lê (o _file provider_), um por
+projeto. A troca acontece assim:
+
+1. O contêiner novo sobe ao lado do antigo, **sem receber tráfego**.
+2. O worker faz o health check direto no contêiner novo. Se falhar, ele é removido e nada muda.
+3. O worker troca o arquivo de rotas do projeto, de forma atômica, para apontar só para o novo.
+   Daí em diante, toda requisição nova vai para ele.
+4. Depois de alguns segundos (o tempo do Traefik aplicar a mudança), o antigo recebe SIGTERM e tem
+   até 30 s para terminar as requisições em andamento antes de ser removido.
+
+O teste com Docker real manda requisições sem parar durante uma troca e exige que nenhuma falhe.
+Continuam valendo os cuidados de sempre: migrations incompatíveis com a versão anterior quebram o
+contêiner antigo enquanto ele ainda responde.
 
 ### Health check
 
@@ -292,13 +302,13 @@ O deploy manual funciona independentemente do webhook.
 
 - Domínios por projeto em **Domínios**. Com um _domínio base_ em **Configurações → Organização**
   (ex.: `apps.empresa.com`), cada projeto ganha automaticamente `<slug>.apps.empresa.com`.
-- Com `TRAEFIK_ENABLED=true`, o worker adiciona labels Traefik ao contêiner: um router por domínio,
+- Com `TRAEFIK_ENABLED=true`, o worker grava as rotas de cada projeto: um router por domínio,
   redirecionamento HTTP→HTTPS e certificado Let's Encrypt (`certresolver`). Mudanças de domínio
   são aplicadas sozinhas (veja o passo 4 de [Cadastrar uma aplicação](#cadastrar-uma-aplicação-e-fazer-deploy)).
 - Cada domínio mostra se o DNS já aponta para o servidor do projeto: _DNS ok_, _Sem DNS_ ou _DNS em
   outro endereço_ (outro servidor ou um CDN na frente). A checagem se repete a cada minuto.
-- O Traefik só roteia contêineres com `io.nelcota.managed=true` (ou o próprio painel) — veja a
-  constraint em `docker-compose.yml`.
+- O painel continua roteado por labels; as apps, pelos arquivos em `TRAEFIK_ROUTES_DIR`. Apps
+  publicadas antes dessa mudança seguem pelas labels antigas até o próximo deploy.
 
 Para testar HTTPS: aponte um registro DNS `A` para a VPS, defina `ACME_EMAIL`, suba o Compose e
 acesse o domínio. Sem DNS público (desenvolvimento), deixe `TRAEFIK_ENABLED=false`; o health check
@@ -367,7 +377,12 @@ docker compose up -d
 O Compose sobe **Traefik** (80/443, Let's Encrypt, socket somente leitura), **web** (sem socket,
 roda migrations ao iniciar, health check em `/api/health`) e **worker** (único com o socket do
 Docker, `stop_grace_period` de 2 min para terminar jobs). Dados persistem no volume `data`
-(SQLite e workspaces) e certificados no volume `letsencrypt`. A rede `nelcota` é compartilhada
+(SQLite e workspaces), as rotas das apps no volume `routes` (gravado pelo worker, lido pelo
+Traefik) e os certificados no volume `letsencrypt`.
+
+Ao atualizar uma instalação antiga, rode `docker compose up -d --build` com o `docker-compose.yml`
+novo. Nas VPSs, o worker troca sozinho o Traefik antigo pelo que lê arquivos de rota, na próxima
+checagem do servidor; os sites daquela VPS ficam fora do ar por alguns segundos nessa troca única. A rede `nelcota` é compartilhada
 pelo proxy, pelo worker (para os health checks) e pelas aplicações.
 
 Sem Compose: `bun run build`, depois `bun run db:migrate && bun run start` e `bun run worker`
@@ -440,8 +455,7 @@ Guarde também o `NELCOTA_ENCRYPTION_KEY`: sem ele, secrets e tokens do backup s
 - Somente repositórios GitHub via HTTPS; privados pedem o GitHub App ou um token de leitura (deploy
   keys SSH não implementadas). O app suporta até 20 instalações de 1.000 repositórios na lista.
 - Um ambiente (`production`) por projeto; a tabela `environments` já existe para mais ambientes.
-- Sem zero downtime garantido (veja [Troca de versão](#troca-de-versão-downtime)); sem portas publicadas
-  no host — o tráfego entra pelo Traefik.
+- Sem portas publicadas no host: o tráfego entra pelo Traefik.
 - Logs de runtime são coletados enquanto o worker está ativo; linhas emitidas com o worker parado são
   recuperadas pelo `docker logs --since` ao voltar, dentro do que o Docker ainda guarda.
 - MCP apenas via stdio, na mesma máquina do banco.

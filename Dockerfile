@@ -34,7 +34,8 @@ COPY --from=build /app/dist ./dist
 COPY package.json bunfig.toml tsconfig.json ./
 COPY drizzle ./drizzle
 COPY src ./src
-RUN mkdir -p /data/workspaces && chown -R bun:bun /data
+# /routes is shared with Traefik; the new volume takes this directory's owner, so the worker can write it.
+RUN mkdir -p /data/workspaces /routes && chown -R bun:bun /data /routes
 USER bun
 EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \

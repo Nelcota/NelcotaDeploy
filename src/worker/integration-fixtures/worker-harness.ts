@@ -1,7 +1,7 @@
 import { getConfig } from "@/config";
 import type { Database } from "@/db";
 import { requestDeployment } from "@/deployments";
-import { claimNextJob } from "@/jobs";
+import { claimNextJob, completeJob } from "@/jobs";
 import { createLogger } from "@/logging";
 import { createTestSecretBox, TEST_ACTOR } from "@/testing";
 
@@ -55,5 +55,7 @@ export async function deployThroughQueue(
     signal: new AbortController().signal,
     refreshContainers: async () => await Promise.resolve(),
   });
+  // As the worker does, so the project can run its next job.
+  completeJob(database, job.id);
   return deploymentId;
 }

@@ -56,6 +56,43 @@ export async function fetchThroughProxy(
   }
 }
 
+// Requests the fixture through the proxy until /tmp/stop-traffic exists. Prints how many it
+// sent, then the error of each failed one. Alpine ships wget, Debian ships curl.
+const TRAFFIC_LOOP = `
+requests=0; : > /tmp/traffic-errors
+while [ ! -f /tmp/stop-traffic ]; do
+  if command -v curl >/dev/null; then
+    curl -fsS -o /dev/null -H "Host: $1" "$2" 2>>/tmp/traffic-errors
+  else
+    wget -q -O /dev/null --header "Host: $1" "$2" 2>>/tmp/traffic-errors
+  fi
+  requests=$((requests + 1))
+done
+echo "$requests"
+cat /tmp/traffic-errors`;
+
+/**
+ * Sends requests to the fixture through the proxy, without pause, while `during` runs.
+ *
+ * @param vps - Fake server.
+ * @param during - Work to measure, such as a deployment that replaces the container.
+ * @returns How many requests were sent and the error of each one that failed.
+ */
+export async function trafficDuring(
+  vps: FakeVps,
+  during: () => Promise<unknown>,
+): Promise<{ requests: number; errors: string[] }> {
+  await vps.exec(["rm", "-f", "/tmp/stop-traffic"]);
+  const loop = vps.exec(["sh", "-c", TRAFFIC_LOOP, "sh", REMOTE_HOSTNAME, "http://127.0.0.1/"]);
+  try {
+    await during();
+  } finally {
+    await vps.exec(["touch", "/tmp/stop-traffic"]);
+  }
+  const [count = "", ...errors] = (await loop).trim().split("\n");
+  return { requests: Number(count), errors: errors.filter((line) => line.trim() !== "") };
+}
+
 /**
  * Boots a fake VPS, runs the panel's install command on it and prepares a project placed
  * there, with the fixture repository cloned from inside the server and an HTTP-only domain.

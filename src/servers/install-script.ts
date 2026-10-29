@@ -2,6 +2,8 @@ import { InvalidInstallInputError } from "./server.errors";
 
 /** Where builds run on servers the install script prepared. */
 export const REMOTE_WORKSPACE_DIR = "/var/lib/nelcota/workspaces";
+/** Where the worker writes the routes the server's proxy reads. */
+export const REMOTE_ROUTES_DIR = "/var/lib/nelcota/routes";
 /** Heredoc delimiter; the script never contains it. */
 const DELIMITER = "NELCOTA_INSTALL";
 const PUBLIC_KEY_PATTERN = /^ssh-ed25519 [A-Za-z0-9+/=]+( [A-Za-z0-9@._-]+)?$/;
@@ -24,7 +26,7 @@ fi
 if id "$USER_NAME" >/dev/null 2>&1; then :; else useradd --create-home --shell /bin/sh --password '*' "$USER_NAME"; fi
 usermod -aG docker "$USER_NAME"
 HOME_DIR=$(getent passwd "$USER_NAME" | cut -d: -f6)
-install -d -m 750 -o "$USER_NAME" -g "$USER_NAME" /var/lib/nelcota ${REMOTE_WORKSPACE_DIR}
+install -d -m 750 -o "$USER_NAME" -g "$USER_NAME" /var/lib/nelcota ${REMOTE_WORKSPACE_DIR} ${REMOTE_ROUTES_DIR}
 CONFIG=/etc/ssh/sshd_config
 if grep -qx "Match User $USER_NAME" "$CONFIG"; then :; else
   cp "$CONFIG" "$CONFIG.nelcota-backup"

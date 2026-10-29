@@ -2,12 +2,13 @@ import { afterAll, describe, expect, test } from "bun:test";
 
 import { tables } from "@/db";
 import { getDeployment } from "@/deployments";
-import { getServer, LOCAL_SERVER_ID, recordServerCheck } from "@/servers";
+import { getServer, recordServerCheck } from "@/servers";
 
 import { type Cleanup, runCleanupsInReverse } from "./integration-fixtures/fixture-host";
 import {
   createRemoteEnvironment,
   fetchThroughProxy,
+  trafficDuring,
   VPS_FLAVORS,
 } from "./integration-fixtures/remote-environment";
 import {
@@ -16,7 +17,7 @@ import {
 } from "./integration-fixtures/worker-harness";
 import { HostSampler } from "./servers/host-sampler";
 import { checkServer } from "./servers/server-checker";
-import { createLocalHost, ServerHosts } from "./servers/server-hosts";
+import { ServerHosts } from "./servers/server-hosts";
 
 // Boots a Docker-in-Docker "VPS", runs the real install command on it and deploys there over
 // SSH, so the default `bun run test` ignores it. Run it with:
@@ -26,10 +27,7 @@ const TEST_TIMEOUT_IN_MS = 600_000;
 
 async function setup(cleanups: Cleanup[], flavor: (typeof VPS_FLAVORS)[number]) {
   const environment = await createRemoteEnvironment(cleanups, flavor);
-  const hosts = new ServerHosts(
-    createLocalHost(environment.config, LOCAL_SERVER_ID),
-    environment.privateKey,
-  );
+  const hosts = new ServerHosts(environment.config, environment.privateKey);
   cleanups.push(async () => {
     hosts[Symbol.dispose]();
     await Promise.resolve();
@@ -70,6 +68,12 @@ describe("deploy to a server reached over SSH", () => {
       expect(deployment.status).toBe("succeeded");
       expect(deployment.serverId).toBe(server.id);
       expect(routed.trim()).toBe("ok");
+      // A second version replaces the first while requests keep arriving: none may fail.
+      const traffic = await trafficDuring(vps, async () => {
+        await deployThroughQueue(environment.dependencies, environment.project.id);
+      });
+      expect(traffic.requests).toBeGreaterThan(0);
+      expect(traffic.errors).toEqual([]);
       const samples = database.select().from(tables.metricSamples).all();
       expect(
         samples.some((sample) => sample.serverId === server.id && sample.memoryTotalBytes != null),

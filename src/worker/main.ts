@@ -6,9 +6,9 @@ import { type Database, getDatabase } from "@/db";
 import { createLogger } from "@/logging";
 import { generateSshKeyPair } from "@/remote";
 import { getSecretBox, type SecretBox } from "@/secrets";
-import { LOCAL_SERVER_ID, readPanelPrivateKey, storePanelKeyPair } from "@/servers";
+import { readPanelPrivateKey, storePanelKeyPair } from "@/servers";
 
-import { createLocalHost, ServerHosts } from "./servers/server-hosts";
+import { ServerHosts } from "./servers/server-hosts";
 import { Worker } from "./worker";
 
 /** Returns the panel's SSH private key, generating the pair on the very first start. */
@@ -34,10 +34,7 @@ await mkdir(config.WORKSPACE_DIR, { recursive: true });
 const worker = new Worker({
   workerId: process.env["WORKER_ID"] ?? hostname(),
   database,
-  hosts: new ServerHosts(
-    createLocalHost(config, LOCAL_SERVER_ID),
-    await ensurePanelPrivateKey(database, secretBox),
-  ),
+  hosts: new ServerHosts(config, await ensurePanelPrivateKey(database, secretBox)),
   secretBox,
   config,
   logger,

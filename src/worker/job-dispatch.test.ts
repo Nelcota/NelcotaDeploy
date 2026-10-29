@@ -10,7 +10,7 @@ import { createLogger } from "@/logging";
 import { createTestProject, createTestSecretBox, TEST_ACTOR } from "@/testing";
 
 import { dispatchJob } from "./job-dispatch";
-import { createLocalHost, ServerHosts } from "./servers/server-hosts";
+import { ServerHosts } from "./servers/server-hosts";
 
 describe("dispatchJob deploy", () => {
   test("fails a deployment whose server was removed instead of leaving it queued", async () => {
@@ -32,7 +32,7 @@ describe("dispatchJob deploy", () => {
     if (job == null) {
       throw new Error("The deploy job was not queued");
     }
-    using hosts = new ServerHosts(createLocalHost(config, "local"), "unused-key");
+    using hosts = new ServerHosts(config, "unused-key");
     const dependencies = {
       workerId: "test",
       database,

@@ -12,6 +12,9 @@ services:
       - --providers.docker.network=nelcota
       # Only containers created by this platform (apps and the panel) are ever routed.
       - --providers.docker.constraints=Label(`io.nelcota.managed`,`true`) || Label(`io.nelcota.panel`,`true`)
+      # App routes: the worker switches them to a new container once it is healthy.
+      - --providers.file.directory=/routes
+      - --providers.file.watch=true
       - --entrypoints.web.address=:80
       - --entrypoints.websecure.address=:443
       - --entrypoints.websecure.http.middlewares=nelcota-compress@docker
@@ -24,8 +27,9 @@ services:
       - "80:80"
       - "443:443"
     volumes:
-      # Read-only: Traefik only watches labels.
+      # Read-only: Traefik only reads labels and routes.
       - /var/run/docker.sock:/var/run/docker.sock:ro
+      - routes:/routes:ro
       - letsencrypt:/letsencrypt
     networks:
       - nelcota
@@ -72,12 +76,14 @@ services:
       WORKSPACE_DIR: /data/workspaces
       PUBLIC_URL: https://${PANEL_DOMAIN}
       TRAEFIK_ENABLED: "true"
+      TRAEFIK_ROUTES_DIR: /routes
       WORKER_ID: worker-1
     # Access to the Docker socket is equivalent to root on the host. Only this service has it.
     group_add:
       - "${DOCKER_GID:-999}"
     volumes:
       - data:/data
+      - routes:/routes
       - /var/run/docker.sock:/var/run/docker.sock
     # Running jobs get time to finish before the container is killed.
     stop_grace_period: 2m
@@ -92,4 +98,5 @@ networks:
 
 volumes:
   data:
+  routes:
   letsencrypt:

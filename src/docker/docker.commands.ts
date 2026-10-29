@@ -8,14 +8,23 @@ export const LABELS = {
   deploymentId: "io.nelcota.deployment-id",
   /** The reverse proxy the platform runs on a remote server. Never an application. */
   proxy: "io.nelcota.proxy",
+  /** Version of the proxy's settings; a proxy with another version is replaced. */
+  proxyVersion: "io.nelcota.proxy-version",
 } as const;
+
+/**
+ * Version of the proxy settings below. Raise it whenever they change, so servers set up
+ * earlier get a new proxy. Version 2 reads application routes from files.
+ */
+export const PROXY_VERSION = "2";
+/** Where the proxy reads application routes, inside its container. */
+const PROXY_ROUTES_MOUNT = "/routes";
 
 /** Name of the reverse proxy container on servers the platform set up. */
 export const PROXY_CONTAINER_NAME = "nelcota-proxy";
 /** Same Traefik release the panel's own Docker Compose stack uses. */
 const PROXY_IMAGE = "traefik:v3.7.16";
 const PROXY_CERTIFICATE_VOLUME = "nelcota-letsencrypt";
-const COMPRESS_MIDDLEWARE = "nelcota-compress";
 
 const NAME_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,127}$/;
 const IMAGE_REFERENCE_PATTERN = /^[a-z0-9]+(?:[._/-][a-z0-9]+)*:[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$/;
@@ -24,7 +33,6 @@ const LABEL_KEY_PATTERN = /^[a-z0-9][a-z0-9._/-]*[a-z0-9]$/i;
 const SLUG_PATTERN = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/;
 const IMAGE_REPOSITORY = "nelcota";
 const SHORT_ID_LENGTH = 12;
-const MAX_PORT = 65_535;
 
 function assertMatches(value: string, pattern: RegExp, what: string): void {
   if (pattern.test(value) === false) {
@@ -177,86 +185,31 @@ export function runContainerArgs(options: RunContainerOptions): string[] {
   ];
 }
 
-/** Routing settings for one public hostname. */
-export type RoutedDomain = { readonly hostname: string; readonly httpsEnabled: boolean };
-
-/** Labels of the routers for one hostname: HTTPS with a redirect from HTTP, or plain HTTP. */
-function routerLabels(
-  input: {
-    readonly httpEntrypoint: string;
-    readonly httpsEntrypoint: string;
-    readonly certResolver: string;
-    readonly compress: boolean;
-  },
-  route: { readonly service: string; readonly router: string; readonly domain: RoutedDomain },
-): Record<string, string> {
-  const { service, router, domain } = route;
-  assertMatches(domain.hostname, /^[a-z0-9.-]+$/, "hostname");
-  const labels: Record<string, string> = {
-    [`traefik.http.routers.${router}.rule`]: `Host(\`${domain.hostname}\`)`,
-    [`traefik.http.routers.${router}.service`]: service,
-  };
-  if (input.compress) {
-    labels[`traefik.http.routers.${router}.middlewares`] = COMPRESS_MIDDLEWARE;
-  }
-  if (domain.httpsEnabled === false) {
-    labels[`traefik.http.routers.${router}.entrypoints`] = input.httpEntrypoint;
-    return labels;
-  }
-  labels[`traefik.http.routers.${router}.entrypoints`] = input.httpsEntrypoint;
-  labels[`traefik.http.routers.${router}.tls`] = "true";
-  labels[`traefik.http.routers.${router}.tls.certresolver`] = input.certResolver;
-  const redirect = `${router}-http`;
-  labels[`traefik.http.routers.${redirect}.rule`] = `Host(\`${domain.hostname}\`)`;
-  labels[`traefik.http.routers.${redirect}.entrypoints`] = input.httpEntrypoint;
-  labels[`traefik.http.routers.${redirect}.middlewares`] = "nelcota-https-redirect";
-  labels[`traefik.http.routers.${redirect}.service`] = service;
-  return labels;
-}
+const MAX_STOP_GRACE_IN_SECONDS = 300;
 
 /**
- * Builds Traefik labels that route each hostname to the container's internal port.
+ * Builds `docker container stop` arguments: SIGTERM, then SIGKILL once the grace period ends.
  *
- * @param input - Project slug, hostnames, port and Traefik entrypoints.
- * @returns Label map; empty when there are no domains.
- * @throws {InvalidDockerArgumentError} When the port or a hostname is invalid.
+ * @param containerId - Container id.
+ * @param graceInSeconds - Time the app gets to finish, between 0 and 300; Docker's default
+ *   (10 s) when omitted.
+ * @returns Arguments after the docker binary.
+ * @throws {InvalidDockerArgumentError} When the id is malformed or the grace period is out of
+ *   range.
  */
-export function traefikLabels(input: {
-  readonly projectSlug: string;
-  readonly domains: readonly RoutedDomain[];
-  readonly internalPort: number;
-  readonly network: string;
-  readonly httpEntrypoint: string;
-  readonly httpsEntrypoint: string;
-  readonly certResolver: string;
-  /** Compresses responses; off where the proxy already compresses on its entrypoint. */
-  readonly compress: boolean;
-}): Record<string, string> {
-  if (input.domains.length === 0) {
-    return {};
+export function stopContainerArgs(containerId: string, graceInSeconds?: number): string[] {
+  assertMatches(containerId, NAME_PATTERN, "container reference");
+  if (graceInSeconds == null) {
+    return ["container", "stop", containerId];
   }
-  assertMatches(input.projectSlug, SLUG_PATTERN, "project slug");
   if (
-    Number.isInteger(input.internalPort) === false ||
-    input.internalPort < 1 ||
-    input.internalPort > MAX_PORT
+    Number.isInteger(graceInSeconds) === false ||
+    graceInSeconds < 0 ||
+    graceInSeconds > MAX_STOP_GRACE_IN_SECONDS
   ) {
-    throw new InvalidDockerArgumentError(`Invalid internal port: ${input.internalPort}`);
+    throw new InvalidDockerArgumentError(`Invalid stop grace period: ${graceInSeconds}`);
   }
-  const service = `nelcota-${input.projectSlug}`;
-  const labels: Record<string, string> = {
-    "traefik.enable": "true",
-    "traefik.docker.network": input.network,
-    [`traefik.http.services.${service}.loadbalancer.server.port`]: String(input.internalPort),
-  };
-  input.domains.forEach((domain, index) => {
-    Object.assign(labels, routerLabels(input, { service, router: `${service}-${index}`, domain }));
-  });
-  labels["traefik.http.middlewares.nelcota-https-redirect.redirectscheme.scheme"] = "https";
-  if (input.compress) {
-    labels[`traefik.http.middlewares.${COMPRESS_MIDDLEWARE}.compress`] = "true";
-  }
-  return labels;
+  return ["container", "stop", "--time", String(graceInSeconds), containerId];
 }
 
 /** Settings of the reverse proxy on a server the platform set up. */
@@ -267,24 +220,27 @@ export type ProxyOptions = {
   readonly certResolver: string;
   /** Let's Encrypt account e-mail; the account is created without one when null. */
   readonly acmeEmail: string | null;
+  /** Directory on the server with the route files the proxy watches. */
+  readonly routesDirectory: string;
 };
 
 /**
  * Builds `docker run` arguments for the Traefik proxy of a server: ports 80 and 443,
- * Let's Encrypt over HTTP-01, and routing only for platform application containers.
+ * Let's Encrypt over HTTP-01, and the route files the worker writes. Labels of platform
+ * containers are still read, for applications deployed before routes moved to files.
  *
- * @param options - Network, entrypoint names, certificate resolver and e-mail.
+ * @param options - Network, entrypoint names, certificate resolver, e-mail and route directory.
  * @returns Arguments after the docker binary.
  * @throws {InvalidDockerArgumentError} When a name or the e-mail is malformed.
  */
 export function proxyContainerArgs(options: ProxyOptions): string[] {
   assertMatches(options.network, NAME_PATTERN, "network name");
-  for (const name of [options.httpEntrypoint, options.httpsEntrypoint, options.certResolver]) {
-    assertMatches(name, /^[a-zA-Z0-9_-]{1,64}$/, "Traefik name");
-  }
-  const resolver = `--certificatesresolvers.${options.certResolver}.acme`;
-  const email =
-    options.acmeEmail == null ? [] : [`${resolver}.email=${assertEmail(options.acmeEmail)}`];
+  // Absolute, with no ".." segment, so the mount can never reach outside the directory.
+  assertMatches(
+    options.routesDirectory,
+    /^(?:\/(?!\.\.(?:\/|$))[A-Za-z0-9._-]+)+$/,
+    "route directory",
+  );
   return [
     "run",
     "--detach",
@@ -300,8 +256,12 @@ export function proxyContainerArgs(options: ProxyOptions): string[] {
     "443:443",
     "--label",
     `${LABELS.proxy}=true`,
+    "--label",
+    `${LABELS.proxyVersion}=${PROXY_VERSION}`,
     "--volume",
     "/var/run/docker.sock:/var/run/docker.sock:ro",
+    "--volume",
+    `${options.routesDirectory}:${PROXY_ROUTES_MOUNT}:ro`,
     "--volume",
     `${PROXY_CERTIFICATE_VOLUME}:/letsencrypt`,
     "--log-opt",
@@ -309,6 +269,21 @@ export function proxyContainerArgs(options: ProxyOptions): string[] {
     "--log-opt",
     "max-file=3",
     PROXY_IMAGE,
+    ...traefikArgs(options),
+  ];
+}
+
+/** Traefik's own flags: where routes come from, entrypoints and Let's Encrypt. */
+function traefikArgs(options: ProxyOptions): string[] {
+  for (const name of [options.httpEntrypoint, options.httpsEntrypoint, options.certResolver]) {
+    assertMatches(name, /^[a-zA-Z0-9_-]{1,64}$/, "Traefik name");
+  }
+  const resolver = `--certificatesresolvers.${options.certResolver}.acme`;
+  const email =
+    options.acmeEmail == null ? [] : [`${resolver}.email=${assertEmail(options.acmeEmail)}`];
+  return [
+    `--providers.file.directory=${PROXY_ROUTES_MOUNT}`,
+    "--providers.file.watch=true",
     "--providers.docker=true",
     "--providers.docker.exposedbydefault=false",
     `--providers.docker.network=${options.network}`,

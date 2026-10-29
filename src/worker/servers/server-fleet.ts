@@ -217,10 +217,10 @@ export class ServerFleet implements Disposable {
   ): Promise<void> {
     const { database, hosts, logger } = this.#dependencies;
     const deleted = deletedProjectIds(containers, listProjectIds(database));
-    const docker = hosts.hostFor(server).docker;
+    const host = hosts.hostFor(server);
     await Promise.all(
       [...deleted].map(async (projectId) => {
-        const removed = await removeProjectResources(docker, projectId);
+        const removed = await removeProjectResources(host, projectId);
         logger.info(
           { projectId, serverId: server.id, ...removed },
           "removed what a deleted project left on a server",
