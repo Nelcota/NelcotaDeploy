@@ -11,10 +11,7 @@ export type Command = {
 };
 
 function normalize(text: string): string {
-  return text
-    .normalize("NFD")
-    .replaceAll(/[̀-ͯ]/g, "")
-    .toLowerCase();
+  return text.normalize("NFD").replaceAll(/[̀-ͯ]/g, "").toLowerCase();
 }
 
 /**
