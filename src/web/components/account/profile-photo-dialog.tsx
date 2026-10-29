@@ -9,6 +9,10 @@ import {
   centerSquareCrop,
   MAX_SOURCE_IMAGE_BYTES,
 } from "@/web/components/account/avatar-image";
+import {
+  ImageProcessingError,
+  UnreadableImageError,
+} from "@/web/components/account/profile-photo.errors";
 import { UserAvatar } from "@/web/components/account/user-avatar";
 import { ConfirmDialog } from "@/web/components/layout/confirm-dialog";
 import { useAction } from "@/web/components/layout/use-action";
@@ -23,25 +27,6 @@ import {
 import { removeAvatarFn, updateAvatarFn } from "@/web/functions/session.functions";
 
 const WEBP_QUALITY = 0.85;
-
-/** Thrown when the browser cannot decode or re-encode the chosen picture. */
-class ImageProcessingError extends Error {
-  constructor(reason: string) {
-    super(`Could not process image: ${reason}`);
-    this.name = "ImageProcessingError";
-  }
-}
-
-/**
- * Error shown to the user when the picture cannot be read; useAction toasts its message,
- * so it is written in Portuguese and keeps the technical reason as the cause.
- */
-class UnreadableImageError extends Error {
-  constructor(cause: unknown) {
-    super("Não foi possível ler esta imagem. Tente outra foto.", { cause });
-    this.name = "UnreadableImageError";
-  }
-}
 
 /**
  * Crops the picture to a centered square and re-encodes it at the avatar size, so any photo

@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { ROLES } from "./roles";
+import { ROLES } from "../roles";
 
 /** Minimum password length enforced for every account. */
 export const PASSWORD_MIN_LENGTH = 12;

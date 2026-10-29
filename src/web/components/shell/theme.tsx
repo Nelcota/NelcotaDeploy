@@ -1,14 +1,15 @@
-import { createContext, type ReactNode, useCallback, useContext, useEffect, useState } from "react";
+import {
+  createContext,
+  type ReactNode,
+  useCallback,
+  useContext,
+  useSyncExternalStore,
+} from "react";
 
 export type Theme = "dark" | "light";
 
+// Must match the key read by public/theme-init.js, which applies the theme before paint.
 const STORAGE_KEY = "nelcota-theme";
-
-/**
- * Inline script for `<head>` that applies the saved theme before the first paint, so the
- * page never flashes the wrong theme. Dark is the default.
- */
-export const THEME_INIT_SCRIPT = `(function(){try{var t=localStorage.getItem("${STORAGE_KEY}");document.documentElement.classList.toggle("dark",t!=="light");}catch(e){document.documentElement.classList.add("dark");}})();`;
 
 type ThemeContextValue = { readonly theme: Theme; readonly toggleTheme: () => void };
 
@@ -17,25 +18,34 @@ const ThemeContext = createContext<ThemeContextValue>({
   toggleTheme: () => undefined,
 });
 
+function readDocumentTheme(): Theme {
+  return document.documentElement.classList.contains("dark") ? "dark" : "light";
+}
+
+/** The server cannot see the saved choice, so it renders the default dark theme. */
+function readServerTheme(): Theme {
+  return "dark";
+}
+
+function subscribeToDocumentTheme(onChange: () => void): () => void {
+  const observer = new MutationObserver(onChange);
+  observer.observe(document.documentElement, { attributes: true, attributeFilter: ["class"] });
+  return () => observer.disconnect();
+}
+
 /** Provides the current theme and a toggle that persists the choice in the browser. */
 export function ThemeProvider({ children }: { readonly children: ReactNode }) {
-  const [theme, setTheme] = useState<Theme>("dark");
-
-  useEffect(() => {
-    setTheme(document.documentElement.classList.contains("dark") ? "dark" : "light");
-  }, []);
+  // The `dark` class on <html> is the source of truth: theme-init.js sets it before paint.
+  const theme = useSyncExternalStore(subscribeToDocumentTheme, readDocumentTheme, readServerTheme);
 
   const toggleTheme = useCallback(() => {
-    setTheme((current) => {
-      const next: Theme = current === "dark" ? "light" : "dark";
-      document.documentElement.classList.toggle("dark", next === "dark");
-      try {
-        localStorage.setItem(STORAGE_KEY, next);
-      } catch {
-        // Private windows may block storage; the theme still applies for this visit.
-      }
-      return next;
-    });
+    const next: Theme = readDocumentTheme() === "dark" ? "light" : "dark";
+    document.documentElement.classList.toggle("dark", next === "dark");
+    try {
+      localStorage.setItem(STORAGE_KEY, next);
+    } catch {
+      // Private windows may block storage; the theme still applies for this visit.
+    }
   }, []);
 
   return <ThemeContext value={{ theme, toggleTheme }}>{children}</ThemeContext>;

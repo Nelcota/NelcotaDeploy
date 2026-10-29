@@ -18,6 +18,7 @@ import {
   formatRelativeTime,
   formatShortTime,
 } from "@/shared/format";
+import { useNow } from "@/web/components/clock/use-now";
 import { CardTitleRow, type Stat, StatRow } from "@/web/components/layout/layout";
 import { SegmentedControl } from "@/web/components/layout/overview";
 import { EmptyState, ErrorState } from "@/web/components/layout/states";
@@ -53,6 +54,7 @@ function useProjectMetrics(projectId: string, hours: number) {
 type MetricSample = Awaited<ReturnType<typeof getProjectMetricsFn>>[number];
 
 function ProjectMetricsPage() {
+  const now = useNow();
   const { projectId } = Route.useParams();
   const [hours, setHours] = useState<number>(1);
   const project = useQuery(projectQueryOptions(projectId));
@@ -62,7 +64,6 @@ function ProjectMetricsPage() {
   const neverDeployed = project.data != null && project.data.project.currentDeploymentId == null;
   const samples = metrics.data ?? [];
   const latest = samples.at(-1) ?? null;
-  const now = new Date();
   const cpuIdle = samples.length > 0 && samples.every((sample) => (sample.cpuPercent ?? 0) === 0);
 
   const stats: Stat[] = [

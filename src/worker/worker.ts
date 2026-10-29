@@ -143,7 +143,8 @@ export class Worker {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       // Only a shutdown mid-job is worth retrying; other failures would fail the same way.
-      const outcome = failJob(database, job.id, message, {
+      const outcome = failJob(database, job.id, {
+        errorMessage: message,
         retryable: this.#abortJobs.signal.aborted,
       });
       logger.error({ jobId: job.id, kind: job.kind, err: error, outcome }, "job failed");
@@ -174,12 +175,10 @@ export class Worker {
         if (isContainerAction(action) === false) {
           throw new Error(`Job ${job.id} has an invalid container action`);
         }
-        await runContainerAction(
-          dependencies.database,
-          dependencies.docker,
-          requireId(job.deploymentId, job),
+        await runContainerAction(dependencies.database, dependencies.docker, {
+          deploymentId: requireId(job.deploymentId, job),
           action,
-        );
+        });
         await this.#refreshContainers();
         return;
       }
@@ -271,7 +270,7 @@ export class Worker {
       dockerAvailable: this.#dockerVersion != null,
       dockerVersion: this.#dockerVersion,
     });
-    renewJobLeases(database, workerId, [...this.#active.keys()]);
+    renewJobLeases(database, { workerId, jobIds: [...this.#active.keys()] });
     this.#handleRecovered(recoverExpiredJobs(database));
   }
 
@@ -366,7 +365,8 @@ function recoverDeployment(
       : "The worker stopped during this deployment";
   appendDeploymentLogs(database, deploymentId, [{ stream: "system", level: "warn", message }]);
   if (deployment.status !== "queued") {
-    transitionDeployment(database, deploymentId, outcome === "requeued" ? "queued" : "failed", {
+    transitionDeployment(database, deploymentId, {
+      to: outcome === "requeued" ? "queued" : "failed",
       errorMessage: outcome === "requeued" ? null : message,
     });
   }

@@ -25,6 +25,7 @@ import { getSystemSettings } from "@/settings";
 
 import { DeploymentLogWriter } from "./deployment-log-writer";
 import { networkProbes, type Probes, waitUntilHealthy } from "./health-check";
+import { DeploymentCancelledError } from "./worker.errors";
 import { DeploymentWorkspace, resolveInsideWorkspace } from "./workspace";
 
 const CANCEL_POLL_INTERVAL_IN_MS = 1000;
@@ -55,14 +56,6 @@ export type DeployRunnerDependencies = {
   readonly config: DeployRunnerConfig;
   readonly probes?: Probes;
 };
-
-/** Thrown when a running deployment is cancelled at a checkpoint. */
-class DeploymentCancelledError extends Error {
-  constructor() {
-    super("Deployment cancelled by a user");
-    this.name = "DeploymentCancelledError";
-  }
-}
 
 function watchCancellation(
   database: Database,
@@ -107,7 +100,7 @@ export async function runDeployment(
   }
   if (deployment.status !== "queued") {
     // A retried job after a worker crash: start the deployment over from the queue state.
-    transitionDeployment(database, deploymentId, "queued");
+    transitionDeployment(database, deploymentId, { to: "queued" });
   }
   const project = getProject(database, deployment.projectId);
   const cancellation = new AbortController();
@@ -122,7 +115,10 @@ export async function runDeployment(
     logs.flush();
     completeDeployment(database, deploymentId);
     logs.system("Deployment succeeded");
-    await removePreviousContainers(dependencies, project.id, deploymentId, logs);
+    await removePreviousContainers(dependencies, logs, {
+      projectId: project.id,
+      currentDeploymentId: deploymentId,
+    });
     await pruneOldImages(dependencies, project.id, logs);
     return "succeeded";
   } catch (error) {
@@ -133,7 +129,8 @@ export async function runDeployment(
       : state.redact(errorMessageOf(error));
     logs.system(message, "error");
     logs.flush();
-    transitionDeployment(database, deploymentId, cancelled ? "cancelled" : "failed", {
+    transitionDeployment(database, deploymentId, {
+      to: cancelled ? "cancelled" : "failed",
       errorMessage: message,
     });
     if (jobSignal.aborted && cancelled === false) {
@@ -195,7 +192,8 @@ async function deploy(
   assertNotCancelled(signal);
 
   const containerName = containerNameFor(project.slug, deployment.id);
-  transitionDeployment(database, deployment.id, "starting", {
+  transitionDeployment(database, deployment.id, {
+    to: "starting",
     imageTag,
     containerName,
     runtimeConfigHash,
@@ -247,7 +245,7 @@ async function deploy(
     );
   }
 
-  transitionDeployment(database, deployment.id, "health_checking");
+  transitionDeployment(database, deployment.id, { to: "health_checking" });
   const probe =
     project.healthCheckPath == null
       ? `TCP port ${project.internalPort}`
@@ -281,7 +279,7 @@ async function buildFromSource(
   const { deployment, project, logs, signal } = context;
   const timeoutInMs = config.buildTimeoutInSeconds * MILLISECONDS_PER_SECOND;
 
-  transitionDeployment(database, deployment.id, "cloning");
+  transitionDeployment(database, deployment.id, { to: "cloning" });
   await using workspace = await DeploymentWorkspace.create(config.workspaceDir, project.slug);
   const revision = deployment.requestedCommitSha ?? `${deployment.branch} (latest)`;
   logs.system(`Cloning ${project.repositoryFullName} at ${revision}`);
@@ -299,7 +297,8 @@ async function buildFromSource(
   logs.system(`Checked out ${commit.sha.slice(0, 12)}: ${commit.message}`);
   assertNotCancelled(signal);
 
-  transitionDeployment(database, deployment.id, "building", {
+  transitionDeployment(database, deployment.id, {
+    to: "building",
     commitSha: commit.sha,
     commitMessage: commit.message,
   });
@@ -378,9 +377,11 @@ async function discardFailedContainer(
 
 async function removePreviousContainers(
   dependencies: DeployRunnerDependencies,
-  projectId: string,
-  currentDeploymentId: string,
   logs: DeploymentLogWriter,
+  {
+    projectId,
+    currentDeploymentId,
+  }: { readonly projectId: string; readonly currentDeploymentId: string },
 ): Promise<void> {
   const containers = await dependencies.docker.listManagedContainers();
   const previous = containers.filter(

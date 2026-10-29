@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { DEFAULT_TASK_TIMEOUT_IN_SECONDS } from "@/shared/task.schema";
+import { DEFAULT_TASK_TIMEOUT_IN_SECONDS } from "@/shared/schemas/task.schema";
 
 import { toTaskFormValues, validateTaskForm } from "./task-form-values";
 

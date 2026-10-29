@@ -18,10 +18,11 @@
     "lint:fix": "oxlint --type-aware --fix",
     "typecheck": "tsc --noEmit",
     "knip": "knip",
-    "test": "bun test",
+    "package-size": "bun run lint/check-package-size.ts",
+    "test": "bun test --path-ignore-patterns='**/*.integration.test.ts'",
     "ui:review": "bun run src/ui-review/main.ts",
-    "test:docker": "DOCKER_INTEGRATION=1 bun test src/worker/deploy.integration.test.ts",
-    "check": "bun run format:check && bun run lint && bun run typecheck && bun run knip && bun run test",
+    "test:docker": "bun test src/worker/deploy.integration.test.ts",
+    "check": "bun run format:check && bun run lint && bun run typecheck && bun run knip && bun run package-size && bun run test",
     "prepare": "lefthook install"
   },
   "dependencies": {

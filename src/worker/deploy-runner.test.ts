@@ -141,13 +141,16 @@ describe("runDeployment", () => {
   test("passes variables to the container by name and redacts secrets from logs", async () => {
     const { database, docker, project, dependencies, secretBox } = await setup();
     docker.buildFailure = "token is super-secret-value";
-    await saveEnvironmentVariable(
-      database,
-      secretBox,
-      project.id,
-      { key: "API_TOKEN", kind: "secret", value: "super-secret-value", availableAtBuild: true },
-      TEST_ACTOR,
-    );
+    await saveEnvironmentVariable(database, secretBox, {
+      projectId: project.id,
+      input: {
+        key: "API_TOKEN",
+        kind: "secret",
+        value: "super-secret-value",
+        availableAtBuild: true,
+      },
+      actor: TEST_ACTOR,
+    });
     const deploymentId = deploy(database, project.id);
 
     await runDeployment(dependencies, deploymentId, new AbortController().signal);

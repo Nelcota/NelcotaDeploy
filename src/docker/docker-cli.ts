@@ -380,15 +380,14 @@ export class DockerCli {
    * Follows a container's output until it stops or the signal aborts.
    *
    * @param reference - Name or id.
-   * @param since - Only lines after this UTC ISO time.
    * @param onLine - Receives each line with its docker timestamp prefix.
-   * @param signal - Stops following when aborted.
+   * @param window - `since`, only lines after this UTC ISO time, and the `signal` that stops
+   *   following when aborted.
    */
   async followContainerLogs(
     reference: string,
-    since: string,
     onLine: OutputHandler,
-    signal: AbortSignal,
+    { since, signal }: { readonly since: string; readonly signal: AbortSignal },
   ): Promise<void> {
     await this.#run(
       [

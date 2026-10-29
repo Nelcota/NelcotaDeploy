@@ -7,7 +7,7 @@ import {
   RotateCwIcon,
   SearchIcon,
 } from "lucide-react";
-import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { formatTime, pluralize } from "@/shared/format";
@@ -57,11 +57,18 @@ function useLogStream(url: string, attempt: number) {
   const [lines, setLines] = useState<LogLine[]>([]);
   const [state, setState] = useState<ConnectionState>("connecting");
   const [endSummary, setEndSummary] = useState<unknown>(null);
-
-  useEffect(() => {
+  // A new url or a retry starts a fresh stream; resetting during render avoids showing the
+  // previous stream's lines for one frame, as React recommends over resetting in an effect.
+  const streamKey = `${attempt}:${url}`;
+  const [activeStreamKey, setActiveStreamKey] = useState(streamKey);
+  if (streamKey !== activeStreamKey) {
+    setActiveStreamKey(streamKey);
     setLines([]);
     setState("connecting");
     setEndSummary(null);
+  }
+
+  useEffect(() => {
     const source = new EventSource(url, { withCredentials: true });
     source.addEventListener("open", () => setState("live"));
     source.addEventListener("log", (event) => {
@@ -173,12 +180,11 @@ export function LogViewer({
   const [filter, setFilter] = useState("");
   const [following, setFollowing] = useState(true);
   const containerRef = useRef<HTMLDivElement>(null);
-  const onEndRef = useRef(onEnd);
-  onEndRef.current = onEnd;
+  const handleEnd = useEffectEvent((summary: unknown) => onEnd?.(summary));
 
   useEffect(() => {
     if (state === "ended") {
-      onEndRef.current?.(endSummary);
+      handleEnd(endSummary);
     }
   }, [state, endSummary]);
 

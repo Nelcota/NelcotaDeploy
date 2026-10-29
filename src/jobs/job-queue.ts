@@ -36,6 +36,7 @@ export function enqueueJob(
 ): { id: string; created: boolean } {
   const id = Bun.randomUUIDv7();
   const nowIso = now.toISOString();
+  // A skipped or unmatched write returns no row, which `.get()` does not admit in its type.
   const inserted = database
     .insert(tables.jobs)
     .values({
@@ -53,7 +54,8 @@ export function enqueueJob(
     })
     .onConflictDoNothing()
     .returning({ id: tables.jobs.id })
-    .get();
+    .all()
+    .at(0);
   if (inserted != null) {
     return { id: inserted.id, created: true };
   }
@@ -95,6 +97,7 @@ export function claimNextJob(
 ): Job | null {
   const nowIso = now.toISOString();
   const leaseExpiresAt = new Date(now.getTime() + JOB_LEASE_IN_MS).toISOString();
+  // A skipped or unmatched write returns no row, which `.get()` does not admit in its type.
   const claimed = database
     .update(tables.jobs)
     .set({
@@ -121,7 +124,8 @@ export function claimNextJob(
       ),
     )
     .returning()
-    .get();
+    .all()
+    .at(0);
   return claimed ?? null;
 }
 
@@ -129,15 +133,15 @@ export function claimNextJob(
  * Extends the lease of jobs a worker is still running.
  *
  * @param database - Database.
- * @param workerId - Owner of the jobs.
- * @param jobIds - Jobs in progress.
- * @param now - Current time.
+ * @param lease - `workerId` owning the jobs, the `jobIds` in progress and `now`, the current time.
  */
 export function renewJobLeases(
   database: Database,
-  workerId: string,
-  jobIds: readonly string[],
-  now: Date = new Date(),
+  {
+    workerId,
+    jobIds,
+    now = new Date(),
+  }: { readonly workerId: string; readonly jobIds: readonly string[]; readonly now?: Date },
 ): void {
   if (jobIds.length === 0) {
     return;
@@ -179,17 +183,19 @@ export function completeJob(
  *
  * @param database - Database or open transaction.
  * @param jobId - Job that failed.
- * @param errorMessage - Reason, without secrets.
- * @param options - `retryable` allows another attempt while attempts remain.
+ * @param failure - `errorMessage`, the reason without secrets; `retryable` allows another
+ *   attempt while attempts remain; `now` is the current time.
  * @returns "requeued" or "failed".
  */
 export function failJob(
   database: Database | Transaction,
   jobId: string,
-  errorMessage: string,
-  options: { readonly retryable: boolean; readonly now?: Date },
+  {
+    errorMessage,
+    retryable,
+    now = new Date(),
+  }: { readonly errorMessage: string; readonly retryable: boolean; readonly now?: Date },
 ): "requeued" | "failed" {
-  const now = options.now ?? new Date();
   const job = database
     .select({ attempts: tables.jobs.attempts, maxAttempts: tables.jobs.maxAttempts })
     .from(tables.jobs)
@@ -198,7 +204,7 @@ export function failJob(
   if (job == null) {
     throw new Error(`Cannot fail unknown job ${jobId}`);
   }
-  if (options.retryable && job.attempts < job.maxAttempts) {
+  if (retryable && job.attempts < job.maxAttempts) {
     database
       .update(tables.jobs)
       .set({
@@ -279,7 +285,8 @@ export function recoverExpiredJobs(database: Database, now: Date = new Date()): 
       .all();
     return expired.map((job) =>
       Object.assign(job, {
-        outcome: failJob(transaction, job.id, "Worker stopped while the job was running", {
+        outcome: failJob(transaction, job.id, {
+          errorMessage: "Worker stopped while the job was running",
           retryable: true,
           now,
         }),

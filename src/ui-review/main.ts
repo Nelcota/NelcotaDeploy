@@ -165,12 +165,17 @@ async function newReviewPage(browser: Browser, theme: Theme, viewport: (typeof V
   return { context, page: await context.newPage() };
 }
 
+/** What stays the same across every theme and viewport of one review. */
+type ReviewRun = {
+  readonly browser: Browser;
+  readonly pages: readonly PageEntry[];
+  readonly credentials: { readonly email: string; readonly password: string };
+};
+
 async function reviewViewport(
-  browser: Browser,
+  { browser, pages, credentials }: ReviewRun,
   theme: Theme,
   viewport: (typeof VIEWPORTS)[number],
-  pages: readonly PageEntry[],
-  credentials: { readonly email: string; readonly password: string },
 ): Promise<Finding[]> {
   const { context, page } = await newReviewPage(browser, theme, viewport);
   await using _context = { [Symbol.asyncDispose]: async () => await context.close() };
@@ -191,15 +196,10 @@ async function reviewViewport(
   return findings;
 }
 
-async function reviewTheme(
-  browser: Browser,
-  theme: Theme,
-  pages: readonly PageEntry[],
-  credentials: { readonly email: string; readonly password: string },
-): Promise<Finding[]> {
+async function reviewTheme(run: ReviewRun, theme: Theme): Promise<Finding[]> {
   const findings: Finding[] = [];
   for (const viewport of VIEWPORTS) {
-    findings.push(...(await reviewViewport(browser, theme, viewport, pages, credentials)));
+    findings.push(...(await reviewViewport(run, theme, viewport)));
   }
   return findings;
 }
@@ -257,10 +257,11 @@ const browser = await chromium.launch();
 await using _browser = { [Symbol.asyncDispose]: async () => await browser.close() };
 await rm(OUTPUT_DIRECTORY, { recursive: true, force: true });
 const pages = pagesFor(ids.projectId, ids.deploymentId);
+const run: ReviewRun = { browser, pages, credentials };
 const findings: Finding[] = [];
 for (const theme of THEMES) {
   // One theme at a time keeps the dev server from compiling the same pages twice at once.
-  findings.push(...(await reviewTheme(browser, theme, pages, credentials)));
+  findings.push(...(await reviewTheme(run, theme)));
 }
 await writeFile(join(OUTPUT_DIRECTORY, "report.md"), reportOf(findings));
 

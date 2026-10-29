@@ -3,6 +3,7 @@ import { EyeIcon, EyeOffIcon, LoaderCircleIcon } from "lucide-react";
 import { type FormEvent, useState } from "react";
 import { z } from "zod";
 
+import { useNow } from "@/web/components/clock/use-now";
 import { authClient } from "@/web/components/shell/auth-client";
 import { Button } from "@/web/components/ui/button";
 import { Input } from "@/web/components/ui/input";
@@ -32,6 +33,7 @@ function safeRedirectTarget(target: string | undefined): string {
 }
 
 function LoginPage() {
+  const now = useNow();
   const router = useRouter();
   const search = Route.useSearch();
   const [email, setEmail] = useState("");
@@ -157,7 +159,7 @@ function LoginPage() {
           </p>
         </div>
         <footer className="pt-10 text-xs text-muted-foreground">
-          © {new Date().getUTCFullYear()} Nelcota
+          © {now.getUTCFullYear()} Nelcota
         </footer>
       </main>
     </div>

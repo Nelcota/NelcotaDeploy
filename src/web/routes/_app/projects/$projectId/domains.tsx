@@ -14,7 +14,7 @@ import {
 } from "lucide-react";
 import type { z } from "zod";
 
-import { domainInputSchema } from "@/shared/domain.schema";
+import { domainInputSchema } from "@/shared/schemas/domain.schema";
 import {
   ApplyChangesBanner,
   useApplyChanges,

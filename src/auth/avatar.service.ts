@@ -59,17 +59,18 @@ function avatarUrl(userId: string, updatedAt: Date): string {
  * Stores a user's profile photo, replacing the previous one.
  *
  * @param database - Database.
- * @param userId - User whose photo changes.
- * @param bytes - Image content: PNG, JPEG or WebP, up to {@link MAX_AVATAR_BYTES} bytes.
- * @param now - Time of the change; injectable for tests.
+ * @param upload - `userId` whose photo changes, the image `bytes` (PNG, JPEG or WebP, up to
+ *   {@link MAX_AVATAR_BYTES} bytes) and `now`, the time of the change, injectable for tests.
  * @returns The address of the new photo, also saved as the user's `image`.
  * @throws {InvalidAvatarError} When the content is empty, too large or not a supported image.
  */
 export function saveUserAvatar(
   database: Database,
-  userId: string,
-  bytes: Uint8Array,
-  now: Date = new Date(),
+  {
+    userId,
+    bytes,
+    now = new Date(),
+  }: { readonly userId: string; readonly bytes: Uint8Array; readonly now?: Date },
 ): string {
   if (bytes.length === 0) {
     throw new InvalidAvatarError("empty file");

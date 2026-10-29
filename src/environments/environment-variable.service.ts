@@ -4,7 +4,7 @@ import { type Actor, recordAuditEvent } from "@/audit";
 import { type Database, tables } from "@/db";
 import { getProject, PRODUCTION_ENVIRONMENT } from "@/projects";
 import type { SecretBox } from "@/secrets";
-import type { EnvironmentVariableInput } from "@/shared/environment-variable.schema";
+import type { EnvironmentVariableInput } from "@/shared/schemas/environment-variable.schema";
 
 import { EnvironmentVariableNotFoundError } from "./environment.errors";
 
@@ -94,17 +94,21 @@ export function listEnvironmentVariables(
  *
  * @param database - Database.
  * @param secretBox - Encryption box.
- * @param projectId - Project id.
- * @param input - Validated variable.
- * @param actor - Who changes it.
+ * @param change - Project id, validated variable and who changes it.
  * @throws {ProjectNotFoundError} When the project does not exist.
  */
 export async function saveEnvironmentVariable(
   database: Database,
   secretBox: SecretBox,
-  projectId: string,
-  input: EnvironmentVariableInput,
-  actor: Actor,
+  {
+    projectId,
+    input,
+    actor,
+  }: {
+    readonly projectId: string;
+    readonly input: EnvironmentVariableInput;
+    readonly actor: Actor;
+  },
 ): Promise<void> {
   const environmentId = productionEnvironmentId(database, projectId);
   const keepExistingSecret = input.kind === "secret" && input.value === "";
@@ -169,16 +173,16 @@ export async function saveEnvironmentVariable(
  * Deletes a variable.
  *
  * @param database - Database.
- * @param projectId - Owning project.
- * @param variableId - Variable id.
- * @param actor - Who deletes it.
+ * @param removal - Owning project, variable id and who deletes it.
  * @throws {EnvironmentVariableNotFoundError} When the variable is not in this project.
  */
 export function deleteEnvironmentVariable(
   database: Database,
-  projectId: string,
-  variableId: string,
-  actor: Actor,
+  {
+    projectId,
+    variableId,
+    actor,
+  }: { readonly projectId: string; readonly variableId: string; readonly actor: Actor },
 ): void {
   const environmentId = productionEnvironmentId(database, projectId);
   database.transaction((transaction) => {

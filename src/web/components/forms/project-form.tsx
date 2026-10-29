@@ -4,7 +4,7 @@ import { ChevronRightIcon, LoaderCircleIcon } from "lucide-react";
 import { useState } from "react";
 import type { z } from "zod";
 
-import { projectInputSchema, slugify } from "@/shared/project.schema";
+import { projectInputSchema, slugify } from "@/shared/schemas/project.schema";
 import { FormField, visibleErrors } from "@/web/components/forms/form-field";
 import { Button } from "@/web/components/ui/button";
 import { cn } from "@/web/components/ui/class-names";

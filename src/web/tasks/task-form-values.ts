@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 import { formatCommandLine } from "@/shared/command-line";
-import { DEFAULT_TASK_TIMEOUT_IN_SECONDS, taskInputSchema } from "@/shared/task.schema";
+import { DEFAULT_TASK_TIMEOUT_IN_SECONDS, taskInputSchema } from "@/shared/schemas/task.schema";
 import type { Task } from "@/tasks";
 
 /** Raw form values, as the server function validates them. */

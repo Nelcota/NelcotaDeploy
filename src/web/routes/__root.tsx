@@ -8,7 +8,7 @@ import {
 } from "@tanstack/react-router";
 import type { ReactNode } from "react";
 
-import { THEME_INIT_SCRIPT, ThemeProvider } from "@/web/components/shell/theme";
+import { ThemeProvider } from "@/web/components/shell/theme";
 import { Toaster } from "@/web/components/ui/sonner";
 import { TooltipProvider } from "@/web/components/ui/tooltip";
 
@@ -50,7 +50,8 @@ function RootDocument({ children }: { readonly children: ReactNode }) {
   return (
     <html lang="pt-BR" className="dark" suppressHydrationWarning>
       <head>
-        <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
+        {/* Blocking on purpose: applies the saved theme before the first paint. */}
+        <script src="/theme-init.js" />
         <HeadContent />
       </head>
       <body>

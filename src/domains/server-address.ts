@@ -35,7 +35,7 @@ export async function resolvePublicAddress(
   if (URL.canParse(publicUrl) === false) {
     return null;
   }
-  const hostname = new URL(publicUrl).hostname.replace(/^\[|\]$/g, "");
+  const hostname = new URL(publicUrl).hostname.replaceAll(/^\[|\]$/g, "");
   if (isIP(hostname) !== 0) {
     return isPublicIpAddress(hostname) ? hostname : null;
   }

@@ -397,16 +397,14 @@ export type DeploymentProgress = {
  *
  * @param database - Database or open transaction.
  * @param deploymentId - Deployment id.
- * @param to - Next status.
- * @param progress - Fields learned in this step.
+ * @param change - `to`, the next status, plus the fields learned in this step.
  * @throws {DeploymentNotFoundError} When the deployment does not exist.
  * @throws {InvalidDeploymentTransitionError} When the change breaks the lifecycle.
  */
 export function transitionDeployment(
   database: Database | Transaction,
   deploymentId: string,
-  to: DeploymentStatus,
-  progress: DeploymentProgress = {},
+  { to, ...progress }: DeploymentProgress & { readonly to: DeploymentStatus },
 ): void {
   const current = database
     .select({ status: tables.deployments.status, startedAt: tables.deployments.startedAt })
@@ -439,7 +437,7 @@ export function transitionDeployment(
  */
 export function completeDeployment(database: Database, deploymentId: string): void {
   database.transaction((transaction) => {
-    transitionDeployment(transaction, deploymentId, "succeeded", { errorMessage: null });
+    transitionDeployment(transaction, deploymentId, { to: "succeeded", errorMessage: null });
     const deployment = transaction
       .select({ projectId: tables.deployments.projectId })
       .from(tables.deployments)

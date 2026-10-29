@@ -19,8 +19,8 @@ import { getDatabase } from "@/db";
 import { getLatestHostSample, getWorkerStatus } from "@/monitoring";
 import { getSystemSettings, saveSystemSettings } from "@/settings";
 import { ROLES } from "@/shared/roles";
-import { systemSettingsSchema } from "@/shared/settings.schema";
-import { newUserSchema, passwordSchema } from "@/shared/user.schema";
+import { systemSettingsSchema } from "@/shared/schemas/settings.schema";
+import { newUserSchema, passwordSchema } from "@/shared/schemas/user.schema";
 import { authorize } from "@/web/server/authorization";
 import { PublicError } from "@/web/server/public-error";
 import { listWebhookDeliveries } from "@/webhooks";
@@ -72,7 +72,7 @@ export const createUserFn = createServerFn({ method: "POST" })
   .validator(newUserSchema)
   .handler(async ({ data }) => {
     const user = await authorize("user:manage");
-    return await createUser(getAuth(), getDatabase(), data, userActor(user));
+    return await createUser(getAuth(), getDatabase(), { newUser: data, actor: userActor(user) });
   });
 
 export const updateUserRoleFn = createServerFn({ method: "POST" })
@@ -82,7 +82,7 @@ export const updateUserRoleFn = createServerFn({ method: "POST" })
     if (data.userId === user.id) {
       throw new PublicError("Você não pode alterar o próprio papel.");
     }
-    updateUserRole(getDatabase(), data.userId, data.role, userActor(user));
+    updateUserRole(getDatabase(), { userId: data.userId, role: data.role, actor: userActor(user) });
   });
 
 export const setUserDisabledFn = createServerFn({ method: "POST" })
@@ -92,14 +92,22 @@ export const setUserDisabledFn = createServerFn({ method: "POST" })
     if (data.userId === user.id && data.disabled) {
       throw new PublicError("Você não pode desativar a própria conta.");
     }
-    setUserDisabled(getDatabase(), data.userId, data.disabled, userActor(user));
+    setUserDisabled(getDatabase(), {
+      userId: data.userId,
+      disabled: data.disabled,
+      actor: userActor(user),
+    });
   });
 
 export const resetUserPasswordFn = createServerFn({ method: "POST" })
   .validator(z.object({ userId: idSchema, password: passwordSchema }))
   .handler(async ({ data }) => {
     const user = await authorize("user:manage");
-    await resetUserPassword(getAuth(), getDatabase(), data.userId, data.password, userActor(user));
+    await resetUserPassword(getAuth(), getDatabase(), {
+      userId: data.userId,
+      password: data.password,
+      actor: userActor(user),
+    });
   });
 
 export const listApiTokensFn = createServerFn({ method: "GET" }).handler(async () => {

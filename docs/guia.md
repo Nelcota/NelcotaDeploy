@@ -300,7 +300,7 @@ bun run test:docker  # ciclo completo com Docker real: build, health check, star
 bun run build        # build de produção
 ```
 
-O teste com Docker real só roda com `DOCKER_INTEGRATION=1` (é o que `test:docker` faz) porque
+O teste com Docker real fica fora do `bun run test` e roda só com `bun run test:docker`, porque
 constrói imagens e cria contêineres; ele remove tudo o que criou ao final.
 
 ## Backup e restauração do SQLite

@@ -108,9 +108,11 @@ function DeploymentDetailPage() {
   const now = useNow(active);
   // Only announce results the user watched happen, not finished deploys opened later.
   const watchedLive = useRef(false);
-  if (active) {
-    watchedLive.current = true;
-  }
+  useEffect(() => {
+    if (active) {
+      watchedLive.current = true;
+    }
+  }, [active]);
   const navigate = useNavigate();
   const retry = useAction({
     action: () => retryDeploymentFn({ data: { deploymentId } }),

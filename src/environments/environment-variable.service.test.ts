@@ -16,18 +16,16 @@ describe("environment variables", () => {
     const box = await createTestSecretBox();
     const project = createTestProject(database);
 
-    await saveEnvironmentVariable(
-      database,
-      box,
-      project.id,
-      {
+    await saveEnvironmentVariable(database, box, {
+      projectId: project.id,
+      input: {
         key: "DATABASE_PASSWORD",
         kind: "secret",
         value: "hunter2-secret",
         availableAtBuild: false,
       },
-      TEST_ACTOR,
-    );
+      actor: TEST_ACTOR,
+    });
 
     const stored = database.select().from(tables.environmentVariables).all();
     expect(JSON.stringify(stored)).not.toContain("hunter2-secret");
@@ -44,15 +42,17 @@ describe("environment variables", () => {
       value: "first-value",
       availableAtBuild: false,
     };
-    await saveEnvironmentVariable(database, box, project.id, secret, TEST_ACTOR);
+    await saveEnvironmentVariable(database, box, {
+      projectId: project.id,
+      input: secret,
+      actor: TEST_ACTOR,
+    });
 
-    await saveEnvironmentVariable(
-      database,
-      box,
-      project.id,
-      { ...secret, value: "", availableAtBuild: true },
-      TEST_ACTOR,
-    );
+    await saveEnvironmentVariable(database, box, {
+      projectId: project.id,
+      input: { ...secret, value: "", availableAtBuild: true },
+      actor: TEST_ACTOR,
+    });
 
     const resolved = await resolveEnvironment(database, box, project.id);
     expect(resolved.runtime["TOKEN"]).toBe("first-value");
@@ -63,20 +63,16 @@ describe("environment variables", () => {
     const database = openMemoryDatabase();
     const box = await createTestSecretBox();
     const project = createTestProject(database);
-    await saveEnvironmentVariable(
-      database,
-      box,
-      project.id,
-      { key: "MODE", kind: "plain", value: "prod", availableAtBuild: false },
-      TEST_ACTOR,
-    );
-    await saveEnvironmentVariable(
-      database,
-      box,
-      project.id,
-      { key: "KEY", kind: "secret", value: "abc123", availableAtBuild: false },
-      TEST_ACTOR,
-    );
+    await saveEnvironmentVariable(database, box, {
+      projectId: project.id,
+      input: { key: "MODE", kind: "plain", value: "prod", availableAtBuild: false },
+      actor: TEST_ACTOR,
+    });
+    await saveEnvironmentVariable(database, box, {
+      projectId: project.id,
+      input: { key: "KEY", kind: "secret", value: "abc123", availableAtBuild: false },
+      actor: TEST_ACTOR,
+    });
 
     const resolved = await resolveEnvironment(database, box, project.id);
 
@@ -90,13 +86,11 @@ describe("environment variables", () => {
     const box = await createTestSecretBox();
     const project = createTestProject(database);
 
-    await saveEnvironmentVariable(
-      database,
-      box,
-      project.id,
-      { key: "KEY", kind: "secret", value: "do-not-log-me", availableAtBuild: false },
-      TEST_ACTOR,
-    );
+    await saveEnvironmentVariable(database, box, {
+      projectId: project.id,
+      input: { key: "KEY", kind: "secret", value: "do-not-log-me", availableAtBuild: false },
+      actor: TEST_ACTOR,
+    });
 
     const audit = database.select().from(tables.auditEvents).all();
     expect(JSON.stringify(audit)).not.toContain("do-not-log-me");
@@ -106,16 +100,18 @@ describe("environment variables", () => {
     const database = openMemoryDatabase();
     const box = await createTestSecretBox();
     const project = createTestProject(database);
-    await saveEnvironmentVariable(
-      database,
-      box,
-      project.id,
-      { key: "MODE", kind: "plain", value: "x", availableAtBuild: false },
-      TEST_ACTOR,
-    );
+    await saveEnvironmentVariable(database, box, {
+      projectId: project.id,
+      input: { key: "MODE", kind: "plain", value: "x", availableAtBuild: false },
+      actor: TEST_ACTOR,
+    });
     const [variable] = listEnvironmentVariables(database, project.id);
 
-    deleteEnvironmentVariable(database, project.id, variable?.id ?? "", TEST_ACTOR);
+    deleteEnvironmentVariable(database, {
+      projectId: project.id,
+      variableId: variable?.id ?? "",
+      actor: TEST_ACTOR,
+    });
 
     expect(listEnvironmentVariables(database, project.id)).toEqual([]);
   });

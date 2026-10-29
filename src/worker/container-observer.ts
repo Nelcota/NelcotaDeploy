@@ -157,7 +157,6 @@ export class ContainerObserver implements Disposable {
     this.#docker
       .followContainerLogs(
         container.id,
-        since,
         (line, stream) => {
           const parsed = parseTimestampedLine(line);
           if (parsed == null) {
@@ -182,7 +181,7 @@ export class ContainerObserver implements Disposable {
             createdAt: parsed.createdAt,
           });
         },
-        controller.signal,
+        { since, signal: controller.signal },
       )
       .catch((error: unknown) =>
         this.#logger.warn({ err: error, container: container.name }, "log follower stopped"),

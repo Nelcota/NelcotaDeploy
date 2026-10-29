@@ -18,6 +18,7 @@ import {
 import { useState } from "react";
 
 import { formatPercent, formatRelativeTime } from "@/shared/format";
+import { useNow } from "@/web/components/clock/use-now";
 import { CardTitleRow, List, StatusTile, TEXT_LINK } from "@/web/components/layout/layout";
 import { SegmentedControl } from "@/web/components/layout/overview";
 import { EmptyState, ErrorState, ListSkeleton } from "@/web/components/layout/states";
@@ -74,6 +75,7 @@ type RecentDeployment = DashboardSummary["recentDeployments"][number];
 type HostSample = Awaited<ReturnType<typeof getHostMetricsFn>>[number];
 
 function DashboardPage() {
+  const now = useNow();
   const dashboard = useQuery({
     queryKey: ["dashboard"],
     queryFn: () => getDashboardFn(),
@@ -84,7 +86,6 @@ function DashboardPage() {
     return <ErrorState error={dashboard.error} onRetry={() => void dashboard.refetch()} />;
   }
   const data = dashboard.data ?? null;
-  const now = new Date();
 
   return (
     <>
@@ -330,13 +331,13 @@ function ActivityCard({
 
 function ApplicationsCard() {
   const can = useCan();
+  const now = useNow();
   const [filter, setFilter] = useState<ApplicationFilter>("all");
   const projects = useQuery({
     queryKey: ["projects", ""],
     queryFn: () => listProjectsFn({ data: { search: "" } }),
     refetchInterval: REFRESH_INTERVAL_IN_MS,
   });
-  const now = new Date();
   const all = projects.data ?? [];
   const list = all.filter((project) =>
     matchesApplicationFilter(filter, project.containerState, project.containerHealth),

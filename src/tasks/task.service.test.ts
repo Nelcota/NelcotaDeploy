@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 
 import { openMemoryDatabase, tables } from "@/db";
 import { claimNextJob } from "@/jobs";
-import { taskInputSchema } from "@/shared/task.schema";
+import { taskInputSchema } from "@/shared/schemas/task.schema";
 import { createTestProject, TEST_ACTOR } from "@/testing";
 
 import { InvalidScheduleError } from "./task.errors";
@@ -27,7 +27,9 @@ describe("tasks", () => {
     const database = openMemoryDatabase();
     const project = createTestProject(database);
 
-    createTask(database, project.id, input(), {
+    createTask(database, {
+      projectId: project.id,
+      input: input(),
       actor: TEST_ACTOR,
       userId: null,
       timeZone: TIME_ZONE,
@@ -42,7 +44,9 @@ describe("tasks", () => {
     const project = createTestProject(database);
 
     const create = () =>
-      createTask(database, project.id, input({ schedule: "every minute" }), {
+      createTask(database, {
+        projectId: project.id,
+        input: input({ schedule: "every minute" }),
         actor: TEST_ACTOR,
         userId: null,
         timeZone: TIME_ZONE,
@@ -55,7 +59,9 @@ describe("tasks", () => {
   test("queues a due task once and advances its schedule", () => {
     const database = openMemoryDatabase();
     const project = createTestProject(database);
-    createTask(database, project.id, input(), {
+    createTask(database, {
+      projectId: project.id,
+      input: input(),
       actor: TEST_ACTOR,
       userId: null,
       timeZone: TIME_ZONE,
@@ -74,7 +80,9 @@ describe("tasks", () => {
   test("never runs the same scheduled slot twice even if the schedule is reset", () => {
     const database = openMemoryDatabase();
     const project = createTestProject(database);
-    createTask(database, project.id, input(), {
+    createTask(database, {
+      projectId: project.id,
+      input: input(),
       actor: TEST_ACTOR,
       userId: null,
       timeZone: TIME_ZONE,
@@ -93,7 +101,9 @@ describe("tasks", () => {
   test("does not schedule disabled tasks", () => {
     const database = openMemoryDatabase();
     const project = createTestProject(database);
-    createTask(database, project.id, input({ enabled: false }), {
+    createTask(database, {
+      projectId: project.id,
+      input: input({ enabled: false }),
       actor: TEST_ACTOR,
       userId: null,
       timeZone: TIME_ZONE,
@@ -106,7 +116,9 @@ describe("tasks", () => {
   test("a manual run creates an execution and a task job", () => {
     const database = openMemoryDatabase();
     const project = createTestProject(database);
-    const taskId = createTask(database, project.id, input({ schedule: "" }), {
+    const taskId = createTask(database, {
+      projectId: project.id,
+      input: input({ schedule: "" }),
       actor: TEST_ACTOR,
       userId: null,
       timeZone: TIME_ZONE,

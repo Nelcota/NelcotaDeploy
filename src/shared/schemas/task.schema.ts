@@ -1,6 +1,7 @@
 import { z } from "zod";
 
-import { CommandLineParseError, parseCommandLine } from "./command-line";
+import { parseCommandLine } from "../command-line";
+import { CommandLineParseError } from "../command-line.errors";
 
 const MAX_TASK_NAME_LENGTH = 64;
 const MAX_ARGS = 64;

@@ -2,7 +2,7 @@ import { useForm } from "@tanstack/react-form";
 import { Building2Icon, LoaderCircleIcon, TriangleAlertIcon } from "lucide-react";
 import type { z } from "zod";
 
-import { type SystemSettings, systemSettingsSchema } from "@/shared/settings.schema";
+import { type SystemSettings, systemSettingsSchema } from "@/shared/schemas/settings.schema";
 import { FormField, visibleErrors } from "@/web/components/forms/form-field";
 import { Section } from "@/web/components/layout/layout";
 import { ErrorState, ListSkeleton } from "@/web/components/layout/states";

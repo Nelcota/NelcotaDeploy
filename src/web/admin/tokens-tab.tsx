@@ -16,6 +16,7 @@ import { useState } from "react";
 import { z } from "zod";
 
 import { formatDate, formatRelativeTime } from "@/shared/format";
+import { useNow } from "@/web/components/clock/use-now";
 import { errorMessages, FormField, visibleErrors } from "@/web/components/forms/form-field";
 import { ConfirmDialog } from "@/web/components/layout/confirm-dialog";
 import { CopyButton } from "@/web/components/layout/copy-button";
@@ -72,6 +73,7 @@ const SCOPES: readonly {
 
 /** API tokens for the MCP server: create, list and revoke. */
 export function TokensTab() {
+  const now = useNow();
   const tokens = useQuery({ queryKey: ["api-tokens"], queryFn: () => listApiTokensFn() });
   const [createOpen, setCreateOpen] = useState(false);
   const [createdToken, setCreatedToken] = useState<string | null>(null);
@@ -80,7 +82,6 @@ export function TokensTab() {
     successMessage: "Token revogado",
     invalidate: [["api-tokens"]],
   });
-  const now = new Date();
   return (
     <Section
       icon={KeyRoundIcon}
@@ -204,6 +205,7 @@ function CreateTokenDialog({
   readonly onClose: () => void;
   readonly onCreated: (token: string) => void;
 }) {
+  const now = useNow();
   const create = useAction({
     action: (data: { name: string; scopes: TokenScope[]; expiresInDays: number | null }) =>
       createApiTokenFn({ data }),
@@ -224,7 +226,6 @@ function CreateTokenDialog({
       });
     },
   });
-  const now = new Date();
   return (
     <Dialog open onOpenChange={(open) => (open ? undefined : onClose())}>
       <DialogContent>

@@ -17,7 +17,7 @@ import {
 } from "@/projects";
 import { getSecretBox } from "@/secrets";
 import { getSystemSettings } from "@/settings";
-import { projectInputSchema, repositoryTokenSchema } from "@/shared/project.schema";
+import { projectInputSchema, repositoryTokenSchema } from "@/shared/schemas/project.schema";
 import { authorize } from "@/web/server/authorization";
 
 import { idSchema, projectIdInput } from "./ids";
@@ -62,9 +62,13 @@ export const updateProjectFn = createServerFn({ method: "POST" })
   .validator(z.object({ projectId: idSchema, project: projectInputSchema }))
   .handler(async ({ data }) => {
     const user = await authorize("project:write");
-    return updateProject(getDatabase(), data.projectId, data.project, {
-      actor: userActor(user),
-      isAdmin: user.role === "admin",
+    return updateProject(getDatabase(), {
+      projectId: data.projectId,
+      input: data.project,
+      editor: {
+        actor: userActor(user),
+        isAdmin: user.role === "admin",
+      },
     });
   });
 
@@ -87,11 +91,9 @@ export const setRepositoryTokenFn = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     // Changing credentials changes which code can be fetched, so only admins may do it.
     const user = await authorize("project:approve");
-    await setRepositoryToken(
-      getDatabase(),
-      await getSecretBox(),
-      data.projectId,
-      data.token,
-      userActor(user),
-    );
+    await setRepositoryToken(getDatabase(), await getSecretBox(), {
+      projectId: data.projectId,
+      token: data.token,
+      actor: userActor(user),
+    });
   });

@@ -3,8 +3,8 @@ import { and, asc, eq } from "drizzle-orm";
 import { type Actor, recordAuditEvent } from "@/audit";
 import { type Database, tables } from "@/db";
 import { getProject } from "@/projects";
-import type { DomainInput } from "@/shared/domain.schema";
-import type { SystemSettings } from "@/shared/settings.schema";
+import type { DomainInput } from "@/shared/schemas/domain.schema";
+import type { SystemSettings } from "@/shared/schemas/settings.schema";
 
 import { DomainNotFoundError, DomainTakenError } from "./domain.errors";
 
@@ -67,17 +67,17 @@ export function listProjectDomains(
  * Adds a custom hostname. It takes effect on the next deployment or redeploy.
  *
  * @param database - Database.
- * @param projectId - Project id.
- * @param input - Validated hostname and HTTPS flag.
- * @param actor - Who adds it.
+ * @param addition - Project id, validated hostname and HTTPS flag, and who adds it.
  * @throws {DomainTakenError} When the hostname already belongs to a project.
  * @throws {ProjectNotFoundError} When the project does not exist.
  */
 export function addDomain(
   database: Database,
-  projectId: string,
-  input: DomainInput,
-  actor: Actor,
+  {
+    projectId,
+    input,
+    actor,
+  }: { readonly projectId: string; readonly input: DomainInput; readonly actor: Actor },
 ): void {
   getProject(database, projectId);
   database.transaction((transaction) => {
@@ -113,16 +113,16 @@ export function addDomain(
  * Removes a custom hostname. It stops routing on the next deployment or redeploy.
  *
  * @param database - Database.
- * @param projectId - Owning project.
- * @param domainId - Domain id.
- * @param actor - Who removes it.
+ * @param removal - Owning project, domain id and who removes it.
  * @throws {DomainNotFoundError} When the domain is not in this project.
  */
 export function removeDomain(
   database: Database,
-  projectId: string,
-  domainId: string,
-  actor: Actor,
+  {
+    projectId,
+    domainId,
+    actor,
+  }: { readonly projectId: string; readonly domainId: string; readonly actor: Actor },
 ): void {
   database.transaction((transaction) => {
     const removed = transaction

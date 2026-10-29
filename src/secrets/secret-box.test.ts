@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
 
 import { createRedactor } from "./redaction";
-import { InvalidEncryptionKeyError, SecretBox, SecretDecryptionError } from "./secret-box";
+import { SecretBox } from "./secret-box";
+import { InvalidEncryptionKeyError, SecretDecryptionError } from "./secrets.errors";
 
 const KEY = Buffer.alloc(32, 1).toString("base64");
 const OTHER_KEY = Buffer.alloc(32, 2).toString("base64");

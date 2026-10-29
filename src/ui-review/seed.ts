@@ -8,7 +8,7 @@ import { saveEnvironmentVariable } from "@/environments";
 import { createProject } from "@/projects";
 import { getSecretBox } from "@/secrets";
 import { saveSystemSettings } from "@/settings";
-import { taskInputSchema } from "@/shared/task.schema";
+import { taskInputSchema } from "@/shared/schemas/task.schema";
 import { createTask } from "@/tasks";
 
 const ACTOR = { type: "system", label: "ui-review" } as const;
@@ -28,12 +28,10 @@ migrateDatabase(database);
 const secretBox = await getSecretBox();
 const now = Date.now();
 
-await createUser(
-  getAuth(),
-  database,
-  { email, name: "Ana Revisora", role: "admin", password },
-  ACTOR,
-);
+await createUser(getAuth(), database, {
+  newUser: { email, name: "Ana Revisora", role: "admin", password },
+  actor: ACTOR,
+});
 saveSystemSettings(database, {
   organizationName: "Nelcota",
   baseDomain: "apps.exemplo.com",
@@ -78,22 +76,25 @@ function runDeploy(outcome: "succeeded" | "failed", commit: string, message: str
     actor: ACTOR,
     triggeredByUserId: null,
   });
-  transitionDeployment(database, deploymentId, "cloning", {
+  transitionDeployment(database, deploymentId, {
+    to: "cloning",
     commitSha: commit,
     commitMessage: message,
   });
-  transitionDeployment(database, deploymentId, "building");
+  transitionDeployment(database, deploymentId, { to: "building" });
   if (outcome === "failed") {
-    transitionDeployment(database, deploymentId, "failed", {
+    transitionDeployment(database, deploymentId, {
+      to: "failed",
       errorMessage: "docker build failed: npm ERR! missing script: build",
     });
     return deploymentId;
   }
-  transitionDeployment(database, deploymentId, "starting", {
+  transitionDeployment(database, deploymentId, {
+    to: "starting",
     imageTag: `nelcota/api-pagamentos:${commit.slice(0, 7)}`,
     containerName: `nelcota-api-pagamentos-${commit.slice(0, 7)}`,
   });
-  transitionDeployment(database, deploymentId, "health_checking");
+  transitionDeployment(database, deploymentId, { to: "health_checking" });
   completeDeployment(database, deploymentId);
   return deploymentId;
 }
@@ -111,41 +112,41 @@ for (const [key, kind, value] of [
   ["API_BASE_URL", "plain", "https://api.exemplo.com"],
   ["DATABASE_URL", "secret", "postgres://usuario:senha@db:5432/pagamentos"],
 ] as const) {
-  await saveEnvironmentVariable(
-    database,
-    secretBox,
-    api.id,
-    { key, kind, value, availableAtBuild: key === "NODE_ENV" },
-    ACTOR,
-  );
+  await saveEnvironmentVariable(database, secretBox, {
+    projectId: api.id,
+    input: { key, kind, value, availableAtBuild: key === "NODE_ENV" },
+    actor: ACTOR,
+  });
 }
-addDomain(database, api.id, { hostname: "pagamentos.exemplo.com", httpsEnabled: true }, ACTOR);
+addDomain(database, {
+  projectId: api.id,
+  input: { hostname: "pagamentos.exemplo.com", httpsEnabled: true },
+  actor: ACTOR,
+});
 
 const taskContext = { actor: ACTOR, userId: null, timeZone: "America/Sao_Paulo" };
-createTask(
-  database,
-  api.id,
-  taskInputSchema.parse({
+createTask(database, {
+  projectId: api.id,
+  input: taskInputSchema.parse({
     name: "Migrar banco",
     commandLine: "bun run db:migrate",
     schedule: "",
     enabled: true,
     timeoutInSeconds: 300,
   }),
-  taskContext,
-);
-createTask(
-  database,
-  api.id,
-  taskInputSchema.parse({
+  ...taskContext,
+});
+createTask(database, {
+  projectId: api.id,
+  input: taskInputSchema.parse({
     name: "Limpar cache",
     commandLine: "bun run cache:clear --all",
     schedule: "0 3 * * *",
     enabled: false,
     timeoutInSeconds: 60,
   }),
-  taskContext,
-);
+  ...taskContext,
+});
 
 const startedAt = new Date(now - 90 * MINUTE_IN_MS).toISOString();
 database

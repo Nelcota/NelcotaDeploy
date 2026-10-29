@@ -45,7 +45,10 @@ export const updateAvatarFn = createServerFn({ method: "POST" })
     if (user == null) {
       throw new UnauthenticatedError();
     }
-    return saveUserAvatar(getDatabase(), user.id, Buffer.from(data.imageBase64, "base64"));
+    return saveUserAvatar(getDatabase(), {
+      userId: user.id,
+      bytes: Buffer.from(data.imageBase64, "base64"),
+    });
   });
 
 /** Removes the signed-in user's profile photo. */

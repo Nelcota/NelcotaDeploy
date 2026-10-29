@@ -1,5 +1,5 @@
 import { LoaderCircleIcon, RefreshCwIcon } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
 import { shouldOfferApply } from "@/web/components/deployments/apply-changes";
 import { useAction } from "@/web/components/layout/use-action";
@@ -47,11 +47,14 @@ export function ApplyChangesBanner({
  */
 export function useApplyChanges(projectId: string, pending: boolean, canRedeploy: boolean) {
   const [requested, setRequested] = useState(false);
-  useEffect(() => {
+  // Adjusts state during render when `pending` changes, as React recommends over an effect.
+  const [previousPending, setPreviousPending] = useState(pending);
+  if (pending !== previousPending) {
+    setPreviousPending(pending);
     if (pending === false) {
       setRequested(false);
     }
-  }, [pending]);
+  }
   const redeploy = useAction({
     action: () => redeployProjectFn({ data: { projectId } }),
     successMessage: "Redeploy colocado na fila",

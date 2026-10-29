@@ -4,6 +4,7 @@ import { BoxesIcon, PlusIcon, SearchIcon } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { z } from "zod";
 
+import { useNow } from "@/web/components/clock/use-now";
 import { List } from "@/web/components/layout/layout";
 import { EmptyState, ErrorState, ListSkeleton } from "@/web/components/layout/states";
 import { matchesProjectFilter } from "@/web/components/projects/project-filter";
@@ -111,6 +112,7 @@ function sortProjects(projects: readonly ProjectRow[], sort: SortState): Project
 }
 
 function ProjectsPage() {
+  const now = useNow();
   const can = useCan();
   const [search, setSearch] = useState("");
   const navigate = useNavigate({ from: Route.fullPath });
@@ -126,7 +128,6 @@ function ProjectsPage() {
     placeholderData: keepPreviousData,
     refetchInterval: REFRESH_INTERVAL_IN_MS,
   });
-  const now = new Date();
   const rows = useMemo(
     () =>
       sortProjects(

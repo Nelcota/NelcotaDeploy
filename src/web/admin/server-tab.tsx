@@ -19,6 +19,7 @@ import {
 import { type ReactNode } from "react";
 
 import { formatBytes, formatRelativeTime, formatTimeAgo } from "@/shared/format";
+import { useNow } from "@/web/components/clock/use-now";
 import { CopyButton } from "@/web/components/layout/copy-button";
 import { Section, StatRow } from "@/web/components/layout/layout";
 import { ErrorState, ListSkeleton } from "@/web/components/layout/states";
@@ -66,6 +67,7 @@ function InfoRow({
 
 /** Host resources, worker state and the GitHub webhook setup. */
 export function ServerTab() {
+  const now = useNow();
   const settings = useSettings();
   if (settings.isError) {
     return <ErrorState error={settings.error} onRetry={() => void settings.refetch()} />;
@@ -75,7 +77,6 @@ export function ServerTab() {
   }
   const { server } = settings.data;
   const host = server.hostSample;
-  const now = new Date();
   const cpuPercent = host?.cpuPercent ?? null;
   const memoryPercent = usagePercent(host?.memoryUsedBytes, host?.memoryTotalBytes);
   const diskPercent = usagePercent(host?.diskUsedBytes, host?.diskTotalBytes);

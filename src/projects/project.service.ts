@@ -4,7 +4,7 @@ import { type Actor, recordAuditEvent } from "@/audit";
 import { type Database, tables, type Transaction } from "@/db";
 import { enqueueJob } from "@/jobs";
 import type { SecretBox } from "@/secrets";
-import { parseGitHubRepository, type ProjectInput } from "@/shared/project.schema";
+import { parseGitHubRepository, type ProjectInput } from "@/shared/schemas/project.schema";
 
 import { ProjectNotFoundError, ProjectSlugTakenError } from "./project.errors";
 
@@ -137,18 +137,23 @@ export function createProject(
  * Updates a project's configuration. Changes apply on the next deployment.
  *
  * @param database - Database.
- * @param projectId - Project to update.
- * @param input - Validated project fields.
- * @param editor - Editing actor and whether they are an admin.
+ * @param change - Project to update, validated fields and the editor (actor and whether they
+ *   are an admin).
  * @returns The updated project.
  * @throws {ProjectNotFoundError} When the project does not exist.
  * @throws {ProjectSlugTakenError} When the new slug is used by another project.
  */
 export function updateProject(
   database: Database,
-  projectId: string,
-  input: ProjectInput,
-  editor: { readonly actor: Actor; readonly isAdmin: boolean },
+  {
+    projectId,
+    input,
+    editor,
+  }: {
+    readonly projectId: string;
+    readonly input: ProjectInput;
+    readonly editor: { readonly actor: Actor; readonly isAdmin: boolean };
+  },
 ): Project {
   const repository = repositoryFullNameOf(input.repositoryUrl);
   database.transaction((transaction) => {
@@ -249,17 +254,17 @@ export function requestProjectDeletion(database: Database, projectId: string, ac
  *
  * @param database - Database.
  * @param secretBox - Encryption box.
- * @param projectId - Project to update.
- * @param token - Token, or null to remove it.
- * @param actor - Who changes it.
+ * @param change - Project to update, the token (or null to remove it) and who changes it.
  * @throws {ProjectNotFoundError} When the project does not exist.
  */
 export async function setRepositoryToken(
   database: Database,
   secretBox: SecretBox,
-  projectId: string,
-  token: string | null,
-  actor: Actor,
+  {
+    projectId,
+    token,
+    actor,
+  }: { readonly projectId: string; readonly token: string | null; readonly actor: Actor },
 ): Promise<void> {
   const encrypted =
     token == null || token === ""

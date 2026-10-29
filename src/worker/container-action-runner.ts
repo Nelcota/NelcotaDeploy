@@ -9,15 +9,13 @@ import { type DockerEngine, LABELS } from "@/docker";
  *
  * @param database - Database.
  * @param docker - Docker access; refuses containers without the platform label.
- * @param deploymentId - Deployment whose container is targeted.
- * @param action - Operation to perform.
+ * @param request - Deployment whose container is targeted and the operation to perform.
  * @throws {Error} When the deployment has no container name.
  */
 export async function runContainerAction(
   database: Database,
   docker: DockerEngine,
-  deploymentId: string,
-  action: ContainerAction,
+  { deploymentId, action }: { readonly deploymentId: string; readonly action: ContainerAction },
 ): Promise<void> {
   const deployment = getDeployment(database, deploymentId);
   if (deployment.containerName == null) {

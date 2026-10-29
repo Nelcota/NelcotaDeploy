@@ -32,7 +32,7 @@ export async function runTaskExecution(
 ): Promise<"succeeded" | "failed" | "skipped"> {
   const { database, docker } = dependencies;
   const execution = getExecutionForRun(database, executionId);
-  if (execution == null || execution.status !== "queued") {
+  if (execution?.status !== "queued") {
     return "skipped";
   }
   const project = getProject(database, execution.projectId);

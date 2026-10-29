@@ -4,6 +4,7 @@ import { InfoIcon, ListChecksIcon, PlusIcon } from "lucide-react";
 import { useState } from "react";
 
 import type { Task } from "@/tasks";
+import { useNow } from "@/web/components/clock/use-now";
 import { List } from "@/web/components/layout/layout";
 import { EmptyState, ErrorState, ListSkeleton } from "@/web/components/layout/states";
 import { useAction } from "@/web/components/layout/use-action";
@@ -33,6 +34,7 @@ export const Route = createFileRoute("/_app/projects/$projectId/tasks")({
 const TASKS_REFRESH_INTERVAL_IN_MS = 10_000;
 
 function TasksPage() {
+  const now = useNow();
   const { projectId } = Route.useParams();
   const can = useCan();
   const canWrite = can("task:write");
@@ -79,7 +81,6 @@ function TasksPage() {
 
   const timeZone = tasksQuery.data?.timeZone ?? "UTC";
   const tasks: readonly TaskRow[] = tasksQuery.data?.tasks ?? [];
-  const now = new Date();
   const historyTask = tasks.find((task) => task.id === historyTaskId) ?? null;
 
   return (

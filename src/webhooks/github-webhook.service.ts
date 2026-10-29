@@ -74,6 +74,7 @@ export async function handleGitHubDelivery(
     throw new InvalidWebhookRequestError("Missing or malformed X-GitHub-Event header");
   }
   const deliveryId = delivery.deliveryId;
+  // A skipped or unmatched write returns no row, which `.get()` does not admit in its type.
   const claimed = database
     .insert(tables.webhookDeliveries)
     .values({
@@ -86,7 +87,8 @@ export async function handleGitHubDelivery(
     })
     .onConflictDoNothing()
     .returning({ id: tables.webhookDeliveries.id })
-    .get();
+    .all()
+    .at(0);
   if (claimed == null) {
     return { status: "duplicate" };
   }

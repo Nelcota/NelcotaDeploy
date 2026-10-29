@@ -1,13 +1,7 @@
 import { mkdir, mkdtemp, realpath, rm } from "node:fs/promises";
 import { isAbsolute, join, relative, resolve } from "node:path";
 
-/** Thrown when a configured path would leave the cloned repository. */
-export class PathOutsideWorkspaceError extends Error {
-  constructor(path: string) {
-    super(`Path ${JSON.stringify(path)} resolves outside the repository`);
-    this.name = "PathOutsideWorkspaceError";
-  }
-}
+import { PathOutsideWorkspaceError } from "./worker.errors";
 
 /**
  * Resolves a repository-relative path and checks, after following symlinks, that it stays

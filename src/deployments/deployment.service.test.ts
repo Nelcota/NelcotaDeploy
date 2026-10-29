@@ -32,13 +32,14 @@ function finishSuccessfully(
   database: ReturnType<typeof openMemoryDatabase>,
   deploymentId: string,
 ): void {
-  transitionDeployment(database, deploymentId, "cloning");
-  transitionDeployment(database, deploymentId, "building");
-  transitionDeployment(database, deploymentId, "starting", {
+  transitionDeployment(database, deploymentId, { to: "cloning" });
+  transitionDeployment(database, deploymentId, { to: "building" });
+  transitionDeployment(database, deploymentId, {
+    to: "starting",
     imageTag: "nelcota/api:abc",
     containerName: "nelcota-api-abc",
   });
-  transitionDeployment(database, deploymentId, "health_checking");
+  transitionDeployment(database, deploymentId, { to: "health_checking" });
   completeDeployment(database, deploymentId);
 }
 
@@ -74,7 +75,7 @@ describe("requestDeployment", () => {
     const project = createTestProject(database);
     const sha = "a".repeat(40);
     const first = requestDeployment(database, { projectId: project.id, ...manual, commitSha: sha });
-    transitionDeployment(database, first.deploymentId, "cloning");
+    transitionDeployment(database, first.deploymentId, { to: "cloning" });
 
     const second = requestDeployment(database, {
       projectId: project.id,
@@ -132,7 +133,7 @@ describe("requestDeployment", () => {
     const database = openMemoryDatabase();
     const project = createTestProject(database);
     const failed = requestDeployment(database, { projectId: project.id, ...manual });
-    transitionDeployment(database, failed.deploymentId, "failed", { errorMessage: "boom" });
+    transitionDeployment(database, failed.deploymentId, { to: "failed", errorMessage: "boom" });
 
     const rollback = () =>
       requestDeployment(database, {
@@ -195,9 +196,9 @@ describe("deployment lifecycle", () => {
     const database = openMemoryDatabase();
     const project = createTestProject(database);
     const { deploymentId } = requestDeployment(database, { projectId: project.id, ...manual });
-    transitionDeployment(database, deploymentId, "cloning");
+    transitionDeployment(database, deploymentId, { to: "cloning" });
 
-    expect(() => transitionDeployment(database, deploymentId, "succeeded")).toThrow(
+    expect(() => transitionDeployment(database, deploymentId, { to: "succeeded" })).toThrow(
       InvalidDeploymentTransitionError,
     );
   });
@@ -206,9 +207,9 @@ describe("deployment lifecycle", () => {
     const database = openMemoryDatabase();
     const project = createTestProject(database);
     const { deploymentId } = requestDeployment(database, { projectId: project.id, ...manual });
-    transitionDeployment(database, deploymentId, "failed");
+    transitionDeployment(database, deploymentId, { to: "failed" });
 
-    expect(() => transitionDeployment(database, deploymentId, "cloning")).toThrow(
+    expect(() => transitionDeployment(database, deploymentId, { to: "cloning" })).toThrow(
       InvalidDeploymentTransitionError,
     );
   });
@@ -228,7 +229,7 @@ describe("deployment lifecycle", () => {
     const database = openMemoryDatabase();
     const project = createTestProject(database);
     const { deploymentId } = requestDeployment(database, { projectId: project.id, ...manual });
-    transitionDeployment(database, deploymentId, "cloning");
+    transitionDeployment(database, deploymentId, { to: "cloning" });
 
     const result = cancelDeployment(database, deploymentId, TEST_ACTOR);
 
@@ -281,13 +282,13 @@ describe("countActiveDeployments", () => {
       ...manual,
       commitSha: "a".repeat(40),
     });
-    transitionDeployment(database, finished.deploymentId, "failed");
+    transitionDeployment(database, finished.deploymentId, { to: "failed" });
     const running = requestDeployment(database, {
       projectId: project.id,
       ...manual,
       commitSha: "b".repeat(40),
     });
-    transitionDeployment(database, running.deploymentId, "cloning");
+    transitionDeployment(database, running.deploymentId, { to: "cloning" });
     requestDeployment(database, { projectId: project.id, ...manual, commitSha: "c".repeat(40) });
 
     expect(countActiveDeployments(database)).toBe(2);
@@ -303,7 +304,7 @@ describe("retryDeployment", () => {
       ...manual,
       commitSha: "abc1234def",
     });
-    transitionDeployment(database, deploymentId, "failed", { errorMessage: "build failed" });
+    transitionDeployment(database, deploymentId, { to: "failed", errorMessage: "build failed" });
 
     const retry = retryDeployment(database, deploymentId, {
       actor: TEST_ACTOR,

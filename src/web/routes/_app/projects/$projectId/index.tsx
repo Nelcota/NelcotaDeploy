@@ -27,6 +27,7 @@ import {
   formatRelativeTime,
   formatShortTime,
 } from "@/shared/format";
+import { useNow } from "@/web/components/clock/use-now";
 import {
   ACTIVE_DEPLOYMENT_STATUSES,
   CONTAINER_HEALTH_LABELS,
@@ -129,6 +130,7 @@ function SituationCard({
   readonly latest: RecentDeployment | null;
   readonly latestLoading: boolean;
 }) {
+  const now = useNow();
   const { project } = details;
   const container = currentContainer(details);
   const current = useQuery({
@@ -136,7 +138,6 @@ function SituationCard({
     queryFn: () => getDeploymentFn({ data: { deploymentId: project.currentDeploymentId ?? "" } }),
     enabled: project.currentDeploymentId != null,
   });
-  const now = new Date();
   const running = container?.state === "running";
   const healthy = running && container.health !== "unhealthy";
   const restarts = container?.restartCount ?? 0;
@@ -284,7 +285,7 @@ function RecentDeploymentsCard({
   /** Whether the Deploy button is shown above, so the empty state may point at it. */
   readonly canDeploy: boolean;
 }) {
-  const now = new Date();
+  const now = useNow();
   return (
     <Card className="gap-4 p-5">
       <CardTitleRow icon={HistoryIcon} title="Deploys recentes">

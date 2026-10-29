@@ -29,8 +29,9 @@ describe("runProcess", () => {
   });
 
   test("reports an abort when the signal fires", async () => {
+    const abortDelayInMs = 100;
     const controller = new AbortController();
-    setTimeout(() => controller.abort(), 100);
+    setTimeout(() => controller.abort(), abortDelayInMs);
 
     const result = await runProcess(["sleep", "5"], {
       timeoutInMs: 10_000,

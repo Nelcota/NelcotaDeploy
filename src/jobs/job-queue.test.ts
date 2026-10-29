@@ -122,7 +122,11 @@ describe("job queue", () => {
     enqueueJob(database, { kind: "deploy", projectId, maxAttempts: 2 }, T0);
     const job = claimNextJob(database, "worker-1", T0);
 
-    const outcome = failJob(database, job?.id ?? "", "boom", { retryable: true, now: T0 });
+    const outcome = failJob(database, job?.id ?? "", {
+      errorMessage: "boom",
+      retryable: true,
+      now: T0,
+    });
 
     expect(outcome).toBe("requeued");
   });
@@ -133,7 +137,11 @@ describe("job queue", () => {
     enqueueJob(database, { kind: "deploy", projectId, maxAttempts: 1 }, T0);
     const job = claimNextJob(database, "worker-1", T0);
 
-    const outcome = failJob(database, job?.id ?? "", "boom", { retryable: true, now: T0 });
+    const outcome = failJob(database, job?.id ?? "", {
+      errorMessage: "boom",
+      retryable: true,
+      now: T0,
+    });
 
     expect(outcome).toBe("failed");
   });

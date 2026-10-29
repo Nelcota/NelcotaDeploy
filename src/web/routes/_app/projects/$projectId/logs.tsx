@@ -4,6 +4,7 @@ import { ClockIcon, ContainerIcon, RotateCwIcon } from "lucide-react";
 import { useState } from "react";
 
 import { formatDateTime, formatRelativeTime, pluralize } from "@/shared/format";
+import { useNow } from "@/web/components/clock/use-now";
 import { EmptyState, ErrorState } from "@/web/components/layout/states";
 import { LogViewer } from "@/web/components/monitoring/log-viewer";
 import { currentContainer, TabHeader } from "@/web/components/projects/project-header";
@@ -31,6 +32,7 @@ export const Route = createFileRoute("/_app/projects/$projectId/logs")({
 });
 
 function RuntimeLogsPage() {
+  const now = useNow();
   const { projectId } = Route.useParams();
   const project = useQuery(projectQueryOptions(projectId));
   const deployments = useQuery({
@@ -47,7 +49,6 @@ function RuntimeLogsPage() {
   const details = project.data;
   const currentDeploymentId = details?.project.currentDeploymentId ?? null;
   const selected = chosen ?? currentDeploymentId ?? ALL_DEPLOYMENTS;
-  const now = new Date();
 
   const header = (
     <TabHeader
@@ -182,12 +183,12 @@ function SourceDescription({
   if (container == null) {
     return "Saída do contêiner em tempo real. O worker ainda não informou o contêiner do deploy.";
   }
-  const restarts = container.restartCount ?? 0;
+  const restarts = container.restartCount;
   return (
     <span className="flex flex-wrap items-center gap-x-4 gap-y-1">
       <span className="inline-flex min-w-0 items-center gap-1.5">
         <ContainerIcon aria-hidden className="size-3.5 shrink-0" />
-        <span className="truncate font-mono text-xs" title={container.image ?? undefined}>
+        <span className="truncate font-mono text-xs" title={container.image}>
           {container.name}
         </span>
       </span>

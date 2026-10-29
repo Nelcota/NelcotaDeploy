@@ -14,7 +14,7 @@ import { z } from "zod";
 
 import { formatDate } from "@/shared/format";
 import { type Role, ROLES } from "@/shared/roles";
-import { newUserSchema, PASSWORD_MIN_LENGTH, passwordSchema } from "@/shared/user.schema";
+import { newUserSchema, PASSWORD_MIN_LENGTH, passwordSchema } from "@/shared/schemas/user.schema";
 import { UserAvatar } from "@/web/components/account/user-avatar";
 import { FormField, visibleErrors } from "@/web/components/forms/form-field";
 import { ConfirmDialog } from "@/web/components/layout/confirm-dialog";

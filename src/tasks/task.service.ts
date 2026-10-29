@@ -4,7 +4,7 @@ import { type Actor, recordAuditEvent } from "@/audit";
 import { type Database, tables, type Transaction } from "@/db";
 import { enqueueJob } from "@/jobs";
 import { getProject } from "@/projects";
-import type { TaskInput } from "@/shared/task.schema";
+import type { TaskInput } from "@/shared/schemas/task.schema";
 
 import { nextScheduledRun } from "./schedule";
 import { TaskNameTakenError, TaskNotFoundError } from "./task.errors";
@@ -81,8 +81,7 @@ function computeNextRunAt(input: TaskInput, now: Date, timeZone: string): string
 function assertNameAvailable(
   transaction: Transaction,
   projectId: string,
-  name: string,
-  exceptTaskId?: string,
+  { name, exceptTaskId }: { readonly name: string; readonly exceptTaskId?: string },
 ): void {
   const existing = transaction
     .select({ id: tables.tasks.id })
@@ -104,9 +103,8 @@ function assertNameAvailable(
  * Creates a task for a project.
  *
  * @param database - Database.
- * @param projectId - Owning project.
- * @param input - Validated task with its argument vector.
- * @param context - Actor, creating user and the time zone schedules are written in.
+ * @param request - Owning `projectId`, the validated task `input` with its argument vector,
+ *   the actor, the creating user and the time zone schedules are written in.
  * @returns The task id.
  * @throws {ProjectNotFoundError} When the project does not exist.
  * @throws {InvalidScheduleError} When the cron expression is invalid.
@@ -114,9 +112,13 @@ function assertNameAvailable(
  */
 export function createTask(
   database: Database,
-  projectId: string,
-  input: TaskInput,
-  context: {
+  {
+    projectId,
+    input,
+    ...context
+  }: {
+    readonly projectId: string;
+    readonly input: TaskInput;
     readonly actor: Actor;
     readonly userId: string | null;
     readonly timeZone: string;
@@ -128,7 +130,7 @@ export function createTask(
   const taskId = Bun.randomUUIDv7();
   database.transaction((transaction) => {
     getProject(transaction, projectId);
-    assertNameAvailable(transaction, projectId, input.name);
+    assertNameAvailable(transaction, projectId, { name: input.name });
     transaction
       .insert(tables.tasks)
       .values({
@@ -156,26 +158,33 @@ export function createTask(
  * Updates a task and recomputes its next scheduled run.
  *
  * @param database - Database.
- * @param projectId - Owning project.
- * @param taskId - Task id.
- * @param input - Validated task.
- * @param context - Actor and schedule time zone.
+ * @param request - Owning `projectId`, the `taskId`, the validated task `input`, the actor and
+ *   the schedule time zone.
  * @throws {TaskNotFoundError} When the task is not in this project.
  * @throws {InvalidScheduleError} When the cron expression is invalid.
  * @throws {TaskNameTakenError} When the name is already used in the project.
  */
 export function updateTask(
   database: Database,
-  projectId: string,
-  taskId: string,
-  input: TaskInput,
-  context: { readonly actor: Actor; readonly timeZone: string; readonly now?: Date },
+  {
+    projectId,
+    taskId,
+    input,
+    ...context
+  }: {
+    readonly projectId: string;
+    readonly taskId: string;
+    readonly input: TaskInput;
+    readonly actor: Actor;
+    readonly timeZone: string;
+    readonly now?: Date;
+  },
 ): void {
   const now = context.now ?? new Date();
   const nextRunAt = computeNextRunAt(input, now, context.timeZone);
   database.transaction((transaction) => {
     findTaskRow(transaction, projectId, taskId);
-    assertNameAvailable(transaction, projectId, input.name, taskId);
+    assertNameAvailable(transaction, projectId, { name: input.name, exceptTaskId: taskId });
     transaction
       .update(tables.tasks)
       .set({ ...input, nextRunAt, updatedAt: now.toISOString() })
@@ -201,16 +210,16 @@ export function updateTask(
  * Deletes a task and its history.
  *
  * @param database - Database.
- * @param projectId - Owning project.
- * @param taskId - Task id.
- * @param actor - Who deletes it.
+ * @param removal - Owning project, task id and who deletes it.
  * @throws {TaskNotFoundError} When the task is not in this project.
  */
 export function deleteTask(
   database: Database,
-  projectId: string,
-  taskId: string,
-  actor: Actor,
+  {
+    projectId,
+    taskId,
+    actor,
+  }: { readonly projectId: string; readonly taskId: string; readonly actor: Actor },
 ): void {
   database.transaction((transaction) => {
     const task = findTaskRow(transaction, projectId, taskId);
@@ -295,6 +304,7 @@ function enqueueExecution(
   },
 ): string | null {
   const executionId = Bun.randomUUIDv7();
+  // A skipped or unmatched write returns no row, which `.get()` does not admit in its type.
   const inserted = transaction
     .insert(tables.taskExecutions)
     .values({
@@ -309,7 +319,8 @@ function enqueueExecution(
     })
     .onConflictDoNothing()
     .returning({ id: tables.taskExecutions.id })
-    .get();
+    .all()
+    .at(0);
   if (inserted == null) {
     return null;
   }
@@ -422,16 +433,16 @@ export function scheduleDueTasks(database: Database, now: Date, timeZone: string
  * Lists a task's executions, newest first.
  *
  * @param database - Database.
- * @param projectId - Owning project.
- * @param taskId - Task id.
- * @param limit - Page size, at most 100.
+ * @param page - Owning project, task id and `limit`, the page size between 1 and 100.
  * @returns Executions with their output.
  */
 export function listTaskExecutions(
   database: Database,
-  projectId: string,
-  taskId: string,
-  limit: number,
+  {
+    projectId,
+    taskId,
+    limit,
+  }: { readonly projectId: string; readonly taskId: string; readonly limit: number },
 ): TaskExecution[] {
   return database
     .select(executionColumns)

@@ -20,6 +20,7 @@ import { Fragment, useState } from "react";
 import { toast } from "sonner";
 
 import { dayKey, formatDateTime, formatDayHeading, formatTime, pluralize } from "@/shared/format";
+import { useNow } from "@/web/components/clock/use-now";
 import { toUserMessage } from "@/web/components/layout/error-message";
 import { AUDIT_ACTION_LABELS, WEBHOOK_REASON_LABELS } from "@/web/components/layout/labels";
 import { DayHeading, List, ListRow, Section } from "@/web/components/layout/layout";
@@ -66,6 +67,7 @@ const TARGET_TYPE_LABELS: Record<string, string> = {
 
 /** Audit events and the latest GitHub webhook deliveries. */
 export function AuditTab() {
+  const now = useNow();
   const firstPage = useQuery({
     queryKey: ["audit"],
     queryFn: () => listAuditEventsFn({ data: {} }),
@@ -74,7 +76,6 @@ export function AuditTab() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [exhausted, setExhausted] = useState(false);
   const events = [...(firstPage.data ?? []), ...olderPages];
-  const now = new Date();
 
   const loadMore = async () => {
     const last = events.at(-1);

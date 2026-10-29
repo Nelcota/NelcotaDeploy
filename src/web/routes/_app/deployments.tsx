@@ -15,6 +15,7 @@ import { Fragment, useMemo, useState } from "react";
 
 import type { DeploymentStatus } from "@/deployments";
 import { dayKey, formatDayHeading, formatDuration, formatPercent } from "@/shared/format";
+import { useNow } from "@/web/components/clock/use-now";
 import {
   DeploymentListRow,
   DeploymentMobileMeta,
@@ -151,6 +152,7 @@ function summaryStats(data: DeploymentStatsData): Stat[] {
 
 /** Every deploy, newest first, split by day, filtered by status and project. */
 function History() {
+  const now = useNow();
   const [statusFilter, setStatusFilter] = useState<StatusFilter>(ALL_STATUSES);
   const [projectFilter, setProjectFilter] = useState<string>(ALL_PROJECTS);
   const status = statusFilter === ALL_STATUSES ? undefined : statusFilter;
@@ -187,7 +189,6 @@ function History() {
     [rows],
   );
   const filtered = status != null || projectId != null;
-  const now = new Date();
 
   return (
     <section aria-labelledby="history-title" className="space-y-6">

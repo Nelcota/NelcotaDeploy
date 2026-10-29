@@ -105,9 +105,14 @@ export function CommandPalette({
     );
   }, [projects.data, navigate, permissions, query]);
 
-  useEffect(() => {
+  // A new search or a reopened palette selects the first result again; adjusting during
+  // render avoids an extra effect pass.
+  const selectionKey = `${String(open)}:${query}`;
+  const [selectionResetKey, setSelectionResetKey] = useState(selectionKey);
+  if (selectionKey !== selectionResetKey) {
+    setSelectionResetKey(selectionKey);
     setActiveIndex(0);
-  }, [query, open]);
+  }
 
   // Arrow keys move the selection; keep it inside the scrolling list.
   const activeId = commands[activeIndex]?.id;

@@ -3,7 +3,8 @@ import { mkdir, mkdtemp, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { PathOutsideWorkspaceError, resolveInsideWorkspace } from "./workspace";
+import { PathOutsideWorkspaceError } from "./worker.errors";
+import { resolveInsideWorkspace } from "./workspace";
 
 async function repository(): Promise<string> {
   const root = await mkdtemp(join(tmpdir(), "nelcota-ws-"));

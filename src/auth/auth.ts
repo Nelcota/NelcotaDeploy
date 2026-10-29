@@ -4,7 +4,7 @@ import { eq } from "drizzle-orm";
 
 import { getConfig, requireConfigValue } from "@/config";
 import { type Database, getDatabase, tables } from "@/db";
-import { PASSWORD_MIN_LENGTH } from "@/shared/user.schema";
+import { PASSWORD_MIN_LENGTH } from "@/shared/schemas/user.schema";
 
 const SECONDS_PER_DAY = 86_400;
 const SESSION_LIFETIME_IN_SECONDS = 7 * SECONDS_PER_DAY;
@@ -93,7 +93,7 @@ function isUserActive(database: Database, userId: string): boolean {
     .from(tables.users)
     .where(eq(tables.users.id, userId))
     .get();
-  return user != null && user.disabled === false;
+  return user?.disabled === false;
 }
 
 export type Auth = ReturnType<typeof createAuth>;

@@ -18,8 +18,9 @@ import type { z } from "zod";
 
 import type { EnvironmentVariableView } from "@/environments";
 import { normalizeVariableKey } from "@/shared/dotenv";
-import { environmentVariableInputSchema } from "@/shared/environment-variable.schema";
 import { formatDateTime, formatRelativeTime, pluralize } from "@/shared/format";
+import { environmentVariableInputSchema } from "@/shared/schemas/environment-variable.schema";
+import { useNow } from "@/web/components/clock/use-now";
 import {
   ApplyChangesBanner,
   useApplyChanges,
@@ -194,6 +195,7 @@ function VariablesList({
   readonly onEdit: (variable: EnvironmentVariableView) => void;
   readonly onDelete: (variableId: string) => void;
 }) {
+  const now = useNow();
   const [search, setSearch] = useState("");
   if (query.isError) {
     return <ErrorState error={query.error} onRetry={() => void query.refetch()} />;
@@ -218,7 +220,6 @@ function VariablesList({
       />
     );
   }
-  const now = new Date();
   const visible = filterVariablesByKey(query.data, search);
   return (
     <div className="space-y-3">

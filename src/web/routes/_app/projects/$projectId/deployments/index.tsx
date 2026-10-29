@@ -5,6 +5,7 @@ import { Fragment, useMemo, useState } from "react";
 
 import type { Deployment, DeploymentStatus } from "@/deployments";
 import { dayKey, formatDayHeading } from "@/shared/format";
+import { useNow } from "@/web/components/clock/use-now";
 import {
   DeploymentListRow,
   DeploymentMobileMeta,
@@ -51,6 +52,7 @@ const STATUS_FILTERS = [
 type StatusFilter = (typeof STATUS_FILTERS)[number]["value"];
 
 function ProjectDeploymentsPage() {
+  const now = useNow();
   const { projectId } = Route.useParams();
   const can = useCan();
   const project = useQuery(projectQueryOptions(projectId));
@@ -130,7 +132,6 @@ function ProjectDeploymentsPage() {
     );
   }
 
-  const now = new Date();
   return (
     <section aria-label="Histórico de deploys" className="space-y-6">
       {header}

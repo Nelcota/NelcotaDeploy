@@ -10,7 +10,7 @@ import { getDeployment, requestDeployment } from "@/deployments";
 import { DockerCli } from "@/docker";
 import { GitClient } from "@/git";
 import { runProcess } from "@/process";
-import { taskInputSchema } from "@/shared/task.schema";
+import { taskInputSchema } from "@/shared/schemas/task.schema";
 import { runTask, createTask } from "@/tasks";
 import { createTestProject, createTestSecretBox, TEST_ACTOR } from "@/testing";
 
@@ -18,12 +18,12 @@ import { runContainerAction, runProjectCleanup } from "./container-action-runner
 import { type DeployRunnerDependencies, runDeployment } from "./deploy-runner";
 import { runTaskExecution } from "./task-runner";
 
-// Builds and runs real containers, so it only runs when explicitly enabled:
-//   DOCKER_INTEGRATION=1 bun test src/worker/deploy.integration.test.ts
-const enabled = process.env["DOCKER_INTEGRATION"] === "1";
+// Builds and runs real containers, so the default `bun run test` ignores it. Run it with:
+//   bun run test:docker
 const FIXTURE = resolve(import.meta.dir, "../../fixtures/hello-app");
 const NETWORK = `nelcota-it-${Date.now()}`;
 const TEST_TIMEOUT_IN_MS = 180_000;
+const HEALTH_REQUEST_TIMEOUT_IN_MS = 5000;
 
 async function git(args: string[], cwd: string): Promise<void> {
   const result = await runProcess(["git", ...args], {
@@ -41,7 +41,7 @@ async function git(args: string[], cwd: string): Promise<void> {
   }
 }
 
-describe.skipIf(enabled === false)("deploy cycle with real Docker", () => {
+describe("deploy cycle with real Docker", () => {
   const docker = new DockerCli("docker");
   const cleanups: (() => Promise<void>)[] = [];
 
@@ -115,19 +115,19 @@ describe.skipIf(enabled === false)("deploy cycle with real Docker", () => {
       expect(container?.running).toBe(true);
       const address = container?.networkAddresses[NETWORK];
       const response = await fetch(`http://${address}:8000/health`, {
-        signal: AbortSignal.timeout(5000),
+        signal: AbortSignal.timeout(HEALTH_REQUEST_TIMEOUT_IN_MS),
       });
       expect((await response.text()).trim()).toBe("ok");
 
-      await runContainerAction(database, docker, first, "stop");
+      await runContainerAction(database, docker, { deploymentId: first, action: "stop" });
       expect((await docker.inspectContainer(firstDeployment.containerName ?? ""))?.running).toBe(
         false,
       );
-      await runContainerAction(database, docker, first, "start");
+      await runContainerAction(database, docker, { deploymentId: first, action: "start" });
       expect((await docker.inspectContainer(firstDeployment.containerName ?? ""))?.running).toBe(
         true,
       );
-      await runContainerAction(database, docker, first, "restart");
+      await runContainerAction(database, docker, { deploymentId: first, action: "restart" });
       expect((await docker.inspectContainer(firstDeployment.containerName ?? ""))?.running).toBe(
         true,
       );
@@ -150,18 +150,19 @@ describe.skipIf(enabled === false)("deploy cycle with real Docker", () => {
       );
       expect(getDeployment(database, rollback).imageTag).toBe(firstDeployment.imageTag);
 
-      const taskId = createTask(
-        database,
-        project.id,
-        taskInputSchema.parse({
+      const taskId = createTask(database, {
+        projectId: project.id,
+        input: taskInputSchema.parse({
           name: "health",
           commandLine: "cat /srv/health",
           schedule: "",
           enabled: true,
           timeoutInSeconds: 30,
         }),
-        { actor: TEST_ACTOR, userId: null, timeZone: "UTC" },
-      );
+        actor: TEST_ACTOR,
+        userId: null,
+        timeZone: "UTC",
+      });
       const executionId = runTask(database, {
         projectId: project.id,
         taskId,
