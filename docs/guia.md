@@ -341,8 +341,9 @@ bun run check        # formatação, oxlint, TypeScript, knip e testes
 bun test             # testes unitários e de integração (SQLite em memória, Docker simulado)
 bun run test:docker  # ciclo completo com Docker real: build, health check, start/stop/restart,
                      # rollback, task e limpeza usando fixtures/hello-app (python:3.13-alpine); e
-                     # uma VPS simulada (Docker-in-Docker com sshd) que recebe o comando de
-                     # instalação e um deploy completo por SSH, com roteamento pelo Traefik
+                     # VPSs simuladas (Alpine, Debian 12 e Ubuntu 24.04 com sshd) que recebem o
+                     # comando de instalação e um deploy completo por SSH, com roteamento pelo
+                     # Traefik
 bun run build        # build de produção
 ```
 
@@ -383,9 +384,9 @@ Guarde também o `NELCOTA_ENCRYPTION_KEY`: sem ele, secrets e tokens do backup s
 
 ## Limitações conhecidas
 
-- O comando de instalação foi feito para Debian e Ubuntu, que têm `useradd` e PAM. O teste automático
-  roda em Alpine com o pacote `shadow`; em outras distribuições pode ser preciso instalar o Docker ou o
-  `useradd` à mão antes.
+- O comando de instalação é testado automaticamente em Debian 12 e Ubuntu 24.04 limpos (instalando o
+  Docker pelo `get.docker.com`) e em Alpine com o pacote `shadow`. Em outras distribuições pode ser
+  preciso instalar o Docker ou o `useradd` à mão antes.
 - O domínio automático (`<slug>.<domínio base>`) usa um único curinga de DNS: com projetos em
   servidores diferentes, crie um registro `A` por projeto apontando para o IP do servidor dele.
 - Somente repositórios GitHub via HTTPS; privados exigem token de leitura (deploy keys SSH não implementadas).
