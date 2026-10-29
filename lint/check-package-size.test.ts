@@ -96,3 +96,24 @@ describe("findOversizedPackages edge cases", () => {
     },
   );
 });
+
+describe("findOversizedPackages on Windows paths", () => {
+  test("reads backslash separators like forward slashes", () => {
+    const filePaths = Array.from({ length: 4 }, (_, index) => `src\\orders\\file-${index}.ts`);
+
+    const oversized = findOversizedPackages(filePaths, 3);
+
+    expect(oversized).toEqual([{ directory: "src/orders", fileCount: 4 }]);
+  });
+
+  test("still ignores the shadcn/ui folder with backslash separators", () => {
+    const filePaths = Array.from(
+      { length: 4 },
+      (_, index) => `src\\web\\components\\ui\\file-${index}.tsx`,
+    );
+
+    const oversized = findOversizedPackages(filePaths, 3);
+
+    expect(oversized).toEqual([]);
+  });
+});
