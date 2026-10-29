@@ -6,7 +6,7 @@ import { z } from "zod";
 
 import { List } from "@/web/components/layout/layout";
 import { EmptyState, ErrorState, ListSkeleton } from "@/web/components/layout/states";
-import { matchesApplicationFilter } from "@/web/components/projects/project-accent";
+import { matchesProjectFilter } from "@/web/components/projects/project-filter";
 import { ProjectListRow } from "@/web/components/projects/project-list-row";
 import { PageHeader } from "@/web/components/shell/page-header";
 import { useCan } from "@/web/components/shell/use-permissions";
@@ -54,26 +54,6 @@ export const Route = createFileRoute("/_app/projects/")({
 
 function isStatusFilter(value: string): value is StatusFilter {
   return Object.hasOwn(STATUS_FILTERS, value);
-}
-
-function matchesFilter(project: ProjectRow, filter: StatusFilter): boolean {
-  switch (filter) {
-    case "all":
-      return true;
-    // Same rules as the dashboard chips, so a shortcut's count matches the list it opens.
-    case "online":
-      return matchesApplicationFilter("online", project.containerState, project.containerHealth);
-    case "offline":
-      return matchesApplicationFilter("attention", project.containerState, project.containerHealth);
-    case "never":
-      return matchesApplicationFilter(
-        "never-deployed",
-        project.containerState,
-        project.containerHealth,
-      );
-    case "pending":
-      return project.deploymentsApproved === false;
-  }
 }
 
 function useDebouncedValue(value: string, delayInMs: number): string {
@@ -150,7 +130,7 @@ function ProjectsPage() {
   const rows = useMemo(
     () =>
       sortProjects(
-        (projects.data ?? NO_PROJECTS).filter((project) => matchesFilter(project, filter)),
+        (projects.data ?? NO_PROJECTS).filter((project) => matchesProjectFilter(project, filter)),
         SORT_OPTIONS[sortOption],
       ),
     [projects.data, filter, sortOption],

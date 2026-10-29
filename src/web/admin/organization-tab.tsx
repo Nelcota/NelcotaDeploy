@@ -14,6 +14,7 @@ import { Label } from "@/web/components/ui/label";
 import { Switch } from "@/web/components/ui/switch";
 import { saveSettingsFn } from "@/web/functions/settings.functions";
 
+import { exampleDomainOf } from "./example-domain";
 import { useSettings } from "./use-settings";
 
 /** Organization name, base domain and HTTPS default, editable by admins. */
@@ -34,12 +35,6 @@ export function OrganizationTab({ canEdit }: { readonly canEdit: boolean }) {
       traefikEnabled={settings.data.server.traefikEnabled}
     />
   );
-}
-
-const EXAMPLE_BASE_DOMAIN = "apps.exemplo.com";
-
-function exampleDomainOf(baseDomain: string): string {
-  return baseDomain.trim() === "" ? EXAMPLE_BASE_DOMAIN : baseDomain.trim();
 }
 
 function OrganizationForm({

@@ -1,6 +1,7 @@
 import { LoaderCircleIcon, RefreshCwIcon } from "lucide-react";
 import { useEffect, useState } from "react";
 
+import { shouldOfferApply } from "@/web/components/deployments/apply-changes";
 import { useAction } from "@/web/components/layout/use-action";
 import { Button } from "@/web/components/ui/button";
 import { redeployProjectFn } from "@/web/functions/deployments.functions";
@@ -57,5 +58,5 @@ export function useApplyChanges(projectId: string, pending: boolean, canRedeploy
     invalidate: [["project", projectId], ["deployments"]],
     onSuccess: () => setRequested(true),
   });
-  return { redeploy, showBanner: pending && canRedeploy && requested === false };
+  return { redeploy, showBanner: shouldOfferApply({ pending, canRedeploy, requested }) };
 }

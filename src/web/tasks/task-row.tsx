@@ -23,6 +23,8 @@ import { describeCronSchedule } from "@/web/components/projects/cron-description
 import { Button } from "@/web/components/ui/button";
 import { Switch } from "@/web/components/ui/switch";
 
+import { scheduleNote } from "./schedule-note";
+
 export type TaskRow = Task & {
   readonly latestExecution: {
     readonly status: string;
@@ -134,6 +136,7 @@ function ScheduleCell({ task, now }: { readonly task: TaskRow; readonly now: Dat
     );
   }
   const description = describeCronSchedule(task.schedule);
+  const note = scheduleNote(task);
   return (
     <div className="min-w-0 space-y-0.5 text-xs lg:w-44 lg:shrink-0">
       <p className="flex min-w-0 items-center gap-1.5 text-muted-foreground" title={task.schedule}>
@@ -142,14 +145,14 @@ function ScheduleCell({ task, now }: { readonly task: TaskRow; readonly now: Dat
           {description ?? <span className="font-mono">{task.schedule}</span>}
         </span>
       </p>
-      {task.enabled && task.nextRunAt != null ? (
-        <p className="truncate pl-5 text-muted-foreground" title={formatDateTime(task.nextRunAt)}>
-          próxima {formatRelativeTime(task.nextRunAt, now)}
+      {note?.kind === "next" ? (
+        <p className="truncate pl-5 text-muted-foreground" title={formatDateTime(note.at)}>
+          próxima {formatRelativeTime(note.at, now)}
         </p>
       ) : null}
-      {task.enabled ? null : (
+      {note?.kind === "paused" ? (
         <p className="truncate pl-5 text-muted-foreground">não roda enquanto pausada</p>
-      )}
+      ) : null}
     </div>
   );
 }
