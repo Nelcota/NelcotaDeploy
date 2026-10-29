@@ -23,8 +23,13 @@ export type RuntimeLogEntry = {
   readonly createdAt: string;
 };
 
-function truncateLine(message: string): string {
-  return message.length > MAX_LINE_LENGTH ? `${message.slice(0, MAX_LINE_LENGTH)}…` : message;
+/**
+ * Prepares a line for storage: color and cursor codes are removed (apps and build tools often
+ * print them, and the panel would show them as text like "[32m"), then long lines are cut.
+ */
+function cleanLine(message: string): string {
+  const plain = Bun.stripANSI(message);
+  return plain.length > MAX_LINE_LENGTH ? `${plain.slice(0, MAX_LINE_LENGTH)}…` : plain;
 }
 
 function clampLimit(limit: number): number {
@@ -57,7 +62,7 @@ export function appendDeploymentLogs(
         deploymentId,
         stream: entry.stream,
         level: entry.level,
-        message: truncateLine(entry.message),
+        message: cleanLine(entry.message),
         createdAt,
       })),
     )
@@ -109,7 +114,7 @@ export function appendRuntimeLogs(database: Database, entries: readonly RuntimeL
   }
   database
     .insert(tables.runtimeLogs)
-    .values(entries.map((entry) => ({ ...entry, message: truncateLine(entry.message) })))
+    .values(entries.map((entry) => ({ ...entry, message: cleanLine(entry.message) })))
     .run();
 }
 
