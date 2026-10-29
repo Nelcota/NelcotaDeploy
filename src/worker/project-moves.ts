@@ -1,11 +1,6 @@
-import {
-  listProjectDomains,
-  lookupAllWithTimeout,
-  lookupWithTimeout,
-  resolvePublicAddress,
-} from "@/domains";
+import { checkDomainsDns, listProjectDomains, projectServerAddress } from "@/domains";
 import { listMoveLeftovers, type MoveLeftover } from "@/monitoring";
-import { getServer, listServers } from "@/servers";
+import { listServers } from "@/servers";
 import { getSystemSettings } from "@/settings";
 
 import { removeProjectResources } from "./container-action-runner";
@@ -40,21 +35,6 @@ export function canFinishMove(input: {
   return input.now.getTime() - liveSince.getTime() >= MAX_OVERLAP_IN_MS;
 }
 
-async function resolvesTo(hostname: string, address: string): Promise<boolean> {
-  return (await lookupAllWithTimeout(hostname)).includes(address);
-}
-
-async function addressOf(
-  dependencies: WorkerDependencies,
-  serverId: string,
-): Promise<string | null> {
-  const server = getServer(dependencies.database, serverId);
-  if (server.kind === "ssh") {
-    return server.publicAddress;
-  }
-  return await resolvePublicAddress(dependencies.config.PUBLIC_URL, lookupWithTimeout);
-}
-
 /** Tells whether every domain of the project already resolves to its new server. */
 async function domainsMoved(
   dependencies: WorkerDependencies,
@@ -65,14 +45,19 @@ async function domainsMoved(
   if (domains.length === 0) {
     return true;
   }
-  const address = await addressOf(dependencies, leftover.currentServerId);
+  const address = await projectServerAddress(
+    database,
+    leftover.projectId,
+    dependencies.config.PUBLIC_URL,
+  );
   if (address == null) {
     return false;
   }
-  const results = await Promise.all(
-    domains.map(async (domain) => await resolvesTo(domain.hostname, address)),
+  const checks = await checkDomainsDns(
+    domains.map((domain) => domain.hostname),
+    address,
   );
-  return results.every(Boolean);
+  return checks.every((check) => check.status === "ok");
 }
 
 function isStillLeftover(dependencies: WorkerDependencies, leftover: MoveLeftover): boolean {

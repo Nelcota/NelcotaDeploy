@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { dnsRecordType, domainUrl } from "./domains";
+import { dnsRecordType, dnsTag, domainUrl } from "./domains";
 
 describe("domainUrl", () => {
   test("uses https when HTTPS is enabled", () => {
@@ -28,4 +28,28 @@ describe("dnsRecordType", () => {
 
     expect(type).toBe("A");
   });
+});
+
+describe("dnsTag", () => {
+  test("confirms a domain that points at the project's server", () => {
+    expect(dnsTag({ status: "ok", resolved: ["1.2.3.4"] })?.tone).toBe("success");
+  });
+
+  test("names the addresses of a domain that points elsewhere", () => {
+    const tag = dnsTag({ status: "elsewhere", resolved: ["104.16.0.1"] });
+
+    expect(tag?.tone).toBe("warning");
+    expect(tag?.detail).toContain("104.16.0.1");
+  });
+
+  test("warns about a domain without a record", () => {
+    expect(dnsTag({ status: "missing", resolved: [] })?.label).toBe("Sem DNS");
+  });
+
+  test.each([[undefined], [{ status: "unknown", resolved: [] } as const]])(
+    "shows nothing for %p",
+    (dns) => {
+      expect(dnsTag(dns)).toBeNull();
+    },
+  );
 });

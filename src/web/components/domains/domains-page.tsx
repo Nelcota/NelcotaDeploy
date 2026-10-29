@@ -7,11 +7,13 @@ import type { ProjectDetails } from "@/web/components/projects/project-query";
 import { AddDomainForm } from "./add-domain-form";
 import { DnsCard } from "./dns-card";
 import { DomainRows } from "./domain-rows";
+import { useDomainsDns } from "./use-domains-dns";
 import { useProjectDomains } from "./use-project-domains";
 
 /** Public addresses of one project: list, add, remove, and the DNS record to create. */
 export function DomainsPage({ projectId }: { readonly projectId: string }) {
   const { project, canEdit, remove, applyChanges } = useProjectDomains(projectId);
+  const dns = useDomainsDns(projectId);
   if (project.isError) {
     return <ErrorState error={project.error} onRetry={() => void project.refetch()} />;
   }
@@ -34,6 +36,7 @@ export function DomainsPage({ projectId }: { readonly projectId: string }) {
           {canEdit ? <AddDomainForm projectId={projectId} /> : null}
           <DomainRows
             domains={details.domains}
+            dns={dns}
             canEdit={canEdit}
             onRemove={(domainId) => remove.mutate(domainId)}
           />
