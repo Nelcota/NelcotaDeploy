@@ -10,6 +10,7 @@ import {
 
 import { users } from "./auth.tables";
 import { createdAt, updatedAt } from "./columns";
+import { LOCAL_SERVER_ID } from "./servers.tables";
 
 export const projects = sqliteTable(
   "projects",
@@ -17,8 +18,8 @@ export const projects = sqliteTable(
     id: text("id").primaryKey(),
     name: text("name").notNull(),
     slug: text("slug").notNull().unique(),
-    // Only "local" exists today; the column keeps room for more servers later.
-    serverId: text("server_id").notNull().default("local"),
+    // Server the next deployment runs on. Existing containers stay where their deployment ran.
+    serverId: text("server_id").notNull().default(LOCAL_SERVER_ID),
     repositoryUrl: text("repository_url").notNull(),
     repositoryFullName: text("repository_full_name").notNull(),
     branch: text("branch").notNull(),
@@ -46,6 +47,7 @@ export const projects = sqliteTable(
   (table) => [
     index("projects_repository_full_name_idx").on(table.repositoryFullName),
     index("projects_name_idx").on(table.name),
+    index("projects_server_id_idx").on(table.serverId),
   ],
 );
 
@@ -130,6 +132,8 @@ export const deployments = sqliteTable(
     // Fingerprint of the variables and domains the container started with (see runtime-config.ts).
     runtimeConfigHash: text("runtime_config_hash"),
     containerName: text("container_name"),
+    // Server the deployment ran on, which is where its image and container live.
+    serverId: text("server_id").notNull().default(LOCAL_SERVER_ID),
     sourceDeploymentId: text("source_deployment_id"),
     errorMessage: text("error_message"),
     cancelRequestedAt: text("cancel_requested_at"),
@@ -141,6 +145,7 @@ export const deployments = sqliteTable(
     index("deployments_project_created_idx").on(table.projectId, table.createdAt),
     index("deployments_created_idx").on(table.createdAt),
     index("deployments_status_idx").on(table.status),
+    index("deployments_project_server_idx").on(table.projectId, table.serverId),
   ],
 );
 

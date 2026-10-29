@@ -65,6 +65,8 @@ const configSchema = z.object({
   TRAEFIK_HTTPS_ENTRYPOINT: z.string().min(1).default("websecure"),
   TRAEFIK_CERT_RESOLVER: z.string().min(1).default("letsencrypt"),
   TRAEFIK_ENABLED: booleanFromString,
+  // Let's Encrypt account e-mail for the proxies the platform starts on other servers.
+  ACME_EMAIL: z.union([z.email(), z.literal("").transform(() => undefined)]).optional(),
   WORKER_CONCURRENCY: boundedInteger(WORKER_CONCURRENCY_RANGE),
   BUILD_TIMEOUT_SECONDS: boundedInteger(BUILD_TIMEOUT_SECONDS_RANGE),
   HEALTH_CHECK_TIMEOUT_SECONDS: boundedInteger(HEALTH_CHECK_TIMEOUT_SECONDS_RANGE),

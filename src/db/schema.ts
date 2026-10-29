@@ -3,3 +3,4 @@ export * from "./tables/auth.tables";
 export * from "./tables/projects.tables";
 export * from "./tables/monitoring.tables";
 export * from "./tables/integrations.tables";
+export * from "./tables/servers.tables";
