@@ -1,5 +1,5 @@
-import { SearchIcon } from "lucide-react";
-import { type KeyboardEvent, useEffect, useState } from "react";
+import { ArrowDownIcon, ArrowUpIcon, CornerDownLeftIcon, SearchIcon } from "lucide-react";
+import { type KeyboardEvent, type ReactNode, useEffect, useState } from "react";
 
 import { CommandResults } from "@/web/components/shell/command-palette/command-results";
 import { type Command, moveSelection } from "@/web/components/shell/command-palette/command-search";
@@ -7,6 +7,8 @@ import { useCommands } from "@/web/components/shell/command-palette/use-commands
 import { Dialog, DialogContent, DialogTitle } from "@/web/components/ui/dialog";
 
 const RESULTS_ID = "command-results";
+const KEY_CAP =
+  "inline-grid h-5 min-w-5 place-items-center rounded border border-border bg-muted/40 px-1 font-mono text-[11px] text-muted-foreground";
 
 /** Opens the palette with Ctrl+K or Cmd+K anywhere in the panel. */
 export function useCommandPaletteShortcut(open: () => void): void {
@@ -57,8 +59,8 @@ function SearchInput({
   readonly onKeyDown: (event: KeyboardEvent<HTMLInputElement>) => void;
 }) {
   return (
-    <div className="flex items-center gap-3 border-b border-border px-4">
-      <SearchIcon aria-hidden className="size-4 text-faint" />
+    <div className="flex items-center gap-3 border-b border-border/70 px-5">
+      <SearchIcon aria-hidden className="size-5 text-faint" />
       <input
         autoFocus
         role="combobox"
@@ -70,9 +72,52 @@ function SearchInput({
         value={query}
         onChange={(event) => onQueryChange(event.target.value)}
         onKeyDown={onKeyDown}
-        className="h-14 flex-1 bg-transparent text-base outline-none placeholder:text-muted-foreground"
+        className="h-15 min-w-0 flex-1 bg-transparent text-base outline-none placeholder:text-faint"
       />
-      <kbd className="rounded border border-border px-1.5 font-mono text-xs text-faint">Esc</kbd>
+    </div>
+  );
+}
+
+function KeyHint({ keys, label }: { readonly keys: ReactNode; readonly label: string }) {
+  return (
+    <span className="flex items-center gap-1.5">
+      <span className="flex gap-1">{keys}</span>
+      {label}
+    </span>
+  );
+}
+
+/** Keyboard shortcuts of the palette; hidden on touch screens, which have no arrow keys. */
+function PaletteFooter() {
+  return (
+    <div
+      aria-hidden
+      className="hidden items-center gap-5 border-t border-border/70 bg-muted/20 px-5 py-2.5 text-xs text-faint sm:flex"
+    >
+      <KeyHint
+        label="navegar"
+        keys={
+          <>
+            <kbd className={KEY_CAP}>
+              <ArrowUpIcon className="size-3" />
+            </kbd>
+            <kbd className={KEY_CAP}>
+              <ArrowDownIcon className="size-3" />
+            </kbd>
+          </>
+        }
+      />
+      <KeyHint
+        label="abrir"
+        keys={
+          <kbd className={KEY_CAP}>
+            <CornerDownLeftIcon className="size-3" />
+          </kbd>
+        }
+      />
+      <span className="ml-auto">
+        <KeyHint label="fechar" keys={<kbd className={KEY_CAP}>Esc</kbd>} />
+      </span>
     </div>
   );
 }
@@ -138,7 +183,7 @@ export function CommandPalette({ open, onOpenChange, permissions }: CommandPalet
         showCloseButton={false}
         // Near the top on every screen, so results grow downward and the phone keyboard never
         // covers the search field; it does not take the bottom-sheet frame of other dialogs.
-        className="inset-x-4 top-[12%] bottom-auto w-auto gap-0 overflow-hidden rounded-2xl p-0 data-[state=closed]:slide-out-to-bottom-0 data-[state=closed]:zoom-out-95 data-[state=open]:slide-in-from-bottom-0 data-[state=open]:zoom-in-95 sm:right-auto sm:left-[50%] sm:top-[18%] sm:max-w-xl sm:translate-y-0"
+        className="inset-x-4 top-[12%] bottom-auto w-auto gap-0 overflow-hidden rounded-2xl p-0 data-[state=closed]:slide-out-to-bottom-0 data-[state=closed]:zoom-out-95 data-[state=open]:slide-in-from-bottom-0 data-[state=open]:zoom-in-95 sm:right-auto sm:left-[50%] sm:top-[15%] sm:w-[calc(100%-2rem)] sm:max-w-2xl sm:translate-y-0"
       >
         <DialogTitle className="sr-only">Buscar no painel</DialogTitle>
         <SearchInput
@@ -154,6 +199,7 @@ export function CommandPalette({ open, onOpenChange, permissions }: CommandPalet
           onActiveIndexChange={setActiveIndex}
           onChoose={choose}
         />
+        <PaletteFooter />
       </DialogContent>
     </Dialog>
   );

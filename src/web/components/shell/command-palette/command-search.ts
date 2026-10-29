@@ -3,9 +3,10 @@ import type { LucideIcon } from "lucide-react";
 /** One entry of the command palette. */
 export type Command = {
   readonly id: string;
-  readonly group: "Projetos" | "Páginas";
+  readonly group: "Projetos" | "Páginas" | "Administração";
   readonly label: string;
-  readonly hint: string;
+  /** Extra detail shown at the end of the row, such as a project's repository. */
+  readonly hint: string | null;
   readonly icon: LucideIcon;
   readonly run: () => Promise<void>;
 };
@@ -15,7 +16,7 @@ function normalize(text: string): string {
 }
 
 /**
- * Keeps the commands whose label or hint contains the query, ignoring case and accents.
+ * Keeps the commands whose label, hint or group contains the query, ignoring case and accents.
  *
  * @param commands - Every available command, in display order.
  * @param query - Text typed by the user; blank keeps every command.
@@ -27,7 +28,7 @@ export function filterCommands(commands: readonly Command[], query: string): Com
     return [...commands];
   }
   return commands.filter((command) =>
-    normalize(`${command.label} ${command.hint}`).includes(needle),
+    normalize(`${command.label} ${command.hint ?? ""} ${command.group}`).includes(needle),
   );
 }
 
