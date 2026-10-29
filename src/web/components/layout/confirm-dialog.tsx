@@ -1,3 +1,4 @@
+import { CircleHelpIcon, TriangleAlertIcon } from "lucide-react";
 import { type ReactNode, useState } from "react";
 
 import {
@@ -7,11 +8,10 @@ import {
   AlertDialogContent,
   AlertDialogDescription,
   AlertDialogFooter,
-  AlertDialogHeader,
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/web/components/ui/alert-dialog";
-import { buttonVariants } from "@/web/components/ui/button";
+import { cn } from "@/web/components/ui/class-names";
 import { Input } from "@/web/components/ui/input";
 import { Label } from "@/web/components/ui/label";
 
@@ -37,6 +37,37 @@ function ConfirmationInput({
         className="font-mono"
         onChange={(event) => onType(event.target.value)}
       />
+    </div>
+  );
+}
+
+/** Title and description beside a warning (destructive) or question icon. */
+function ConfirmHeading({
+  title,
+  description,
+  destructive,
+}: {
+  readonly title: string;
+  readonly description: ReactNode;
+  readonly destructive: boolean;
+}) {
+  return (
+    <div className="flex items-start gap-4">
+      <span
+        aria-hidden
+        className={cn(
+          "flex size-10 shrink-0 items-center justify-center rounded-xl [&_svg]:size-5",
+          destructive ? "bg-destructive/12 text-destructive" : "bg-brand/12 text-brand",
+        )}
+      >
+        {destructive ? <TriangleAlertIcon /> : <CircleHelpIcon />}
+      </span>
+      <div className="flex min-w-0 flex-col gap-1.5 pt-0.5">
+        <AlertDialogTitle>{title}</AlertDialogTitle>
+        <AlertDialogDescription asChild>
+          <div>{description}</div>
+        </AlertDialogDescription>
+      </div>
     </div>
   );
 }
@@ -83,21 +114,17 @@ export function ConfirmDialog({
       }}
     >
       {trigger == null ? null : <AlertDialogTrigger asChild>{trigger}</AlertDialogTrigger>}
-      <AlertDialogContent className="border-0 shadow-lg ring-1 ring-border">
-        <AlertDialogHeader>
-          <AlertDialogTitle>{title}</AlertDialogTitle>
-          <AlertDialogDescription asChild>
-            <div>{description}</div>
-          </AlertDialogDescription>
-        </AlertDialogHeader>
+      <AlertDialogContent>
+        <ConfirmHeading title={title} description={description} destructive={destructive} />
         {confirmationText == null ? null : (
           <ConfirmationInput expected={confirmationText} typed={typed} onType={setTyped} />
         )}
         <AlertDialogFooter>
           <AlertDialogCancel>{cancelLabel}</AlertDialogCancel>
+          {/* The variant, not a className: Slot would keep both colors and blue would win. */}
           <AlertDialogAction
             disabled={blocked}
-            className={destructive ? buttonVariants({ variant: "destructive" }) : undefined}
+            variant={destructive ? "destructive" : "default"}
             onClick={() => void onConfirm()}
           >
             {confirmLabel}

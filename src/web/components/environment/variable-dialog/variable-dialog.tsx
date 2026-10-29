@@ -12,7 +12,7 @@ import {
 } from "@/web/components/ui/dialog";
 
 import { useVariableForm } from "./use-variable-form";
-import { BuildSwitch, KeyField, KindField, ValueField } from "./variable-fields";
+import { KeyField, ValueField, VariableOptions } from "./variable-fields";
 
 /** Creates a variable, or edits one when `variable` is given. */
 export function VariableDialog({
@@ -39,20 +39,22 @@ export function VariableDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
+      <DialogContent className="sm:max-w-2xl">
         <VariableDialogHeader variable={variable} />
         <form
           noValidate
-          className="space-y-4"
+          className="space-y-6"
           onSubmit={(event) => {
             event.preventDefault();
             void form.handleSubmit();
           }}
         >
-          <KeyField form={form} locked={variable != null} />
-          <KindField form={form} />
-          <ValueField form={form} savedSecret={variable?.kind === "secret"} />
-          <BuildSwitch form={form} />
+          {/* Name and value side by side, the way a .env line reads. */}
+          <div className="grid items-start gap-4 sm:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
+            <KeyField form={form} locked={variable != null} />
+            <ValueField form={form} savedSecret={variable?.kind === "secret"} />
+          </div>
+          <VariableOptions form={form} />
           <VariableDialogFooter isPending={save.isPending} onCancel={() => onOpenChange(false)} />
         </form>
       </DialogContent>
@@ -65,7 +67,9 @@ function VariableDialogHeader({ variable }: { readonly variable: EnvironmentVari
     <DialogHeader>
       <DialogTitle>{variable == null ? "Nova variável" : `Editar ${variable.key}`}</DialogTitle>
       <DialogDescription>
-        O nome vira maiúsculo automaticamente; use letras, números e _.
+        {variable == null
+          ? "Entra no ambiente do contêiner. O nome fica em maiúsculas sozinho."
+          : "Mudanças entram no ambiente do contêiner no próximo deploy."}
       </DialogDescription>
     </DialogHeader>
   );
@@ -80,6 +84,9 @@ function VariableDialogFooter({
 }) {
   return (
     <DialogFooter>
+      <p className="mr-auto hidden self-center text-xs text-muted-foreground sm:block">
+        Vale a partir do próximo deploy.
+      </p>
       <Button type="button" variant="outline" onClick={onCancel}>
         Cancelar
       </Button>

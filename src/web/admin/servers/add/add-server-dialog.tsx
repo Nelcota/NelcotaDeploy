@@ -1,4 +1,4 @@
-import { ServerIcon } from "lucide-react";
+import { ChevronRightIcon, ServerIcon } from "lucide-react";
 
 import { DialogFormFooter } from "@/web/admin/dialog-form-footer";
 import { FormField, visibleErrors } from "@/web/components/forms/form-field";
@@ -59,11 +59,15 @@ function TextField({
 /** Port and account, which rarely change from the defaults. */
 function AdvancedFields({ form }: { readonly form: AddServerFormApi }) {
   return (
-    <details className="group rounded-lg ring-1 ring-border/70">
-      <summary className="cursor-pointer rounded-lg px-3 py-2 text-sm font-medium focus-visible:outline-2 focus-visible:outline-ring">
-        Avançado
+    <details className="group">
+      <summary className="flex w-fit cursor-pointer list-none items-center gap-1.5 rounded-md text-sm font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring [&::-webkit-details-marker]:hidden">
+        <ChevronRightIcon
+          aria-hidden
+          className="size-4 transition-transform group-open:rotate-90 motion-reduce:transition-none"
+        />
+        Avançado: porta e usuário SSH
       </summary>
-      <div className="space-y-4 px-3 pt-1 pb-3">
+      <div className="mt-4 grid gap-4 sm:grid-cols-2">
         <TextField form={form} name="port" label="Porta SSH" inputMode="numeric" />
         <TextField
           form={form}
@@ -82,7 +86,7 @@ export function AddServerDialog({ onClose }: { readonly onClose: () => void }) {
   return (
     <Dialog open onOpenChange={(open) => (open ? undefined : onClose())}>
       <DialogContent>
-        <DialogHeader>
+        <DialogHeader icon={<ServerIcon />}>
           <DialogTitle>Adicionar servidor</DialogTitle>
           <DialogDescription>
             Uma VPS Linux (Ubuntu ou Debian) para rodar aplicações. Depois de adicionar, rode o

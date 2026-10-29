@@ -3,6 +3,7 @@ import { useState } from "react";
 import { slugify } from "@/shared/schemas/project.schema";
 import { FormField, visibleErrors } from "@/web/components/forms/form-field";
 import type { ProjectFormApi } from "@/web/components/forms/project-form";
+import { identityFromRepository } from "@/web/components/forms/repository-identity";
 import { cn } from "@/web/components/ui/class-names";
 import { Input } from "@/web/components/ui/input";
 import { Switch } from "@/web/components/ui/switch";
@@ -58,16 +59,33 @@ export function IdentityFields({ form }: { readonly form: ProjectFormApi }) {
   );
 }
 
+/** Fills an empty name and identifier from the repository a user just pasted. */
+function fillIdentityFromRepository(form: ProjectFormApi, url: string): void {
+  const identity = identityFromRepository(url, {
+    name: form.getFieldValue("name"),
+    slug: form.getFieldValue("slug"),
+  });
+  if (identity.name != null) {
+    form.setFieldValue("name", identity.name);
+  }
+  if (identity.slug != null) {
+    form.setFieldValue("slug", identity.slug);
+  }
+}
+
 /** GitHub repository URL and branch. */
 export function RepositoryFields({ form }: { readonly form: ProjectFormApi }) {
   return (
     <>
-      <form.Field name="repositoryUrl">
+      <form.Field
+        name="repositoryUrl"
+        listeners={{ onChange: ({ value }) => fillIdentityFromRepository(form, value) }}
+      >
         {(field) => (
           <FormField
             id="project-repository"
             label="Repositório GitHub"
-            hint="Repositório com um Dockerfile. Use a URL HTTPS."
+            hint="A URL HTTPS do repositório no GitHub."
             errors={visibleErrors(form, field.state.meta)}
           >
             {(props) => (
@@ -120,17 +138,11 @@ export function AutoDeployField({
       {(field) => (
         <div
           className={cn(
-            "flex items-start gap-3 rounded-lg bg-secondary/60 p-3.5 ring-1 ring-border/70 ring-inset",
+            "flex items-center justify-between gap-6 rounded-xl px-4 py-3.5 ring-1 ring-border/70 ring-inset",
             className,
           )}
         >
-          <Switch
-            id="project-auto-deploy"
-            checked={field.state.value}
-            onCheckedChange={(checked) => field.handleChange(checked)}
-            aria-describedby="project-auto-deploy-hint"
-          />
-          <div className="space-y-1">
+          <div className="min-w-0 space-y-0.5">
             <label htmlFor="project-auto-deploy" className="text-sm font-medium">
               Deploy automático
             </label>
@@ -138,6 +150,12 @@ export function AutoDeployField({
               Faz deploy a cada push na branch, via webhook do GitHub.
             </p>
           </div>
+          <Switch
+            id="project-auto-deploy"
+            checked={field.state.value}
+            onCheckedChange={(checked) => field.handleChange(checked)}
+            aria-describedby="project-auto-deploy-hint"
+          />
         </div>
       )}
     </form.Field>

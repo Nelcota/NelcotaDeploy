@@ -1,5 +1,6 @@
+import type { ReactNode } from "react";
+
 import { normalizeVariableKey } from "@/shared/dotenv";
-import { VariableKindToggle } from "@/web/components/forms/env-kind-toggle";
 import { FormField, visibleErrors } from "@/web/components/forms/form-field";
 import { Input } from "@/web/components/ui/input";
 import { Label } from "@/web/components/ui/label";
@@ -26,6 +27,8 @@ export function KeyField({
               {...props}
               className="font-mono"
               autoComplete="off"
+              spellCheck={false}
+              placeholder="DATABASE_URL"
               disabled={locked}
               value={field.state.value}
               onBlur={field.handleBlur}
@@ -38,27 +41,7 @@ export function KeyField({
   );
 }
 
-/** Plain setting or secret. */
-export function KindField({ form }: { readonly form: VariableFormApi }) {
-  return (
-    <form.Field name="kind">
-      {(field) => (
-        <FormField id="variable-kind" label="Tipo" errors={visibleErrors(form, field.state.meta)}>
-          {(props) => (
-            <VariableKindToggle
-              id={props.id}
-              describedBy={props["aria-describedby"]}
-              value={field.state.value}
-              onChange={field.handleChange}
-            />
-          )}
-        </FormField>
-      )}
-    </form.Field>
-  );
-}
-
-/** The value; a saved secret may be left blank to keep what is stored. */
+/** The value; it grows with its content, and a saved secret may be left blank to keep it. */
 export function ValueField({
   form,
   savedSecret,
@@ -80,10 +63,12 @@ export function ValueField({
               {(props) => (
                 <Textarea
                   {...props}
-                  className="font-mono text-sm"
+                  rows={1}
+                  // Starts at the height of the name input beside it and grows with the content.
+                  className="max-h-48 min-h-11 py-2.5 font-mono text-sm"
                   autoComplete="off"
                   spellCheck={false}
-                  placeholder={editingSecret ? MASKED_VALUE : undefined}
+                  placeholder={editingSecret ? MASKED_VALUE : "postgres://…"}
                   value={field.state.value}
                   onBlur={field.handleBlur}
                   onChange={(event) => field.handleChange(event.target.value)}
@@ -97,26 +82,67 @@ export function ValueField({
   );
 }
 
-/** Whether the build also receives the variable as a Dockerfile ARG. */
-export function BuildSwitch({ form }: { readonly form: VariableFormApi }) {
+/** One option of the variable: a label and explanation with its switch on the right. */
+function OptionRow({
+  id,
+  label,
+  hint,
+  children,
+}: {
+  readonly id: string;
+  readonly label: string;
+  readonly hint: string;
+  readonly children: ReactNode;
+}) {
   return (
-    <div className="flex items-start justify-between gap-4 rounded-lg bg-secondary p-3 ring-1 ring-border ring-inset">
-      <div className="space-y-1">
-        <Label htmlFor="variable-build">Disponível no build</Label>
-        <p id="variable-build-hint" className="text-xs text-muted-foreground">
-          Também entregue ao build da imagem (ARG no Dockerfile).
+    <div className="flex items-center justify-between gap-6 px-4 py-3.5">
+      <div className="min-w-0 space-y-0.5">
+        <Label htmlFor={id}>{label}</Label>
+        <p id={`${id}-hint`} className="text-xs text-muted-foreground">
+          {hint}
         </p>
       </div>
-      <form.Field name="availableAtBuild">
-        {(field) => (
-          <Switch
-            id="variable-build"
-            aria-describedby="variable-build-hint"
-            checked={field.state.value}
-            onCheckedChange={field.handleChange}
-          />
-        )}
-      </form.Field>
+      {children}
+    </div>
+  );
+}
+
+/** Whether the value is a secret, and whether the build receives it too. */
+export function VariableOptions({ form }: { readonly form: VariableFormApi }) {
+  return (
+    <div className="divide-y divide-border/70 rounded-xl ring-1 ring-border/70 ring-inset">
+      <OptionRow
+        id="variable-secret"
+        label="Secret"
+        hint="Criptografado, nunca exibido de novo e mascarado nos logs."
+      >
+        <form.Field name="kind">
+          {(field) => (
+            <Switch
+              id="variable-secret"
+              aria-describedby="variable-secret-hint"
+              checked={field.state.value === "secret"}
+              onCheckedChange={(checked) => field.handleChange(checked ? "secret" : "plain")}
+            />
+          )}
+        </form.Field>
+      </OptionRow>
+      <OptionRow
+        id="variable-build"
+        label="Disponível no build"
+        hint="Também enviada ao build da imagem, como ARG no Dockerfile."
+      >
+        <form.Field name="availableAtBuild">
+          {(field) => (
+            <Switch
+              id="variable-build"
+              aria-describedby="variable-build-hint"
+              checked={field.state.value}
+              onCheckedChange={field.handleChange}
+            />
+          )}
+        </form.Field>
+      </OptionRow>
     </div>
   );
 }

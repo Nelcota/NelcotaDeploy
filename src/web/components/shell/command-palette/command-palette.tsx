@@ -136,7 +136,9 @@ export function CommandPalette({ open, onOpenChange, permissions }: CommandPalet
     <Dialog open={open} onOpenChange={changeOpen}>
       <DialogContent
         showCloseButton={false}
-        className="top-[18%] translate-y-0 gap-0 overflow-hidden border-0 bg-popover p-0 shadow-lg ring-1 ring-border sm:max-w-xl"
+        // Near the top on every screen, so results grow downward and the phone keyboard never
+        // covers the search field; it does not take the bottom-sheet frame of other dialogs.
+        className="inset-x-4 top-[12%] bottom-auto w-auto gap-0 overflow-hidden rounded-2xl p-0 data-[state=closed]:slide-out-to-bottom-0 data-[state=closed]:zoom-out-95 data-[state=open]:slide-in-from-bottom-0 data-[state=open]:zoom-in-95 sm:right-auto sm:left-[50%] sm:top-[18%] sm:max-w-xl sm:translate-y-0"
       >
         <DialogTitle className="sr-only">Buscar no painel</DialogTitle>
         <SearchInput

@@ -38,7 +38,7 @@ function ImportForm({
 }) {
   return (
     <>
-      <DialogHeader>
+      <DialogHeader icon={<FileUpIcon />}>
         <DialogTitle>Importar variáveis</DialogTitle>
         <DialogDescription>
           Cole o conteúdo de um arquivo .env. Nomes já existentes são substituídos.

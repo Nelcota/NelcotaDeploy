@@ -1,4 +1,4 @@
-import { ShieldPlusIcon } from "lucide-react";
+import { KeyRoundIcon, ShieldPlusIcon } from "lucide-react";
 
 import {
   Dialog,
@@ -24,7 +24,7 @@ export function CreateTokenDialog({
   return (
     <Dialog open onOpenChange={(open) => (open ? undefined : onClose())}>
       <DialogContent>
-        <DialogHeader>
+        <DialogHeader icon={<KeyRoundIcon />}>
           <DialogTitle>Novo token de API</DialogTitle>
           <DialogDescription>
             O token é exibido uma única vez, logo após a criação.

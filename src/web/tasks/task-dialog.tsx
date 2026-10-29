@@ -1,4 +1,4 @@
-import { LoaderCircleIcon } from "lucide-react";
+import { ClockIcon, LoaderCircleIcon } from "lucide-react";
 
 import type { Task } from "@/tasks";
 import { Button } from "@/web/components/ui/button";
@@ -57,7 +57,7 @@ export function TaskDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
-        <DialogHeader>
+        <DialogHeader icon={<ClockIcon />}>
           <DialogTitle>{task == null ? "Nova task" : `Editar ${task.name}`}</DialogTitle>
           <DialogDescription>
             O comando é dividido em argumentos como num shell, sem expansão de variáveis ou pipes.

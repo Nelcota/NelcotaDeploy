@@ -6,7 +6,6 @@ import { EMPTY_PROJECT_FORM, ProjectForm } from "@/web/components/forms/project-
 import { toUserMessage } from "@/web/components/layout/error-message";
 import { PageHeader } from "@/web/components/shell/page-header";
 import { useCan } from "@/web/components/shell/use-permissions";
-import { Card, CardContent } from "@/web/components/ui/card";
 import { createProjectFn } from "@/web/functions/projects.functions";
 
 export const Route = createFileRoute("/_app/projects/new")({
@@ -24,31 +23,27 @@ function NewProjectPage() {
       <PageHeader
         eyebrow={<BackToProjectsLink />}
         title="Novo projeto"
-        description="Informe o repositório; o Dockerfile e a porta já vêm com valores padrão."
+        description="Cole a URL do repositório: o nome e o identificador são preenchidos sozinhos."
       />
-      <div className="max-w-3xl space-y-4">
+      <div className="max-w-5xl space-y-4">
         {isAdmin ? null : <ApprovalNotice />}
-        <Card className="py-6">
-          <CardContent className="px-6">
-            <ProjectForm
-              initialValues={EMPTY_PROJECT_FORM}
-              submitLabel="Criar projeto"
-              disabled={can("project:write") === false}
-              onSubmit={async (values) => {
-                try {
-                  const project = await createProjectFn({ data: values });
-                  toast.success("Projeto criado");
-                  await navigate({
-                    to: "/projects/$projectId",
-                    params: { projectId: project.id },
-                  });
-                } catch (error) {
-                  toast.error(toUserMessage(error, "Não foi possível criar o projeto."));
-                }
-              }}
-            />
-          </CardContent>
-        </Card>
+        <ProjectForm
+          initialValues={EMPTY_PROJECT_FORM}
+          submitLabel="Criar projeto"
+          disabled={can("project:write") === false}
+          onSubmit={async (values) => {
+            try {
+              const project = await createProjectFn({ data: values });
+              toast.success("Projeto criado");
+              await navigate({
+                to: "/projects/$projectId",
+                params: { projectId: project.id },
+              });
+            } catch (error) {
+              toast.error(toUserMessage(error, "Não foi possível criar o projeto."));
+            }
+          }}
+        />
       </div>
     </>
   );

@@ -1,6 +1,13 @@
 import { useForm } from "@tanstack/react-form";
 import { Link } from "@tanstack/react-router";
-import { ChevronRightIcon, LoaderCircleIcon } from "lucide-react";
+import {
+  ChevronRightIcon,
+  GitBranchIcon,
+  HammerIcon,
+  IdCardIcon,
+  LoaderCircleIcon,
+  RocketIcon,
+} from "lucide-react";
 import type { z } from "zod";
 
 import { projectInputSchema } from "@/shared/schemas/project.schema";
@@ -12,7 +19,9 @@ import {
   PortField,
   RepositoryFields,
 } from "@/web/components/forms/project-form-fields";
+import { SettingsSection } from "@/web/components/project-settings/settings-section";
 import { Button } from "@/web/components/ui/button";
+import { cn } from "@/web/components/ui/class-names";
 
 /** Values as typed in the form; the server parses them with `projectInputSchema`. */
 export type ProjectFormValues = {
@@ -120,20 +129,19 @@ export function useProjectForm({
 /** Form state returned by {@link useProjectForm}. */
 export type ProjectFormApi = ReturnType<typeof useProjectForm>;
 
+const PAIR_GRID = "grid gap-x-5 gap-y-5 sm:grid-cols-2";
+
 function AdvancedSettings({ form }: { readonly form: ProjectFormApi }) {
   return (
-    <details className="group border-t border-border/70 pt-5 md:col-span-2">
+    <details className="group">
       <summary className="flex w-fit cursor-pointer list-none items-center gap-1.5 rounded-md text-sm font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none [&::-webkit-details-marker]:hidden">
         <ChevronRightIcon
           aria-hidden
-          className="size-4 transition-transform group-open:rotate-90"
+          className="size-4 transition-transform group-open:rotate-90 motion-reduce:transition-none"
         />
-        Avançado
-        <span className="hidden font-normal text-faint sm:inline">
-          Dockerfile, diretório e health check
-        </span>
+        Mostrar Dockerfile, diretório e health check
       </summary>
-      <div className="mt-5 grid gap-x-6 gap-y-5 md:grid-cols-2">
+      <div className={cn(PAIR_GRID, "mt-5")}>
         <BuildFields form={form} />
         <HealthCheckField form={form} />
       </div>
@@ -151,23 +159,74 @@ function FormActions({
   readonly disabled: boolean;
 }) {
   return (
-    <div className="flex justify-end gap-2 border-t border-border/70 pt-5">
-      <Button variant="ghost" asChild>
-        <Link to="/projects">Cancelar</Link>
-      </Button>
-      <form.Subscribe selector={(state) => state.isSubmitting}>
-        {(isSubmitting) => (
-          <Button type="submit" disabled={disabled || isSubmitting}>
-            {isSubmitting ? <LoaderCircleIcon aria-hidden className="animate-spin" /> : null}
-            {submitLabel}
-          </Button>
-        )}
-      </form.Subscribe>
+    <div className="flex flex-col-reverse gap-3 border-t border-border/70 bg-muted/30 px-5 py-4 sm:flex-row sm:items-center sm:justify-between md:px-6">
+      <p className="text-xs text-muted-foreground">Dá para mudar tudo depois em Ajustes.</p>
+      <div className="flex justify-end gap-2">
+        <Button variant="ghost" asChild>
+          <Link to="/projects">Cancelar</Link>
+        </Button>
+        <form.Subscribe selector={(state) => state.isSubmitting}>
+          {(isSubmitting) => (
+            <Button type="submit" disabled={disabled || isSubmitting}>
+              {isSubmitting ? <LoaderCircleIcon aria-hidden className="animate-spin" /> : null}
+              {submitLabel}
+            </Button>
+          )}
+        </form.Subscribe>
+      </div>
     </div>
   );
 }
 
-/** Project fields with validation; less common settings live under "Avançado". */
+/** The sections of the form: repository, identity, runtime and build. */
+function ProjectFormSections({ form }: { readonly form: ProjectFormApi }) {
+  return (
+    <>
+      <SettingsSection
+        icon={GitBranchIcon}
+        title="Repositório"
+        description="De onde vem o código. O repositório precisa ter um Dockerfile."
+      >
+        <div className="grid gap-x-5 gap-y-5 sm:grid-cols-[minmax(0,1fr)_minmax(0,11rem)]">
+          <RepositoryFields form={form} />
+        </div>
+      </SettingsSection>
+      <SettingsSection
+        icon={IdCardIcon}
+        title="Identificação"
+        description="Preenchidos a partir do repositório; ajuste se quiser."
+      >
+        <div className={PAIR_GRID}>
+          <IdentityFields form={form} />
+        </div>
+      </SettingsSection>
+      <SettingsSection
+        icon={RocketIcon}
+        title="Execução"
+        description="Como a aplicação recebe tráfego e quando sobe uma versão nova."
+      >
+        <div className="space-y-5">
+          <div className="sm:max-w-56">
+            <PortField form={form} />
+          </div>
+          <AutoDeployField form={form} />
+        </div>
+      </SettingsSection>
+      <SettingsSection
+        icon={HammerIcon}
+        title="Build"
+        description="Os valores padrão servem para a maioria dos repositórios."
+      >
+        <AdvancedSettings form={form} />
+      </SettingsSection>
+    </>
+  );
+}
+
+/**
+ * Project fields in titled sections, in the order people fill them: the repository first,
+ * which also suggests the name. Rarely changed build settings stay folded.
+ */
 export function ProjectForm({
   initialValues,
   submitLabel,
@@ -184,18 +243,14 @@ export function ProjectForm({
   return (
     <form
       noValidate
-      className="space-y-8"
+      className="overflow-hidden rounded-2xl bg-card ring-1 ring-border/70"
       onSubmit={(event) => {
         event.preventDefault();
         void form.handleSubmit();
       }}
     >
-      <fieldset disabled={disabled} className="grid gap-x-6 gap-y-5 md:grid-cols-2">
-        <IdentityFields form={form} />
-        <RepositoryFields form={form} />
-        <PortField form={form} />
-        <AutoDeployField form={form} className="md:self-end" />
-        <AdvancedSettings form={form} />
+      <fieldset disabled={disabled} className="divide-y divide-border/70">
+        <ProjectFormSections form={form} />
       </fieldset>
       <FormActions form={form} submitLabel={submitLabel} disabled={disabled} />
     </form>

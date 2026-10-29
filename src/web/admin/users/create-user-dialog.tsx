@@ -1,3 +1,5 @@
+import { UserPlusIcon } from "lucide-react";
+
 import {
   Dialog,
   DialogContent,
@@ -22,7 +24,7 @@ export function CreateUserDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
-        <DialogHeader>
+        <DialogHeader icon={<UserPlusIcon />}>
           <DialogTitle>Novo usuário</DialogTitle>
           <DialogDescription>
             Não há cadastro público: só administradores criam contas.
