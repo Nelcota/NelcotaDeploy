@@ -29,7 +29,7 @@ file. No Kubernetes, no external database, no agents to install.
 
 ## Features
 
-|             |                                                                                                                      |
+| Area        | What it does                                                                                                         |
 | ----------- | -------------------------------------------------------------------------------------------------------------------- |
 | **Deploys** | Build the exact commit from GitHub, on push or by hand. Health check before switching, rollback, redeploy and retry. |
 | **Logs**    | Live build and runtime logs with search, level filter and jump to the first error.                                   |
