@@ -20,6 +20,25 @@ const BUN_PASSWORD_HASHING = {
     await Bun.password.verify(password, hash),
 };
 
+const EMAIL_AND_PASSWORD = {
+  enabled: true,
+  disableSignUp: true,
+  minPasswordLength: PASSWORD_MIN_LENGTH,
+  password: BUN_PASSWORD_HASHING,
+};
+
+const USER_FIELDS = {
+  additionalFields: {
+    role: { type: "string", input: false, defaultValue: "viewer" },
+    disabled: { type: "boolean", input: false, defaultValue: false },
+  },
+} as const;
+
+const SESSION = {
+  expiresIn: SESSION_LIFETIME_IN_SECONDS,
+  updateAge: SESSION_REFRESH_AGE_IN_SECONDS,
+};
+
 const RATE_LIMIT = {
   enabled: true,
   window: RATE_LIMIT_WINDOW_IN_SECONDS,
@@ -33,19 +52,49 @@ const RATE_LIMIT = {
 };
 
 /**
+ * "Sign in with GitHub": never creates accounts, and joins an existing one only through an
+ * e-mail GitHub reports as verified (GitHub is not a trusted provider for linking).
+ */
+function socialSignIn(github: { readonly clientId: string; readonly clientSecret: string } | null) {
+  return {
+    socialProviders:
+      github == null
+        ? {}
+        : {
+            github: {
+              clientId: github.clientId,
+              clientSecret: github.clientSecret,
+              disableSignUp: true,
+            },
+          },
+    account: {
+      accountLinking: { enabled: true, trustedProviders: [], allowDifferentEmails: false },
+    },
+  };
+}
+
+/**
  * Creates the Better Auth instance.
  *
  * @remarks
  * Public sign-up is disabled: accounts come from the bootstrap command or from an admin.
  * Passwords use `Bun.password` (argon2id). Disabled users cannot open new sessions.
  *
+ * With `github`, people can also sign in with GitHub, but only into an account that already
+ * exists with the same e-mail, which GitHub must report as verified: GitHub never creates
+ * accounts, and it is not a trusted provider for linking.
+ *
  * @param database - Database that stores users and sessions.
- * @param options - Signing secret and the public URL of the panel.
+ * @param options - Signing secret, the public URL of the panel and the GitHub OAuth client.
  * @returns The auth instance.
  */
 export function createAuth(
   database: Database,
-  options: { readonly secret: string; readonly baseURL: string },
+  options: {
+    readonly secret: string;
+    readonly baseURL: string;
+    readonly github?: { readonly clientId: string; readonly clientSecret: string } | null;
+  },
 ) {
   return betterAuth({
     secret: options.secret,
@@ -60,22 +109,10 @@ export function createAuth(
         verification: tables.verifications,
       },
     }),
-    emailAndPassword: {
-      enabled: true,
-      disableSignUp: true,
-      minPasswordLength: PASSWORD_MIN_LENGTH,
-      password: BUN_PASSWORD_HASHING,
-    },
-    user: {
-      additionalFields: {
-        role: { type: "string", input: false, defaultValue: "viewer" },
-        disabled: { type: "boolean", input: false, defaultValue: false },
-      },
-    },
-    session: {
-      expiresIn: SESSION_LIFETIME_IN_SECONDS,
-      updateAge: SESSION_REFRESH_AGE_IN_SECONDS,
-    },
+    ...socialSignIn(options.github ?? null),
+    emailAndPassword: EMAIL_AND_PASSWORD,
+    user: USER_FIELDS,
+    session: SESSION,
     rateLimit: RATE_LIMIT,
     advanced: {
       useSecureCookies: options.baseURL.startsWith("https://"),
@@ -105,6 +142,29 @@ function isUserActive(database: Database, userId: string): boolean {
 export type Auth = ReturnType<typeof createAuth>;
 
 let sharedAuth: Auth | undefined;
+let githubLogin: { readonly clientId: string; readonly clientSecret: string } | null = null;
+
+/**
+ * Turns "Sign in with GitHub" on with the app's OAuth client, or off with null. Better Auth
+ * reads its providers once, so the next {@link getAuth} builds a new instance.
+ *
+ * @param credentials - OAuth client of the GitHub App, or null.
+ */
+export function configureGitHubLogin(
+  credentials: { readonly clientId: string; readonly clientSecret: string } | null,
+): void {
+  githubLogin = credentials;
+  sharedAuth = undefined;
+}
+
+/**
+ * Tells whether people can sign in with GitHub.
+ *
+ * @returns True once {@link configureGitHubLogin} received an OAuth client.
+ */
+export function isGitHubLoginEnabled(): boolean {
+  return githubLogin != null;
+}
 
 /**
  * Returns the process-wide auth instance.
@@ -115,6 +175,7 @@ export function getAuth(): Auth {
   sharedAuth ??= createAuth(getDatabase(), {
     secret: requireConfigValue("BETTER_AUTH_SECRET"),
     baseURL: getConfig().PUBLIC_URL,
+    github: githubLogin,
   });
   return sharedAuth;
 }

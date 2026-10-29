@@ -11,6 +11,7 @@ import {
   isSameState,
   settingsEditor,
 } from "@/web/server/github-app-pages";
+import { refreshGitHubLogin } from "@/web/server/github-login";
 
 const HTTP_BAD_REQUEST = 400;
 const HTTP_FORBIDDEN = 403;
@@ -43,6 +44,7 @@ export const Route = createFileRoute("/api/github/app/callback")({
             app,
             actor: userActor(user),
           });
+          await refreshGitHubLogin();
           return new Response(null, {
             status: HTTP_SEE_OTHER,
             headers: {

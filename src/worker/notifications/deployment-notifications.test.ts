@@ -25,6 +25,8 @@ async function setup() {
       owner: { login: "acme" },
       pem: "-----BEGIN RSA PRIVATE KEY-----\nbroken\n-----END RSA PRIVATE KEY-----\n",
       webhook_secret: null,
+      client_id: "Iv1.abc",
+      client_secret: "client-secret",
     },
     actor: TEST_ACTOR,
   });

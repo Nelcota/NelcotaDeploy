@@ -5,6 +5,7 @@ import {
   createFirstAdmin,
   getAuth,
   MAX_AVATAR_BYTES,
+  isGitHubLoginEnabled,
   needsFirstAdmin,
   removeUserAvatar,
   saveUserAvatar,
@@ -76,9 +77,13 @@ export const removeAvatarFn = createServerFn({ method: "POST" }).handler(async (
 // No session exists yet on a fresh panel, so these run without one; creating the admin is
 // refused as soon as any admin exists.
 
-/** Whether the login page should offer to create the first admin instead of signing in. */
-export const getSetupStatusFn = createServerFn({ method: "GET" }).handler(() => ({
+/**
+ * What the login page offers: creating the first admin on a fresh panel, and signing in with
+ * GitHub when the GitHub App allows it.
+ */
+export const getLoginOptionsFn = createServerFn({ method: "GET" }).handler(() => ({
   needsFirstAdmin: needsFirstAdmin(getDatabase()),
+  githubLogin: isGitHubLoginEnabled(),
 }));
 
 /** Creates the first admin of a fresh panel. */

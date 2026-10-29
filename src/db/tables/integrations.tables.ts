@@ -68,5 +68,8 @@ export const githubApps = sqliteTable("github_apps", {
   ownerLogin: text("owner_login").notNull(),
   encryptedPrivateKey: text("encrypted_private_key").notNull(),
   encryptedWebhookSecret: text("encrypted_webhook_secret"),
+  // OAuth client of the app, for "Sign in with GitHub"; missing on apps created before it.
+  clientId: text("client_id"),
+  encryptedClientSecret: text("encrypted_client_secret"),
   createdAt: createdAt(),
 });

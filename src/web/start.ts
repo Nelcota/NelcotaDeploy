@@ -1,6 +1,7 @@
 import { createCsrfMiddleware, createMiddleware, createStart } from "@tanstack/react-start";
 
 import { createLogger } from "@/logging";
+import { ensureGitHubLoginConfigured } from "@/web/server/github-login";
 import { GENERIC_ERROR_MESSAGE, PublicError, toPublicError } from "@/web/server/public-error";
 
 const SERVER_FUNCTION_PREFIX = "/_serverFn/";
@@ -55,7 +56,13 @@ const publicErrorMiddleware = createMiddleware({ type: "function" }).server(asyn
   }
 });
 
+/** Auth is built with the GitHub sign-in settings, so they load before any request uses it. */
+const githubLoginMiddleware = createMiddleware().server(async ({ next }) => {
+  await ensureGitHubLoginConfigured();
+  return await next();
+});
+
 export const startInstance = createStart(() => ({
-  requestMiddleware: [securityHeadersMiddleware, csrfMiddleware],
+  requestMiddleware: [securityHeadersMiddleware, csrfMiddleware, githubLoginMiddleware],
   functionMiddleware: [publicErrorMiddleware],
 }));
