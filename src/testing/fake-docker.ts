@@ -158,6 +158,20 @@ export class FakeDocker implements DockerEngine {
     return await Promise.resolve([]);
   }
 
+  async copyFromContainer(
+    reference: string,
+    containerPath: string,
+    hostPath: string,
+  ): Promise<void> {
+    this.calls.push(`cp ${reference}:${containerPath} ${hostPath}`);
+    await Promise.resolve();
+  }
+
+  async copyToContainer(hostPath: string, reference: string, containerPath: string): Promise<void> {
+    this.calls.push(`cp ${hostPath} ${reference}:${containerPath}`);
+    await Promise.resolve();
+  }
+
   async execInContainer(
     reference: string,
     command: readonly string[],

@@ -388,3 +388,19 @@ export function assertImageReference(imageTag: string): string {
   assertMatches(imageTag, IMAGE_REFERENCE_PATTERN, "image tag");
   return imageTag;
 }
+
+// Absolute, with no ".." segment and no ":" that docker cp would read as a container name.
+const FILE_PATH_PATTERN = /^(?:\/(?!\.\.(?:\/|$))[A-Za-z0-9._-]+)+$/;
+
+/**
+ * Validates a file path for `docker cp`, on the host or inside a container.
+ *
+ * @param path - Absolute path.
+ * @returns The same path.
+ * @throws {InvalidDockerArgumentError} When it is relative, climbs with ".." or has unusual
+ *   characters.
+ */
+export function assertFilePath(path: string): string {
+  assertMatches(path, FILE_PATH_PATTERN, "file path");
+  return path;
+}

@@ -4,6 +4,7 @@ import { DockerImages, type DockerImageStore } from "./docker-images";
 import { DockerVolumes, type DockerVolumeStore } from "./docker-volumes";
 import {
   assertContainerReference,
+  assertFilePath,
   buildImageArgs,
   type BuildImageOptions,
   LABELS,
@@ -22,6 +23,8 @@ import {
 
 const QUICK_COMMAND_TIMEOUT_IN_MS = 30_000;
 const STOP_TIMEOUT_IN_MS = 60_000;
+// Database dumps can take a while to copy on slow disks.
+const COPY_TIMEOUT_IN_MS = 600_000;
 const MS_PER_SECOND = 1000;
 
 /** Callback for streamed command output. */
@@ -393,6 +396,46 @@ export class DockerCli {
       ],
       { timeoutInMs: Number.MAX_SAFE_INTEGER, signal, onLine: () => onEvent() },
     );
+  }
+
+  /**
+   * Copies a file out of a platform container to the host.
+   *
+   * @param reference - Container name or id.
+   * @param containerPath - Absolute path inside the container.
+   * @param hostPath - Absolute path on the host; its directory must exist.
+   * @throws {UnmanagedResourceError} When the container is not managed by the platform.
+   * @throws {InvalidDockerArgumentError} When a path is malformed.
+   * @throws {DockerCommandError} When docker cannot copy the file.
+   */
+  async copyFromContainer(
+    reference: string,
+    containerPath: string,
+    hostPath: string,
+  ): Promise<void> {
+    const info = await this.#assertManaged(reference);
+    const source = `${info.id}:${assertFilePath(containerPath)}`;
+    await this.#runChecked(["container", "cp", "--", source, assertFilePath(hostPath)], "cp", {
+      timeoutInMs: COPY_TIMEOUT_IN_MS,
+    });
+  }
+
+  /**
+   * Copies a file from the host into a platform container.
+   *
+   * @param hostPath - Absolute path on the host.
+   * @param reference - Container name or id.
+   * @param containerPath - Absolute path inside the container.
+   * @throws {UnmanagedResourceError} When the container is not managed by the platform.
+   * @throws {InvalidDockerArgumentError} When a path is malformed.
+   * @throws {DockerCommandError} When docker cannot copy the file.
+   */
+  async copyToContainer(hostPath: string, reference: string, containerPath: string): Promise<void> {
+    const info = await this.#assertManaged(reference);
+    const target = `${info.id}:${assertFilePath(containerPath)}`;
+    await this.#runChecked(["container", "cp", "--", assertFilePath(hostPath), target], "cp", {
+      timeoutInMs: COPY_TIMEOUT_IN_MS,
+    });
   }
 
   /**

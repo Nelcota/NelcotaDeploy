@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import {
+  assertFilePath,
   buildImageArgs,
   containerNameFor,
   databaseContainerNameFor,
@@ -258,4 +259,17 @@ describe("runContainerArgs command", () => {
 
     expect(args.at(-1)).toBe(RUN_BASE.imageTag);
   });
+});
+
+describe("assertFilePath", () => {
+  test("accepts an absolute path of plain segments", () => {
+    expect(assertFilePath("/tmp/nelcota-backup.dump")).toBe("/tmp/nelcota-backup.dump");
+  });
+
+  test.each([["relative"], ["/tmp/../etc"], ["/tmp/a:b"], ["/tmp/a b"]])(
+    "throws InvalidDockerArgumentError for %p",
+    (path) => {
+      expect(() => assertFilePath(path)).toThrow(InvalidDockerArgumentError);
+    },
+  );
 });
