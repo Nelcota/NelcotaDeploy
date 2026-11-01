@@ -18,6 +18,8 @@ export const jobs = sqliteTable(
         "project_cleanup",
         "volume_delete",
         "preview_cleanup",
+        "database_provision",
+        "database_delete",
       ],
     }).notNull(),
     status: text("status", {

@@ -125,6 +125,33 @@ export const projectVolumes = sqliteTable(
   (table) => [uniqueIndex("project_volumes_project_path_idx").on(table.projectId, table.mountPath)],
 );
 
+// Database servers the platform runs for a project, on the project's server. They publish no
+// port: only containers on the platform network reach them, through the connection URL saved
+// as a secret variable of the project.
+export const projectDatabases = sqliteTable(
+  "project_databases",
+  {
+    id: text("id").primaryKey(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    engine: text("engine", { enum: ["postgres", "redis"] }).notNull(),
+    imageTag: text("image_tag").notNull(),
+    // Variable of the project that receives the connection URL.
+    environmentKey: text("environment_key").notNull(),
+    encryptedPassword: text("encrypted_password").notNull(),
+    status: text("status", { enum: ["provisioning", "running", "failed"] }).notNull(),
+    errorMessage: text("error_message"),
+    // Set when deletion is requested; the worker removes the container and its data, then the row.
+    deletionRequestedAt: text("deletion_requested_at"),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (table) => [
+    uniqueIndex("project_databases_project_key_idx").on(table.projectId, table.environmentKey),
+  ],
+);
+
 export const deployments = sqliteTable(
   "deployments",
   {
