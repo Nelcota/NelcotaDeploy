@@ -24,3 +24,11 @@ export class HostKeyMismatchError extends Error {
     this.name = "HostKeyMismatchError";
   }
 }
+
+/** Thrown when a file on a server cannot be read or written. */
+export class RemoteFileError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "RemoteFileError";
+  }
+}
