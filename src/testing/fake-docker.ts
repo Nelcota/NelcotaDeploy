@@ -22,6 +22,8 @@ export class FakeDocker implements DockerEngine {
   buildFailure: string | null = null;
   /** When false, started containers exit immediately. */
   containersStayUp = true;
+  /** When set, `execInContainer` prints this line on stderr and exits with 1. */
+  execFailure: string | null = null;
 
   async serverVersion(): Promise<string | null> {
     return await Promise.resolve("fake");
@@ -158,6 +160,20 @@ export class FakeDocker implements DockerEngine {
     return await Promise.resolve([]);
   }
 
+  async copyFromContainer(
+    reference: string,
+    containerPath: string,
+    hostPath: string,
+  ): Promise<void> {
+    this.calls.push(`cp ${reference}:${containerPath} ${hostPath}`);
+    await Promise.resolve();
+  }
+
+  async copyToContainer(hostPath: string, reference: string, containerPath: string): Promise<void> {
+    this.calls.push(`cp ${hostPath} ${reference}:${containerPath}`);
+    await Promise.resolve();
+  }
+
   async execInContainer(
     reference: string,
     command: readonly string[],
@@ -165,9 +181,9 @@ export class FakeDocker implements DockerEngine {
   ): Promise<ProcessResult> {
     this.calls.push(`exec ${reference} ${command.join(" ")}`);
     return await Promise.resolve({
-      exitCode: 0,
+      exitCode: this.execFailure == null ? 0 : 1,
       stdout: "done\n",
-      stderr: "",
+      stderr: this.execFailure == null ? "" : `${this.execFailure}\n`,
       timedOut: false,
       aborted: false,
     });

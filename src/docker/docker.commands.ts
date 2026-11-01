@@ -1,4 +1,5 @@
 import { InvalidDockerArgumentError } from "./docker.errors";
+import { isValidEnvironmentVariableKey } from "@/shared/schemas/environment-variable.schema";
 
 /** Labels that mark resources owned by the platform. Nothing without them is ever touched. */
 export const LABELS = {
@@ -35,7 +36,6 @@ const PROXY_CERTIFICATE_VOLUME = "nelcota-letsencrypt";
 
 const NAME_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,127}$/;
 const IMAGE_REFERENCE_PATTERN = /^[a-z0-9]+(?:[._/-][a-z0-9]+)*:[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$/;
-const ENVIRONMENT_KEY_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/;
 const LABEL_KEY_PATTERN = /^[a-z0-9][a-z0-9._/-]*[a-z0-9]$/i;
 const SLUG_PATTERN = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/;
 const IMAGE_REPOSITORY = "nelcota";
@@ -170,7 +170,9 @@ export type BuildImageOptions = {
 export function buildImageArgs(options: BuildImageOptions): string[] {
   assertMatches(options.imageTag, IMAGE_REFERENCE_PATTERN, "image tag");
   for (const key of options.buildArgKeys) {
-    assertMatches(key, ENVIRONMENT_KEY_PATTERN, "build argument name");
+    if (isValidEnvironmentVariableKey(key) === false) {
+      throw new InvalidDockerArgumentError(`Reserved or invalid build argument name: ${key}`);
+    }
   }
   return [
     "build",
@@ -224,7 +226,9 @@ export function runContainerArgs(options: RunContainerOptions): string[] {
   assertMatches(options.imageTag, IMAGE_REFERENCE_PATTERN, "image tag");
   assertMatches(options.network, NAME_PATTERN, "network name");
   for (const key of options.environmentKeys) {
-    assertMatches(key, ENVIRONMENT_KEY_PATTERN, "environment variable name");
+    if (isValidEnvironmentVariableKey(key) === false) {
+      throw new InvalidDockerArgumentError(`Reserved or invalid environment variable name: ${key}`);
+    }
   }
   return [
     "run",
@@ -239,7 +243,7 @@ export function runContainerArgs(options: RunContainerOptions): string[] {
     "max-size=10m",
     "--log-opt",
     "max-file=3",
-    ...labelArgs(options.labels),
+    ...labelArgs({ ...options.labels, "traefik.enable": "false" }),
     ...options.environmentKeys.flatMap((key) => ["--env", key]),
     ...mountArgs(options.volumes),
     options.imageTag,
@@ -387,4 +391,20 @@ export function assertContainerReference(reference: string): string {
 export function assertImageReference(imageTag: string): string {
   assertMatches(imageTag, IMAGE_REFERENCE_PATTERN, "image tag");
   return imageTag;
+}
+
+// Absolute, with no ".." segment and no ":" that docker cp would read as a container name.
+const FILE_PATH_PATTERN = /^(?:\/(?!\.\.(?:\/|$))[A-Za-z0-9._-]+)+$/;
+
+/**
+ * Validates a file path for `docker cp`, on the host or inside a container.
+ *
+ * @param path - Absolute path.
+ * @returns The same path.
+ * @throws {InvalidDockerArgumentError} When it is relative, climbs with ".." or has unusual
+ *   characters.
+ */
+export function assertFilePath(path: string): string {
+  assertMatches(path, FILE_PATH_PATTERN, "file path");
+  return path;
 }

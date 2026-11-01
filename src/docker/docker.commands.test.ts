@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import {
+  assertFilePath,
   buildImageArgs,
   containerNameFor,
   databaseContainerNameFor,
@@ -92,6 +93,7 @@ describe("runContainerArgs", () => {
     expect(args).not.toContain("--publish");
     expect(args).not.toContain("-p");
     expect(args).toContain("io.nelcota.managed=true");
+    expect(args).toContain("traefik.enable=false");
     expect(args.join(" ")).toContain("--env SECRET_TOKEN");
     expect(args.at(-1)).toBe("nelcota/api:abc");
   });
@@ -110,6 +112,23 @@ describe("runContainerArgs", () => {
     expect(run).toThrow(InvalidDockerArgumentError);
   });
 });
+
+test("prevents caller labels from enabling Docker-provider routing", () => {
+  const args = runContainerArgs({
+    containerName: "app", imageTag: "nelcota/api:abc", network: "nelcota",
+    labels: { "traefik.enable": "true" }, environmentKeys: [], volumes: [],
+  });
+  expect(args).toContain("traefik.enable=false");
+  expect(args).not.toContain("traefik.enable=true");
+});
+
+test.each(["PATH", "HOME", "LD_PRELOAD", "DYLD_INSERT_LIBRARIES", "BUILDX_CONFIG", "HTTP_PROXY", "BASH_ENV"])(
+  "refuses process-control variable %s in Docker arguments",
+  (key) => {
+    expect(() => buildImageArgs({dockerfilePath: "Dockerfile", contextPath: ".", imageTag: "nelcota/api:abc", labels: {}, buildArgKeys: [key]})).toThrow(InvalidDockerArgumentError);
+    expect(() => runContainerArgs({containerName: "app", imageTag: "nelcota/api:abc", network: "nelcota", labels: {}, environmentKeys: [key], volumes: []})).toThrow(InvalidDockerArgumentError);
+  },
+);
 
 const PROXY_BASE = {
   network: "nelcota",
@@ -258,4 +277,17 @@ describe("runContainerArgs command", () => {
 
     expect(args.at(-1)).toBe(RUN_BASE.imageTag);
   });
+});
+
+describe("assertFilePath", () => {
+  test("accepts an absolute path of plain segments", () => {
+    expect(assertFilePath("/tmp/nelcota-backup.dump")).toBe("/tmp/nelcota-backup.dump");
+  });
+
+  test.each([["relative"], ["/tmp/../etc"], ["/tmp/a:b"], ["/tmp/a b"]])(
+    "throws InvalidDockerArgumentError for %p",
+    (path) => {
+      expect(() => assertFilePath(path)).toThrow(InvalidDockerArgumentError);
+    },
+  );
 });
