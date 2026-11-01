@@ -2,7 +2,7 @@ import type { AppConfig } from "@/config";
 import type { Database } from "@/db";
 import { DockerCli } from "@/docker";
 import { GitClient } from "@/git";
-import { createRemoteRunner, SshConnection } from "@/remote";
+import { createRemoteRunner, RemoteFiles, SshConnection } from "@/remote";
 import { RouteFiles } from "@/routing";
 import {
   getServer,
@@ -133,6 +133,7 @@ export class ServerHosts implements Disposable {
     const host: ServerHost = {
       serverId: server.id,
       runner,
+      files: new RemoteFiles(connection),
       docker: new DockerCli(REMOTE_DOCKER_BINARY, runner),
       git: new GitClient(REMOTE_GIT_BINARY, runner),
       probes: tunnelProbes(connection),

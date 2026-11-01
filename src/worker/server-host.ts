@@ -5,11 +5,21 @@ import type { RouteFiles } from "@/routing";
 
 import type { Probes } from "./probes";
 
+/** Whole files on a server as raw bytes, for binary files the command runner cannot carry. */
+export type ServerFiles = {
+  readonly read: (
+    path: string,
+    limits: { readonly maxBytes: number; readonly timeoutInMs: number },
+  ) => Promise<Uint8Array<ArrayBuffer>>;
+  readonly write: (path: string, data: Uint8Array, timeoutInMs: number) => Promise<void>;
+};
+
 /** Everything the worker uses to work on one server, wherever it is. */
 export type ServerHost = {
   readonly serverId: string;
   /** Runs commands on the server. */
   readonly runner: CommandRunner;
+  readonly files: ServerFiles;
   readonly docker: DockerEngine;
   readonly git: Pick<GitClient, "checkoutRevision">;
   /** Health probes that reach containers on the server's Docker network. */
