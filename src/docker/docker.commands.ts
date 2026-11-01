@@ -8,6 +8,11 @@ export const LABELS = {
   deploymentId: "io.nelcota.deployment-id",
   /** Pull request preview of a container or image; absent on production ones. */
   previewId: "io.nelcota.preview-id",
+  /**
+   * Project a database container belongs to. Database containers never carry `projectId`,
+   * which marks the containers of the project's deployments.
+   */
+  databaseProjectId: "io.nelcota.database-project-id",
   /** The reverse proxy the platform runs on a remote server. Never an application. */
   proxy: "io.nelcota.proxy",
   /** Version of the proxy's settings; a proxy with another version is replaced. */
@@ -93,6 +98,30 @@ export function volumeNameFor(volumeId: string): string {
 }
 
 /**
+ * Returns the deterministic container name of a project database, such as
+ * "nelcota-db-0a1b2c3d4e5f". It is also the host name applications connect to.
+ *
+ * @param databaseId - Database UUID.
+ * @returns Container name.
+ * @throws {InvalidDockerArgumentError} When the id is malformed.
+ */
+export function databaseContainerNameFor(databaseId: string): string {
+  return `nelcota-db-${shortId(databaseId)}`;
+}
+
+/**
+ * Returns the deterministic Docker volume name that keeps a project database's data, such as
+ * "nelcota-dbdata-0a1b2c3d4e5f".
+ *
+ * @param databaseId - Database UUID.
+ * @returns Volume name.
+ * @throws {InvalidDockerArgumentError} When the id is malformed.
+ */
+export function databaseVolumeNameFor(databaseId: string): string {
+  return `nelcota-dbdata-${shortId(databaseId)}`;
+}
+
+/**
  * Builds the platform labels for a deployment's image and container.
  *
  * @param input - Owning project, deployment and its pull request preview, if any.
@@ -167,6 +196,8 @@ export type RunContainerOptions = {
   readonly environmentKeys: readonly string[];
   /** Named volumes mounted at absolute paths inside the container. */
   readonly volumes: readonly { readonly name: string; readonly target: string }[];
+  /** Arguments after the image, replacing its default command; the image's own when absent. */
+  readonly command?: readonly string[];
 };
 
 // Plain absolute path: no comma or "=", which would add options to the --mount value.
@@ -212,6 +243,7 @@ export function runContainerArgs(options: RunContainerOptions): string[] {
     ...options.environmentKeys.flatMap((key) => ["--env", key]),
     ...mountArgs(options.volumes),
     options.imageTag,
+    ...(options.command ?? []),
   ];
 }
 
