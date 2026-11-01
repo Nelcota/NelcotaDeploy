@@ -9,6 +9,7 @@ const POSTGRES_DATABASE = "app";
  * versioned directory below /var/lib/postgresql, so that is the directory the volume keeps.
  */
 export const postgresEngine: DatabaseEngine = {
+  label: "PostgreSQL",
   imageTag: "postgres:18.6-alpine",
   port: POSTGRES_PORT,
   dataPath: "/var/lib/postgresql",

@@ -45,6 +45,7 @@ export const containerSnapshots = sqliteTable(
   (table) => [
     index("container_snapshots_project_id_idx").on(table.projectId),
     index("container_snapshots_server_id_idx").on(table.serverId),
+    index("container_snapshots_deployment_id_idx").on(table.deploymentId),
   ],
 );
 
@@ -54,4 +55,13 @@ export const workerHeartbeats = sqliteTable("worker_heartbeats", {
   lastSeenAt: text("last_seen_at").notNull(),
   dockerAvailable: integer("docker_available", { mode: "boolean" }).notNull(),
   dockerVersion: text("docker_version"),
+});
+
+// Health problems already announced, so each one alerts once when it starts and once when it
+// is resolved, instead of on every check.
+export const healthAlerts = sqliteTable("health_alerts", {
+  key: text("key").primaryKey(),
+  title: text("title").notNull(),
+  text: text("text").notNull(),
+  openedAt: text("opened_at").notNull(),
 });

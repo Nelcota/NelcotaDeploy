@@ -22,3 +22,4 @@ export {
   replaceContainerSnapshots,
 } from "./monitoring.service";
 export { getDashboardSummary } from "./dashboard.service";
+export { listLiveAppContainers } from "./health-inputs";

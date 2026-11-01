@@ -5,6 +5,7 @@ import { scheduleDueTasks } from "@/tasks";
 
 import type { WorkerDependencies } from "../worker.types";
 import { backupDatabaseIfDue, runDatabaseBackup } from "./database-backup";
+import { checkHealth } from "./health-alerts";
 
 const MILLISECONDS_PER_HOUR = 3_600_000;
 
@@ -40,7 +41,8 @@ function applyRetention({ database, config, logger }: WorkerDependencies): void 
 }
 
 /**
- * Starts the clock-based duties: scheduled tasks every minute, retention and project database
+ * Starts the clock-based duties: scheduled tasks every minute, health checks every five
+ * minutes, retention and project database
  * backups every hour, and the panel database backup every day (plus one at startup when the
  * newest backup is a day old).
  *
@@ -61,6 +63,10 @@ export function startScheduledDuties(
     Bun.cron(
       "17 * * * *",
       guard("retention", () => applyRetention(dependencies)),
+    ),
+    Bun.cron(
+      "*/5 * * * *",
+      guard("health", async () => await checkHealth(dependencies)),
     ),
     // Hourly, so a database gets its daily backup within an hour of being due.
     Bun.cron(

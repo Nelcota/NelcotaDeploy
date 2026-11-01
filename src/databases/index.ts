@@ -15,6 +15,7 @@ export {
   failDatabaseDeletion,
   findDatabaseRecord,
   finishDatabaseDeletion,
+  listRunningDatabases,
   markDatabaseFailed,
   markDatabaseRunning,
   readDatabasePassword,

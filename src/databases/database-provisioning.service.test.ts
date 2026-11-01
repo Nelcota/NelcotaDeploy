@@ -6,6 +6,7 @@ import { createTestProject, createTestSecretBox, TEST_ACTOR } from "@/testing";
 import {
   failDatabaseDeletion,
   finishDatabaseDeletion,
+  listRunningDatabases,
   markDatabaseFailed,
   markDatabaseRunning,
 } from "./database-provisioning.service";
@@ -69,5 +70,32 @@ describe("database outcomes recorded by the worker", () => {
 
     expect(current()?.deletionRequestedAt).toBeNull();
     expect(current()?.errorMessage).toBe("volume in use");
+  });
+});
+
+describe("listRunningDatabases", () => {
+  test("lists a running database with its project's server", async () => {
+    const { database, created } = await setup();
+    markDatabaseRunning(database, created.id);
+
+    const [running] = listRunningDatabases(database);
+
+    expect(running?.id).toBe(created.id);
+    expect(running?.projectName).toBe("API");
+    expect(running?.serverId).toBe("local");
+  });
+
+  test("leaves out databases still starting", async () => {
+    const { database } = await setup();
+
+    expect(listRunningDatabases(database)).toEqual([]);
+  });
+
+  test("leaves out databases being deleted", async () => {
+    const { database, created, requestDeletion } = await setup();
+    markDatabaseRunning(database, created.id);
+    requestDeletion();
+
+    expect(listRunningDatabases(database)).toEqual([]);
   });
 });
