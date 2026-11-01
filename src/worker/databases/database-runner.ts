@@ -1,5 +1,6 @@
 import {
   type DatabaseRecord,
+  databaseBackupsPrefix,
   databaseEngine,
   failDatabaseDeletion,
   findDatabaseRecord,
@@ -20,6 +21,7 @@ import { getProject } from "@/projects";
 import type { SecretBox } from "@/secrets";
 
 import type { WorkerDependencies } from "../worker.types";
+import { type BackupStorage, backupStorage } from "./database-backup-runner";
 
 const READINESS_COMMAND_TIMEOUT_IN_MS = 10_000;
 const MS_PER_SECOND = 1000;
@@ -156,17 +158,20 @@ async function pollUntilReady(
 }
 
 /**
- * Removes a database container and its data volume, then the database itself.
+ * Removes a database container, its data volume and its stored backups, then the database.
  *
  * @param dependencies - Database and Docker of the project's server.
  * @param databaseId - Database to remove.
  * @throws {DockerCommandError} When Docker refuses; the reason is stored on the database first.
  */
 export async function deleteDatabase(
-  dependencies: Pick<DatabaseRunDependencies, "database" | "docker">,
+  dependencies: Pick<DatabaseRunDependencies, "database" | "docker"> & {
+    /** Where its backups are stored, which go too; null when backups have nowhere to go. */
+    readonly storage: BackupStorage | null;
+  },
   databaseId: string,
 ): Promise<void> {
-  const { database, docker } = dependencies;
+  const { database, docker, storage } = dependencies;
   const record = findDatabaseRecord(database, databaseId);
   if (record == null) {
     return;
@@ -180,6 +185,10 @@ export async function deleteDatabase(
     const volumeName = databaseVolumeNameFor(record.id);
     if ((await docker.volumes.listForProject(record.projectId)).includes(volumeName)) {
       await docker.volumes.remove(volumeName);
+    }
+    if (storage != null) {
+      const keys = await storage.store.list(databaseBackupsPrefix(storage.prefix, record.id));
+      await Promise.all(keys.map(async (key) => await storage.store.delete(key)));
     }
   } catch (error) {
     failDatabaseDeletion(database, databaseId, errorMessage(error));
@@ -230,8 +239,14 @@ export async function runDatabaseProvisionJob(
  * @throws {Error} When the payload has no database id, or the deletion fails.
  */
 export async function runDatabaseDeleteJob(
-  dependencies: Pick<WorkerDependencies, "database" | "hosts" | "secretBox" | "config">,
+  dependencies: Pick<
+    WorkerDependencies,
+    "database" | "hosts" | "secretBox" | "config" | "offsiteStore"
+  >,
   job: Job,
 ): Promise<void> {
-  await deleteDatabase(runDependencies(dependencies, job), databaseIdOf(job));
+  const { config, offsiteStore } = dependencies;
+  const storage =
+    offsiteStore == null && config.BACKUP_DIR == null ? null : backupStorage(dependencies);
+  await deleteDatabase({ ...runDependencies(dependencies, job), storage }, databaseIdOf(job));
 }

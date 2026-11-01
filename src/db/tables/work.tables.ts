@@ -4,7 +4,7 @@ import { index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqli
 
 import { users } from "./auth.tables";
 import { createdAt, updatedAt } from "./columns";
-import { deployments, projects } from "./projects.tables";
+import { deployments, projectDatabases, projects } from "./projects.tables";
 
 export const jobs = sqliteTable(
   "jobs",
@@ -20,6 +20,8 @@ export const jobs = sqliteTable(
         "preview_cleanup",
         "database_provision",
         "database_delete",
+        "database_backup",
+        "database_restore",
       ],
     }).notNull(),
     status: text("status", {
@@ -114,4 +116,27 @@ export const taskExecutions = sqliteTable(
     // A scheduled slot runs at most once, even if the scheduler restarts mid-tick.
     uniqueIndex("task_executions_task_slot_idx").on(table.taskId, table.scheduledFor),
   ],
+);
+
+// Dumps of a project database, encrypted and kept in the backup bucket (or the panel's backup
+// directory without one). A restore is recorded on the backup it came from.
+export const databaseBackups = sqliteTable(
+  "database_backups",
+  {
+    id: text("id").primaryKey(),
+    databaseId: text("database_id")
+      .notNull()
+      .references(() => projectDatabases.id, { onDelete: "cascade" }),
+    status: text("status", { enum: ["queued", "running", "succeeded", "failed"] }).notNull(),
+    trigger: text("trigger", { enum: ["manual", "scheduled"] }).notNull(),
+    // Where the encrypted dump is stored; null until the backup succeeds.
+    storageKey: text("storage_key"),
+    sizeBytes: integer("size_bytes"),
+    errorMessage: text("error_message"),
+    restoredAt: text("restored_at"),
+    restoreError: text("restore_error"),
+    createdAt: createdAt(),
+    finishedAt: text("finished_at"),
+  },
+  (table) => [index("database_backups_database_created_idx").on(table.databaseId, table.createdAt)],
 );

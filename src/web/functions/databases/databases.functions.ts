@@ -4,8 +4,11 @@ import { z } from "zod";
 import { userActor } from "@/auth";
 import {
   createProjectDatabase,
+  listDatabaseBackups,
   listProjectDatabases,
+  requestDatabaseBackup,
   requestDatabaseDeletion,
+  requestDatabaseRestore,
   retryDatabaseProvision,
 } from "@/databases";
 import { getDatabase } from "@/db";
@@ -61,4 +64,27 @@ export const deleteDatabaseFn = createServerFn({ method: "POST" })
       actor: userActor(user),
       triggeredByUserId: user.id,
     });
+  });
+
+export const listDatabaseBackupsFn = createServerFn({ method: "GET" })
+  .validator(databaseTarget)
+  .handler(async ({ data }) => {
+    await authorize("project:read");
+    return listDatabaseBackups(getDatabase(), data);
+  });
+
+/** Queues a backup of a database now. */
+export const backupDatabaseFn = createServerFn({ method: "POST" })
+  .validator(databaseTarget)
+  .handler(async ({ data }) => {
+    const user = await authorize("project:write");
+    requestDatabaseBackup(getDatabase(), { ...data, actor: userActor(user) });
+  });
+
+/** Replaces a database's data with a backup; only those who may delete projects can do it. */
+export const restoreDatabaseBackupFn = createServerFn({ method: "POST" })
+  .validator(databaseTarget.extend({ backupId: idSchema }))
+  .handler(async ({ data }) => {
+    const user = await authorize("project:delete");
+    requestDatabaseRestore(getDatabase(), { ...data, actor: userActor(user) });
   });

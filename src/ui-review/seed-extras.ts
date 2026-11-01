@@ -1,4 +1,11 @@
-import { createProjectDatabase, markDatabaseFailed, markDatabaseRunning } from "@/databases";
+import {
+  createProjectDatabase,
+  markBackupFailed,
+  markBackupSucceeded,
+  markDatabaseFailed,
+  markDatabaseRunning,
+  requestDatabaseBackup,
+} from "@/databases";
 import type { Database } from "@/db";
 import { requestDeployment } from "@/deployments";
 import { openPreview } from "@/previews";
@@ -105,7 +112,8 @@ export function seedPreview(database: Database, projectId: string): void {
 }
 
 /**
- * Adds a running PostgreSQL and a Redis that failed to start, so the databases tab shows both.
+ * Adds a running PostgreSQL with a failed and a successful backup, and a Redis that failed to
+ * start, so the databases tab and its backups dialog show each state.
  *
  * @param database - Review database.
  * @param secretBox - Encrypts the passwords and connection URLs.
@@ -122,6 +130,12 @@ export async function seedDatabases(
     actor: ACTOR,
   });
   markDatabaseRunning(database, postgres.id);
+  const target = { projectId, databaseId: postgres.id, actor: ACTOR };
+  markBackupFailed(database, requestDatabaseBackup(database, target), "pg_dump failed");
+  markBackupSucceeded(database, requestDatabaseBackup(database, target), {
+    storageKey: `databases/${postgres.id}/review.dump.enc`,
+    sizeBytes: 48_234_496,
+  });
   const redis = await createProjectDatabase(database, secretBox, {
     projectId,
     input: { engine: "redis", environmentKey: "REDIS_URL" },

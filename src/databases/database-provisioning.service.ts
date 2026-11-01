@@ -6,7 +6,7 @@ import type { DatabaseEngineName } from "@/shared/schemas/database.schema";
 
 const MAX_ERROR_LENGTH = 500;
 
-export type DatabaseStatus = "provisioning" | "running" | "failed";
+export type DatabaseStatus = "provisioning" | "running" | "failed" | "restoring";
 
 /** What the worker needs to run or remove a database. */
 export type DatabaseRecord = {

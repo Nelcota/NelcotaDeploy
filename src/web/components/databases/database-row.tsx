@@ -5,6 +5,7 @@ import { ConfirmDialog } from "@/web/components/layout/confirm-dialog";
 import { ListRow, Tag } from "@/web/components/layout/layout";
 import { Button } from "@/web/components/ui/button";
 
+import { DatabaseBackupsButton } from "./database-backups-dialog";
 import { databaseState, ENGINE_LABELS, engineVersion } from "./database-state";
 
 type DatabaseItem = {
@@ -16,13 +17,15 @@ type DatabaseItem = {
   readonly port: number;
   readonly user: string | null;
   readonly databaseName: string | null;
-  readonly status: "provisioning" | "running" | "failed";
+  readonly status: "provisioning" | "running" | "failed" | "restoring";
   readonly errorMessage: string | null;
   readonly deletionRequestedAt: string | null;
+  readonly backupsAvailable: boolean;
 };
 
 /** One database: engine, state, how applications reach it and the actions the user may take. */
 export function DatabaseRow({
+  projectId,
   database,
   canEdit,
   canDelete,
@@ -30,6 +33,7 @@ export function DatabaseRow({
   onRetry,
   onDelete,
 }: {
+  readonly projectId: string;
   readonly database: DatabaseItem;
   readonly canEdit: boolean;
   /** The user may delete data, which only admins can. */
@@ -55,6 +59,13 @@ export function DatabaseRow({
         )}
       </div>
       <div className="flex shrink-0 gap-2">
+        {database.backupsAvailable && database.deletionRequestedAt == null ? (
+          <DatabaseBackupsButton
+            projectId={projectId}
+            databaseId={database.id}
+            environmentKey={database.environmentKey}
+          />
+        ) : null}
         {canEdit && state.canRetry ? (
           <Button variant="outline" size="sm" disabled={busy} onClick={onRetry}>
             <RotateCwIcon aria-hidden />

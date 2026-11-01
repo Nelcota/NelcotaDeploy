@@ -140,7 +140,9 @@ export const projectDatabases = sqliteTable(
     // Variable of the project that receives the connection URL.
     environmentKey: text("environment_key").notNull(),
     encryptedPassword: text("encrypted_password").notNull(),
-    status: text("status", { enum: ["provisioning", "running", "failed"] }).notNull(),
+    status: text("status", {
+      enum: ["provisioning", "running", "failed", "restoring"],
+    }).notNull(),
     errorMessage: text("error_message"),
     // Set when deletion is requested; the worker removes the container and its data, then the row.
     deletionRequestedAt: text("deletion_requested_at"),

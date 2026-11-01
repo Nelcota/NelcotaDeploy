@@ -1,7 +1,11 @@
 import {
+  DatabaseBackupInProgressError,
+  DatabaseBackupNotFoundError,
+  DatabaseBackupUnsupportedError,
   DatabaseBeingDeletedError,
   DatabaseLimitError,
   DatabaseNotFoundError,
+  DatabaseNotRunningError,
   DatabaseVariableConflictError,
   ProjectHasDatabasesError,
 } from "@/databases";
@@ -58,6 +62,13 @@ export const PROJECT_ERROR_MESSAGES: readonly (readonly [
     "O projeto já tem uma variável com esse nome. Escolha outro nome ou remova a variável.",
   ],
   [DatabaseBeingDeletedError, "Este banco de dados já está sendo excluído."],
+  [DatabaseBackupUnsupportedError, "Backups estão disponíveis só para bancos PostgreSQL."],
+  [
+    DatabaseNotRunningError,
+    "O banco precisa estar ativo. Aguarde ele iniciar ou terminar a restauração em andamento.",
+  ],
+  [DatabaseBackupInProgressError, "Já há um backup deste banco em andamento."],
+  [DatabaseBackupNotFoundError, "Backup não encontrado ou ainda não concluído."],
   [
     ProjectHasDatabasesError,
     "Projetos com bancos de dados não podem mudar de servidor: os dados ficam no servidor atual.",

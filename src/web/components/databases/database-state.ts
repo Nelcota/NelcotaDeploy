@@ -14,7 +14,7 @@ export const DEFAULT_ENVIRONMENT_KEYS: Readonly<Record<DatabaseEngineName, strin
 
 /** Fields of a database that decide what its row shows and allows. */
 type DatabaseFields = {
-  readonly status: "provisioning" | "running" | "failed";
+  readonly status: "provisioning" | "running" | "failed" | "restoring";
   readonly errorMessage: string | null;
   readonly deletionRequestedAt: string | null;
 };
@@ -53,6 +53,14 @@ export function databaseState(database: DatabaseFields): DatabaseState {
         failureNote: null,
         canRetry: false,
         canDelete: true,
+      };
+    case "restoring":
+      return {
+        label: "Restaurando…",
+        tone: "warning",
+        failureNote: null,
+        canRetry: false,
+        canDelete: false,
       };
     case "failed":
       return {

@@ -45,6 +45,7 @@ export function DatabasesPage({ projectId }: { readonly projectId: string }) {
             list.map((database) => (
               <DatabaseRow
                 key={database.id}
+                projectId={projectId}
                 database={database}
                 canEdit={canEdit}
                 canDelete={canDelete}

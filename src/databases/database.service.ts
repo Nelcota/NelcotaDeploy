@@ -41,6 +41,8 @@ type ProjectDatabase = {
   readonly port: number;
   readonly user: string | null;
   readonly databaseName: string | null;
+  /** Whether the platform backs this engine up. */
+  readonly backupsAvailable: boolean;
   readonly status: DatabaseStatus;
   /** Why provisioning or deletion last failed. */
   readonly errorMessage: string | null;
@@ -88,6 +90,7 @@ function toView(row: {
     port: engine.port,
     user: engine.user,
     databaseName: engine.databaseName,
+    backupsAvailable: engine.backup != null,
   };
 }
 
@@ -111,7 +114,7 @@ export function listProjectDatabases(
     .map(toView);
 }
 
-function getProjectDatabase(
+export function getProjectDatabase(
   database: Database | Transaction,
   projectId: string,
   databaseId: string,
@@ -206,7 +209,10 @@ export async function createProjectDatabase(
 function insertDatabase(
   database: Database,
   insert: {
-    readonly row: Omit<ProjectDatabase, "host" | "port" | "user" | "databaseName">;
+    readonly row: Omit<
+      ProjectDatabase,
+      "host" | "port" | "user" | "databaseName" | "backupsAvailable"
+    >;
     readonly projectId: string;
     readonly encryptedPassword: string;
     readonly actor: Actor;
