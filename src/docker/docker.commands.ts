@@ -198,7 +198,50 @@ export type RunContainerOptions = {
   readonly volumes: readonly { readonly name: string; readonly target: string }[];
   /** Arguments after the image, replacing its default command; the image's own when absent. */
   readonly command?: readonly string[];
+  /** Memory and CPU limits; a null or absent limit leaves the container unlimited. */
+  readonly resources?: ContainerResources;
 };
+
+/** Limits of a container. */
+export type ContainerResources = {
+  /** Memory in MiB, a positive integer; null for no limit. */
+  readonly memoryLimitInMb: number | null;
+  /** CPU in thousandths of a core, a positive integer; null for no limit. */
+  readonly cpuLimitInMillicores: number | null;
+};
+
+const MILLICORES_PER_CORE = 1000;
+const MILLICORE_DIGITS = 3;
+
+function assertPositiveInteger(value: number, what: string): void {
+  if (Number.isInteger(value) === false || value <= 0) {
+    throw new InvalidDockerArgumentError(`Invalid ${what}: ${value}`);
+  }
+}
+
+/**
+ * Builds the `--memory` and `--cpus` arguments of a container.
+ *
+ * @param resources - The limits, if any.
+ * @returns The arguments; empty without limits.
+ * @throws {InvalidDockerArgumentError} When a limit is not a positive integer.
+ */
+export function resourceArgs(resources: ContainerResources | undefined): string[] {
+  const args: string[] = [];
+  if (resources?.memoryLimitInMb != null) {
+    assertPositiveInteger(resources.memoryLimitInMb, "memory limit");
+    args.push("--memory", `${resources.memoryLimitInMb}m`);
+  }
+  if (resources?.cpuLimitInMillicores != null) {
+    const millicores = resources.cpuLimitInMillicores;
+    assertPositiveInteger(millicores, "CPU limit");
+    // Written from integers, so a limit such as 0.25 cores never goes through float rounding.
+    const cores = Math.floor(millicores / MILLICORES_PER_CORE);
+    const fraction = String(millicores % MILLICORES_PER_CORE).padStart(MILLICORE_DIGITS, "0");
+    args.push("--cpus", `${cores}.${fraction}`);
+  }
+  return args;
+}
 
 // Plain absolute path: no comma or "=", which would add options to the --mount value.
 const MOUNT_TARGET_PATTERN = /^(?:\/[A-Za-z0-9._-]+)+$/;
@@ -242,6 +285,7 @@ export function runContainerArgs(options: RunContainerOptions): string[] {
     ...labelArgs(options.labels),
     ...options.environmentKeys.flatMap((key) => ["--env", key]),
     ...mountArgs(options.volumes),
+    ...resourceArgs(options.resources),
     options.imageTag,
     ...(options.command ?? []),
   ];

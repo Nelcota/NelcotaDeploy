@@ -115,6 +115,8 @@ describe("requestDeployment validation", () => {
         autoDeploy: false,
         autoApplyChanges: true,
         previewsEnabled: false,
+        memoryLimitInMb: null,
+        cpuLimitInMillicores: null,
       },
       { actor: TEST_ACTOR, userId: null, isAdmin: false },
     );

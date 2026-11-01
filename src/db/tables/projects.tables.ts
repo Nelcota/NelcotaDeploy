@@ -33,6 +33,9 @@ export const projects = sqliteTable(
     autoApplyChanges: integer("auto_apply_changes", { mode: "boolean" }).notNull().default(true),
     // When set, pull requests to the project's branch get their own temporary deployment.
     previewsEnabled: integer("previews_enabled", { mode: "boolean" }).notNull().default(false),
+    // Limits of the application container; null leaves it unlimited, as Docker does.
+    memoryLimitInMb: integer("memory_limit_in_mb"),
+    cpuLimitInMillicores: integer("cpu_limit_in_millicores"),
     deploymentsApproved: integer("deployments_approved", { mode: "boolean" })
       .notNull()
       .default(false),

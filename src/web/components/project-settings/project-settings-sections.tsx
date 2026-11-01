@@ -7,6 +7,7 @@ import {
   IdentityFields,
   PortField,
   RepositoryFields,
+  ResourceLimitFields,
 } from "@/web/components/forms/project-form-fields";
 import {
   AutoApplyField,
@@ -70,11 +71,12 @@ export function BuildSection({ form }: { readonly form: ProjectFormApi }) {
     <SettingsSection
       icon={HammerIcon}
       title="Build e execução"
-      description="Como a imagem é construída e como o painel sabe que a aplicação está no ar."
+      description="Como a imagem é construída, quanto ela pode usar do servidor e como o painel sabe que está no ar."
     >
       <div className={FIELD_GRID}>
         <PortField form={form} />
         <HealthCheckField form={form} />
+        <ResourceLimitFields form={form} />
         <BuildFields form={form} />
       </div>
     </SettingsSection>

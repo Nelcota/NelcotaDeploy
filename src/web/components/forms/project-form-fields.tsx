@@ -1,10 +1,21 @@
 import { useState } from "react";
 
-import { slugify } from "@/shared/schemas/project.schema";
+import { formatCpuCores } from "@/shared/format";
+import { CPU_LIMIT_OPTIONS_IN_MILLICORES, slugify } from "@/shared/schemas/project.schema";
 import { FormField, visibleErrors } from "@/web/components/forms/form-field";
 import type { ProjectFormApi } from "@/web/components/forms/project-form";
 import { identityFromRepository } from "@/web/components/forms/repository-identity";
 import { Input } from "@/web/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/web/components/ui/select";
+
+// Radix reserves the empty value, so "no limit" travels as this word inside the select.
+const NO_CPU_LIMIT = "none";
 
 /** Name and slug; a new project derives its slug from the name until the slug is edited. */
 export function IdentityFields({ form }: { readonly form: ProjectFormApi }) {
@@ -217,6 +228,67 @@ export function BuildFields({ form }: { readonly form: ProjectFormApi }) {
                 onBlur={field.handleBlur}
                 onChange={(event) => field.handleChange(event.target.value)}
               />
+            )}
+          </FormField>
+        )}
+      </form.Field>
+    </>
+  );
+}
+
+/** Memory and CPU the application container may use; blank leaves it unlimited. */
+export function ResourceLimitFields({ form }: { readonly form: ProjectFormApi }) {
+  return (
+    <>
+      <form.Field name="memoryLimitInMb">
+        {(field) => (
+          <FormField
+            id="project-memory-limit"
+            label="Limite de memória (MB)"
+            hint="Em branco, sem limite. Acima dele, o contêiner é reiniciado."
+            errors={visibleErrors(form, field.state.meta)}
+          >
+            {(props) => (
+              <Input
+                {...props}
+                inputMode="numeric"
+                className="font-mono tabular-nums"
+                placeholder="Sem limite"
+                value={field.state.value}
+                onBlur={field.handleBlur}
+                onChange={(event) => field.handleChange(event.target.value)}
+              />
+            )}
+          </FormField>
+        )}
+      </form.Field>
+      <form.Field name="cpuLimitInMillicores">
+        {(field) => (
+          <FormField
+            id="project-cpu-limit"
+            label="Limite de CPU"
+            hint="Quanto do processador do servidor a aplicação pode usar."
+            errors={visibleErrors(form, field.state.meta)}
+          >
+            {(props) => (
+              <Select
+                value={field.state.value === "" ? NO_CPU_LIMIT : field.state.value}
+                onValueChange={(selected) =>
+                  field.handleChange(selected === NO_CPU_LIMIT ? "" : selected)
+                }
+              >
+                <SelectTrigger {...props} className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={NO_CPU_LIMIT}>Sem limite</SelectItem>
+                  {CPU_LIMIT_OPTIONS_IN_MILLICORES.map((millicores) => (
+                    <SelectItem key={millicores} value={String(millicores)}>
+                      {formatCpuCores(millicores)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             )}
           </FormField>
         )}

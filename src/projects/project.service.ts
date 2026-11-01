@@ -33,6 +33,8 @@ export const projectColumns = {
   autoDeploy: tables.projects.autoDeploy,
   autoApplyChanges: tables.projects.autoApplyChanges,
   previewsEnabled: tables.projects.previewsEnabled,
+  memoryLimitInMb: tables.projects.memoryLimitInMb,
+  cpuLimitInMillicores: tables.projects.cpuLimitInMillicores,
   deploymentsApproved: tables.projects.deploymentsApproved,
   currentDeploymentId: tables.projects.currentDeploymentId,
   hasRepositoryToken: sql<boolean>`${tables.projects.encryptedRepositoryToken} IS NOT NULL`.mapWith(
@@ -61,6 +63,10 @@ export type Project = {
   readonly autoApplyChanges: boolean;
   /** Pull requests to the project's branch get a temporary deployment of their own. */
   readonly previewsEnabled: boolean;
+  /** Memory limit of the application container in MiB; null for none. */
+  readonly memoryLimitInMb: number | null;
+  /** CPU limit of the application container in thousandths of a core; null for none. */
+  readonly cpuLimitInMillicores: number | null;
   readonly deploymentsApproved: boolean;
   readonly currentDeploymentId: string | null;
   readonly hasRepositoryToken: boolean;

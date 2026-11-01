@@ -9,6 +9,7 @@ import {
   imageTagFor,
   managedLabels,
   proxyContainerArgs,
+  resourceArgs,
   runContainerArgs,
   stopContainerArgs,
   volumeNameFor,
@@ -270,6 +271,42 @@ describe("assertFilePath", () => {
     "throws InvalidDockerArgumentError for %p",
     (path) => {
       expect(() => assertFilePath(path)).toThrow(InvalidDockerArgumentError);
+    },
+  );
+});
+
+describe("resourceArgs", () => {
+  test("adds nothing without limits", () => {
+    expect(resourceArgs({ memoryLimitInMb: null, cpuLimitInMillicores: null })).toEqual([]);
+  });
+
+  test("limits memory in MiB", () => {
+    expect(resourceArgs({ memoryLimitInMb: 512, cpuLimitInMillicores: null })).toEqual([
+      "--memory",
+      "512m",
+    ]);
+  });
+
+  test("writes a fraction of a core without float rounding", () => {
+    expect(resourceArgs({ memoryLimitInMb: null, cpuLimitInMillicores: 250 })).toEqual([
+      "--cpus",
+      "0.250",
+    ]);
+  });
+
+  test("writes whole cores", () => {
+    expect(resourceArgs({ memoryLimitInMb: null, cpuLimitInMillicores: 2000 })).toEqual([
+      "--cpus",
+      "2.000",
+    ]);
+  });
+
+  test.each([[0], [-1], [1.5], [Number.NaN]])(
+    "throws InvalidDockerArgumentError for the memory limit %p",
+    (memoryLimitInMb) => {
+      expect(() => resourceArgs({ memoryLimitInMb, cpuLimitInMillicores: null })).toThrow(
+        InvalidDockerArgumentError,
+      );
     },
   );
 });
