@@ -3,6 +3,7 @@ import {
   BoxesIcon,
   Building2Icon,
   ClockIcon,
+  DatabaseIcon,
   GlobeIcon,
   HomeIcon,
   KeyRoundIcon,
@@ -41,6 +42,7 @@ export const PROJECT_SECTIONS = [
   { to: "/projects/$projectId/metrics", label: "Métricas", icon: ActivityIcon, exact: false },
   { to: "/projects/$projectId/environment", label: "Variáveis", icon: VariableIcon, exact: false },
   { to: "/projects/$projectId/domains", label: "Domínios", icon: GlobeIcon, exact: false },
+  { to: "/projects/$projectId/databases", label: "Bancos", icon: DatabaseIcon, exact: false },
   { to: "/projects/$projectId/tasks", label: "Tasks", icon: ClockIcon, exact: false },
   { to: "/projects/$projectId/settings", label: "Ajustes", icon: SettingsIcon, exact: false },
 ] as const;
