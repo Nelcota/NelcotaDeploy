@@ -31,6 +31,14 @@ describe("deletedProjectIds", () => {
     expect([...deleted]).toEqual(["deleted"]);
   });
 
+  test("finds database containers whose project was deleted", () => {
+    const containers = [container({ "io.nelcota.database-project-id": "deleted" })];
+
+    const deleted = deletedProjectIds(containers, new Set());
+
+    expect([...deleted]).toEqual(["deleted"]);
+  });
+
   test("ignores containers without a project, such as the proxy", () => {
     const deleted = deletedProjectIds([container({ "io.nelcota.proxy": "true" })], new Set());
 

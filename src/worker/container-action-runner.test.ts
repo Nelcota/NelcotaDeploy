@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import { openMemoryDatabase } from "@/db";
-import { volumeNameFor } from "@/docker";
+import { LABELS, volumeNameFor } from "@/docker";
 import { createTestProject, FakeDocker, TEST_ACTOR } from "@/testing";
 import {
   addProjectVolume,
@@ -91,5 +91,36 @@ describe("removeProjectResources", () => {
 
     expect(removed.volumes).toBe(1);
     expect([...docker.volumes.owners.keys()]).toEqual(["nelcota-data-other"]);
+  });
+
+  test("removes the project's database containers", async () => {
+    const { project, docker } = setup();
+    const run = {
+      imageTag: "postgres:18.6-alpine",
+      network: "nelcota",
+      environmentKeys: [],
+      volumes: [],
+    };
+    await docker.runContainer(
+      {
+        ...run,
+        containerName: "nelcota-db-own",
+        labels: { [LABELS.databaseProjectId]: project.id },
+      },
+      {},
+    );
+    await docker.runContainer(
+      {
+        ...run,
+        containerName: "nelcota-db-other",
+        labels: { [LABELS.databaseProjectId]: "another" },
+      },
+      {},
+    );
+
+    const removed = await removeProjectResources({ docker, routes: null }, project.id);
+
+    expect(removed.containers).toBe(1);
+    expect([...docker.containers.keys()]).toEqual(["nelcota-db-other"]);
   });
 });
