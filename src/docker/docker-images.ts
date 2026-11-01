@@ -4,6 +4,8 @@ import { assertImageReference, LABELS } from "./docker.commands";
 import { DockerCommandError, UnmanagedResourceError } from "./docker.errors";
 
 const COMMAND_TIMEOUT_IN_MS = 30_000;
+// A first pull of a public image can take minutes on a slow server connection.
+const PULL_TIMEOUT_IN_MS = 600_000;
 
 /** Which images of a project to list: all of them, or those of production or of one preview. */
 export type ImageScope = "all" | { readonly previewId: string | null };
@@ -26,14 +28,19 @@ export class DockerImages {
     this.#runner = runner;
   }
 
-  async #run(args: readonly string[]): Promise<ProcessResult> {
-    return await this.#runner([this.#binary, "image", ...args], {
-      timeoutInMs: COMMAND_TIMEOUT_IN_MS,
-    });
+  async #run(
+    args: readonly string[],
+    timeoutInMs: number = COMMAND_TIMEOUT_IN_MS,
+  ): Promise<ProcessResult> {
+    return await this.#runner([this.#binary, "image", ...args], { timeoutInMs });
   }
 
-  async #runChecked(args: readonly string[], description: string): Promise<string> {
-    const result = await this.#run(args);
+  async #runChecked(
+    args: readonly string[],
+    description: string,
+    timeoutInMs: number = COMMAND_TIMEOUT_IN_MS,
+  ): Promise<string> {
+    const result = await this.#run(args, timeoutInMs);
     if (result.exitCode !== 0) {
       throw new DockerCommandError(
         `docker image ${description} failed: ${failureReason(result)}`,
@@ -76,6 +83,24 @@ export class DockerImages {
       assertImageReference(imageTag),
     ]);
     return result.exitCode === 0;
+  }
+
+  /**
+   * Downloads a public image when the host does not have it yet.
+   *
+   * @param imageTag - Image reference, such as "postgres:18.6-alpine".
+   * @throws {InvalidDockerArgumentError} When the reference is malformed.
+   * @throws {DockerCommandError} When docker cannot download it.
+   */
+  async ensurePulled(imageTag: string): Promise<void> {
+    if (await this.exists(imageTag)) {
+      return;
+    }
+    await this.#runChecked(
+      ["pull", "--", assertImageReference(imageTag)],
+      "pull",
+      PULL_TIMEOUT_IN_MS,
+    );
   }
 
   /**

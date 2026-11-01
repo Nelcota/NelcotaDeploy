@@ -3,6 +3,8 @@ import { describe, expect, test } from "bun:test";
 import {
   buildImageArgs,
   containerNameFor,
+  databaseContainerNameFor,
+  databaseVolumeNameFor,
   imageTagFor,
   managedLabels,
   proxyContainerArgs,
@@ -224,5 +226,36 @@ describe("runContainerArgs volumes", () => {
 describe("volumeNameFor", () => {
   test("derives a stable name from the volume id", () => {
     expect(volumeNameFor(DEPLOYMENT_ID)).toBe("nelcota-data-0c1d2e3f4a5b");
+  });
+});
+
+describe("database names", () => {
+  test("derives the container and data volume names from the database id", () => {
+    expect(databaseContainerNameFor(DEPLOYMENT_ID)).toBe("nelcota-db-0c1d2e3f4a5b");
+    expect(databaseVolumeNameFor(DEPLOYMENT_ID)).toBe("nelcota-dbdata-0c1d2e3f4a5b");
+  });
+
+  test("throws InvalidDockerArgumentError for a malformed database id", () => {
+    const run = () => databaseContainerNameFor("--rm");
+
+    expect(run).toThrow(InvalidDockerArgumentError);
+  });
+});
+
+describe("runContainerArgs command", () => {
+  test("puts the command after the image", () => {
+    const args = runContainerArgs({
+      ...RUN_BASE,
+      volumes: [],
+      command: ["redis-server", "--appendonly", "yes"],
+    });
+
+    expect(args.slice(-4)).toEqual([RUN_BASE.imageTag, "redis-server", "--appendonly", "yes"]);
+  });
+
+  test("ends with the image when no command is given", () => {
+    const args = runContainerArgs({ ...RUN_BASE, volumes: [] });
+
+    expect(args.at(-1)).toBe(RUN_BASE.imageTag);
   });
 });
