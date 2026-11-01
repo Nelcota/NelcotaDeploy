@@ -15,6 +15,7 @@ import {
   ServerNotReadyError,
   ServerTakenError,
 } from "@/servers";
+import { HostnameConflictError } from "@/settings";
 
 import { PROJECT_ERROR_MESSAGES } from "./project-error-messages";
 
@@ -41,6 +42,10 @@ const MESSAGES: readonly (readonly [ErrorClass, string])[] = [
     "Nenhum servidor aceita novas aplicações. Ative um em Administração → Servidores.",
   ],
   ...PROJECT_ERROR_MESSAGES,
+  [
+    HostnameConflictError,
+    "Este domínio já está reservado para outra aplicação, um preview ou o painel.",
+  ],
 ];
 
 const USER_OPERATION_MESSAGES: Readonly<Record<string, string>> = {

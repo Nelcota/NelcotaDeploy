@@ -11,21 +11,22 @@ import {
 
 describe("nextPageCursor", () => {
   test("returns undefined when the page is not full", () => {
-    const page = [{ createdAt: "2026-10-28T10:00:00Z" }];
+    const page = [{ id: "a", createdAt: "2026-10-28T10:00:00Z" }];
 
     const cursor = nextPageCursor(page);
 
     expect(cursor).toBeUndefined();
   });
 
-  test("returns the oldest creation time of a full page", () => {
+  test("returns both ordering fields of the oldest row of a full page", () => {
     const page = Array.from({ length: PAGE_SIZE }, (_, index) => ({
+      id: String(index),
       createdAt: `2026-10-28T10:00:${String(PAGE_SIZE - index).padStart(2, "0")}Z`,
     }));
 
     const cursor = nextPageCursor(page);
 
-    expect(cursor).toBe("2026-10-28T10:00:01Z");
+    expect(cursor).toEqual({ createdAt: "2026-10-28T10:00:01Z", id: String(PAGE_SIZE - 1) });
   });
 });
 

@@ -62,16 +62,16 @@ const EVENT_STREAM_HEADERS = {
  */
 function createPoller<T extends { readonly id: number }>(options: {
   readonly cursor: number;
-  readonly poll: (afterId: number) => EventBatch<T>;
+  readonly poll: (afterId: number) => EventBatch<T> | Promise<EventBatch<T>>;
   readonly send: (text: string) => void;
   readonly close: () => void;
   readonly onError: (error: unknown) => void;
-}): () => "continue" | "closed" {
+}): () => Promise<"continue" | "closed"> {
   let cursor = options.cursor;
   let quietPolls = 0;
-  return () => {
+  return async () => {
     try {
-      const batch = options.poll(cursor);
+      const batch = await options.poll(cursor);
       for (const item of batch.items) {
         options.send(formatServerSentEvent("log", item, item.id));
         cursor = item.id;
@@ -107,39 +107,61 @@ function createPoller<T extends { readonly id: number }>(options: {
  */
 export function createEventStreamResponse<T extends { readonly id: number }>(
   request: Request,
-  poll: (afterId: number) => EventBatch<T>,
+  poll: (afterId: number) => EventBatch<T> | Promise<EventBatch<T>>,
   onError: (error: unknown) => void,
 ): Response {
   let pollTimer: ReturnType<typeof setTimeout> | undefined;
   let heartbeatTimer: ReturnType<typeof setInterval> | undefined;
+  let closed = false;
+  let onAbort: (() => void) | undefined;
   const stop = () => {
     clearTimeout(pollTimer);
     clearInterval(heartbeatTimer);
+    if (onAbort != null) {
+      request.signal.removeEventListener("abort", onAbort);
+    }
   };
 
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
-      const send = (text: string) => controller.enqueue(encoder.encode(text));
+      const send = (text: string) => {
+        if (closed === false) {
+          controller.enqueue(encoder.encode(text));
+        }
+      };
       const close = () => {
+        if (closed) {
+          return;
+        }
+        closed = true;
         stop();
         controller.close();
       };
       const pollOnce = createPoller({ cursor: readCursor(request), poll, send, close, onError });
-      const tick = () => {
+      const tick = async () => {
+        if (closed) {
+          return;
+        }
         if (request.signal.aborted) {
           close();
           return;
         }
-        if (pollOnce() === "continue") {
-          pollTimer = setTimeout(tick, POLL_INTERVAL_IN_MS);
+        if ((await pollOnce()) === "continue") {
+          pollTimer = setTimeout(() => {
+            void tick();
+          }, POLL_INTERVAL_IN_MS);
         }
       };
       send(`retry: ${CLIENT_RETRY_IN_MS}\n\n`);
       heartbeatTimer = setInterval(() => send(": keep-alive\n\n"), HEARTBEAT_INTERVAL_IN_MS);
-      request.signal.addEventListener("abort", stop);
-      tick();
+      onAbort = close;
+      request.signal.addEventListener("abort", close, { once: true });
+      void tick();
     },
-    cancel: stop,
+    cancel() {
+      closed = true;
+      stop();
+    },
   });
 
   return new Response(stream, { headers: EVENT_STREAM_HEADERS });

@@ -5,11 +5,40 @@ import { eq } from "drizzle-orm";
 import { type Database, openMemoryDatabase, tables } from "@/db";
 import { createTestProject } from "@/testing";
 
-import { listMoveLeftovers, replaceContainerSnapshots } from "./monitoring.service";
+import {
+  listHostSamples,
+  listMoveLeftovers,
+  listProjectSamples,
+  replaceContainerSnapshots,
+} from "./monitoring.service";
 
 const OLD_SERVER = "local";
 const NEW_SERVER = "apps";
 const NOW = "2026-10-29T12:00:00.000Z";
+
+test.each(["host", "container"] as const)(
+  "keeps the newest readings when the %s metric window exceeds its limit",
+  (scope) => {
+    const database = openMemoryDatabase();
+    using _connection = database.$client;
+    const project = createTestProject(database);
+    database.$client
+      .query(
+        "WITH RECURSIVE sequence(value) AS (SELECT 0 UNION ALL SELECT value + 1 FROM sequence WHERE value < 2000) INSERT INTO metric_samples(scope, project_id, server_id, created_at) SELECT ?, ?, 'local', strftime('%Y-%m-%dT%H:%M:%fZ', '2026-11-01T00:00:00Z', '+' || (value * 15) || ' seconds') FROM sequence",
+      )
+      .run(scope, scope === "host" ? null : project.id);
+    const since = new Date("2026-11-01T00:00:00Z");
+
+    const samples =
+      scope === "host"
+        ? listHostSamples(database, "local", since)
+        : listProjectSamples(database, project.id, since);
+
+    expect(samples).toHaveLength(2000);
+    expect(samples.at(0)?.createdAt).toBe("2026-11-01T00:00:15.000Z");
+    expect(samples.at(-1)?.createdAt).toBe("2026-11-01T08:20:00.000Z");
+  },
+);
 
 function addServerRow(database: Database, id: string): void {
   database

@@ -17,6 +17,7 @@ import {
   summarizeDeployments,
 } from "@/deployments";
 import { getProject } from "@/projects";
+import { pageCursorSchema } from "@/shared/pagination";
 import { authorize } from "@/web/server/authorization";
 import { PublicError } from "@/web/server/public-error";
 
@@ -31,7 +32,7 @@ export const listDeploymentsFn = createServerFn({ method: "GET" })
       projectId: idSchema.optional(),
       status: z.enum(DEPLOYMENT_STATUSES).optional(),
       limit: z.number().int().min(1).max(MAX_PAGE_SIZE),
-      before: z.iso.datetime().optional(),
+      before: pageCursorSchema.optional(),
     }),
   )
   .handler(async ({ data }) => {

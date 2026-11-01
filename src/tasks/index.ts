@@ -1,4 +1,9 @@
-export { InvalidScheduleError, TaskNameTakenError, TaskNotFoundError } from "./task.errors";
+export {
+  InvalidScheduleError,
+  TaskNameTakenError,
+  TaskNotFoundError,
+  TaskRunningError,
+} from "./task.errors";
 export { createTask, deleteTask, listTasks, runTask, type Task, updateTask } from "./task.service";
 export {
   failTaskExecutions,

@@ -34,6 +34,27 @@ function finishSuccessfully(
   completeDeployment(database, deploymentId);
 }
 describe("deployment lifecycle", () => {
+  test("paginates deployments sharing a creation timestamp without dropping either", () => {
+    const database = openMemoryDatabase();
+    using _connection = database.$client;
+    const firstProject = createTestProject(database);
+    const other = createTestProject(database, { name: "Other", slug: "other" });
+    requestDeployment(database, { projectId: firstProject.id, ...manual });
+    requestDeployment(database, { projectId: other.id, ...manual });
+    database.update(tables.deployments).set({ createdAt: "2026-11-01T12:00:00.000Z" }).run();
+    const first = listDeployments(database, { limit: 1 }).at(0);
+    if (first == null) {
+      throw new Error("Missing test deployment");
+    }
+
+    const second = listDeployments(database, {
+      limit: 1,
+      before: { createdAt: first.createdAt, id: first.id },
+    });
+
+    expect(second).toHaveLength(1);
+    expect(second.at(0)?.id).not.toBe(first.id);
+  });
   test("completing a deployment makes it the project's current deployment", () => {
     const database = openMemoryDatabase();
     const project = createTestProject(database);

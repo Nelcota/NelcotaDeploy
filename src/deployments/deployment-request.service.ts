@@ -40,10 +40,12 @@ type PendingDeployment = {
   readonly requestedCommitSha: string | null;
   readonly sourceDeploymentId: string | null;
   readonly serverId: string;
+  readonly repositoryUrl: string | null;
 };
 
 /** What makes two deployment requests identical. */
 type RequestIdentity = {
+  readonly repositoryUrl: string;
   readonly sourceDeploymentId: string | null;
   readonly requestedCommitSha: string | null;
   /** A request for another server, after a move, is never a duplicate. */
@@ -63,6 +65,7 @@ function findReusableImage(
       commitMessage: tables.deployments.commitMessage,
       branch: tables.deployments.branch,
       buildConfigHash: tables.deployments.buildConfigHash,
+      internalPort: tables.deployments.internalPort,
     })
     .from(tables.deployments)
     .where(
@@ -95,6 +98,7 @@ function listPendingDeployments(
       requestedCommitSha: tables.deployments.requestedCommitSha,
       sourceDeploymentId: tables.deployments.sourceDeploymentId,
       serverId: tables.deployments.serverId,
+      repositoryUrl: tables.deployments.repositoryUrl,
     })
     .from(tables.deployments)
     .where(
@@ -123,6 +127,7 @@ function findDuplicateRequest(
       deployment.sourceDeploymentId === identity.sourceDeploymentId &&
       deployment.requestedCommitSha === identity.requestedCommitSha &&
       deployment.serverId === identity.serverId &&
+      deployment.repositoryUrl === identity.repositoryUrl &&
       // A branch-head request may run again once the earlier one started: the head may have moved.
       (deployment.status === "queued" || identity.requestedCommitSha != null),
   );
@@ -170,6 +175,7 @@ function revisionOf(
       commitMessage: requestedMessage,
       imageTag: null,
       buildConfigHash: null,
+      internalPort: null,
     };
   }
   return {
@@ -179,6 +185,7 @@ function revisionOf(
     imageTag: source.imageTag,
     // The reused image carries the build variables of its source.
     buildConfigHash: source.buildConfigHash,
+    internalPort: source.internalPort,
   };
 }
 
@@ -187,11 +194,13 @@ function insertQueuedDeployment(
   request: DeploymentRequest,
   {
     branch,
+    repositoryUrl,
     serverId,
     source,
     now,
   }: {
     readonly branch: string;
+    readonly repositoryUrl: string;
     /** Server the project is placed on now, where this deployment will run. */
     readonly serverId: string;
     readonly source: ReusableImage | null;
@@ -204,6 +213,7 @@ function insertQueuedDeployment(
     .values({
       id: deploymentId,
       projectId: request.projectId,
+      repositoryUrl,
       status: "queued",
       trigger: request.trigger,
       triggeredByUserId: request.triggeredByUserId,
@@ -284,6 +294,7 @@ export function requestDeployment(
 
     const pending = listPendingDeployments(transaction, project.id, previewId);
     const duplicate = findDuplicateRequest(pending, {
+      repositoryUrl: project.repositoryUrl,
       sourceDeploymentId,
       requestedCommitSha: request.commitSha ?? null,
       serverId: project.serverId,
@@ -296,6 +307,7 @@ export function requestDeployment(
     cancelSupersededDeployments(transaction, pending, now);
     const deploymentId = insertQueuedDeployment(transaction, request, {
       branch,
+      repositoryUrl: project.repositoryUrl,
       serverId: project.serverId,
       source,
       now,

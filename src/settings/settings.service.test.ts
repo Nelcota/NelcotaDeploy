@@ -35,3 +35,16 @@ describe("saveSystemSettings", () => {
     expect(getSystemSettings(openMemoryDatabase())).toEqual(DEFAULT_SYSTEM_SETTINGS);
   });
 });
+
+test("omits webhook credentials from settings exposed to readers", () => {
+  const database = openMemoryDatabase();
+  const webhook = "https://hooks.example.com/private-token";
+  saveSystemSettings(database, { ...DEFAULT_SYSTEM_SETTINGS, alertWebhookUrl: webhook });
+
+  const visible = getSystemSettings(database, { includeSecrets: false });
+
+  expect(visible.alertWebhookUrl).toBeNull();
+  expect(visible.organizationName).toBe(DEFAULT_SYSTEM_SETTINGS.organizationName);
+  expect(getSystemSettings(database).alertWebhookUrl).toBe(webhook);
+  database.$client.close();
+});

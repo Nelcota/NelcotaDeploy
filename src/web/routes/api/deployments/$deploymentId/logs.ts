@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 
-import { getCurrentUser } from "@/auth";
+import { getCurrentUser, requireUser } from "@/auth";
 import { getDatabase } from "@/db";
 import { getDeployment, isTerminalStatus } from "@/deployments";
 import { createLogger } from "@/logging";
@@ -25,7 +25,8 @@ export const Route = createFileRoute("/api/deployments/$deploymentId/logs")({
         }
         return createEventStreamResponse(
           request,
-          (afterId) => {
+          async (afterId) => {
+            await requireUser(request.headers, "project:read");
             const deployment = getDeployment(database, params.deploymentId);
             const items = listDeploymentLogs(database, params.deploymentId, {
               afterId,

@@ -1,6 +1,7 @@
-import { desc, lt } from "drizzle-orm";
+import { and, desc, eq, lt, or } from "drizzle-orm";
 
 import { type Database, tables, type Transaction } from "@/db";
+import type { PageCursor } from "@/shared/pagination";
 
 /** Who performed an audited action. */
 export type Actor =
@@ -47,12 +48,12 @@ export function recordAuditEvent(database: Database | Transaction, entry: AuditE
  * Lists audit events, newest first.
  *
  * @param database - Database.
- * @param options - `before` is the createdAt cursor of the last item already shown.
+ * @param options - `before` contains the creation time and id of the last item already shown.
  * @returns Up to `limit` events (at most 100).
  */
 export function listAuditEvents(
   database: Database,
-  options: { readonly limit: number; readonly before?: string | undefined },
+  options: { readonly limit: number; readonly before?: PageCursor | undefined },
 ) {
   const limit = Math.min(Math.max(options.limit, 1), MAX_PAGE_SIZE);
   return database
@@ -67,8 +68,18 @@ export function listAuditEvents(
       createdAt: tables.auditEvents.createdAt,
     })
     .from(tables.auditEvents)
-    .where(options.before == null ? undefined : lt(tables.auditEvents.createdAt, options.before))
-    .orderBy(desc(tables.auditEvents.createdAt))
+    .where(
+      options.before == null
+        ? undefined
+        : or(
+            lt(tables.auditEvents.createdAt, options.before.createdAt),
+            and(
+              eq(tables.auditEvents.createdAt, options.before.createdAt),
+              lt(tables.auditEvents.id, options.before.id),
+            ),
+          ),
+    )
+    .orderBy(desc(tables.auditEvents.createdAt), desc(tables.auditEvents.id))
     .limit(limit)
     .all();
 }

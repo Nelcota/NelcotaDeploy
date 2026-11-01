@@ -1,7 +1,7 @@
 import type { Database } from "@/db";
 import { getDeployment } from "@/deployments";
 import type { DockerEngine } from "@/docker";
-import { resolveEnvironment } from "@/environments";
+import { readDeploymentSecrets, resolveEnvironment } from "@/environments";
 import { getProject } from "@/projects";
 import { createRedactor, type SecretBox } from "@/secrets";
 import { getExecutionForRun, updateTaskExecution } from "@/tasks";
@@ -56,13 +56,20 @@ export async function runTaskExecution(
   const environment = await resolveEnvironment(database, dependencies.secretBox, {
     projectId: project.id,
   });
+  const docker = dependencies.dockerOf(container.serverId);
+  const saved = await readDeploymentSecrets(
+    database,
+    dependencies.secretBox,
+    project.currentDeploymentId,
+  );
+  const previous = saved ?? (await docker.readContainerEnvironment(container.containerName));
   updateTaskExecution(database, executionId, { status: "running" });
   return await executeInContainer(
-    { database, docker: dependencies.dockerOf(container.serverId) },
+    { database, docker },
     {
       execution: { ...execution, id: executionId },
       containerName: container.containerName,
-      redact: createRedactor(environment.secretValues),
+      redact: createRedactor([...environment.secretValues, ...previous]),
       signal,
     },
   );
@@ -99,7 +106,7 @@ async function executeInContainer(
     updateTaskExecution(database, execution.id, {
       status: "failed",
       output,
-      errorMessage: error instanceof Error ? error.message : String(error),
+      errorMessage: run.redact(error instanceof Error ? error.message : String(error)),
     });
     return "failed";
   }

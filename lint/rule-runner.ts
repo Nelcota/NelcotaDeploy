@@ -85,7 +85,7 @@ export async function countRuleErrorsByFile(batch: LintBatch): Promise<Map<strin
     if (diagnostic.code !== diagnosticCode) {
       continue;
     }
-    const fileName = relative(directory.path, String(diagnostic.filename));
+    const fileName = relative(directory.path, String(diagnostic.filename)).replaceAll("\\", "/");
     const currentCount = errorCounts.get(fileName);
     if (currentCount == null) {
       throw new Error(`oxlint reported a file that is not a lint case: ${fileName}`);

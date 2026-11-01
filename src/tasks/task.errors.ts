@@ -21,3 +21,11 @@ export class TaskNameTakenError extends Error {
     this.name = "TaskNameTakenError";
   }
 }
+
+/** Thrown when deleting a task would release a job a worker is still executing. */
+export class TaskRunningError extends Error {
+  constructor(taskId: string) {
+    super(`Task ${taskId} is still running`);
+    this.name = "TaskRunningError";
+  }
+}

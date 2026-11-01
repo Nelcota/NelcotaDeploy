@@ -25,7 +25,9 @@ export function useAuditEvents() {
     }
     setLoadingMore(true);
     try {
-      const page = await listAuditEventsFn({ data: { before: last.createdAt } });
+      const page = await listAuditEventsFn({
+        data: { before: { createdAt: last.createdAt, id: last.id } },
+      });
       setOlderPages((current) => [...current, ...page]);
       setExhausted(page.length === 0);
     } catch (error) {

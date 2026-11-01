@@ -123,6 +123,27 @@ describe("processPullRequest refusals", () => {
 });
 
 describe("processPullRequest closing a preview", () => {
+  test("closes an existing preview even after previews were disabled", () => {
+    const { database, project } = setup();
+    using _connection = database.$client;
+    processPullRequest(database, pullRequestBody());
+    database
+      .update(tables.projects)
+      .set({ previewsEnabled: false })
+      .where(eq(tables.projects.id, project.id))
+      .run();
+
+    processPullRequest(database, pullRequestBody({ action: "closed" }));
+
+    expect(listActivePreviews(database, project.id)).toHaveLength(0);
+    expect(
+      database
+        .select({ id: tables.jobs.id })
+        .from(tables.jobs)
+        .where(eq(tables.jobs.kind, "preview_cleanup"))
+        .all(),
+    ).toHaveLength(1);
+  });
   test("closes the preview and queues its removal", () => {
     const { database, project } = setup();
     processPullRequest(database, pullRequestBody());

@@ -1,9 +1,10 @@
-import { and, count, desc, eq, inArray, isNotNull, isNull, lt, ne, sql } from "drizzle-orm";
+import { and, count, desc, eq, inArray, isNotNull, isNull, lt, ne, or, sql } from "drizzle-orm";
 
 import { type Actor, recordAuditEvent } from "@/audit";
 import { type Database, tables, type Transaction } from "@/db";
 import { cancelQueuedJobs } from "@/jobs";
 import { getProject } from "@/projects";
+import type { PageCursor } from "@/shared/pagination";
 
 import {
   ACTIVE_STATUSES,
@@ -27,6 +28,8 @@ const deploymentColumns = {
   trigger: tables.deployments.trigger,
   triggeredByLabel: tables.deployments.triggeredByLabel,
   branch: tables.deployments.branch,
+  repositoryUrl: tables.deployments.repositoryUrl,
+  internalPort: tables.deployments.internalPort,
   requestedCommitSha: tables.deployments.requestedCommitSha,
   commitSha: tables.deployments.commitSha,
   commitMessage: tables.deployments.commitMessage,
@@ -58,6 +61,8 @@ export type Deployment = {
   readonly trigger: DeploymentTrigger;
   readonly triggeredByLabel: string;
   readonly branch: string;
+  readonly repositoryUrl: string | null;
+  readonly internalPort: number | null;
   readonly requestedCommitSha: string | null;
   readonly commitSha: string | null;
   readonly commitMessage: string | null;
@@ -159,8 +164,8 @@ export function getDeployment(database: Database, deploymentId: string): Deploym
  * Lists deployments, newest first, with cursor pagination.
  *
  * @param database - Database.
- * @param options - Optional project and status filters; `before` is the createdAt of the
- * last row already shown.
+ * @param options - Optional project and status filters; `before` contains both ordering fields
+ * of the last row already shown.
  * @returns Up to `limit` deployments (at most 100).
  */
 export function listDeployments(
@@ -169,7 +174,7 @@ export function listDeployments(
     readonly projectId?: string | undefined;
     readonly status?: DeploymentStatus | undefined;
     readonly limit: number;
-    readonly before?: string | undefined;
+    readonly before?: PageCursor | undefined;
     /** Deployments of this preview; production ones when omitted. */
     readonly previewId?: string | undefined;
   },
@@ -183,7 +188,15 @@ export function listDeployments(
       and(
         options.projectId == null ? undefined : eq(tables.deployments.projectId, options.projectId),
         options.status == null ? undefined : eq(tables.deployments.status, options.status),
-        options.before == null ? undefined : lt(tables.deployments.createdAt, options.before),
+        options.before == null
+          ? undefined
+          : or(
+              lt(tables.deployments.createdAt, options.before.createdAt),
+              and(
+                eq(tables.deployments.createdAt, options.before.createdAt),
+                lt(tables.deployments.id, options.before.id),
+              ),
+            ),
         options.previewId == null
           ? isNull(tables.deployments.previewId)
           : eq(tables.deployments.previewId, options.previewId),
@@ -225,6 +238,7 @@ export function listRollbackCandidates(database: Database, projectId: string): D
 
 /** Fields the worker records while a deployment progresses. */
 export type DeploymentProgress = {
+  readonly internalPort?: number;
   readonly commitSha?: string;
   readonly commitMessage?: string;
   readonly imageTag?: string;

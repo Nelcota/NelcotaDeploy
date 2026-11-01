@@ -132,6 +132,17 @@ export class Worker {
         errorMessage: message,
         retryable: this.#abortJobs.signal.aborted,
       });
+      if (this.#abortJobs.signal.aborted) {
+        handleRecoveredJobs(database, logger, [
+          {
+            id: job.id,
+            kind: job.kind,
+            deploymentId: job.deploymentId,
+            taskExecutionId: job.taskExecutionId,
+            outcome,
+          },
+        ]);
+      }
       logger.error({ jobId: job.id, kind: job.kind, err: error, outcome }, "job failed");
     }
   }
@@ -178,6 +189,13 @@ export class Worker {
   }
 
   async #drain(): Promise<void> {
+    // Other workers must not reclaim jobs while this worker is still draining them.
+    using _leaseRenewal = {
+      timer: setInterval(() => this.#heartbeat(), HEARTBEAT_INTERVAL_IN_MS),
+      [Symbol.dispose]() {
+        clearInterval(this.timer);
+      },
+    };
     for (const timer of this.#timers) {
       if (typeof timer === "object" && "stop" in timer) {
         timer.stop();

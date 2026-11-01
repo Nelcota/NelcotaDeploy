@@ -3,6 +3,7 @@ import { and, asc, eq } from "drizzle-orm";
 import { type Actor, recordAuditEvent } from "@/audit";
 import { type Database, tables } from "@/db";
 import { getProject } from "@/projects";
+import { assertHostnameOwnership, getSystemSettings } from "@/settings";
 import type { DomainInput } from "@/shared/schemas/domain.schema";
 import type { SystemSettings } from "@/shared/schemas/settings.schema";
 
@@ -108,6 +109,7 @@ export function addDomain(
         createdAt: new Date().toISOString(),
       })
       .run();
+    assertHostnameOwnership(transaction, getSystemSettings(transaction));
     recordAuditEvent(transaction, {
       actor,
       action: "domain.add",

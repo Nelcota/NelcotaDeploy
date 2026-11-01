@@ -10,7 +10,12 @@ import {
 import { DomainNotFoundError, DomainTakenError } from "@/domains";
 import { EnvironmentVariableNotFoundError } from "@/environments";
 import { ProjectNotFoundError, ProjectSlugTakenError } from "@/projects";
-import { InvalidScheduleError, TaskNameTakenError, TaskNotFoundError } from "@/tasks";
+import {
+  InvalidScheduleError,
+  TaskNameTakenError,
+  TaskNotFoundError,
+  TaskRunningError,
+} from "@/tasks";
 import {
   ProjectHasVolumesError,
   VolumeAttachedError,
@@ -53,6 +58,7 @@ export const PROJECT_ERROR_MESSAGES: readonly (readonly [
   [DomainNotFoundError, "Domínio não encontrado."],
   [EnvironmentVariableNotFoundError, "Variável não encontrada."],
   [TaskNotFoundError, "Task não encontrada."],
+  [TaskRunningError, "Aguarde a execução da task terminar antes de excluí-la."],
   [TaskNameTakenError, "Já existe uma task com este nome neste projeto."],
   [InvalidScheduleError, "Expressão cron inválida. Use 5 campos, como */5 * * * *."],
 ];

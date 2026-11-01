@@ -151,6 +151,8 @@ export const deployments = sqliteTable(
       onDelete: "set null",
     }),
     triggeredByLabel: text("triggered_by_label").notNull(),
+    // Repository approved when this deployment was queued; never follows later edits.
+    repositoryUrl: text("repository_url"),
     branch: text("branch").notNull(),
     requestedCommitSha: text("requested_commit_sha"),
     commitSha: text("commit_sha"),
@@ -161,6 +163,9 @@ export const deployments = sqliteTable(
     // Fingerprint of the build-time variables baked into the image; a redeploy keeps its source's.
     buildConfigHash: text("build_config_hash"),
     containerName: text("container_name"),
+    // Effective port and encrypted log-redaction values of this particular container.
+    internalPort: integer("internal_port"),
+    encryptedSecretValues: text("encrypted_secret_values"),
     // Server the deployment ran on, which is where its image and container live.
     serverId: text("server_id").notNull().default(LOCAL_SERVER_ID),
     sourceDeploymentId: text("source_deployment_id"),

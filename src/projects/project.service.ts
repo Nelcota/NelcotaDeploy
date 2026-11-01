@@ -5,6 +5,7 @@ import { type Database, tables, type Transaction } from "@/db";
 import { enqueueJob } from "@/jobs";
 import type { SecretBox } from "@/secrets";
 import { chooseServerForNewProject } from "@/servers";
+import { assertHostnameOwnership, getSystemSettings } from "@/settings";
 import { parseGitHubRepository, type ProjectInput } from "@/shared/schemas/project.schema";
 
 import { ProjectNotFoundError, ProjectSlugTakenError } from "./project.errors";
@@ -140,6 +141,7 @@ export function createProject(
       .insert(tables.environments)
       .values({ id: Bun.randomUUIDv7(), projectId, name: PRODUCTION_ENVIRONMENT, createdAt: now })
       .run();
+    assertHostnameOwnership(transaction, getSystemSettings(transaction));
     recordAuditEvent(transaction, {
       actor: creator.actor,
       action: "project.create",
@@ -197,6 +199,10 @@ export function updateProject(
       })
       .where(eq(tables.projects.id, projectId))
       .run();
+    if (repositoryChanged || current.branch !== input.branch || input.previewsEnabled === false) {
+      closeProjectPreviews(transaction, projectId);
+    }
+    assertHostnameOwnership(transaction, getSystemSettings(transaction));
     recordAuditEvent(transaction, {
       actor: editor.actor,
       action: "project.update",
@@ -339,6 +345,7 @@ function findActiveProjectRow(database: Database | Transaction, projectId: strin
       repositoryFullName: tables.projects.repositoryFullName,
       deploymentsApproved: tables.projects.deploymentsApproved,
       internalPort: tables.projects.internalPort,
+      branch: tables.projects.branch,
     })
     .from(tables.projects)
     .where(and(eq(tables.projects.id, projectId), isNull(tables.projects.deletionRequestedAt)))
@@ -347,6 +354,25 @@ function findActiveProjectRow(database: Database | Transaction, projectId: strin
     throw new ProjectNotFoundError(projectId);
   }
   return row;
+}
+
+/** Retires previews when their repository, branch or enablement no longer matches the project. */
+function closeProjectPreviews(transaction: Transaction, projectId: string): void {
+  const now = new Date().toISOString();
+  const closed = transaction
+    .update(tables.previews)
+    .set({ status: "closed", closedAt: now, updatedAt: now })
+    .where(and(eq(tables.previews.projectId, projectId), eq(tables.previews.status, "active")))
+    .returning({ id: tables.previews.id })
+    .all();
+  for (const preview of closed) {
+    enqueueJob(transaction, {
+      kind: "preview_cleanup",
+      projectId,
+      payload: { previewId: preview.id },
+      dedupeKey: `preview-cleanup:${preview.id}`,
+    });
+  }
 }
 
 /**

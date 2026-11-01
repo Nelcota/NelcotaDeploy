@@ -2,7 +2,7 @@ import type { Logger } from "pino";
 
 import type { Database } from "@/db";
 import { type ContainerInfo, type DockerEngine, LABELS, type OutputHandler } from "@/docker";
-import { resolveEnvironment } from "@/environments";
+import { readDeploymentSecrets, resolveEnvironment } from "@/environments";
 import { appendRuntimeLogs, getLatestRuntimeLogTime, type RuntimeLogEntry } from "@/logs";
 import {
   type ContainerSample,
@@ -192,8 +192,10 @@ export class ContainerObserver implements Disposable {
     }
     const controller = new AbortController();
     this.#followers.set(container.id, { controller, projectId });
-    const redact = await this.#loadRedactor(projectId);
+    const redact = await this.#loadRedactor(container, projectId);
     if (redact == null) {
+      this.#followers.delete(container.id);
+      controller.abort();
       return;
     }
     const lastStored =
@@ -219,10 +221,19 @@ export class ContainerObserver implements Disposable {
       });
   }
 
-  async #loadRedactor(projectId: string): Promise<((text: string) => string) | null> {
+  async #loadRedactor(
+    container: ContainerInfo,
+    projectId: string,
+  ): Promise<((text: string) => string) | null> {
     try {
       const environment = await resolveEnvironment(this.#database, this.#secretBox, { projectId });
-      return createRedactor(environment.secretValues);
+      const saved = await readDeploymentSecrets(
+        this.#database,
+        this.#secretBox,
+        container.labels[LABELS.deploymentId] ?? null,
+      );
+      const previous = saved ?? (await this.#docker.readContainerEnvironment(container.id));
+      return createRedactor([...environment.secretValues, ...previous]);
     } catch (error) {
       // Without the secrets we cannot redact, so the logs are not collected at all.
       this.#logger.warn(
@@ -248,7 +259,7 @@ export class ContainerObserver implements Disposable {
     if (parsed == null) {
       // A message from the docker CLI, not the application: keep it out of its logs.
       this.#logger.debug(
-        { container: source.container.name, line: line.replaceAll(/[\r\n]/g, " ") },
+        { container: source.container.name, line: source.redact(line).replaceAll(/[\r\n]/g, " ") },
         "docker logs reported",
       );
       return;

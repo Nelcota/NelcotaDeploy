@@ -3,6 +3,7 @@ import { z } from "zod";
 
 import { listAuditEvents } from "@/audit";
 import { getDatabase } from "@/db";
+import { pageCursorSchema } from "@/shared/pagination";
 import { authorize } from "@/web/server/authorization";
 import { listWebhookDeliveries } from "@/webhooks";
 
@@ -10,7 +11,7 @@ const AUDIT_PAGE_SIZE = 50;
 const WEBHOOK_PAGE_SIZE = 30;
 
 export const listAuditEventsFn = createServerFn({ method: "GET" })
-  .validator(z.object({ before: z.iso.datetime().optional() }))
+  .validator(z.object({ before: pageCursorSchema.optional() }))
   .handler(async ({ data }) => {
     await authorize("audit:read");
     return listAuditEvents(getDatabase(), { limit: AUDIT_PAGE_SIZE, before: data.before }).map(

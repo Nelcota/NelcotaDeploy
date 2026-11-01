@@ -1,5 +1,31 @@
 import { z } from "zod";
 
+import { DockerCommandError } from "./docker.errors";
+
+/**
+ * Reads environment values without exposing malformed secret-bearing output in errors.
+ *
+ * @param output - Docker's JSON environment array.
+ * @returns Environment values, including empty values.
+ * @throws {DockerCommandError} When the JSON or environment entries are malformed.
+ */
+export function parseEnvironmentOutput(output: string): readonly string[] {
+  let value: unknown;
+  try {
+    value = JSON.parse(output) as unknown;
+  } catch {
+    throw new DockerCommandError("Docker returned invalid environment JSON", 1);
+  }
+  const parsed = z
+    .array(z.string().regex(/^[^=]+=/))
+    .nullable()
+    .safeParse(value);
+  if (parsed.success === false) {
+    throw new DockerCommandError("Docker returned an invalid container environment", 1);
+  }
+  return (parsed.data ?? []).map((entry) => entry.slice(entry.indexOf("=") + 1));
+}
+
 const BYTES_IN_KIB = 1024;
 const BYTES_IN_MIB = BYTES_IN_KIB * BYTES_IN_KIB;
 const BYTES_IN_GIB = BYTES_IN_MIB * BYTES_IN_KIB;

@@ -20,7 +20,7 @@ function recoverDeployment(
       ? "The worker stopped during this deployment; it will run again"
       : "The worker stopped during this deployment";
   appendDeploymentLogs(database, deploymentId, [{ stream: "system", level: "warn", message }]);
-  if (deployment.status !== "queued") {
+  if (deployment.status !== "queued" || outcome === "failed") {
     transitionDeployment(database, deploymentId, {
       to: outcome === "requeued" ? "queued" : "failed",
       errorMessage: outcome === "requeued" ? null : message,

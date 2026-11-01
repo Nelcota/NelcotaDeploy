@@ -91,7 +91,16 @@ async function setup(scopes: ("read" | "deploy")[]) {
     clientInfo: { name: "test", version: "1.0.0" },
   });
   client.notify("notifications/initialized");
-  return { client, cleanup: async () => await rm(directory, { recursive: true, force: true }) };
+  return {
+    client,
+    cleanup: async () => {
+      {
+        using _connection = database.$client;
+        await client[Symbol.asyncDispose]();
+      }
+      await rm(directory, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
+    },
+  };
 }
 
 describe("MCP server over stdio", () => {

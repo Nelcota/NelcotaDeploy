@@ -39,6 +39,37 @@ function delivery(
 }
 
 describe("handleGitHubDelivery signature checks", () => {
+  test("rolls back failed deliveries and retries every project on redelivery", async () => {
+    const database = openMemoryDatabase();
+    createTestProject(database);
+    createTestProject(database, { name: "Other", slug: "other" });
+    database.$client.run(
+      "CREATE TEMP TRIGGER fail_second BEFORE INSERT ON deployments WHEN (SELECT COUNT(*) FROM deployments) >= 1 BEGIN SELECT RAISE(ABORT, 'Transient failure'); END",
+    );
+    const request = delivery(pushBody());
+
+    const error = await handleGitHubDelivery(database, request, [SECRET]).catch(
+      (failure: unknown) => failure,
+    );
+    expect(error).toMatchObject({ message: "Transient failure" });
+
+    expect(
+      database.select({ id: tables.deployments.id }).from(tables.deployments).all(),
+    ).toHaveLength(0);
+    expect(
+      database.select({ id: tables.webhookDeliveries.id }).from(tables.webhookDeliveries).all(),
+    ).toHaveLength(0);
+    database.$client.run("DROP TRIGGER fail_second");
+    const retried = await handleGitHubDelivery(database, request, [SECRET]);
+    expect(retried.status).toBe("accepted");
+    expect(
+      database.select({ id: tables.deployments.id }).from(tables.deployments).all(),
+    ).toHaveLength(2);
+    expect(await handleGitHubDelivery(database, request, [SECRET])).toEqual({
+      status: "duplicate",
+    });
+    database.$client.close();
+  });
   test("throws InvalidWebhookSignatureError for a wrong signature", async () => {
     const database = openMemoryDatabase();
     const body = pushBody();

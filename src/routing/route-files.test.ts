@@ -1,9 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtemp, readdir } from "node:fs/promises";
+import { mkdtemp, readdir, realpath } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { type CommandRunner, runProcess } from "@/process";
+import { toShellPath } from "@/testing";
 
 import { RouteFiles } from "./route-files";
 import { InvalidRouteError, RouteFileError } from "./routing.errors";
@@ -11,14 +12,14 @@ import { InvalidRouteError, RouteFileError } from "./routing.errors";
 const CONFIG = { http: { middlewares: { x: { compress: {} } } } };
 
 async function routeDirectory(): Promise<string> {
-  return join(await mkdtemp(join(tmpdir(), "nelcota-routes-")), "routes");
+  return join(await realpath(await mkdtemp(join(tmpdir(), "nelcota-routes-"))), "routes");
 }
 
 describe("RouteFiles", () => {
   test("creates the directory and writes the routes as JSON under a .yml name", async () => {
     const directory = await routeDirectory();
 
-    await new RouteFiles(runProcess, directory).write("project-1", CONFIG);
+    await new RouteFiles(runProcess, toShellPath(directory)).write("project-1", CONFIG);
 
     expect(await readdir(directory)).toEqual(["project-1.yml"]);
     expect(await Bun.file(join(directory, "project-1.yml")).json()).toEqual(CONFIG);
@@ -28,14 +29,14 @@ describe("RouteFiles", () => {
     const directory = await routeDirectory();
     const tricky = { http: { middlewares: { x: { note: "$(touch /tmp/x) `id` \"' %s" } } } };
 
-    await new RouteFiles(runProcess, directory).write("project-1", tricky);
+    await new RouteFiles(runProcess, toShellPath(directory)).write("project-1", tricky);
 
     expect(await Bun.file(join(directory, "project-1.yml")).json()).toEqual(tricky);
   });
 
   test("removes the routes, and does nothing when they are already gone", async () => {
     const directory = await routeDirectory();
-    const files = new RouteFiles(runProcess, directory);
+    const files = new RouteFiles(runProcess, toShellPath(directory));
     await files.write("project-1", CONFIG);
 
     await files.remove("project-1");
@@ -48,7 +49,7 @@ describe("RouteFiles", () => {
 describe("RouteFiles.removePrefixed", () => {
   test("removes the files that start with the prefix and keeps the others", async () => {
     const directory = await routeDirectory();
-    const files = new RouteFiles(runProcess, directory);
+    const files = new RouteFiles(runProcess, toShellPath(directory));
     await files.write("project-1", CONFIG);
     await files.write("project-1-pr-12", CONFIG);
     await files.write("project-1-pr-13", CONFIG);
@@ -59,7 +60,7 @@ describe("RouteFiles.removePrefixed", () => {
   });
 
   test("throws InvalidRouteError for a prefix that could leave the directory", async () => {
-    const files = new RouteFiles(runProcess, await routeDirectory());
+    const files = new RouteFiles(runProcess, toShellPath(await routeDirectory()));
 
     const error = await files.removePrefixed("../").catch((failure: unknown) => failure);
 
@@ -71,7 +72,7 @@ describe("RouteFiles validation", () => {
   test.each([["../escape"], ["a/b"], [""], ["UPPER"]])(
     "throws InvalidRouteError for the file name %p",
     async (name) => {
-      const files = new RouteFiles(runProcess, await routeDirectory());
+      const files = new RouteFiles(runProcess, toShellPath(await routeDirectory()));
 
       const error = await files.write(name, CONFIG).catch((failure: unknown) => failure);
 

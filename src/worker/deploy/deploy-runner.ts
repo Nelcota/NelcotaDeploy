@@ -4,6 +4,7 @@ import {
   getDeployment,
   isCancellationRequested,
   isTerminalStatus,
+  ProjectNotApprovedError,
   transitionDeployment,
 } from "@/deployments";
 import { getProject } from "@/projects";
@@ -60,6 +61,7 @@ export async function runDeployment(
   if (isTerminalStatus(deployment.status)) {
     return "skipped";
   }
+  jobSignal.throwIfAborted();
   if (deployment.status !== "queued") {
     // A retried job after a worker crash: start the deployment over from the queue state.
     transitionDeployment(database, deploymentId, { to: "queued" });
@@ -77,16 +79,33 @@ export async function runDeployment(
   };
 
   try {
+    if (
+      project.deploymentsApproved === false ||
+      (deployment.repositoryUrl != null && deployment.repositoryUrl !== project.repositoryUrl)
+    ) {
+      throw new ProjectNotApprovedError(project.id);
+    }
     await deploy(dependencies, context);
-    await finishDeployment(dependencies, context);
-    return "succeeded";
+    logs.flush();
+    completeDeployment(database, deployment.id);
   } catch (error) {
-    const cancelled = cancellation.signal.aborted || error instanceof DeploymentCancelledError;
-    await recordFailure(dependencies, context, { error, cancelled });
-    if (jobSignal.aborted && cancelled === false) {
+    if (jobSignal.aborted && cancellation.signal.aborted === false) {
+      await discardFailedContainer(dependencies.docker, context.state.containerName, logs);
+      requeueDeployment(database, deployment.id);
       throw error;
     }
+    const cancelled = cancellation.signal.aborted || error instanceof DeploymentCancelledError;
+    await recordFailure(dependencies, context, { error, cancelled });
     return cancelled ? "cancelled" : "failed";
+  }
+  // Cleanup cannot turn a committed deployment into a failed one or remove its live container.
+  await finishDeployment(dependencies, context);
+  return "succeeded";
+}
+
+function requeueDeployment(database: Database, deploymentId: string): void {
+  if (getDeployment(database, deploymentId).status !== "queued") {
+    transitionDeployment(database, deploymentId, { to: "queued", errorMessage: null });
   }
 }
 
@@ -95,15 +114,16 @@ async function finishDeployment(
   context: DeployContext,
 ): Promise<void> {
   const { deployment, project, logs } = context;
-  // Readers end the live stream on a terminal status, so pending lines go out first.
-  logs.flush();
-  completeDeployment(dependencies.database, deployment.id);
   logs.system("Deployment succeeded");
-  await removePreviousContainers(dependencies, logs, {
-    projectId: project.id,
-    currentDeploymentId: deployment.id,
-    previewId: deployment.previewId,
-  });
+  try {
+    await removePreviousContainers(dependencies, logs, {
+      projectId: project.id,
+      currentDeploymentId: deployment.id,
+      previewId: deployment.previewId,
+    });
+  } catch (error) {
+    logs.system(`Could not retire previous containers: ${errorMessageOf(error)}`, "warn");
+  }
   await pruneOldImages(
     dependencies,
     { projectId: project.id, previewId: deployment.previewId },

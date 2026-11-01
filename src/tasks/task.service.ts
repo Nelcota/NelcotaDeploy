@@ -7,7 +7,7 @@ import type { TaskInput } from "@/shared/schemas/task.schema";
 
 import { nextScheduledRun } from "./schedule";
 import { enqueueExecution } from "./task-execution.service";
-import { TaskNameTakenError, TaskNotFoundError } from "./task.errors";
+import { TaskNameTakenError, TaskNotFoundError, TaskRunningError } from "./task.errors";
 
 const taskColumns = {
   id: tables.tasks.id,
@@ -176,6 +176,7 @@ export function updateTask(
  * @param database - Database.
  * @param removal - Owning project, task id and who deletes it.
  * @throws {TaskNotFoundError} When the task is not in this project.
+ * @throws {TaskRunningError} When a worker still owns an execution of the task.
  */
 export function deleteTask(
   database: Database,
@@ -187,6 +188,15 @@ export function deleteTask(
 ): void {
   database.transaction((transaction) => {
     const task = findTaskRow(transaction, projectId, taskId);
+    const running = transaction
+      .select({ id: tables.jobs.id })
+      .from(tables.jobs)
+      .innerJoin(tables.taskExecutions, eq(tables.taskExecutions.id, tables.jobs.taskExecutionId))
+      .where(and(eq(tables.taskExecutions.taskId, taskId), eq(tables.jobs.status, "running")))
+      .get();
+    if (running != null) {
+      throw new TaskRunningError(taskId);
+    }
     transaction.delete(tables.tasks).where(eq(tables.tasks.id, taskId)).run();
     recordAuditEvent(transaction, {
       actor,

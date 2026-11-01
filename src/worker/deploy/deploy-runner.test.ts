@@ -7,7 +7,14 @@ import { saveEnvironmentVariable } from "@/environments";
 import { listDeploymentLogs } from "@/logs";
 import { runProcess } from "@/process";
 import { getProject } from "@/projects";
-import { createTestProject, createTestSecretBox, FakeDocker, TEST_ACTOR } from "@/testing";
+import {
+  createTestProject,
+  createTestSecretBox,
+  FakeDocker,
+  fromShellPath,
+  TEST_ACTOR,
+  toShellPath,
+} from "@/testing";
 
 import { runDeployment } from "./deploy-runner";
 
@@ -19,7 +26,7 @@ function fakeGit(dockerfile = "FROM scratch\n") {
   return {
     async checkoutRevision(options: CloneOptions) {
       // Bun.write creates the missing directories.
-      await Bun.write(`${options.directory}/Dockerfile`, dockerfile);
+      await Bun.write(fromShellPath(`${options.directory}/Dockerfile`), dockerfile);
       return { sha: "c0ffee".padEnd(40, "0"), message: "feat: initial" };
     },
   };
@@ -57,7 +64,7 @@ async function setup(
     probes: options.probes ?? alwaysHealthy,
     config: {
       // The workspace creates this directory itself.
-      workspaceDir: `${tmpdir()}/nelcota-test-${crypto.randomUUID()}`,
+      workspaceDir: toShellPath(`${tmpdir()}/nelcota-test-${crypto.randomUUID()}`),
       network: "nelcota-test",
       buildTimeoutInSeconds: 60,
       healthCheckTimeoutInSeconds: options.healthTimeout ?? 10,

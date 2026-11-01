@@ -3,15 +3,21 @@ import { eq, inArray } from "drizzle-orm";
 import { type Database, tables } from "@/db";
 import { DEFAULT_SYSTEM_SETTINGS, type SystemSettings } from "@/shared/schemas/settings.schema";
 
+import { assertHostnameOwnership } from "./hostname-ownership";
+
 const SETTING_KEYS = Object.keys(DEFAULT_SYSTEM_SETTINGS) as (keyof SystemSettings)[];
 
 /**
  * Reads system settings, filling missing keys with defaults.
  *
  * @param database - Database.
+ * @param options - Whether the caller may receive secret webhook credentials (server-only by default).
  * @returns The effective settings.
  */
-export function getSystemSettings(database: Database): SystemSettings {
+export function getSystemSettings(
+  database: Pick<Database, "select">,
+  options: { readonly includeSecrets?: boolean } = {},
+): SystemSettings {
   const rows = database
     .select({ key: tables.systemSettings.key, value: tables.systemSettings.value })
     .from(tables.systemSettings)
@@ -28,7 +34,8 @@ export function getSystemSettings(database: Database): SystemSettings {
       stored.get("httpsByDefault"),
       DEFAULT_SYSTEM_SETTINGS.httpsByDefault,
     ),
-    alertWebhookUrl: readNullableString(stored.get("alertWebhookUrl")),
+    alertWebhookUrl:
+      options.includeSecrets === false ? null : readNullableString(stored.get("alertWebhookUrl")),
   };
 }
 
@@ -41,6 +48,7 @@ export function getSystemSettings(database: Database): SystemSettings {
 export function saveSystemSettings(database: Database, settings: SystemSettings): void {
   const updatedAt = new Date().toISOString();
   database.transaction((transaction) => {
+    assertHostnameOwnership(transaction, settings);
     for (const key of SETTING_KEYS) {
       // The column cannot hold NULL; a missing row already reads back as "not set".
       if (settings[key] == null) {

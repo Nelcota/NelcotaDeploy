@@ -6,8 +6,8 @@ import { taskInputSchema } from "@/shared/schemas/task.schema";
 import { createTestProject, TEST_ACTOR } from "@/testing";
 
 import { scheduleDueTasks } from "./task-execution.service";
-import { InvalidScheduleError } from "./task.errors";
-import { createTask, listTasks, runTask } from "./task.service";
+import { InvalidScheduleError, TaskRunningError } from "./task.errors";
+import { createTask, deleteTask, listTasks, runTask } from "./task.service";
 
 const TIME_ZONE = "UTC";
 const T0 = new Date("2026-10-28T10:00:30.000Z");
@@ -24,6 +24,35 @@ function input(overrides: Record<string, unknown> = {}) {
 }
 
 describe("tasks", () => {
+  test("refuses deletion while a worker owns a task execution", () => {
+    const database = openMemoryDatabase();
+    const project = createTestProject(database);
+    const taskId = createTask(database, {
+      projectId: project.id,
+      input: input(),
+      actor: TEST_ACTOR,
+      userId: null,
+      timeZone: TIME_ZONE,
+      now: T0,
+    });
+    runTask(database, {
+      projectId: project.id,
+      taskId,
+      trigger: "manual",
+      actor: TEST_ACTOR,
+      userId: null,
+    });
+    const claimed = claimNextJob(database, "worker");
+
+    expect(() =>
+      deleteTask(database, { projectId: project.id, taskId, actor: TEST_ACTOR }),
+    ).toThrow(TaskRunningError);
+
+    expect(claimed?.kind).toBe("task_run");
+    expect(listTasks(database, project.id)).toHaveLength(1);
+    expect(database.select({ id: tables.jobs.id }).from(tables.jobs).all()).toHaveLength(1);
+    database.$client.close();
+  });
   test("computes the next run when a scheduled task is created", () => {
     const database = openMemoryDatabase();
     const project = createTestProject(database);

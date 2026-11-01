@@ -18,6 +18,30 @@ describe("readCursor", () => {
 });
 
 describe("createEventStreamResponse", () => {
+  test("stops an asynchronous authorized stream when access is revoked", async () => {
+    let authorized = true;
+    let error: unknown;
+    const response = createEventStreamResponse(
+      new Request("http://x/logs"),
+      async () => {
+        await Promise.resolve();
+        if (authorized === false) {
+          throw new Error("Session revoked");
+        }
+        authorized = false;
+        return { items: [{ id: 1, message: "before revocation" }], finished: false };
+      },
+      (failure) => {
+        error = failure;
+      },
+    );
+
+    const body = await response.text();
+
+    expect(body.match(/event: log/g)).toHaveLength(1);
+    expect(body).toContain("event: error");
+    expect(error).toBeInstanceOf(Error);
+  });
   test("streams rows after the cursor and ends when finished", async () => {
     const rows = [{ id: 1 }, { id: 2 }, { id: 3 }];
     const request = new Request("http://x/logs", { headers: { "Last-Event-ID": "1" } });

@@ -66,13 +66,16 @@ export async function handleGitHubDelivery(
   secrets: readonly string[],
 ): Promise<WebhookOutcome> {
   const { deliveryId, event } = await verifyDelivery(delivery, secrets);
-  const claimed = claimDelivery(database, deliveryId, event);
-  if (claimed === false) {
-    return { status: "duplicate" };
-  }
-  const outcome = processEvent(database, event, delivery.rawBody);
-  recordOutcome(database, deliveryId, outcome);
-  return outcome.result;
+  // A failed event rolls back both its claim and every queued deployment, so redelivery retries it.
+  return database.transaction(() => {
+    const claimed = claimDelivery(database, deliveryId, event);
+    if (claimed === false) {
+      return { status: "duplicate" };
+    }
+    const outcome = processEvent(database, event, delivery.rawBody);
+    recordOutcome(database, deliveryId, outcome);
+    return outcome.result;
+  });
 }
 
 async function isSignedWithAny(

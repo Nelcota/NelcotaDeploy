@@ -156,15 +156,27 @@ export function processPullRequest(database: Database, rawBody: string): Process
   if (head.repo?.full_name.toLowerCase() !== details.repositoryFullName) {
     return ignored("pull requests from forks never get previews", details);
   }
+  if (payload.action === "closed") {
+    const existing = database
+      .select({ projectId: tables.previews.projectId })
+      .from(tables.previews)
+      .innerJoin(tables.projects, eq(tables.projects.id, tables.previews.projectId))
+      .where(
+        and(
+          eq(tables.projects.repositoryFullName, details.repositoryFullName),
+          eq(tables.previews.pullRequestNumber, payload.number),
+          eq(tables.previews.status, "active"),
+        ),
+      )
+      .all();
+    for (const preview of existing) {
+      closePreview(database, { projectId: preview.projectId, number: payload.number });
+    }
+    return ignored("pull request closed; its previews are being removed", details);
+  }
   const projectIds = findPreviewProjects(database, payload);
   if (projectIds.length === 0) {
     return ignored("no approved project with previews for this repository and branch", details);
-  }
-  if (payload.action === "closed") {
-    for (const projectId of projectIds) {
-      closePreview(database, { projectId, number: payload.number });
-    }
-    return ignored("pull request closed; its previews are being removed", details);
   }
   return deployPreviews(database, projectIds, { payload, details });
 }

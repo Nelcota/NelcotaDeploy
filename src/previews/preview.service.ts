@@ -2,6 +2,7 @@ import { and, count, desc, eq } from "drizzle-orm";
 
 import { type Database, tables, type Transaction } from "@/db";
 import { enqueueJob } from "@/jobs";
+import { assertHostnameOwnership, getSystemSettings } from "@/settings";
 
 import { PreviewLimitError } from "./preview.errors";
 
@@ -100,6 +101,7 @@ export function openPreview(
         .set(fields)
         .where(eq(tables.previews.id, existing.id))
         .run();
+      assertHostnameOwnership(transaction, getSystemSettings(transaction));
       return existing.id;
     }
     const id = Bun.randomUUIDv7();
@@ -113,6 +115,7 @@ export function openPreview(
         ...fields,
       })
       .run();
+    assertHostnameOwnership(transaction, getSystemSettings(transaction));
     return id;
   });
 }

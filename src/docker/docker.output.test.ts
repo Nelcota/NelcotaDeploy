@@ -1,6 +1,29 @@
 import { describe, expect, test } from "bun:test";
 
-import { parseDockerSize, parseInspectOutput, parseStatsOutput } from "./docker.output";
+import {
+  parseDockerSize,
+  parseEnvironmentOutput,
+  parseInspectOutput,
+  parseStatsOutput,
+} from "./docker.output";
+
+describe("parseEnvironmentOutput", () => {
+  test("preserves multiline, empty and equals-containing values", () => {
+    expect(
+      parseEnvironmentOutput(JSON.stringify(["KEY=line\nsecret", "EMPTY=", "TOKEN=a=b"])),
+    ).toEqual(["line\nsecret", "", "a=b"]);
+    expect(parseEnvironmentOutput("null")).toEqual([]);
+  });
+
+  test.each(["secret malformed JSON", '["secret-without-key"]', '["=secret"]', '{"secret":true}'])(
+    "rejects malformed output without including secrets: %s",
+    (output) => {
+      expect(() => parseEnvironmentOutput(output)).toThrow(
+        /^Docker returned (invalid environment JSON|an invalid container environment)$/,
+      );
+    },
+  );
+});
 
 describe("parseInspectOutput", () => {
   test("extracts state, health, labels and network addresses", () => {

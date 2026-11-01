@@ -15,6 +15,7 @@ import { DockerCommandError, UnmanagedResourceError } from "./docker.errors";
 import {
   type ContainerInfo,
   type ContainerStats,
+  parseEnvironmentOutput,
   parseInspectOutput,
   parseStatsOutput,
 } from "./docker.output";
@@ -190,6 +191,23 @@ export class DockerCli {
   async inspectContainer(reference: string): Promise<ContainerInfo | null> {
     const [info] = await this.inspectContainers([reference]);
     return info ?? null;
+  }
+
+  /**
+   * Reads a legacy container's environment solely for worker-side log redaction.
+   *
+   * @param reference - Managed container name or id.
+   * @returns Its environment values; never include them in public metadata or logs.
+   * @throws {UnmanagedResourceError} When the container is not managed by the platform.
+   * @throws {DockerCommandError} When Docker fails or returns malformed environment data.
+   */
+  async readContainerEnvironment(reference: string): Promise<readonly string[]> {
+    const info = await this.#assertManaged(reference);
+    const output = await this.#runChecked(
+      ["container", "inspect", "--format", "{{json .Config.Env}}", info.id],
+      "inspect environment",
+    );
+    return parseEnvironmentOutput(output);
   }
 
   /**

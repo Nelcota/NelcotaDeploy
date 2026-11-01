@@ -20,6 +20,38 @@ function setup() {
 }
 
 describe("createFirstAdmin", () => {
+  test("admits exactly one admin when first-run requests race", async () => {
+    const { auth, database } = setup();
+
+    const results = await Promise.allSettled([
+      createFirstAdmin(auth, database, ADMIN),
+      createFirstAdmin(auth, database, { ...ADMIN, email: "second@example.com" }),
+    ]);
+
+    expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(1);
+    const rejected = results.find((result) => result.status === "rejected");
+    expect(rejected?.reason).toBeInstanceOf(SetupAlreadyDoneError);
+    expect(database.select({ id: tables.users.id }).from(tables.users).all()).toHaveLength(1);
+    expect(database.select({ id: tables.accounts.id }).from(tables.accounts).all()).toHaveLength(1);
+    database.$client.close();
+  });
+
+  test("creates credentials accepted by Better Auth", async () => {
+    const { auth, database } = setup();
+    await createFirstAdmin(auth, database, ADMIN);
+
+    const response = await auth.handler(
+      new Request("http://localhost:3000/api/auth/sign-in/email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Origin: "http://localhost:3000" },
+        body: JSON.stringify({ email: ADMIN.email.toLowerCase(), password: ADMIN.password }),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("set-cookie")).toContain("HttpOnly");
+    database.$client.close();
+  });
   test("creates an admin while the panel has none", async () => {
     const { auth, database } = setup();
 

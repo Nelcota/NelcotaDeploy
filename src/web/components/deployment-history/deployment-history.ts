@@ -1,5 +1,6 @@
 import type { DeploymentStatus } from "@/deployments";
 import { dayKey } from "@/shared/format";
+import type { PageCursor } from "@/shared/pagination";
 import {
   ACTIVE_DEPLOYMENT_STATUSES,
   DEPLOYMENT_STATUS_LABELS,
@@ -26,18 +27,17 @@ export const STATUS_FILTERS = [
 export type StatusFilter = (typeof STATUS_FILTERS)[number]["value"];
 
 /**
- * Finds the cursor of the next page: the creation time of the oldest deploy on a full page.
+ * Finds the cursor of the next page: the creation time and id of the oldest deploy on a full page.
  *
  * @param lastPage - The page just loaded, newest first.
  * @returns The `before` cursor, or undefined when the page was the last one.
  */
-export function nextPageCursor(
-  lastPage: readonly { readonly createdAt: string }[],
-): string | undefined {
+export function nextPageCursor(lastPage: readonly PageCursor[]): PageCursor | undefined {
   if (lastPage.length < PAGE_SIZE) {
     return undefined;
   }
-  return lastPage.at(-1)?.createdAt;
+  const last = lastPage.at(-1);
+  return last == null ? undefined : { createdAt: last.createdAt, id: last.id };
 }
 
 /**

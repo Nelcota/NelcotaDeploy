@@ -5,3 +5,11 @@ export class EnvironmentVariableNotFoundError extends Error {
     this.name = "EnvironmentVariableNotFoundError";
   }
 }
+
+/** Thrown when a deployment's encrypted redaction snapshot is missing or malformed. */
+export class InvalidEnvironmentSnapshotError extends Error {
+  constructor(deploymentId: string) {
+    super(`Invalid environment snapshot for deployment ${deploymentId}`);
+    this.name = "InvalidEnvironmentSnapshotError";
+  }
+}

@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { isAbsolute, resolve } from "node:path";
 
 import { InvalidConfigError, parseConfig } from "./config";
 
@@ -7,7 +8,7 @@ describe("parseConfig", () => {
     const config = parseConfig({});
 
     expect(config.PORT).toBe(3000);
-    expect(config.DATABASE_PATH.startsWith("/")).toBe(true);
+    expect(isAbsolute(config.DATABASE_PATH)).toBe(true);
     expect(config.TRAEFIK_ENABLED).toBe(false);
   });
 
@@ -36,7 +37,7 @@ describe("parseConfig", () => {
   test("keeps backups next to the database by default", () => {
     const config = parseConfig({ DATABASE_PATH: "/data/nelcota.db" });
 
-    expect(config.BACKUP_DIR).toBe("/data/backups");
+    expect(config.BACKUP_DIR).toBe(resolve("/data/backups"));
     expect(config.BACKUPS_KEPT).toBe(7);
   });
 

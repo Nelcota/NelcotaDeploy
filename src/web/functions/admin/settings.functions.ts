@@ -10,11 +10,11 @@ import { systemSettingsSchema } from "@/shared/schemas/settings.schema";
 import { authorize } from "@/web/server/authorization";
 
 export const getSettingsFn = createServerFn({ method: "GET" }).handler(async () => {
-  await authorize("project:read");
+  const user = await authorize("project:read");
   const config = getConfig();
   const database = getDatabase();
   return {
-    settings: getSystemSettings(database),
+    settings: getSystemSettings(database, { includeSecrets: user.role === "admin" }),
     server: {
       publicUrl: config.PUBLIC_URL,
       webhookUrl: `${config.PUBLIC_URL}/api/webhooks/github`,

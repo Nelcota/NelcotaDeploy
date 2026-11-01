@@ -3,7 +3,7 @@ import {
   runtimeConfigFingerprint,
   transitionDeployment,
 } from "@/deployments";
-import { resolveEnvironment } from "@/environments";
+import { readDeploymentSecrets, resolveEnvironment, saveDeploymentSecrets } from "@/environments";
 import { appCloneToken } from "@/github";
 import { readRepositoryToken } from "@/projects";
 import { createRedactor } from "@/secrets";
@@ -33,26 +33,41 @@ export async function deploy(
   const { database, docker, secretBox } = dependencies;
   const { deployment, project, logs, signal } = context;
 
+  // Read the fingerprints before yielding to decryption: a later edit must remain pending.
+  const runtimeConfigHash = runtimeConfigFingerprint(database, project.id);
+  const buildConfigHash = buildConfigFingerprint(database, project.id);
   const environment = await resolveEnvironment(database, secretBox, {
     projectId: project.id,
     forPreview: deployment.previewId != null,
   });
-  // Taken with the variables it describes, so later edits show up as pending changes.
-  const runtimeConfigHash = runtimeConfigFingerprint(database, project.id);
-  const buildConfigHash = buildConfigFingerprint(database, project.id);
   const repositoryToken = await cloneToken(dependencies, context);
-  context.state.useRedactor(createRedactor([...environment.secretValues, repositoryToken ?? ""]));
+  const sourceSecrets = await readDeploymentSecrets(
+    database,
+    secretBox,
+    deployment.sourceDeploymentId,
+  );
+  const secretValues = [...environment.secretValues, ...(sourceSecrets ?? [])];
+  await saveDeploymentSecrets(database, secretBox, {
+    deploymentId: deployment.id,
+    values: secretValues,
+  });
+  context.state.useRedactor(createRedactor([...secretValues, repositoryToken ?? ""]));
   logs.useRedactor(context.state.redact);
 
   const reused =
     deployment.sourceDeploymentId == null ? null : await reuseImage(docker, deployment, logs);
+  if (reused != null && deployment.internalPort == null) {
+    throw new Error(
+      "Cannot reuse a legacy image without its recorded container port; run a new deployment first",
+    );
+  }
   const built =
     reused == null
       ? await buildFromSource(dependencies, context, {
           buildValues: environment.build,
           repositoryToken,
         })
-      : { imageTag: reused, detectedPort: null };
+      : { imageTag: reused, detectedPort: deployment.internalPort };
   assertNotCancelled(signal);
 
   // Routing and the health check use the port this build found in the Dockerfile.

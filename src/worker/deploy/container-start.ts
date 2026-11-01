@@ -127,6 +127,7 @@ export async function startContainer(
     to: "starting",
     imageTag: release.imageTag,
     containerName,
+    internalPort: project.internalPort,
     runtimeConfigHash: release.runtimeConfigHash,
     ...(release.buildConfigHash == null ? {} : { buildConfigHash: release.buildConfigHash }),
   });

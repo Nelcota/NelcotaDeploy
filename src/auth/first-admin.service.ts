@@ -35,6 +35,7 @@ export async function createFirstAdmin(
   }
   return await createUser(auth, database, {
     newUser: { ...account, role: "admin" },
+    firstAdmin: true,
     actor: { type: "system", label: "first-run setup" },
   });
 }

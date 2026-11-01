@@ -1,9 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, posix } from "node:path";
 
 import { type CommandRunner, runProcess } from "@/process";
+import { fromShellPath, toShellPath } from "@/testing";
 
 import { PathOutsideWorkspaceError, WorkspaceCommandError } from "../worker.errors";
 import { DeploymentWorkspace, resolveInsideWorkspace } from "./workspace";
@@ -12,7 +13,7 @@ async function repository(): Promise<string> {
   const root = await mkdtemp(join(tmpdir(), "nelcota-ws-"));
   await mkdir(join(root, "apps"));
   await writeFile(join(root, "apps", "Dockerfile"), "FROM scratch\n");
-  return root;
+  return toShellPath(root);
 }
 
 describe("resolveInsideWorkspace", () => {
@@ -26,7 +27,7 @@ describe("resolveInsideWorkspace", () => {
 
   test("throws PathOutsideWorkspaceError for a symlink pointing outside", async () => {
     const root = await repository();
-    await symlink("/etc/passwd", join(root, "Dockerfile"));
+    await symlink("/etc/passwd", fromShellPath(posix.join(root, "Dockerfile")));
 
     const error = await resolveInsideWorkspace(runProcess, root, "Dockerfile").catch(
       (caught: unknown) => caught,
@@ -48,7 +49,7 @@ describe("resolveInsideWorkspace", () => {
 
 describe("DeploymentWorkspace", () => {
   test("creates a fresh directory under the root and removes it when disposed", async () => {
-    const root = await mkdtemp(join(tmpdir(), "nelcota-root-"));
+    const root = toShellPath(await mkdtemp(join(tmpdir(), "nelcota-root-")));
     let created = "";
 
     {
@@ -58,11 +59,11 @@ describe("DeploymentWorkspace", () => {
         onCleanupError: () => undefined,
       });
       created = workspace.path;
-      expect((await stat(created)).isDirectory()).toBe(true);
+      expect((await stat(fromShellPath(created))).isDirectory()).toBe(true);
     }
 
-    expect(created.startsWith(join(root, "api-"))).toBe(true);
-    expect(await stat(created).catch(() => null)).toBeNull();
+    expect(created.startsWith(posix.join(root, "api-"))).toBe(true);
+    expect(await stat(fromShellPath(created)).catch(() => null)).toBeNull();
   });
 
   test("throws WorkspaceCommandError when the root cannot be created", async () => {
@@ -78,7 +79,7 @@ describe("DeploymentWorkspace", () => {
 
 describe("DeploymentWorkspace cleanup", () => {
   test("reports a failed removal instead of throwing", async () => {
-    const root = await mkdtemp(join(tmpdir(), "nelcota-root-"));
+    const root = toShellPath(await mkdtemp(join(tmpdir(), "nelcota-root-")));
     const reported: string[] = [];
     const failingRemoval: CommandRunner = async (command, options) =>
       command[0] === "rm"

@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gte, lt, max, ne, notExists, notInArray } from "drizzle-orm";
+import { and, desc, eq, gte, lt, max, ne, notExists, notInArray } from "drizzle-orm";
 import { alias } from "drizzle-orm/sqlite-core";
 
 import { type Database, tables } from "@/db";
@@ -214,9 +214,10 @@ export function listHostSamples(database: Database, serverId: string, since: Dat
         gte(tables.metricSamples.createdAt, since.toISOString()),
       ),
     )
-    .orderBy(asc(tables.metricSamples.createdAt))
+    .orderBy(desc(tables.metricSamples.createdAt), desc(tables.metricSamples.id))
     .limit(MAX_SERIES_POINTS)
-    .all();
+    .all()
+    .toReversed();
 }
 
 /**
@@ -292,9 +293,10 @@ export function listProjectSamples(database: Database, projectId: string, since:
         gte(tables.metricSamples.createdAt, since.toISOString()),
       ),
     )
-    .orderBy(asc(tables.metricSamples.createdAt))
+    .orderBy(desc(tables.metricSamples.createdAt), desc(tables.metricSamples.id))
     .limit(MAX_SERIES_POINTS)
-    .all();
+    .all()
+    .toReversed();
 }
 
 /**

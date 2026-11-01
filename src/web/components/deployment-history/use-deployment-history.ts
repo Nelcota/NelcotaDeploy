@@ -2,6 +2,7 @@ import { useInfiniteQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
 
 import type { DeploymentStatus } from "@/deployments";
+import type { PageCursor } from "@/shared/pagination";
 import { listDeploymentsFn } from "@/web/functions/deployments.functions";
 
 import {
@@ -35,7 +36,7 @@ export function useDeploymentHistory({
           ...(pageParam == null ? {} : { before: pageParam }),
         },
       }),
-    initialPageParam: null as string | null,
+    initialPageParam: null as PageCursor | null,
     getNextPageParam: (lastPage) => nextPageCursor(lastPage),
     refetchInterval: (query) => historyRefreshInterval(query.state.data?.pages.flat() ?? []),
   });

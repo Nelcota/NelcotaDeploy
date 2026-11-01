@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 
-import { getCurrentUser } from "@/auth";
+import { getCurrentUser, requireUser } from "@/auth";
 import { getDatabase } from "@/db";
 import { createLogger } from "@/logging";
 import { listRuntimeLogs } from "@/logs";
@@ -28,7 +28,8 @@ export const Route = createFileRoute("/api/projects/$projectId/runtime-logs")({
         const firstConnection = readCursor(request) === 0;
         return createEventStreamResponse(
           request,
-          (afterId) => {
+          async (afterId) => {
+            await requireUser(request.headers, "project:read");
             // The first read sends recent history; later reads send only new lines.
             const items =
               firstConnection && afterId === 0

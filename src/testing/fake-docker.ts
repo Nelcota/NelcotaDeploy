@@ -8,6 +8,7 @@ import { FakeVolumes } from "./fake-volumes";
 export class FakeDocker implements DockerEngine {
   readonly calls: string[] = [];
   readonly containers = new Map<string, ContainerInfo>();
+  readonly environments = new Map<string, Readonly<Record<string, string>>>();
   readonly images = new FakeImages(this.calls);
   readonly volumes = new FakeVolumes(this.calls, (name) =>
     [...this.mounts.entries()].some(
@@ -55,6 +56,7 @@ export class FakeDocker implements DockerEngine {
   ): Promise<string> {
     this.calls.push(`run ${options.containerName} env=${Object.keys(environmentValues).join(",")}`);
     this.mounts.set(options.containerName, options.volumes);
+    this.environments.set(options.containerName, environmentValues);
     const id = `id-${options.containerName}`;
     this.containers.set(options.containerName, {
       id,
@@ -87,6 +89,13 @@ export class FakeDocker implements DockerEngine {
 
   async inspectContainer(reference: string): Promise<ContainerInfo | null> {
     return await Promise.resolve(this.#find(reference) ?? null);
+  }
+
+  async readContainerEnvironment(reference: string): Promise<readonly string[]> {
+    const container = this.#find(reference);
+    return await Promise.resolve(
+      Object.values(this.environments.get(container?.name ?? reference) ?? {}),
+    );
   }
 
   async listManagedContainers(): Promise<ContainerInfo[]> {
@@ -137,7 +146,11 @@ export class FakeDocker implements DockerEngine {
     return await Promise.resolve([{ line: "app crashed", stream: "stderr" }]);
   }
 
-  async followContainerLogs(): Promise<void> {
+  async followContainerLogs(
+    _reference: string,
+    _onLine: OutputHandler,
+    _window: { readonly since: string; readonly signal: AbortSignal },
+  ): Promise<void> {
     await Promise.resolve();
   }
 
@@ -145,7 +158,11 @@ export class FakeDocker implements DockerEngine {
     return await Promise.resolve([]);
   }
 
-  async execInContainer(reference: string, command: readonly string[]): Promise<ProcessResult> {
+  async execInContainer(
+    reference: string,
+    command: readonly string[],
+    _run: Parameters<DockerEngine["execInContainer"]>[2],
+  ): Promise<ProcessResult> {
     this.calls.push(`exec ${reference} ${command.join(" ")}`);
     return await Promise.resolve({
       exitCode: 0,

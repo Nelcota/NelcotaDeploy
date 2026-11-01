@@ -108,9 +108,10 @@ describe("createRedactor", () => {
     expect(redact("token=abcdef and abcd")).toBe("token=[REDACTED] and [REDACTED]");
   });
 
-  test("ignores values too short to redact safely", () => {
+  test("redacts short credentials and ignores only empty values", () => {
     const redact = createRedactor(["a", ""]);
 
-    expect(redact("a cat")).toBe("a cat");
+    expect(redact("a cat")).toBe("[REDACTED] c[REDACTED]t");
+    expect(createRedactor([""])("a cat")).toBe("a cat");
   });
 });

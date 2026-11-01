@@ -1,13 +1,21 @@
 import { describe, expect, test } from "bun:test";
+import { mkdtemp, realpath, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+import { toShellPath } from "@/testing";
 
 import { buildRemoteScript, parsePidLine, quoteForShell } from "./remote-script";
 import { InvalidRemoteCommandError } from "./remote.errors";
 
+const SHELL = Bun.which("sh", { PATH: process.env["PATH"] ?? "" }) ?? "sh";
+
 async function runScript(script: string): Promise<{ stdout: string; stderr: string }> {
-  const child = Bun.spawn(["sh", "-s"], {
+  const child = Bun.spawn([SHELL, "-s"], {
     stdin: new Blob([script]),
     stdout: "pipe",
     stderr: "pipe",
+    env: process.env,
   });
   const [stdout, stderr] = await Promise.all([
     new Response(child.stdout).text(),
@@ -28,7 +36,7 @@ describe("quoteForShell", () => {
     [""],
     ["-n"],
   ])("keeps %p literal through a real shell", async (value) => {
-    const child = Bun.spawn(["sh", "-c", `printf %s ${quoteForShell(value)}`], { stdout: "pipe" });
+    const child = Bun.spawn([SHELL, "-c", `printf %s ${quoteForShell(value)}`], { stdout: "pipe" });
 
     const printed = await new Response(child.stdout).text();
 
@@ -42,15 +50,20 @@ describe("quoteForShell", () => {
 
 describe("buildRemoteScript", () => {
   test("runs the command with its environment and directory, reporting its pid first", async () => {
+    const directory = await realpath(await mkdtemp(join(tmpdir(), "nelcota-remote-script-")));
+    const shellDirectory = toShellPath(directory);
+    await using _directory = {
+      [Symbol.asyncDispose]: async () => await rm(directory, { recursive: true, force: true }),
+    };
     const script = buildRemoteScript({
       command: ["sh", "-c", 'printf "%s|%s" "$SECRET" "$(pwd)"'],
       env: { SECRET: "va'lue $(id)" },
-      cwd: "/tmp",
+      cwd: shellDirectory,
     });
 
     const result = await runScript(script);
 
-    expect(result.stdout).toBe("va'lue $(id)|/tmp");
+    expect(result.stdout).toBe(`va'lue $(id)|${shellDirectory}`);
     expect(parsePidLine(result.stderr.split("\n")[0] ?? "")).toBeGreaterThan(1);
   });
 
@@ -61,7 +74,7 @@ describe("buildRemoteScript", () => {
   });
 
   test("stops with exit code 125 when the directory is missing", async () => {
-    const child = Bun.spawn(["sh", "-s"], {
+    const child = Bun.spawn([SHELL, "-s"], {
       stdin: new Blob([buildRemoteScript({ command: ["true"], cwd: "/nelcota/missing" })]),
       stderr: "ignore",
     });

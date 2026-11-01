@@ -6,11 +6,12 @@ import { buildInstallCommand } from "./install-script";
 import { InvalidInstallInputError } from "./server.errors";
 
 const { publicKey } = generateSshKeyPair();
+const SHELL = Bun.which("sh", { PATH: process.env["PATH"] ?? "" }) ?? "sh";
 
 describe("buildInstallCommand", () => {
   test("produces a command a POSIX shell accepts", async () => {
     const command = buildInstallCommand(publicKey, "nelcota");
-    const child = Bun.spawn(["sh", "-n"], { stdin: new Blob([command]), stderr: "pipe" });
+    const child = Bun.spawn([SHELL, "-n"], { stdin: new Blob([command]), stderr: "pipe" });
 
     const exitCode = await child.exited;
 

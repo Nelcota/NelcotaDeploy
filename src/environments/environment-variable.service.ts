@@ -120,9 +120,14 @@ export async function saveEnvironmentVariable(
     input.kind === "secret" && keepExistingSecret === false
       ? await secretBox.encrypt(input.value, encryptionContext(environmentId, input.key))
       : null;
-  const now = new Date().toISOString();
   database.transaction((transaction) => {
     const existing = findVariable(transaction, environmentId, input.key);
+    const previousTime = existing == null ? 0 : Date.parse(existing.updatedAt);
+    if (Number.isFinite(previousTime) === false) {
+      throw new Error(`Invalid update timestamp for environment variable ${input.key}`);
+    }
+    // Two saves in the same millisecond must still produce distinct fingerprints.
+    const now = new Date(Math.max(Date.now(), previousTime + 1)).toISOString();
     const values = {
       kind: input.kind,
       plainValue: input.kind === "plain" ? input.value : null,
@@ -190,6 +195,7 @@ function findVariable(transaction: Transaction, environmentId: string, key: stri
     .select({
       id: tables.environmentVariables.id,
       encryptedValue: tables.environmentVariables.encryptedValue,
+      updatedAt: tables.environmentVariables.updatedAt,
     })
     .from(tables.environmentVariables)
     .where(

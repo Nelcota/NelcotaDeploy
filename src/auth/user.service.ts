@@ -6,7 +6,7 @@ import type { Role } from "@/shared/roles";
 import { PASSWORD_MIN_LENGTH } from "@/shared/schemas/user.schema";
 
 import type { Auth } from "./auth";
-import { UserOperationError } from "./auth.errors";
+import { SetupAlreadyDoneError, UserOperationError } from "./auth.errors";
 
 const CREDENTIAL_PROVIDER_ID = "credential";
 
@@ -55,7 +55,7 @@ export function listUsers(database: Database) {
  * @param database - Database.
  * @returns True when at least one admin exists.
  */
-export function hasAdmin(database: Database): boolean {
+export function hasAdmin(database: Pick<Database, "select">): boolean {
   const admin = database
     .select({ id: tables.users.id })
     .from(tables.users)
@@ -77,7 +77,11 @@ export function hasAdmin(database: Database): boolean {
 export async function createUser(
   auth: Auth,
   database: Database,
-  { newUser, actor }: { readonly newUser: NewUser; readonly actor: Actor },
+  {
+    newUser,
+    actor,
+    firstAdmin = false,
+  }: { readonly newUser: NewUser; readonly actor: Actor; readonly firstAdmin?: boolean },
 ): Promise<string> {
   const email = newUser.email.trim().toLowerCase();
   if (newUser.password.length < PASSWORD_MIN_LENGTH) {
@@ -92,30 +96,56 @@ export async function createUser(
     throw new UserOperationError("Email already in use");
   }
   const context = await auth.$context;
-  const user = await context.internalAdapter.createUser(
-    {
-      email,
-      name: newUser.name.trim(),
-      emailVerified: true,
-      role: newUser.role,
-      disabled: false,
-    },
-    { method: "admin" },
-  );
-  await context.internalAdapter.linkAccount({
-    userId: user.id,
-    providerId: CREDENTIAL_PROVIDER_ID,
-    accountId: user.id,
-    password: await context.password.hash(newUser.password),
+  const password = await context.password.hash(newUser.password);
+  const userId = Bun.randomUUIDv7();
+  // Hashing yields; admission and both credential rows must be one synchronous transaction.
+  database.transaction((transaction) => {
+    if (firstAdmin && hasAdmin(transaction)) {
+      throw new SetupAlreadyDoneError();
+    }
+    const duplicate = transaction
+      .select({ id: tables.users.id })
+      .from(tables.users)
+      .where(eq(tables.users.email, email))
+      .get();
+    if (duplicate != null) {
+      throw new UserOperationError("Email already in use");
+    }
+    const now = new Date();
+    transaction
+      .insert(tables.users)
+      .values({
+        id: userId,
+        email,
+        name: newUser.name.trim(),
+        emailVerified: true,
+        role: newUser.role,
+        disabled: false,
+        createdAt: now,
+        updatedAt: now,
+      })
+      .run();
+    transaction
+      .insert(tables.accounts)
+      .values({
+        id: Bun.randomUUIDv7(),
+        userId,
+        providerId: CREDENTIAL_PROVIDER_ID,
+        accountId: userId,
+        password,
+        createdAt: now,
+        updatedAt: now,
+      })
+      .run();
+    recordAuditEvent(transaction, {
+      actor,
+      action: "user.create",
+      targetType: "user",
+      targetId: userId,
+      metadata: { email, role: newUser.role },
+    });
   });
-  recordAuditEvent(database, {
-    actor,
-    action: "user.create",
-    targetType: "user",
-    targetId: user.id,
-    metadata: { email, role: newUser.role },
-  });
-  return user.id;
+  return userId;
 }
 
 /**
