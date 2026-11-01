@@ -44,7 +44,7 @@ export async function runContainerAction(
 }
 
 /**
- * Removes a project's routes, containers, images and volumes from one server. The routes go
+ * Removes a project's routes, containers (its databases' too), images and volumes from one server. The routes go
  * first, so the proxy never sends requests to a container that is being removed.
  *
  * @param server - Docker and route files of that server.
@@ -59,7 +59,9 @@ export async function removeProjectResources(
   await routes?.remove(projectId);
   await routes?.removePrefixed(previewRoutePrefix(projectId));
   const containers = (await docker.listManagedContainers()).filter(
-    (container) => container.labels[LABELS.projectId] === projectId,
+    (container) =>
+      container.labels[LABELS.projectId] === projectId ||
+      container.labels[LABELS.databaseProjectId] === projectId,
   );
   await Promise.all(
     containers.map(async (container) => await docker.removeContainer(container.id)),
