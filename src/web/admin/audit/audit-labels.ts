@@ -2,6 +2,7 @@ import {
   BoxesIcon,
   ClockIcon,
   ContainerIcon,
+  DatabaseIcon,
   GlobeIcon,
   HistoryIcon,
   KeyRoundIcon,
@@ -31,6 +32,7 @@ const AREA_ICONS: Record<string, LucideIcon> = {
   user: UsersIcon,
   api_token: KeyRoundIcon,
   container: ContainerIcon,
+  database: DatabaseIcon,
 };
 
 const TARGET_TYPE_LABELS: Record<string, string> = {
@@ -42,6 +44,7 @@ const TARGET_TYPE_LABELS: Record<string, string> = {
   domain: "Domínio",
   environment_variable: "Variável",
   container: "Contêiner",
+  database: "Banco de dados",
 };
 
 /**

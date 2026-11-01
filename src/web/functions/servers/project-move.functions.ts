@@ -2,6 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 
 import { userActor } from "@/auth";
+import { assertProjectHasNoDatabases } from "@/databases";
 import { getDatabase } from "@/db";
 import { ProjectNotApprovedError, requestDeployment } from "@/deployments";
 import { getProject } from "@/projects";
@@ -28,8 +29,9 @@ export const moveProjectFn = createServerFn({ method: "POST" })
     if (project.currentDeploymentId != null && project.deploymentsApproved === false) {
       throw new ProjectNotApprovedError(project.id);
     }
-    // Volume data lives on the current server and would be left behind.
+    // Volume and database data live on the current server and would be left behind.
     assertProjectHasNoVolumes(database, project.id);
+    assertProjectHasNoDatabases(database, project.id);
     const actor = userActor(user);
     assignProjectServer(database, { projectId: project.id, serverId: data.serverId, actor });
     if (project.currentDeploymentId == null) {
