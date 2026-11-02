@@ -69,7 +69,7 @@ export function ServerCard({
         <InstallCommand command={server.installCommand} />
       ) : null}
       {server.status === "ready" ? <ServerUsage host={server.hostSample} /> : null}
-      {server.kind === "ssh" ? <ServerFacts server={server} /> : null}
+      <ServerFacts server={server} />
       <AcceptsApplicationsSwitch server={server} canEdit={canEdit} />
     </Card>
   );

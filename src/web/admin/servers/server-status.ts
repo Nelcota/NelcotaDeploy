@@ -1,3 +1,5 @@
+import { formatBytes, formatTimeAgo } from "@/shared/format";
+
 /** Fields of a server that decide how its state is shown. */
 type ServerState = {
   readonly status: "pending" | "ready" | "unreachable";
@@ -69,4 +71,24 @@ export function serverStatusPill(server: ServerState): { tone: Tone; label: stri
  */
 export function hasServerInProgress(servers: readonly ServerState[]): boolean {
   return servers.some((server) => server.status !== "ready");
+}
+
+/**
+ * Describes the last daily cleanup of a server, such as "há 3 horas · liberou 1,2 GB".
+ *
+ * @param server - When the cleanup last ran and how many bytes it freed.
+ * @param now - Current time.
+ * @returns The description, or a note that no cleanup ran yet.
+ */
+export function describeLastCleanup(
+  server: { readonly lastCleanupAt: string | null; readonly lastCleanupFreedBytes: number | null },
+  now: Date,
+): string {
+  if (server.lastCleanupAt == null) {
+    return "Ainda não feita";
+  }
+  const when = formatTimeAgo(server.lastCleanupAt, now);
+  return server.lastCleanupFreedBytes == null
+    ? when
+    : `${when} · liberou ${formatBytes(server.lastCleanupFreedBytes)}`;
 }
