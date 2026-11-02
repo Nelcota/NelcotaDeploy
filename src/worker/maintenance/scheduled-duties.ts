@@ -78,11 +78,13 @@ export function startScheduledDuties(
     Bun.cron(
       "30 4 * * *",
       guard("server-cleanup", async () => await cleanUpServers(dependencies)),
+      { tz: "UTC" },
     ),
     // Daily at 03:30 UTC, when panels are usually quiet.
     Bun.cron(
       "30 3 * * *",
       guard("backup", async () => await runDatabaseBackup(dependencies)),
+      { tz: "UTC" },
     ),
   ];
 }

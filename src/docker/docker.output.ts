@@ -214,7 +214,7 @@ export function parseStatsOutput(output: string): ContainerStats[] {
     });
 }
 
-const RECLAIMED_PATTERN = /Total(?: reclaimed space)?:\s*([\d.]+\s*[A-Za-z]+)/;
+const RECLAIMED_PATTERN = /^\s*Total(?: reclaimed space)?:\s*([\d.]+\s*[A-Za-z]+)\s*$/m;
 
 /**
  * Reads how much space a `docker buildx prune` or `docker image prune` freed.
@@ -224,5 +224,9 @@ const RECLAIMED_PATTERN = /Total(?: reclaimed space)?:\s*([\d.]+\s*[A-Za-z]+)/;
  */
 export function parseReclaimedBytes(output: string): number {
   const total = RECLAIMED_PATTERN.exec(output)?.[1];
-  return total == null ? 0 : (parseDockerSize(total) ?? 0);
+  const bytes = total == null ? null : parseDockerSize(total);
+  if (bytes == null || Number.isSafeInteger(bytes) === false || bytes < 0) {
+    return 0;
+  }
+  return bytes;
 }

@@ -447,18 +447,12 @@ export class DockerCli {
     readonly retentionInHours: number;
     readonly maxUsedSpaceInGb: number;
   }): Promise<number> {
+    const staleArgs = staleBuildCachePruneArgs(limits.retentionInHours);
+    const oversizedArgs = oversizedBuildCachePruneArgs(limits.maxUsedSpaceInGb);
     // One after the other: the size limit applies to what the age limit left.
-    const stale = await this.#runChecked(
-      staleBuildCachePruneArgs(limits.retentionInHours),
-      "buildx prune",
-      { timeoutInMs: PRUNE_TIMEOUT_IN_MS },
-    );
-    const oversized = await this.#runChecked(
-      oversizedBuildCachePruneArgs(limits.maxUsedSpaceInGb),
-      "buildx prune",
-      { timeoutInMs: PRUNE_TIMEOUT_IN_MS },
-    );
-    return parseReclaimedBytes(stale) + parseReclaimedBytes(oversized);
+    const staleBytes = await this.#prune(staleArgs, "buildx prune");
+    const oversizedBytes = await this.#prune(oversizedArgs, "buildx prune");
+    return staleBytes + oversizedBytes;
   }
 
   /**
@@ -468,10 +462,21 @@ export class DockerCli {
    * @throws {DockerCommandError} When docker cannot prune.
    */
   async pruneDanglingImages(): Promise<number> {
-    const output = await this.#runChecked(danglingImagePruneArgs(), "image prune", {
+    return await this.#prune(danglingImagePruneArgs(), "image prune");
+  }
+
+  async #prune(args: readonly string[], description: string): Promise<number> {
+    let lastLine = "";
+    const output = await this.#runChecked(args, description, {
       timeoutInMs: PRUNE_TIMEOUT_IN_MS,
+      // The total is last; a large prune can exceed the runner's captured-output limit.
+      onLine: (line, stream) => {
+        if (stream === "stdout" && line.trim() !== "") {
+          lastLine = line;
+        }
+      },
     });
-    return parseReclaimedBytes(output);
+    return parseReclaimedBytes(lastLine === "" ? output : lastLine);
   }
 
   /**

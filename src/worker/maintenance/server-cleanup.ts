@@ -5,6 +5,7 @@ import { listServers, recordServerCleanup } from "@/servers";
 import type { WorkerDependencies } from "../worker.types";
 
 const HOURS_PER_DAY = 24;
+const MAX_CONCURRENT_CLEANUPS = 3;
 
 type CleanupDependencies = Pick<WorkerDependencies, "database" | "logger" | "config"> & {
   readonly hosts: {
@@ -23,24 +24,31 @@ type CleanupDependencies = Pick<WorkerDependencies, "database" | "logger" | "con
  * @param dependencies - Database, server hosts, logger and the cache limits.
  */
 export async function cleanUpServers(dependencies: CleanupDependencies): Promise<void> {
-  const { database, hosts, logger, config } = dependencies;
+  const { database } = dependencies;
   const ready = listServers(database).filter((server) => server.status === "ready");
-  // One command at a time per server, and servers are few: each is an admin-added VPS.
-  await Promise.all(
-    ready.map(async (server) => {
-      try {
-        const { docker } = hosts.hostOf(database, server.id);
-        const cacheBytes = await docker.pruneBuildCache({
-          retentionInHours: config.BUILD_CACHE_RETENTION_DAYS * HOURS_PER_DAY,
-          maxUsedSpaceInGb: config.BUILD_CACHE_MAX_GB,
-        });
-        const imageBytes = await docker.pruneDanglingImages();
-        const freedBytes = cacheBytes + imageBytes;
-        recordServerCleanup(database, server.id, { at: new Date(), freedBytes });
-        logger.info({ serverId: server.id, freedBytes }, "server cleaned up");
-      } catch (error) {
-        logger.warn({ err: error, serverId: server.id }, "server cleanup failed");
-      }
-    }),
-  );
+  if (ready.length === 0) {
+    return;
+  }
+  for (let offset = 0; offset < ready.length; offset += MAX_CONCURRENT_CLEANUPS) {
+    const batch = ready.slice(offset, offset + MAX_CONCURRENT_CLEANUPS);
+    // Each batch must finish before more servers start pruning.
+    await Promise.all(batch.map(async (server) => await cleanUpServer(dependencies, server.id)));
+  }
+}
+
+async function cleanUpServer(dependencies: CleanupDependencies, serverId: string): Promise<void> {
+  const { database, hosts, logger, config } = dependencies;
+  try {
+    const { docker } = hosts.hostOf(database, serverId);
+    const cacheBytes = await docker.pruneBuildCache({
+      retentionInHours: config.BUILD_CACHE_RETENTION_DAYS * HOURS_PER_DAY,
+      maxUsedSpaceInGb: config.BUILD_CACHE_MAX_GB,
+    });
+    const imageBytes = await docker.pruneDanglingImages();
+    const freedBytes = cacheBytes + imageBytes;
+    recordServerCleanup(database, serverId, { at: new Date(), freedBytes });
+    logger.info({ serverId, freedBytes }, "server cleaned up");
+  } catch (error) {
+    logger.warn({ err: error, serverId }, "server cleanup failed");
+  }
 }

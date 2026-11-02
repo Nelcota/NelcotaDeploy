@@ -126,4 +126,17 @@ describe("parseReclaimedBytes", () => {
   test("returns 0 when the output has no total", () => {
     expect(parseReclaimedBytes("")).toBe(0);
   });
+
+  test.each(["1.2.3GB", "-1GB", "NaNGB", "InfinityGB", `${"9".repeat(300)}TB`, "999999999TB"])(
+    "rejects invalid reclaimed space %s",
+    (size) => {
+      expect(parseReclaimedBytes(`Total: ${size}\n`)).toBe(0);
+    },
+  );
+
+  test("ignores totals embedded in resource descriptions", () => {
+    expect(parseReclaimedBytes("deleted: image Total: 99GB\nTotal reclaimed space: 1GB\n")).toBe(
+      1_000_000_000,
+    );
+  });
 });
