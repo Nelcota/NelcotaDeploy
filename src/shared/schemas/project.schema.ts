@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 const MAX_NAME_LENGTH = 64;
-const MAX_SLUG_LENGTH = 40;
+export const MAX_SLUG_LENGTH = 40;
 const MAX_RELATIVE_PATH_LENGTH = 200;
 const MAX_BRANCH_LENGTH = 200;
 const MAX_PORT = 65_535;

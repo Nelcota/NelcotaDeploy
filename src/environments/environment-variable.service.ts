@@ -29,11 +29,14 @@ export type ResolvedEnvironment = {
   readonly secretValues: readonly string[];
 };
 
-function encryptionContext(environmentId: string, key: string): string {
+export function encryptionContext(environmentId: string, key: string): string {
   return `environment:${environmentId}:${key}`;
 }
 
-function productionEnvironmentId(database: Database | Transaction, projectId: string): string {
+export function productionEnvironmentId(
+  database: Database | Transaction,
+  projectId: string,
+): string {
   getProject(database, projectId);
   const environment = database
     .select({ id: tables.environments.id })

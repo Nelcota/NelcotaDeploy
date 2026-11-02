@@ -53,11 +53,18 @@ export const projects = sqliteTable(
     createdByUserId: text("created_by_user_id").references(() => users.id, {
       onDelete: "set null",
     }),
+    // Set on an environment of another project, such as its staging; null for production.
+    parentProjectId: text("parent_project_id").references((): AnySQLiteColumn => projects.id, {
+      // Each environment is deleted by its own cleanup job; the link only must not block it.
+      onDelete: "set null",
+    }),
+    environmentName: text("environment_name", { enum: ["staging"] }),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
   (table) => [
     index("projects_repository_full_name_idx").on(table.repositoryFullName),
+    uniqueIndex("projects_parent_environment_idx").on(table.parentProjectId, table.environmentName),
     index("projects_name_idx").on(table.name),
     index("projects_server_id_idx").on(table.serverId),
   ],
@@ -181,7 +188,7 @@ export const deployments = sqliteTable(
       ],
     }).notNull(),
     trigger: text("trigger", {
-      enum: ["manual", "webhook", "redeploy", "rollback", "mcp"],
+      enum: ["manual", "webhook", "redeploy", "rollback", "mcp", "promote"],
     }).notNull(),
     triggeredByUserId: text("triggered_by_user_id").references(() => users.id, {
       onDelete: "set null",

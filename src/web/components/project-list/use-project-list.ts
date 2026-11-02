@@ -5,6 +5,7 @@ import { matchesProjectFilter } from "@/web/components/projects/project-filter";
 import { listProjectsFn } from "@/web/functions/projects.functions";
 
 import {
+  groupEnvironments,
   type ProjectRow,
   SORT_OPTIONS,
   type SortOption,
@@ -50,9 +51,11 @@ export function useProjectList({
   });
   const rows = useMemo(
     () =>
-      sortProjects(
-        (projects.data ?? NO_PROJECTS).filter((project) => matchesProjectFilter(project, filter)),
-        SORT_OPTIONS[sortOption],
+      groupEnvironments(
+        sortProjects(
+          (projects.data ?? NO_PROJECTS).filter((project) => matchesProjectFilter(project, filter)),
+          SORT_OPTIONS[sortOption],
+        ),
       ),
     [projects.data, filter, sortOption],
   );

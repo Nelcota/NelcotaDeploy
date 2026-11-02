@@ -4,6 +4,7 @@ import { ErrorState, ListSkeleton } from "@/web/components/layout/states";
 import { TabHeader } from "@/web/components/projects/project-header";
 import { projectQueryOptions } from "@/web/components/projects/project-query";
 import { useCan } from "@/web/components/shell/use-permissions";
+import { StagingSection } from "@/web/components/staging/staging-section";
 
 import { DangerZone } from "./danger-zone";
 import { ProjectSettingsForm } from "./project-settings-form";
@@ -22,7 +23,7 @@ export function ProjectSettingsPage({ projectId }: { readonly projectId: string 
   if (details.data == null) {
     return <ListSkeleton rows={6} />;
   }
-  const { project } = details.data;
+  const { project, environments } = details.data;
 
   return (
     <div className="space-y-6">
@@ -43,6 +44,13 @@ export function ProjectSettingsPage({ projectId }: { readonly projectId: string 
           canEdit={can("project:write")}
           canDeleteData={can("project:delete")}
         />
+        {project.parentProjectId == null ? (
+          <StagingSection
+            projectId={projectId}
+            stagingId={environments.stagingId}
+            canEdit={can("project:write")}
+          />
+        ) : null}
         {can("project:approve") ? (
           <RepositoryTokenSection projectId={projectId} hasToken={project.hasRepositoryToken} />
         ) : null}

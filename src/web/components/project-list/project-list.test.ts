@@ -1,6 +1,12 @@
 import { describe, expect, test } from "bun:test";
 
-import { isSortOption, isStatusFilter, SORT_OPTIONS, sortProjects } from "./project-list";
+import {
+  groupEnvironments,
+  isSortOption,
+  isStatusFilter,
+  SORT_OPTIONS,
+  sortProjects,
+} from "./project-list";
 
 const PROJECTS = [
   { name: "Beta", latestDeployment: { createdAt: "2026-10-01T00:00:00Z" } },
@@ -53,5 +59,30 @@ describe("select value guards", () => {
     const known = isSortOption("size-ascending");
 
     expect(known).toBe(false);
+  });
+});
+
+describe("groupEnvironments", () => {
+  test("places a staging project right after its production project", () => {
+    const projects = [
+      { id: "web-staging", parentProjectId: "web" },
+      { id: "api", parentProjectId: null },
+      { id: "web", parentProjectId: null },
+    ];
+
+    const grouped = groupEnvironments(projects).map((project) => project.id);
+
+    expect(grouped).toEqual(["api", "web", "web-staging"]);
+  });
+
+  test("keeps a staging project whose production project is filtered out", () => {
+    const projects = [
+      { id: "api", parentProjectId: null },
+      { id: "web-staging", parentProjectId: "web" },
+    ];
+
+    const grouped = groupEnvironments(projects).map((project) => project.id);
+
+    expect(grouped).toEqual(["api", "web-staging"]);
   });
 });

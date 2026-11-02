@@ -71,7 +71,8 @@ function SidebarProjectsLoading() {
 /** The first projects with their container state, and a link to all of them. */
 export function SidebarProjects({ onNavigate }: { readonly onNavigate: () => void }) {
   const projects = useProjectList();
-  const list = projects.data ?? [];
+  // Environments such as staging are reached from their production project.
+  const list = (projects.data ?? []).filter((project) => project.parentProjectId == null);
   return (
     <SidebarGroup label="Projetos">
       {projects.isPending ? <SidebarProjectsLoading /> : null}

@@ -4,7 +4,7 @@ import { FolderGit2Icon, GitBranchIcon, HandIcon, ZapIcon } from "lucide-react";
 import type { DeploymentStatus } from "@/deployments";
 import { formatRelativeTime } from "@/shared/format";
 import { DEPLOYMENT_STATUS_LABELS } from "@/web/components/layout/labels";
-import { ListRow } from "@/web/components/layout/layout";
+import { ListRow, Tag } from "@/web/components/layout/layout";
 import {
   ContainerStateBadge,
   DeploymentStatusBadge,
@@ -65,6 +65,11 @@ export function ProjectListRow({
         >
           {project.name}
         </Link>
+        {project.environmentName == null ? null : (
+          <span className="mr-1.5 align-middle">
+            <Tag>Staging</Tag>
+          </span>
+        )}
         <p className="truncate font-mono text-xs text-muted-foreground">{project.slug}</p>
       </div>
       <RepositoryCell project={project} />
