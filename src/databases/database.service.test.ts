@@ -50,6 +50,49 @@ async function setup() {
 }
 
 describe("createProjectDatabase", () => {
+  test("preserves the successful connection variable when concurrent creates use the same key", async () => {
+    const { database, secretBox, project, create } = await setup();
+
+    const results = await Promise.allSettled([create(), create()]);
+
+    expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(1);
+    const failure = results.find((result) => result.status === "rejected");
+    expect(failure?.reason).toBeInstanceOf(DatabaseVariableConflictError);
+    const created = listProjectDatabases(database, project.id).at(0);
+    const environment = await resolveEnvironment(database, secretBox, { projectId: project.id });
+    expect(environment.runtime["DATABASE_URL"]).toEndWith(`@${created?.host}:5432/app`);
+  });
+
+  test("enforces the database limit across concurrent creates", async () => {
+    const { database, project, create } = await setup();
+    const keys = Array.from({ length: MAX_DATABASES_PER_PROJECT + 1 }, (_, index) => `DB_${index}`);
+
+    const results = await Promise.allSettled(keys.map(async (key) => await create(key)));
+
+    expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(
+      MAX_DATABASES_PER_PROJECT,
+    );
+    expect(results.find((result) => result.status === "rejected")?.reason).toBeInstanceOf(
+      DatabaseLimitError,
+    );
+    expect(listProjectDatabases(database, project.id)).toHaveLength(MAX_DATABASES_PER_PROJECT);
+    expect(listEnvironmentVariables(database, project.id)).toHaveLength(MAX_DATABASES_PER_PROJECT);
+  });
+
+  test("rolls back the connection variable when queuing provisioning fails", async () => {
+    const { database, project, create } = await setup();
+    database.$client.run(
+      "CREATE TRIGGER reject_job BEFORE INSERT ON jobs BEGIN SELECT RAISE(ABORT, 'Job insert rejected'); END",
+    );
+
+    const error = await create().catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(Error);
+    expect(error instanceof Error ? error.message : "").toContain("Job insert rejected");
+    expect(listProjectDatabases(database, project.id)).toEqual([]);
+    expect(listEnvironmentVariables(database, project.id)).toEqual([]);
+  });
+
   test("saves the connection URL as a secret variable kept out of previews", async () => {
     const { database, secretBox, project, create } = await setup();
 

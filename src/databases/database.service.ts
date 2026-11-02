@@ -6,7 +6,7 @@ import { databaseContainerNameFor } from "@/docker";
 import {
   deleteEnvironmentVariable,
   listEnvironmentVariables,
-  saveEnvironmentVariable,
+  prepareEnvironmentVariable,
 } from "@/environments";
 import { enqueueJob } from "@/jobs";
 import { getProject } from "@/projects";
@@ -163,19 +163,12 @@ export async function createProjectDatabase(
   request: { readonly projectId: string; readonly input: DatabaseInput; readonly actor: Actor },
 ): Promise<ProjectDatabase> {
   const { projectId, input, actor } = request;
-  getProject(database, projectId);
-  if (listProjectDatabases(database, projectId).length >= MAX_DATABASES_PER_PROJECT) {
-    throw new DatabaseLimitError(MAX_DATABASES_PER_PROJECT);
-  }
-  const variables = listEnvironmentVariables(database, projectId);
-  if (variables.some((variable) => variable.key === input.environmentKey)) {
-    throw new DatabaseVariableConflictError(input.environmentKey);
-  }
+  assertDatabaseCreationPossible(database, projectId, input.environmentKey);
   const engine = databaseEngine(input.engine);
   const id = Bun.randomUUIDv7();
   const password = generatePassword();
   const encryptedPassword = await secretBox.encrypt(password, passwordContext(id));
-  await saveEnvironmentVariable(database, secretBox, {
+  const saveVariable = await prepareEnvironmentVariable(database, secretBox, {
     projectId,
     input: {
       key: input.environmentKey,
@@ -196,18 +189,35 @@ export async function createProjectDatabase(
     deletionRequestedAt: null,
     createdAt: new Date().toISOString(),
   };
-  try {
-    insertDatabase(database, { row, projectId, encryptedPassword, actor });
-  } catch (error) {
-    // The variable would point to a database that does not exist.
-    removeConnectionVariable(database, { projectId, environmentKey: input.environmentKey, actor });
-    throw error;
-  }
+  database.transaction((transaction) => {
+    // Encryption yields: another request may have added a variable or database meanwhile.
+    assertDatabaseCreationPossible(transaction, projectId, input.environmentKey);
+    saveVariable(transaction);
+    insertDatabase(transaction, { row, projectId, encryptedPassword, actor });
+  });
   return toView(row);
 }
 
+function assertDatabaseCreationPossible(
+  database: Database | Transaction,
+  projectId: string,
+  environmentKey: string,
+): void {
+  getProject(database, projectId);
+  if (listProjectDatabases(database, projectId).length >= MAX_DATABASES_PER_PROJECT) {
+    throw new DatabaseLimitError(MAX_DATABASES_PER_PROJECT);
+  }
+  if (
+    listEnvironmentVariables(database, projectId).some(
+      (variable) => variable.key === environmentKey,
+    )
+  ) {
+    throw new DatabaseVariableConflictError(environmentKey);
+  }
+}
+
 function insertDatabase(
-  database: Database,
+  transaction: Transaction,
   insert: {
     readonly row: Omit<
       ProjectDatabase,
@@ -219,19 +229,17 @@ function insertDatabase(
   },
 ): void {
   const { row, projectId, encryptedPassword, actor } = insert;
-  database.transaction((transaction) => {
-    transaction
-      .insert(tables.projectDatabases)
-      .values({ ...row, projectId, encryptedPassword, updatedAt: row.createdAt })
-      .run();
-    enqueueProvision(transaction, projectId, row.id);
-    recordAuditEvent(transaction, {
-      actor,
-      action: "database.create",
-      targetType: "database",
-      targetId: row.id,
-      metadata: { projectId, engine: row.engine, environmentKey: row.environmentKey },
-    });
+  transaction
+    .insert(tables.projectDatabases)
+    .values({ ...row, projectId, encryptedPassword, updatedAt: row.createdAt })
+    .run();
+  enqueueProvision(transaction, projectId, row.id);
+  recordAuditEvent(transaction, {
+    actor,
+    action: "database.create",
+    targetType: "database",
+    targetId: row.id,
+    metadata: { projectId, engine: row.engine, environmentKey: row.environmentKey },
   });
 }
 

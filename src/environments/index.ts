@@ -4,6 +4,7 @@ export {
   deleteEnvironmentVariable,
   type EnvironmentVariableView,
   listEnvironmentVariables,
+  prepareEnvironmentVariable,
   resolveEnvironment,
   saveEnvironmentVariable,
 } from "./environment-variable.service";
