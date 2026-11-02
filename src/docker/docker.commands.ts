@@ -86,6 +86,26 @@ export function containerNameFor(projectSlug: string, deploymentId: string): str
 }
 
 /**
+ * Returns the container name of one replica of a deployment. The first replica keeps the
+ * deployment's own name, so a project with one replica runs exactly as before replicas.
+ *
+ * @param projectSlug - Validated project slug.
+ * @param deploymentId - Deployment UUID.
+ * @param replica - Replica number, from 1.
+ * @returns Container name, such as "nelcota-api-0a1b2c3d4e5f" or "nelcota-api-0a1b2c3d4e5f-2".
+ * @throws {InvalidDockerArgumentError} When the slug, the id or the replica number is malformed.
+ */
+export function replicaContainerNameFor(
+  projectSlug: string,
+  deploymentId: string,
+  replica: number,
+): string {
+  assertPositiveInteger(replica, "replica number");
+  const name = containerNameFor(projectSlug, deploymentId);
+  return replica === 1 ? name : `${name}-${replica}`;
+}
+
+/**
  * Returns the deterministic Docker volume name of a project volume, such as
  * "nelcota-data-0a1b2c3d4e5f". It never changes, so data survives renames of the project.
  *

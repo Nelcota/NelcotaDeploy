@@ -34,17 +34,18 @@ export function runtimeConfigFingerprint(database: Database, projectId: string):
     volume.id,
     volume.mountPath,
   ]);
-  const { memoryLimitInMb, cpuLimitInMillicores } = getProject(database, projectId);
+  const { memoryLimitInMb, cpuLimitInMillicores, replicas } = getProject(database, projectId);
   const limited = memoryLimitInMb != null || cpuLimitInMillicores != null;
   const hasher = new Bun.CryptoHasher("sha256");
-  // Limits join the fingerprint only when set, so unlimited projects keep the hash of their
-  // live container and do not show changes to apply after an upgrade.
+  // Limits and replicas join the fingerprint only when set, so projects with defaults keep the
+  // hash of their live container and do not show changes to apply after an upgrade.
   hasher.update(
     JSON.stringify({
       variables,
       domains,
       volumes,
       ...(limited ? { resources: [memoryLimitInMb, cpuLimitInMillicores] } : {}),
+      ...(replicas > 1 ? { replicas } : {}),
     }),
   );
   return hasher.digest("hex");

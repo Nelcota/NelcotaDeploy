@@ -17,12 +17,12 @@ import type { WorkerDependencies } from "./worker.types";
 type ProjectServer = { readonly docker: DockerEngine; readonly routes: RouteFiles | null };
 
 /**
- * Starts, stops or restarts the container of a deployment.
+ * Starts, stops or restarts every replica of a deployment.
  *
  * @param database - Database.
  * @param docker - Docker access; refuses containers without the platform label.
- * @param request - Deployment whose container is targeted and the operation to perform.
- * @throws {Error} When the deployment has no container name.
+ * @param request - Deployment whose containers are targeted and the operation to perform.
+ * @throws {Error} When the deployment has no container name or none of its replicas exists.
  */
 export async function runContainerAction(
   database: Database,
@@ -33,15 +33,43 @@ export async function runContainerAction(
   if (deployment.containerName == null) {
     throw new Error(`Deployment ${deploymentId} has no container`);
   }
+  const replicaNames = (await docker.listManagedContainers())
+    .filter((container) => container.labels[LABELS.deploymentId] === deploymentId)
+    .map((container) => container.name);
+  if (replicaNames.length === 0) {
+    throw new Error(`No container of deployment ${deploymentId} exists on its server`);
+  }
+  await applyInOrder(docker, replicaNames, action);
+}
+
+// One replica at a time, so a restart never takes every replica down at once.
+async function applyInOrder(
+  docker: DockerEngine,
+  containerNames: readonly string[],
+  action: ContainerAction,
+): Promise<void> {
+  const [first, ...rest] = containerNames;
+  if (first == null) {
+    return;
+  }
+  await applyContainerAction(docker, first, action);
+  await applyInOrder(docker, rest, action);
+}
+
+async function applyContainerAction(
+  docker: DockerEngine,
+  containerName: string,
+  action: ContainerAction,
+): Promise<void> {
   switch (action) {
     case "start":
-      await docker.startContainer(deployment.containerName);
+      await docker.startContainer(containerName);
       return;
     case "stop":
-      await docker.stopContainer(deployment.containerName);
+      await docker.stopContainer(containerName);
       return;
     case "restart":
-      await docker.restartContainer(deployment.containerName);
+      await docker.restartContainer(containerName);
   }
 }
 

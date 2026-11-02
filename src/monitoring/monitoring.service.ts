@@ -24,6 +24,31 @@ export type ContainerSample = {
   readonly memoryTotalBytes: number | null;
 };
 
+/**
+ * Adds up the samples of the containers of each project, so a project with several replicas
+ * gets one point per reading, as one with a single container does.
+ *
+ * @param samples - One sample per container.
+ * @returns One sample per project; a figure no container reported stays null.
+ */
+export function combineSamplesByProject(samples: readonly ContainerSample[]): ContainerSample[] {
+  const byProject = Map.groupBy(samples, (sample) => sample.projectId);
+  return [...byProject].map(([projectId, projectSamples]) => ({
+    projectId,
+    cpuPercent: sumKnown(projectSamples.map((sample) => sample.cpuPercent)),
+    memoryUsedBytes: sumKnown(projectSamples.map((sample) => sample.memoryUsedBytes)),
+    memoryTotalBytes: sumKnown(projectSamples.map((sample) => sample.memoryTotalBytes)),
+  }));
+}
+
+function sumKnown(values: readonly (number | null)[]): number | null {
+  const known = values.filter((value): value is number => value != null);
+  if (known.length === 0) {
+    return null;
+  }
+  return known.reduce((total, value) => total + value, 0);
+}
+
 /** Container state observed by the worker. */
 export type ContainerSnapshot = typeof tables.containerSnapshots.$inferInsert;
 

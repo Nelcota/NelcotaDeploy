@@ -69,6 +69,7 @@ const api = createProject(
     previewsEnabled: true,
     memoryLimitInMb: null,
     cpuLimitInMillicores: null,
+    replicas: 1,
   },
   { actor: ACTOR, userId: null, isAdmin: true },
 );
@@ -89,6 +90,7 @@ createProject(
     previewsEnabled: false,
     memoryLimitInMb: null,
     cpuLimitInMillicores: null,
+    replicas: 1,
   },
   { actor: ACTOR, userId: null, isAdmin: false },
 );

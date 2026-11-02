@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import { openMemoryDatabase } from "@/db";
+import { getDeployment, requestDeployment } from "@/deployments";
 import { LABELS, volumeNameFor } from "@/docker";
 import { createTestProject, FakeDocker, TEST_ACTOR } from "@/testing";
 import {
@@ -10,7 +11,60 @@ import {
   setVolumeAttached,
 } from "@/volumes";
 
-import { removeProjectResources, runVolumeDeletion } from "./container-action-runner";
+import {
+  removeProjectResources,
+  runContainerAction,
+  runVolumeDeletion,
+} from "./container-action-runner";
+import { startContainers } from "./deploy/container-start";
+import { DeployState } from "./deploy/deploy-context";
+import { DeploymentLogWriter } from "./deploy/deployment-log-writer";
+
+async function startReplicas(replicas: number) {
+  const database = openMemoryDatabase();
+  const project = createTestProject(database, { replicas });
+  const { deploymentId } = requestDeployment(database, {
+    projectId: project.id,
+    trigger: "manual",
+    actor: TEST_ACTOR,
+    triggeredByUserId: null,
+  });
+  const docker = new FakeDocker();
+  using logs = new DeploymentLogWriter(database, deploymentId);
+  await startContainers(
+    { database, docker, config: { network: "nelcota" } },
+    { deployment: getDeployment(database, deploymentId), project, logs, state: new DeployState() },
+    {
+      imageTag: "nelcota/api:abc",
+      runtimeValues: {},
+      runtimeConfigHash: "hash",
+      buildConfigHash: null,
+    },
+  );
+  return { database, docker, deploymentId };
+}
+
+describe("runContainerAction", () => {
+  test("restarts every replica of the deployment", async () => {
+    const { database, docker, deploymentId } = await startReplicas(3);
+
+    await runContainerAction(database, docker, { deploymentId, action: "restart" });
+
+    expect(docker.calls.filter((call) => call.startsWith("restart "))).toHaveLength(3);
+  });
+
+  test("throws when none of the deployment's replicas exists on the server", async () => {
+    const { database, docker, deploymentId } = await startReplicas(2);
+    docker.containers.clear();
+
+    const error = await runContainerAction(database, docker, {
+      deploymentId,
+      action: "stop",
+    }).catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(Error);
+  });
+});
 
 function setup() {
   const database = openMemoryDatabase();

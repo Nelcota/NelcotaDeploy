@@ -15,6 +15,8 @@ const MAX_MEMORY_LIMIT_IN_MB = 1_048_576;
 export const CPU_LIMIT_OPTIONS_IN_MILLICORES = [250, 500, 1000, 2000, 4000, 8000] as const;
 const MIN_CPU_LIMIT_IN_MILLICORES = 100;
 const MAX_CPU_LIMIT_IN_MILLICORES = 256_000;
+/** Most containers one deployment runs behind the load balancer. */
+export const MAX_REPLICAS = 10;
 
 const SLUG_PATTERN = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/;
 const GITHUB_URL_PATTERN =
@@ -215,6 +217,13 @@ export const projectInputSchema = z.object({
     max: MAX_CPU_LIMIT_IN_MILLICORES,
     rangeMessage: "Limite de CPU inválido",
   }),
+  /** Containers of each deployment the proxy balances requests between; one when absent. */
+  replicas: z.coerce
+    .number()
+    .int("Informe um número inteiro")
+    .min(1, `Use de 1 a ${MAX_REPLICAS} réplicas`)
+    .max(MAX_REPLICAS, `Use de 1 a ${MAX_REPLICAS} réplicas`)
+    .default(1),
 });
 
 export type ProjectInput = z.infer<typeof projectInputSchema>;

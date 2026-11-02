@@ -86,7 +86,12 @@ function countProjectStates(database: Database, projectIds: readonly string[] | 
     total: projects.length,
     deployed: currentDeploymentIds.length,
     online: currentDeploymentIds.filter((id) => onlineDeployments.has(id)).length,
-    unhealthy: runningCurrent.filter((snapshot) => snapshot.health === "unhealthy").length,
+    // Counted per deployment: a project whose replicas are all unhealthy is one problem.
+    unhealthy: new Set(
+      runningCurrent
+        .filter((snapshot) => snapshot.health === "unhealthy")
+        .map((snapshot) => snapshot.deploymentId),
+    ).size,
   };
 }
 

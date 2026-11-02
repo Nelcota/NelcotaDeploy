@@ -12,6 +12,7 @@ import {
 
 import {
   ProjectHasVolumesError,
+  ReplicatedProjectVolumeError,
   VolumeAttachedError,
   VolumeBeingDeletedError,
   VolumeLimitError,
@@ -111,6 +112,7 @@ function assertNoOverlap(volumes: readonly ProjectVolume[], mountPath: string): 
  * @throws {VolumeLimitError} When the project already has 10 volumes.
  * @throws {VolumePathOverlapError} When the path equals or nests inside the path of another
  *   volume of the project, attached or not.
+ * @throws {ReplicatedProjectVolumeError} When the project runs more than one replica.
  */
 export function addProjectVolume(
   database: Database,
@@ -118,7 +120,7 @@ export function addProjectVolume(
 ): ProjectVolume {
   const { projectId, input, actor } = request;
   return database.transaction((transaction) => {
-    getProject(transaction, projectId);
+    assertSingleReplica(getProject(transaction, projectId));
     const volumes = listProjectVolumes(transaction, projectId);
     if (volumes.length >= MAX_VOLUMES_PER_PROJECT) {
       throw new VolumeLimitError(MAX_VOLUMES_PER_PROJECT);
@@ -147,6 +149,13 @@ export function addProjectVolume(
   });
 }
 
+// Replicas would write to the same volume at once, which corrupts files such as SQLite's.
+function assertSingleReplica(project: { readonly id: string; readonly replicas: number }): void {
+  if (project.replicas > 1) {
+    throw new ReplicatedProjectVolumeError(project.id);
+  }
+}
+
 function getProjectVolume(
   database: Database | Transaction,
   projectId: string,
@@ -167,6 +176,8 @@ function getProjectVolume(
  * @param change - Project, volume, who changes it and whether it should be `attached`.
  * @throws {VolumeNotFoundError} When the volume is not one of the project's.
  * @throws {VolumeBeingDeletedError} When its data is being deleted.
+ * @throws {ReplicatedProjectVolumeError} When attaching to a project that runs more than one
+ *   replica.
  */
 export function setVolumeAttached(
   database: Database,
@@ -177,6 +188,9 @@ export function setVolumeAttached(
     const volume = getProjectVolume(transaction, projectId, volumeId);
     if (volume.deletionRequestedAt != null) {
       throw new VolumeBeingDeletedError(volumeId);
+    }
+    if (attached) {
+      assertSingleReplica(getProject(transaction, projectId));
     }
     transaction
       .update(tables.projectVolumes)

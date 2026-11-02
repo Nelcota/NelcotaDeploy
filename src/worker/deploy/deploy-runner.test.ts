@@ -47,6 +47,7 @@ async function setup(
     healthTimeout?: number;
     dockerfile?: string;
     internalPort?: number | null;
+    replicas?: number;
   } = {},
 ) {
   const database = openMemoryDatabase();
@@ -54,7 +55,7 @@ async function setup(
   const secretBox = await createTestSecretBox();
   // null asks for an automatic port; leaving it out keeps the usual 3000.
   const internalPort = options.internalPort === undefined ? 3000 : options.internalPort;
-  const project = createTestProject(database, { internalPort });
+  const project = createTestProject(database, { internalPort, replicas: options.replicas ?? 1 });
   const dependencies: DeployRunnerDependencies = {
     database,
     runner: runProcess,
@@ -112,6 +113,49 @@ describe("runDeployment success", () => {
     expect(deployment.commitSha).toStartWith("c0ffee");
     expect(docker.calls.some((call) => call.startsWith("build nelcota/api:"))).toBe(true);
     expect(docker.containers.size).toBe(1);
+  }, 15_000);
+});
+
+describe("runDeployment replicas", () => {
+  test("starts and health checks every replica", async () => {
+    const { database, docker, project, dependencies } = await setup({ replicas: 3 });
+
+    const status = await runDeployment(
+      dependencies,
+      deploy(database, project.id),
+      new AbortController().signal,
+    );
+
+    expect(status).toBe("succeeded");
+    expect(docker.containers.size).toBe(3);
+  }, 15_000);
+
+  test("replaces every previous replica once the new ones are healthy", async () => {
+    const { database, docker, project, dependencies } = await setup({ replicas: 2 });
+    await runDeployment(dependencies, deploy(database, project.id), new AbortController().signal);
+    const previous = [...docker.containers.keys()];
+
+    await runDeployment(dependencies, deploy(database, project.id), new AbortController().signal);
+
+    expect(docker.containers.size).toBe(2);
+    expect(previous.some((name) => docker.containers.has(name))).toBe(false);
+  }, 20_000);
+
+  test("removes every new replica when they fail the health check", async () => {
+    const { database, docker, project, dependencies } = await setup({
+      replicas: 2,
+      probes: neverHealthy,
+      healthTimeout: 1,
+    });
+
+    const status = await runDeployment(
+      dependencies,
+      deploy(database, project.id),
+      new AbortController().signal,
+    );
+
+    expect(status).toBe("failed");
+    expect(docker.containers.size).toBe(0);
   }, 15_000);
 });
 
