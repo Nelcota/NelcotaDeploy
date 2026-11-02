@@ -1,9 +1,12 @@
 import { describe, expect, test } from "bun:test";
 
+import { eq } from "drizzle-orm";
+
 import { type Database, openMemoryDatabase, tables } from "@/db";
 import { createTestProject } from "@/testing";
 
 import { environmentHealth, getDashboardSummary } from "./dashboard.service";
+import { replaceContainerSnapshots } from "./monitoring.service";
 
 const NOW = new Date("2026-10-28T15:00:00Z");
 const DISPLAY_LIMIT = 8;
@@ -85,6 +88,41 @@ describe("getDashboardSummary", () => {
 
     expect(summary.deploymentsLastDayCount).toBe(0);
     expect(summary.failuresLastDayCount).toBe(0);
+  });
+
+  test("counts a project whose replicas are all unhealthy once", () => {
+    const database = openMemoryDatabase();
+    const projectId = createTestProject(database).id;
+    insertDeployment(database, projectId, {
+      status: "succeeded",
+      createdAt: "2026-10-28T14:00:00Z",
+    });
+    const deploymentId =
+      database.select({ id: tables.deployments.id }).from(tables.deployments).get()?.id ?? "";
+    database
+      .update(tables.projects)
+      .set({ currentDeploymentId: deploymentId })
+      .where(eq(tables.projects.id, projectId))
+      .run();
+    const replica = {
+      projectId,
+      deploymentId,
+      image: "nelcota/api:abc",
+      state: "running",
+      health: "unhealthy",
+      restartCount: 0,
+      startedAt: "2026-10-28T14:00:00Z",
+      observedAt: "2026-10-28T14:30:00Z",
+    };
+    replaceContainerSnapshots(database, "local", [
+      { ...replica, containerId: "c1", name: "nelcota-api-1" },
+      { ...replica, containerId: "c2", name: "nelcota-api-1-2" },
+    ]);
+
+    const summary = getDashboardSummary(database, NOW);
+
+    expect(summary.unhealthyCount).toBe(1);
+    expect(summary.onlineCount).toBe(1);
   });
 });
 

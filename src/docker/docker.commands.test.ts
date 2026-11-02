@@ -16,6 +16,7 @@ import {
   RAILPACK_VERSION,
   railpackBaseTagFor,
   railpackBuildArgs,
+  replicaContainerNameFor,
   resourceArgs,
   runContainerArgs,
   stopContainerArgs,
@@ -34,6 +35,25 @@ describe("deterministic names", () => {
   test("throws InvalidDockerArgumentError for a slug that could inject options", () => {
     expect(() => imageTagFor("--privileged", DEPLOYMENT_ID)).toThrow(InvalidDockerArgumentError);
   });
+});
+
+describe("replicaContainerNameFor", () => {
+  test("keeps the deployment's own name for the first replica", () => {
+    expect(replicaContainerNameFor("api", DEPLOYMENT_ID, 1)).toBe("nelcota-api-0c1d2e3f4a5b");
+  });
+
+  test("adds the replica number to the other replicas", () => {
+    expect(replicaContainerNameFor("api", DEPLOYMENT_ID, 3)).toBe("nelcota-api-0c1d2e3f4a5b-3");
+  });
+
+  test.each([0, -1, 1.5, Number.NaN])(
+    "throws InvalidDockerArgumentError for replica number %p",
+    (replica) => {
+      expect(() => replicaContainerNameFor("api", DEPLOYMENT_ID, replica)).toThrow(
+        InvalidDockerArgumentError,
+      );
+    },
+  );
 });
 
 describe("buildImageArgs", () => {

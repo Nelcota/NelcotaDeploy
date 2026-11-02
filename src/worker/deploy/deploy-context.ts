@@ -42,11 +42,12 @@ export type DeployRunnerDependencies = Pick<ServerHost, "runner" | "docker" | "g
 
 /** Facts learned while deploying that the failure path needs. */
 export class DeployState {
-  containerName: string | null = null;
+  /** Containers this deployment started, which a failure removes. */
+  readonly containerNames: string[] = [];
   redact: (text: string) => string = (text) => text;
 
   useContainer(name: string): void {
-    this.containerName = name;
+    this.containerNames.push(name);
   }
 
   useRedactor(redact: (text: string) => string): void {

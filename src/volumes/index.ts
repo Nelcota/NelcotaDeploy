@@ -1,5 +1,6 @@
 export {
   ProjectHasVolumesError,
+  ReplicatedProjectVolumeError,
   VolumeAttachedError,
   VolumeBeingDeletedError,
   VolumeLimitError,

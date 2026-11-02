@@ -40,6 +40,7 @@ export function createTestProject(
       previewsEnabled: false,
       memoryLimitInMb: null,
       cpuLimitInMillicores: null,
+      replicas: 1,
       ...overrides,
     },
     { actor: TEST_ACTOR, userId: null, isAdmin: true },

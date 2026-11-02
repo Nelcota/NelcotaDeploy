@@ -174,6 +174,8 @@ function createPendingStagingProject(
       previewsEnabled: false,
       memoryLimitInMb: production.memoryLimitInMb,
       cpuLimitInMillicores: production.cpuLimitInMillicores,
+      // Staging tests the code, not the scale: one replica, which can be raised later.
+      replicas: 1,
     },
     {
       ...creator,

@@ -25,6 +25,8 @@ export type ProjectFormValues = {
   readonly memoryLimitInMb: string;
   /** Thousandths of a core as text; blank for no limit. */
   readonly cpuLimitInMillicores: string;
+  /** Containers each deployment runs, as text. */
+  readonly replicas: string;
 };
 
 /** Input accepted by the project server functions. */
@@ -66,6 +68,7 @@ export const EMPTY_PROJECT_FORM: ProjectFormValues = {
   previewsEnabled: false,
   memoryLimitInMb: "",
   cpuLimitInMillicores: "",
+  replicas: "1",
 };
 
 /**
@@ -90,6 +93,7 @@ export function projectToFormValues(project: {
   readonly previewsEnabled: boolean;
   readonly memoryLimitInMb: number | null;
   readonly cpuLimitInMillicores: number | null;
+  readonly replicas: number;
 }): ProjectFormValues {
   return {
     name: project.name,
@@ -107,6 +111,7 @@ export function projectToFormValues(project: {
     memoryLimitInMb: project.memoryLimitInMb == null ? "" : String(project.memoryLimitInMb),
     cpuLimitInMillicores:
       project.cpuLimitInMillicores == null ? "" : String(project.cpuLimitInMillicores),
+    replicas: String(project.replicas),
   };
 }
 

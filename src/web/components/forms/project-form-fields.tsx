@@ -3,6 +3,7 @@ import { useState } from "react";
 import { formatCpuCores } from "@/shared/format";
 import {
   CPU_LIMIT_OPTIONS_IN_MILLICORES,
+  MAX_REPLICAS,
   PROJECT_BUILDERS,
   slugify,
 } from "@/shared/schemas/project.schema";
@@ -240,7 +241,10 @@ export function BuildFields({ form }: { readonly form: ProjectFormApi }) {
   );
 }
 
-/** Memory and CPU the application container may use; blank leaves it unlimited. */
+/**
+ * Memory and CPU each application container may use, blank leaving it unlimited, and how many
+ * replicas share the requests.
+ */
 export function ResourceLimitFields({ form }: { readonly form: ProjectFormApi }) {
   return (
     <>
@@ -293,6 +297,27 @@ export function ResourceLimitFields({ form }: { readonly form: ProjectFormApi })
                   ))}
                 </SelectContent>
               </Select>
+            )}
+          </FormField>
+        )}
+      </form.Field>
+      <form.Field name="replicas">
+        {(field) => (
+          <FormField
+            id="project-replicas"
+            label="Réplicas"
+            hint={`De 1 a ${MAX_REPLICAS}. As requisições são divididas entre elas; os limites valem para cada uma. Projetos com volumes usam só 1.`}
+            errors={visibleErrors(form, field.state.meta)}
+          >
+            {(props) => (
+              <Input
+                {...props}
+                inputMode="numeric"
+                className="font-mono tabular-nums"
+                value={field.state.value}
+                onBlur={field.handleBlur}
+                onChange={(event) => field.handleChange(event.target.value)}
+              />
             )}
           </FormField>
         )}
