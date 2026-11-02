@@ -1,13 +1,14 @@
-import { expect, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 
-import { openMemoryDatabase } from "@/db";
+import { listConsoleCommands, runConsoleCommand, updateConsoleCommand } from "@/console";
+import { openMemoryDatabase, tables } from "@/db";
 import { completeDeployment, requestDeployment, transitionDeployment } from "@/deployments";
 import { saveDeploymentSecrets } from "@/environments";
 import { taskInputSchema } from "@/shared/schemas/task.schema";
 import { createTask, listTaskExecutions, runTask } from "@/tasks";
 import { createTestProject, createTestSecretBox, FakeDocker, TEST_ACTOR } from "@/testing";
 
-import { runTaskExecution } from "./task-runner";
+import { runConsoleCommandJob, runTaskExecution } from "./task-runner";
 
 function setup() {
   const database = openMemoryDatabase();
@@ -82,3 +83,86 @@ test.each([true, false])(
     expect(execution?.errorMessage).toBe("Execution failed with [REDACTED]");
   },
 );
+
+const EXEC_OK = { exitCode: 0, stdout: "", stderr: "", timedOut: false, aborted: false };
+
+function consoleSetup() {
+  const { database, project, deploymentId } = setup();
+  const now = new Date("2026-11-02T12:00:00Z");
+  database
+    .insert(tables.users)
+    .values({ id: "ana", name: "Ana", email: "ana@example.com", createdAt: now, updatedAt: now })
+    .run();
+  const queued = runConsoleCommand(database, {
+    projectId: project.id,
+    command: "cat /app/.env | head -1",
+    userId: "ana",
+    actor: TEST_ACTOR,
+  });
+  return { database, project, deploymentId, commandId: queued.id };
+}
+
+describe("runConsoleCommandJob", () => {
+  test("runs the command through sh -c in the live container and stores its output", async () => {
+    const { database, project, commandId } = consoleSetup();
+    const docker = new FakeDocker();
+    const executed: { reference: string; command: readonly string[] }[] = [];
+    docker.execInContainer = async (reference, command, run) => {
+      executed.push({ reference, command });
+      run.onLine?.("APP_ENV=production", "stdout");
+      return await Promise.resolve(EXEC_OK);
+    };
+
+    const outcome = await runConsoleCommandJob(
+      { database, secretBox: await createTestSecretBox(), dockerOf: () => docker },
+      commandId,
+      new AbortController().signal,
+    );
+
+    expect(outcome).toBe("succeeded");
+    expect(executed).toEqual([
+      { reference: "live", command: ["sh", "-c", "cat /app/.env | head -1"] },
+    ]);
+    const [command] = listConsoleCommands(database, { projectId: project.id, userId: "ana" });
+    expect(command).toMatchObject({
+      status: "succeeded",
+      exitCode: 0,
+      output: "APP_ENV=production\n",
+    });
+  });
+
+  test("hides the project's secrets from the output", async () => {
+    const { database, project, deploymentId, commandId } = consoleSetup();
+    const secretBox = await createTestSecretBox();
+    await saveDeploymentSecrets(database, secretBox, { deploymentId, values: ["s3cr3t-value"] });
+    const docker = new FakeDocker();
+    docker.execInContainer = async (_reference, _command, run) => {
+      run.onLine?.("TOKEN=s3cr3t-value", "stdout");
+      return await Promise.resolve({ ...EXEC_OK, exitCode: 1 });
+    };
+
+    const outcome = await runConsoleCommandJob(
+      { database, secretBox, dockerOf: () => docker },
+      commandId,
+      new AbortController().signal,
+    );
+
+    expect(outcome).toBe("failed");
+    const [command] = listConsoleCommands(database, { projectId: project.id, userId: "ana" });
+    expect(command?.output).toBe("TOKEN=[REDACTED]\n");
+    expect(command?.errorMessage).toBe("Command exited with code 1");
+  });
+
+  test("skips a command that is no longer waiting", async () => {
+    const { database, commandId } = consoleSetup();
+    updateConsoleCommand(database, commandId, { status: "failed" });
+
+    const outcome = await runConsoleCommandJob(
+      { database, secretBox: await createTestSecretBox(), dockerOf: () => new FakeDocker() },
+      commandId,
+      new AbortController().signal,
+    );
+
+    expect(outcome).toBe("skipped");
+  });
+});

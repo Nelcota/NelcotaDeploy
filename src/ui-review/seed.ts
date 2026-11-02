@@ -2,6 +2,7 @@
 // Run by main.ts in a child process whose DATABASE_PATH points at a temporary file.
 import { addProjectMember } from "@/access";
 import { createUser, getAuth } from "@/auth";
+import { runConsoleCommand, updateConsoleCommand } from "@/console";
 import { getDatabase, migrateDatabase, tables } from "@/db";
 import { completeDeployment, requestDeployment, transitionDeployment } from "@/deployments";
 import { addDomain } from "@/domains";
@@ -40,7 +41,7 @@ migrateDatabase(database);
 const secretBox = await getSecretBox();
 const now = Date.now();
 
-await createUser(getAuth(), database, {
+const reviewerId = await createUser(getAuth(), database, {
   newUser: { email, name: "Ana Revisora", role: "admin", password },
   actor: ACTOR,
 });
@@ -284,6 +285,30 @@ database
   .run();
 
 await seedServers(database, secretBox);
+
+// Two finished console commands of the reviewer, one of them failed.
+const CONSOLE_COMMANDS = [
+  [
+    "ls -la /app",
+    "total 24\ndrwxr-xr-x 1 node node 4096 . \n-rw-r--r-- 1 node node  812 package.json\n",
+    0,
+  ],
+  ["cat /app/missing.txt", "cat: can't open '/app/missing.txt': No such file or directory\n", 1],
+] as const;
+for (const [command, output, exitCode] of CONSOLE_COMMANDS) {
+  const queued = runConsoleCommand(database, {
+    projectId: api.id,
+    command,
+    userId: reviewerId,
+    actor: ACTOR,
+  });
+  updateConsoleCommand(database, queued.id, {
+    status: exitCode === 0 ? "succeeded" : "failed",
+    output,
+    exitCode,
+    errorMessage: exitCode === 0 ? null : `Command exited with code ${exitCode}`,
+  });
+}
 
 // The last line is read by main.ts to know which pages to open.
 process.stdout.write(`${JSON.stringify({ projectId: api.id, deploymentId: liveDeploymentId })}\n`);
