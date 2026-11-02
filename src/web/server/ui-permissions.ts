@@ -1,4 +1,4 @@
-import { hasPermission, type Permission, type Role } from "@/shared/roles";
+import { type AccessRole, hasPermission, type Permission } from "@/shared/roles";
 
 const UI_PERMISSIONS: Permission[] = [
   "project:write",
@@ -11,6 +11,7 @@ const UI_PERMISSIONS: Permission[] = [
   "task:write",
   "task:run",
   "user:manage",
+  "member:manage",
   "settings:write",
   "token:manage",
   "audit:read",
@@ -22,6 +23,6 @@ const UI_PERMISSIONS: Permission[] = [
  * @param role - Global role of the user, or their role on the project being shown.
  * @returns The granted permissions.
  */
-export function uiPermissionsOf(role: Role): Permission[] {
+export function uiPermissionsOf(role: AccessRole): Permission[] {
   return UI_PERMISSIONS.filter((permission) => hasPermission(role, permission));
 }

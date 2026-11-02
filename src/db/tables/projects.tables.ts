@@ -84,7 +84,7 @@ export const projectMembers = sqliteTable(
     userId: text("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
-    role: text("role", { enum: ["developer", "viewer"] }).notNull(),
+    role: text("role", { enum: ["manager", "developer", "viewer"] }).notNull(),
     addedByUserId: text("added_by_user_id").references(() => users.id, { onDelete: "set null" }),
     createdAt: createdAt(),
   },

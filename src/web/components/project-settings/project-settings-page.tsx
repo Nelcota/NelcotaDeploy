@@ -53,7 +53,7 @@ export function ProjectSettingsPage({ projectId }: { readonly projectId: string 
           />
         ) : null}
         {/* Environments share the members of their production project, managed there. */}
-        {can("user:manage") && project.parentProjectId == null ? (
+        {can("member:manage") && project.parentProjectId == null ? (
           <TeamSection projectId={projectId} />
         ) : null}
         {can("project:approve") ? (

@@ -20,9 +20,12 @@ function setup() {
   const developer = insertUser(database, "developer", "developer");
   const viewer = insertUser(database, "viewer", "viewer");
   const outsider = insertUser(database, "outsider", "developer");
+  // A global viewer whose role on this project is manager.
+  const manager = insertUser(database, "manager", "viewer");
   for (const [member, role] of [
     [developer, "developer"],
     [viewer, "viewer"],
+    [manager, "manager"],
   ] as const) {
     addProjectMember(database, {
       projectId: production.id,
@@ -32,7 +35,7 @@ function setup() {
       actor: TEST_ACTOR,
     });
   }
-  return { database, production, staging, admin, developer, viewer, outsider };
+  return { database, production, staging, admin, developer, viewer, outsider, manager };
 }
 
 describe("projectRoleOf", () => {
@@ -97,6 +100,39 @@ describe("assertProjectPermission", () => {
       assertProjectPermission(database, viewer, {
         projectId: production.id,
         permission: "deployment:create",
+      }),
+    ).toThrow(ForbiddenError);
+  });
+
+  test("lets a manager member manage the members, whatever their global role", () => {
+    const { database, staging, manager } = setup();
+
+    expect(() =>
+      assertProjectPermission(database, manager, {
+        projectId: staging.id,
+        permission: "member:manage",
+      }),
+    ).not.toThrow();
+  });
+
+  test("throws ForbiddenError when a developer member tries to manage the members", () => {
+    const { database, production, developer } = setup();
+
+    expect(() =>
+      assertProjectPermission(database, developer, {
+        projectId: production.id,
+        permission: "member:manage",
+      }),
+    ).toThrow(ForbiddenError);
+  });
+
+  test("throws ForbiddenError when a manager member tries to delete the project", () => {
+    const { database, production, manager } = setup();
+
+    expect(() =>
+      assertProjectPermission(database, manager, {
+        projectId: production.id,
+        permission: "project:delete",
       }),
     ).toThrow(ForbiddenError);
   });

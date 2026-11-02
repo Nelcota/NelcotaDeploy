@@ -32,8 +32,8 @@ export function TeamSection({ projectId }: { readonly projectId: string }) {
       description="Administradores veem todos os projetos. As demais pessoas só veem este projeto, e o staging dele, se forem membros."
     >
       <p className="mb-4 text-sm text-muted-foreground">
-        Desenvolvedor faz deploy, rollback e altera variáveis, domínios e tasks. Leitor só
-        visualiza.
+        Gerente faz tudo que o Desenvolvedor faz e também gerencia esta equipe. Desenvolvedor faz
+        deploy, rollback e altera variáveis, domínios e tasks. Leitor só visualiza.
       </p>
       <div className="space-y-4">
         {list.length === 0 ? (

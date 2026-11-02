@@ -20,7 +20,7 @@ const memberTarget = z.object({ projectId: idSchema, userId: idSchema });
 export const listProjectMembersFn = createServerFn({ method: "GET" })
   .validator(projectIdInput)
   .handler(async ({ data }) => {
-    await authorizeProject("user:manage", data.projectId);
+    await authorizeProject("member:manage", data.projectId);
     const database = getDatabase();
     const members = listProjectMembers(database, data.projectId);
     const memberIds = new Set(members.map((member) => member.userId));
@@ -35,7 +35,7 @@ export const listProjectMembersFn = createServerFn({ method: "GET" })
 export const addProjectMemberFn = createServerFn({ method: "POST" })
   .validator(memberTarget.extend({ role: z.enum(PROJECT_ROLES) }))
   .handler(async ({ data }) => {
-    const user = await authorizeProject("user:manage", data.projectId);
+    const user = await authorizeProject("member:manage", data.projectId);
     addProjectMember(getDatabase(), {
       ...data,
       addedByUserId: user.id,
@@ -46,13 +46,13 @@ export const addProjectMemberFn = createServerFn({ method: "POST" })
 export const updateProjectMemberRoleFn = createServerFn({ method: "POST" })
   .validator(memberTarget.extend({ role: z.enum(PROJECT_ROLES) }))
   .handler(async ({ data }) => {
-    const user = await authorizeProject("user:manage", data.projectId);
+    const user = await authorizeProject("member:manage", data.projectId);
     updateProjectMemberRole(getDatabase(), { ...data, actor: userActor(user) });
   });
 
 export const removeProjectMemberFn = createServerFn({ method: "POST" })
   .validator(memberTarget)
   .handler(async ({ data }) => {
-    const user = await authorizeProject("user:manage", data.projectId);
+    const user = await authorizeProject("member:manage", data.projectId);
     removeProjectMember(getDatabase(), { ...data, actor: userActor(user) });
   });
