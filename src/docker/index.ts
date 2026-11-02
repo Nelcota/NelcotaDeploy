@@ -8,5 +8,7 @@ export {
   imageTagFor,
   LABELS,
   managedLabels,
+  RAILPACK_VERSION,
+  railpackBaseTagFor,
   volumeNameFor,
 } from "./docker.commands";

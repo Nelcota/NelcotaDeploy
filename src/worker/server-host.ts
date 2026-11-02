@@ -22,6 +22,8 @@ export type ServerHost = {
   readonly files: ServerFiles;
   readonly docker: DockerEngine;
   readonly git: Pick<GitClient, "checkoutRevision">;
+  /** Railpack CLI on the server, which plans builds of projects without a Dockerfile. */
+  readonly railpackBinary: string;
   /** Health probes that reach containers on the server's Docker network. */
   readonly probes: Probes;
   /** Where builds run on the server; its filesystem is the disk reported for the server. */

@@ -25,6 +25,7 @@ export const projectColumns = {
   repositoryUrl: tables.projects.repositoryUrl,
   repositoryFullName: tables.projects.repositoryFullName,
   branch: tables.projects.branch,
+  builder: tables.projects.builder,
   dockerfilePath: tables.projects.dockerfilePath,
   buildContext: tables.projects.buildContext,
   internalPort: tables.projects.internalPort,
@@ -53,6 +54,8 @@ export type Project = {
   readonly repositoryUrl: string;
   readonly repositoryFullName: string;
   readonly branch: string;
+  /** The repository's Dockerfile, or Railpack detecting the stack. */
+  readonly builder: "dockerfile" | "railpack";
   readonly dockerfilePath: string;
   readonly buildContext: string;
   readonly internalPort: number;

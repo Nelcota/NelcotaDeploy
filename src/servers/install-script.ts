@@ -1,15 +1,24 @@
+import { RAILPACK_VERSION } from "@/docker";
+
 import { InvalidInstallInputError } from "./server.errors";
 
 /** Where builds run on servers the install script prepared. */
 export const REMOTE_WORKSPACE_DIR = "/var/lib/nelcota/workspaces";
 /** Where the worker writes the routes the server's proxy reads. */
 export const REMOTE_ROUTES_DIR = "/var/lib/nelcota/routes";
+/** SHA-256 of the Railpack release archives, from the release's checksums.txt. */
+const RAILPACK_SHA256 = {
+  x86_64: "248a8f60f36854aabed6124113631078a802de3461660855fc4de9c26065c1fb",
+  arm64: "732ece14eb4f4676a43ebba19431f954edf7b130acb76159ef0f2ff86ac42ac9",
+} as const;
+const RAILPACK_RELEASE_URL = `https://github.com/railwayapp/railpack/releases/download/v${RAILPACK_VERSION}`;
 /** Heredoc delimiter; the script never contains it. */
 const DELIMITER = "NELCOTA_INSTALL";
 const PUBLIC_KEY_PATTERN = /^ssh-ed25519 [A-Za-z0-9+/=]+( [A-Za-z0-9@._-]+)?$/;
 const USERNAME_PATTERN = /^[a-z_][a-z0-9_-]{0,31}$/;
 
-// POSIX sh, run as root, safe to run again. It installs Docker and git, creates the account
+// POSIX sh, run as root, safe to run again. It installs Docker, git and Railpack (checking
+// the archive against its published checksum), creates the account
 // the panel logs in with, lets that account open the SSH channels and tunnels the panel uses
 // (after validating the new sshd configuration) and only then authorizes the panel's key.
 const SCRIPT = `set -eu
@@ -21,6 +30,23 @@ if command -v git >/dev/null 2>&1; then :
 elif command -v apt-get >/dev/null 2>&1; then apt-get update -qq && apt-get install -y -qq git
 elif command -v dnf >/dev/null 2>&1; then dnf install -y -q git
 elif command -v yum >/dev/null 2>&1; then yum install -y -q git
+fi
+case "$(uname -m)" in
+  x86_64|amd64) RAILPACK_ARCH=x86_64; RAILPACK_SUM=${RAILPACK_SHA256.x86_64} ;;
+  aarch64|arm64) RAILPACK_ARCH=arm64; RAILPACK_SUM=${RAILPACK_SHA256.arm64} ;;
+  *) RAILPACK_ARCH="" ;;
+esac
+RAILPACK_MARKER=/usr/local/lib/nelcota-railpack-version
+if [ -z "$RAILPACK_ARCH" ]; then
+  echo "Railpack não tem versão para esta arquitetura; projetos sem Dockerfile não vão construir aqui." >&2
+elif [ "$(cat "$RAILPACK_MARKER" 2>/dev/null)" != "${RAILPACK_VERSION}" ]; then
+  RAILPACK_TMP=$(mktemp -d)
+  fetch "${RAILPACK_RELEASE_URL}/railpack-v${RAILPACK_VERSION}-$RAILPACK_ARCH-unknown-linux-musl.tar.gz" > "$RAILPACK_TMP/railpack.tar.gz"
+  echo "$RAILPACK_SUM  $RAILPACK_TMP/railpack.tar.gz" | sha256sum -c - >/dev/null
+  tar -xzf "$RAILPACK_TMP/railpack.tar.gz" -C "$RAILPACK_TMP" railpack
+  install -m 755 "$RAILPACK_TMP/railpack" /usr/local/bin/railpack
+  mkdir -p /usr/local/lib && printf '%s\\n' "${RAILPACK_VERSION}" > "$RAILPACK_MARKER"
+  rm -rf "$RAILPACK_TMP"
 fi
 # A "*" password cannot be used to log in but, unlike a locked "!" one, still allows SSH keys.
 if id "$USER_NAME" >/dev/null 2>&1; then :; else useradd --create-home --shell /bin/sh --password '*' "$USER_NAME"; fi

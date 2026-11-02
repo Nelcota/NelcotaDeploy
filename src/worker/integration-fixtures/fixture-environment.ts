@@ -62,6 +62,7 @@ export async function createFixtureEnvironment(network: string, cleanups: Cleanu
     secretBox,
     config: {
       workspaceDir,
+      railpackBinary: "railpack",
       network,
       buildTimeoutInSeconds: BUILD_TIMEOUT_IN_SECONDS,
       healthCheckTimeoutInSeconds: HEALTH_CHECK_TIMEOUT_IN_SECONDS,

@@ -1,0 +1,1 @@
+ALTER TABLE `projects` ADD `builder` text DEFAULT 'dockerfile' NOT NULL;

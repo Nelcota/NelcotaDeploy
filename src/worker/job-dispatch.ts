@@ -44,6 +44,7 @@ function deployRunnerConfig(
 ): DeployRunnerConfig {
   return {
     workspaceDir: host.workspaceDir,
+    railpackBinary: host.railpackBinary,
     network: config.DOCKER_NETWORK,
     buildTimeoutInSeconds: config.BUILD_TIMEOUT_SECONDS,
     healthCheckTimeoutInSeconds: config.HEALTH_CHECK_TIMEOUT_SECONDS,

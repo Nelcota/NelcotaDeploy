@@ -22,6 +22,10 @@ export const projects = sqliteTable(
     repositoryUrl: text("repository_url").notNull(),
     repositoryFullName: text("repository_full_name").notNull(),
     branch: text("branch").notNull(),
+    // How the image is built: the repository's Dockerfile, or Railpack detecting the stack.
+    builder: text("builder", { enum: ["dockerfile", "railpack"] })
+      .notNull()
+      .default("dockerfile"),
     dockerfilePath: text("dockerfile_path").notNull(),
     buildContext: text("build_context").notNull(),
     internalPort: integer("internal_port").notNull(),

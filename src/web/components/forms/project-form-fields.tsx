@@ -1,7 +1,11 @@
 import { useState } from "react";
 
 import { formatCpuCores } from "@/shared/format";
-import { CPU_LIMIT_OPTIONS_IN_MILLICORES, slugify } from "@/shared/schemas/project.schema";
+import {
+  CPU_LIMIT_OPTIONS_IN_MILLICORES,
+  PROJECT_BUILDERS,
+  slugify,
+} from "@/shared/schemas/project.schema";
 import { FormField, visibleErrors } from "@/web/components/forms/form-field";
 import type { ProjectFormApi } from "@/web/components/forms/project-form";
 import { identityFromRepository } from "@/web/components/forms/repository-identity";
@@ -294,5 +298,53 @@ export function ResourceLimitFields({ form }: { readonly form: ProjectFormApi })
         )}
       </form.Field>
     </>
+  );
+}
+
+const BUILDER_LABELS = {
+  dockerfile: "Dockerfile do repositório",
+  railpack: "Detectar automaticamente (Railpack)",
+} as const;
+
+/** How the image is built: the repository's Dockerfile, or Railpack detecting the stack. */
+export function BuilderField({ form }: { readonly form: ProjectFormApi }) {
+  return (
+    <form.Field name="builder">
+      {(field) => (
+        <FormField
+          id="project-builder"
+          label="Como construir a imagem"
+          hint={
+            field.state.value === "railpack"
+              ? "Sem Dockerfile: o Railpack detecta Node, Bun, Python, Go e outras. A variável PORT recebe a porta interna."
+              : "Usa o Dockerfile indicado abaixo."
+          }
+          errors={visibleErrors(form, field.state.meta)}
+        >
+          {(props) => (
+            <Select
+              value={field.state.value}
+              onValueChange={(selected) => {
+                const builder = PROJECT_BUILDERS.find((candidate) => candidate === selected);
+                if (builder != null) {
+                  field.handleChange(builder);
+                }
+              }}
+            >
+              <SelectTrigger {...props} className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {PROJECT_BUILDERS.map((builder) => (
+                  <SelectItem key={builder} value={builder}>
+                    {BUILDER_LABELS[builder]}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+        </FormField>
+      )}
+    </form.Field>
   );
 }

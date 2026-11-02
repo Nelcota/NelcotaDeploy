@@ -2,6 +2,7 @@ import { ChevronRightIcon, GitBranchIcon, HammerIcon, IdCardIcon, RocketIcon } f
 
 import type { ProjectFormApi } from "@/web/components/forms/project-form";
 import {
+  BuilderField,
   BuildFields,
   HealthCheckField,
   IdentityFields,
@@ -41,7 +42,7 @@ export function ProjectFormSections({ form }: { readonly form: ProjectFormApi })
       <SettingsSection
         icon={GitBranchIcon}
         title="Repositório"
-        description="Precisa ter um Dockerfile."
+        description="Com um Dockerfile, ou sem ele: o Railpack detecta a linguagem e monta a imagem."
       >
         <div className="grid gap-x-5 gap-y-5 sm:grid-cols-[minmax(0,1fr)_minmax(0,11rem)]">
           <GitHubRepositoryPicker form={form} />
@@ -69,7 +70,12 @@ export function ProjectFormSections({ form }: { readonly form: ProjectFormApi })
         title="Build"
         description="Opcional. Os padrões servem para a maioria."
       >
-        <AdvancedSettings form={form} />
+        <div className="space-y-5">
+          <div className="sm:max-w-sm">
+            <BuilderField form={form} />
+          </div>
+          <AdvancedSettings form={form} />
+        </div>
       </SettingsSection>
     </>
   );

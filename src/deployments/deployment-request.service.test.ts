@@ -108,6 +108,7 @@ describe("requestDeployment validation", () => {
         slug: "unknown",
         repositoryUrl: "https://github.com/someone/unknown",
         branch: "main",
+        builder: "dockerfile",
         dockerfilePath: "Dockerfile",
         buildContext: ".",
         internalPort: 80,

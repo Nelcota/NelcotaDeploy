@@ -30,6 +30,7 @@ export function createTestProject(
       slug: "api",
       repositoryUrl: "https://github.com/acme/api",
       branch: "main",
+      builder: "dockerfile",
       dockerfilePath: "Dockerfile",
       buildContext: ".",
       internalPort: 3000,

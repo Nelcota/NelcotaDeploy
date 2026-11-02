@@ -77,13 +77,31 @@ export async function deploy(
       : { ...context, project: { ...project, internalPort: built.detectedPort } };
   const containerName = await startContainer(dependencies, running, {
     imageTag: built.imageTag,
-    runtimeValues: environment.runtime,
+    runtimeValues: withPortVariable(environment.runtime, running.project),
     runtimeConfigHash,
     // A reused image keeps the build variables it was built with, copied from its source.
     buildConfigHash: reused == null ? buildConfigHash : null,
   });
   await checkHealth(dependencies, running, containerName);
   await routeTrafficTo(dependencies, running, containerName);
+}
+
+/**
+ * Adds `PORT` with the container port for images Railpack built, which most frameworks read to
+ * know where to listen. A `PORT` the project defines itself wins.
+ *
+ * @param values - Runtime variables of the project.
+ * @param project - Its builder and container port.
+ * @returns The variables the container starts with.
+ */
+export function withPortVariable(
+  values: Readonly<Record<string, string>>,
+  project: { readonly builder: "dockerfile" | "railpack"; readonly internalPort: number },
+): Readonly<Record<string, string>> {
+  if (project.builder !== "railpack" || Object.hasOwn(values, "PORT")) {
+    return values;
+  }
+  return { ...values, PORT: String(project.internalPort) };
 }
 
 /** A token saved on the project wins; otherwise the GitHub App provides one when installed. */

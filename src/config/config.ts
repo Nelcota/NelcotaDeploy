@@ -64,6 +64,7 @@ const configSchema = z
     GITHUB_WEBHOOK_SECRET: z.string().min(1).optional(),
     DOCKER_BINARY: z.string().trim().min(1).default("docker"),
     GIT_BINARY: z.string().trim().min(1).default("git"),
+    RAILPACK_BINARY: z.string().trim().min(1).default("railpack"),
     DOCKER_NETWORK: z
       .string()
       .regex(/^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,62}$/)

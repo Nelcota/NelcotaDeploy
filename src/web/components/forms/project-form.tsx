@@ -13,6 +13,7 @@ export type ProjectFormValues = {
   readonly slug: string;
   readonly repositoryUrl: string;
   readonly branch: string;
+  readonly builder: "dockerfile" | "railpack";
   readonly dockerfilePath: string;
   readonly buildContext: string;
   readonly internalPort: string;
@@ -54,6 +55,7 @@ export const EMPTY_PROJECT_FORM: ProjectFormValues = {
   slug: "",
   repositoryUrl: "",
   branch: "main",
+  builder: "dockerfile",
   dockerfilePath: "Dockerfile",
   buildContext: ".",
   // Blank: each build reads the port from the Dockerfile's EXPOSE.
@@ -77,6 +79,7 @@ export function projectToFormValues(project: {
   readonly slug: string;
   readonly repositoryUrl: string;
   readonly branch: string;
+  readonly builder: "dockerfile" | "railpack";
   readonly dockerfilePath: string;
   readonly buildContext: string;
   readonly internalPort: number;
@@ -93,6 +96,7 @@ export function projectToFormValues(project: {
     slug: project.slug,
     repositoryUrl: project.repositoryUrl,
     branch: project.branch,
+    builder: project.builder,
     dockerfilePath: project.dockerfilePath,
     buildContext: project.buildContext,
     internalPort: project.internalPortAuto ? "" : String(project.internalPort),

@@ -2,6 +2,7 @@ import { GitBranchIcon, HammerIcon, IdCardIcon, TriangleAlertIcon, ZapIcon } fro
 
 import type { ProjectFormApi } from "@/web/components/forms/project-form";
 import {
+  BuilderField,
   BuildFields,
   HealthCheckField,
   IdentityFields,
@@ -42,11 +43,7 @@ export function RepositorySection({
   readonly savedRepositoryUrl: string;
 }) {
   return (
-    <SettingsSection
-      icon={GitBranchIcon}
-      title="Repositório"
-      description="De onde vem o código. Precisa ter um Dockerfile."
-    >
+    <SettingsSection icon={GitBranchIcon} title="Repositório" description="De onde vem o código.">
       <div className="grid items-start gap-x-6 gap-y-5 sm:grid-cols-[minmax(0,1fr)_minmax(0,14rem)]">
         <RepositoryFields form={form} />
         <form.Subscribe selector={(state) => state.values.repositoryUrl !== savedRepositoryUrl}>
@@ -74,6 +71,7 @@ export function BuildSection({ form }: { readonly form: ProjectFormApi }) {
       description="Como a imagem é construída, quanto ela pode usar do servidor e como o painel sabe que está no ar."
     >
       <div className={FIELD_GRID}>
+        <BuilderField form={form} />
         <PortField form={form} />
         <HealthCheckField form={form} />
         <ResourceLimitFields form={form} />

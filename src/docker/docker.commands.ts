@@ -186,6 +186,90 @@ export function buildImageArgs(options: BuildImageOptions): string[] {
   ];
 }
 
+/**
+ * Railpack release the platform builds with. The frontend image must match the version of the
+ * railpack CLI that wrote the plan; the install script and the worker image pin the same one.
+ */
+export const RAILPACK_VERSION = "0.43.0";
+const RAILPACK_FRONTEND_IMAGE = `ghcr.io/railwayapp/railpack-frontend:v${RAILPACK_VERSION}`;
+const SECRETS_HASH_PATTERN = /^[a-f0-9]{64}$/;
+
+/** Ends the tag of the image Railpack produces, which waits for the platform labels. */
+const RAILPACK_BASE_SUFFIX = "-railpack";
+
+/**
+ * Returns the tag of the unlabelled image Railpack builds for a deployment's image.
+ *
+ * @param imageTag - Final image reference, from `imageTagFor`.
+ * @returns The reference with the Railpack suffix.
+ * @throws {InvalidDockerArgumentError} When the reference is malformed.
+ */
+export function railpackBaseTagFor(imageTag: string): string {
+  assertMatches(imageTag, IMAGE_REFERENCE_PATTERN, "image tag");
+  return `${imageTag}${RAILPACK_BASE_SUFFIX}`;
+}
+
+/**
+ * Tells whether a reference is an unlabelled Railpack image of the platform, the only kind
+ * removed without the platform label.
+ *
+ * @param imageTag - Image reference.
+ * @returns True for "nelcota/<slug>:<id>-railpack".
+ */
+export function isRailpackBaseTag(imageTag: string): boolean {
+  return (
+    IMAGE_REFERENCE_PATTERN.test(imageTag) &&
+    imageTag.startsWith(`${IMAGE_REPOSITORY}/`) &&
+    imageTag.endsWith(RAILPACK_BASE_SUFFIX)
+  );
+}
+
+/** Options for {@link railpackBuildArgs}. */
+export type RailpackBuildOptions = {
+  /** Plan written by `railpack prepare`. */
+  readonly planPath: string;
+  readonly contextPath: string;
+  /** Tag of the image Railpack produces, before the platform labels are added. */
+  readonly imageTag: string;
+  /** Build secrets passed by name; docker reads each value from its own environment. */
+  readonly secretKeys: readonly string[];
+  /** SHA-256 hex of the secret values, so a changed value rebuilds the layers that use it. */
+  readonly secretsHash: string;
+};
+
+/**
+ * Builds `docker buildx build` arguments that build a Railpack plan with the Railpack
+ * frontend, on Docker's own BuildKit. Secret values never appear in the argument list.
+ *
+ * @param options - Plan, context, tag, secret names and their hash.
+ * @returns Arguments after the docker binary.
+ * @throws {InvalidDockerArgumentError} When the tag, a secret name or the hash is malformed.
+ */
+export function railpackBuildArgs(options: RailpackBuildOptions): string[] {
+  assertMatches(options.imageTag, IMAGE_REFERENCE_PATTERN, "image tag");
+  assertMatches(options.secretsHash, SECRETS_HASH_PATTERN, "secrets hash");
+  for (const key of options.secretKeys) {
+    assertMatches(key, ENVIRONMENT_KEY_PATTERN, "build secret name");
+  }
+  return [
+    "buildx",
+    "build",
+    "--progress=plain",
+    "--load",
+    "--build-arg",
+    `BUILDKIT_SYNTAX=${RAILPACK_FRONTEND_IMAGE}`,
+    "--build-arg",
+    `secrets-hash=${options.secretsHash}`,
+    "--file",
+    options.planPath,
+    "--tag",
+    options.imageTag,
+    ...options.secretKeys.flatMap((key) => ["--secret", `id=${key},env=${key}`]),
+    "--",
+    options.contextPath,
+  ];
+}
+
 /** Options for {@link runContainerArgs}. */
 export type RunContainerOptions = {
   readonly containerName: string;

@@ -44,6 +44,21 @@ export class FakeDocker implements DockerEngine {
     await Promise.resolve();
   }
 
+  async buildWithRailpack(
+    options: Parameters<DockerEngine["buildWithRailpack"]>[0],
+    _values: Readonly<Record<string, string>>,
+    run: { readonly onLine?: OutputHandler },
+  ): Promise<void> {
+    this.calls.push(`railpack build ${options.imageTag} secrets=${options.secretKeys.join(",")}`);
+    run.onLine?.("#1 railpack", "stderr");
+    if (this.buildFailure != null) {
+      run.onLine?.(this.buildFailure, "stderr");
+      throw new Error(`docker buildx build failed: ${this.buildFailure}`);
+    }
+    this.images.tags.add(options.imageTag);
+    await Promise.resolve();
+  }
+
   async ensureNetwork(): Promise<void> {
     await Promise.resolve();
   }

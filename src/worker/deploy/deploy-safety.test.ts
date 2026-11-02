@@ -60,6 +60,7 @@ async function setup() {
     },
     config: {
       workspaceDir: "/review",
+      railpackBinary: "railpack",
       network: "review",
       buildTimeoutInSeconds: 60,
       healthCheckTimeoutInSeconds: 5,

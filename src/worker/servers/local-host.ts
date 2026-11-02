@@ -48,6 +48,7 @@ export function createLocalHost(config: AppConfig, serverId: string): ServerHost
     files: localFiles,
     docker: new DockerCli(config.DOCKER_BINARY),
     git: new GitClient(config.GIT_BINARY),
+    railpackBinary: config.RAILPACK_BINARY,
     probes: networkProbes,
     workspaceDir: config.WORKSPACE_DIR,
     platformProxy: false,

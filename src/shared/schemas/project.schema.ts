@@ -6,6 +6,8 @@ const MAX_RELATIVE_PATH_LENGTH = 200;
 const MAX_BRANCH_LENGTH = 200;
 const MAX_PORT = 65_535;
 const MAX_TOKEN_LENGTH = 512;
+/** How a project's image can be built. */
+export const PROJECT_BUILDERS = ["dockerfile", "railpack"] as const;
 /** Smallest memory limit Docker accepts with room for a real application, in MiB. */
 const MIN_MEMORY_LIMIT_IN_MB = 64;
 const MAX_MEMORY_LIMIT_IN_MB = 1_048_576;
@@ -177,6 +179,8 @@ export const projectInputSchema = z.object({
   slug: projectSlugSchema,
   repositoryUrl: repositoryUrlSchema,
   branch: z.string().trim().refine(isValidBranchName, { message: "Nome de branch inválido" }),
+  /** The repository's Dockerfile, or Railpack detecting the stack; Dockerfile when absent. */
+  builder: z.enum(PROJECT_BUILDERS).default("dockerfile"),
   dockerfilePath: relativePathSchema,
   buildContext: z
     .string()

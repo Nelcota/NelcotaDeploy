@@ -8,6 +8,8 @@ import {
   buildImageArgs,
   type BuildImageOptions,
   LABELS,
+  railpackBuildArgs,
+  type RailpackBuildOptions,
   runContainerArgs,
   type RunContainerOptions,
   stopContainerArgs,
@@ -123,6 +125,34 @@ export class DockerCli {
     await this.#runChecked(buildImageArgs(options), "build", {
       timeoutInMs: run.timeoutInMs,
       env: { ...buildArgValues, DOCKER_BUILDKIT: "1" },
+      signal: run.signal,
+      onLine: run.onLine,
+      cwd: run.cwd,
+    });
+  }
+
+  /**
+   * Builds a Railpack plan with the Railpack frontend on Docker's BuildKit. The image it
+   * produces carries no platform labels yet.
+   *
+   * @param options - Plan, context, tag, secret names and their hash; see {@link railpackBuildArgs}.
+   * @param secretValues - Values for `options.secretKeys`, passed via the environment.
+   * @param run - Timeout, cancellation and output streaming.
+   * @throws {DockerCommandError} When the build fails, times out or is cancelled.
+   */
+  async buildWithRailpack(
+    options: RailpackBuildOptions,
+    secretValues: Readonly<Record<string, string>>,
+    run: {
+      readonly timeoutInMs: number;
+      readonly signal?: AbortSignal;
+      readonly onLine?: OutputHandler;
+      readonly cwd: string;
+    },
+  ): Promise<void> {
+    await this.#runChecked(railpackBuildArgs(options), "buildx build", {
+      timeoutInMs: run.timeoutInMs,
+      env: { ...secretValues, DOCKER_BUILDKIT: "1" },
       signal: run.signal,
       onLine: run.onLine,
       cwd: run.cwd,
