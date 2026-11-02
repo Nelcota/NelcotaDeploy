@@ -9,6 +9,7 @@ import { getProject } from "@/projects";
 import { assignProjectServer } from "@/servers";
 import { assertProjectHasNoVolumes } from "@/volumes";
 import { authorize } from "@/web/server/authorization";
+import { PublicError } from "@/web/server/public-error";
 
 import { idSchema } from "../ids";
 
@@ -24,6 +25,10 @@ export const moveProjectFn = createServerFn({ method: "POST" })
     const project = getProject(database, data.projectId);
     if (project.serverId === data.serverId) {
       return { deploymentId: null };
+    }
+    // The named volumes of its services live on the current server and would be left behind.
+    if (project.builder === "compose") {
+      throw new PublicError("Projetos Docker Compose não podem mudar de servidor.");
     }
     // Checked first, so a move that cannot be deployed never changes where the project goes.
     if (project.currentDeploymentId != null && project.deploymentsApproved === false) {

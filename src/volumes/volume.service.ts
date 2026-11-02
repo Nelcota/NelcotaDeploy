@@ -12,6 +12,7 @@ import {
 
 import {
   ProjectHasVolumesError,
+  ComposeProjectVolumeError,
   ReplicatedProjectVolumeError,
   VolumeAttachedError,
   VolumeBeingDeletedError,
@@ -113,6 +114,7 @@ function assertNoOverlap(volumes: readonly ProjectVolume[], mountPath: string): 
  * @throws {VolumePathOverlapError} When the path equals or nests inside the path of another
  *   volume of the project, attached or not.
  * @throws {ReplicatedProjectVolumeError} When the project runs more than one replica.
+ * @throws {ComposeProjectVolumeError} When the project runs with Docker Compose.
  */
 export function addProjectVolume(
   database: Database,
@@ -150,9 +152,17 @@ export function addProjectVolume(
 }
 
 // Replicas would write to the same volume at once, which corrupts files such as SQLite's.
-function assertSingleReplica(project: { readonly id: string; readonly replicas: number }): void {
+// Compose services keep their data in the named volumes of their own file instead.
+function assertSingleReplica(project: {
+  readonly id: string;
+  readonly replicas: number;
+  readonly builder: string;
+}): void {
   if (project.replicas > 1) {
     throw new ReplicatedProjectVolumeError(project.id);
+  }
+  if (project.builder === "compose") {
+    throw new ComposeProjectVolumeError(project.id);
   }
 }
 

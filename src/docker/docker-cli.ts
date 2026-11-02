@@ -1,5 +1,6 @@
 import { type CommandRunner, type OutputStream, type ProcessResult, runProcess } from "@/process";
 
+import { DockerCompose, type DockerComposeStore } from "./docker-compose";
 import { DockerImages, type DockerImageStore } from "./docker-images";
 import { DockerVolumes, type DockerVolumeStore } from "./docker-volumes";
 import {
@@ -62,6 +63,8 @@ export class DockerCli {
   readonly volumes: DockerVolumeStore;
   /** The platform's images on the same host. */
   readonly images: DockerImageStore;
+  /** Docker Compose projects on the same host. */
+  readonly compose: DockerComposeStore;
 
   /**
    * Reaches the Docker of one host.
@@ -74,6 +77,7 @@ export class DockerCli {
     this.#runner = runner;
     this.volumes = new DockerVolumes(binary, runner);
     this.images = new DockerImages(binary, runner);
+    this.compose = new DockerCompose(binary, runner);
   }
 
   async #run(args: readonly string[], options: CommandOptions = {}): Promise<ProcessResult> {

@@ -13,6 +13,11 @@ export const LABELS = {
    * which marks the containers of the project's deployments.
    */
   databaseProjectId: "io.nelcota.database-project-id",
+  /**
+   * Compose project a container, volume or network belongs to. Compose recreates its own
+   * services, so deployments leave these containers to it.
+   */
+  composeProject: "io.nelcota.compose-project",
   /** The reverse proxy the platform runs on a remote server. Never an application. */
   proxy: "io.nelcota.proxy",
   /** Version of the proxy's settings; a proxy with another version is replaced. */

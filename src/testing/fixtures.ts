@@ -41,6 +41,8 @@ export function createTestProject(
       memoryLimitInMb: null,
       cpuLimitInMillicores: null,
       replicas: 1,
+      composeFilePath: "compose.yaml",
+      composeService: null,
       ...overrides,
     },
     { actor: TEST_ACTOR, userId: null, isAdmin: true },

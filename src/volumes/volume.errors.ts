@@ -6,6 +6,14 @@ export class VolumeNotFoundError extends Error {
   }
 }
 
+/** Thrown when mounting a volume on a Docker Compose project, which has its own volumes. */
+export class ComposeProjectVolumeError extends Error {
+  constructor(projectId: string) {
+    super(`Project ${projectId} runs with Docker Compose, so it cannot mount platform volumes`);
+    this.name = "ComposeProjectVolumeError";
+  }
+}
+
 /** Thrown when mounting a volume on a project that runs more than one replica. */
 export class ReplicatedProjectVolumeError extends Error {
   constructor(projectId: string) {

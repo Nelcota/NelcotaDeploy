@@ -21,7 +21,15 @@ export type BuildSecrets = {
   readonly repositoryToken: string | null;
 };
 
-async function cloneRevision(
+/**
+ * Clones the revision a deployment asks for into its workspace and records the commit.
+ *
+ * @param dependencies - Database, git and settings.
+ * @param context - Deployment being run.
+ * @param checkout - Workspace to clone into and the token for a private repository.
+ * @throws {DeploymentCancelledError} When the deployment is cancelled during the clone.
+ */
+export async function cloneRevision(
   dependencies: DeployRunnerDependencies,
   context: DeployContext,
   {

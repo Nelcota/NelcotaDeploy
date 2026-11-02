@@ -3,7 +3,7 @@ import { Link } from "@tanstack/react-router";
 import { LoaderCircleIcon } from "lucide-react";
 import type { z } from "zod";
 
-import { projectInputSchema } from "@/shared/schemas/project.schema";
+import { type ProjectBuilder, projectInputSchema } from "@/shared/schemas/project.schema";
 import { ProjectFormSections } from "@/web/components/forms/project-form-sections";
 import { Button } from "@/web/components/ui/button";
 
@@ -13,7 +13,7 @@ export type ProjectFormValues = {
   readonly slug: string;
   readonly repositoryUrl: string;
   readonly branch: string;
-  readonly builder: "dockerfile" | "railpack";
+  readonly builder: ProjectBuilder;
   readonly dockerfilePath: string;
   readonly buildContext: string;
   readonly internalPort: string;
@@ -27,6 +27,9 @@ export type ProjectFormValues = {
   readonly cpuLimitInMillicores: string;
   /** Containers each deployment runs, as text. */
   readonly replicas: string;
+  readonly composeFilePath: string;
+  /** Blank unless built with Docker Compose. */
+  readonly composeService: string;
 };
 
 /** Input accepted by the project server functions. */
@@ -69,6 +72,8 @@ export const EMPTY_PROJECT_FORM: ProjectFormValues = {
   memoryLimitInMb: "",
   cpuLimitInMillicores: "",
   replicas: "1",
+  composeFilePath: "compose.yaml",
+  composeService: "",
 };
 
 /**
@@ -82,7 +87,7 @@ export function projectToFormValues(project: {
   readonly slug: string;
   readonly repositoryUrl: string;
   readonly branch: string;
-  readonly builder: "dockerfile" | "railpack";
+  readonly builder: ProjectBuilder;
   readonly dockerfilePath: string;
   readonly buildContext: string;
   readonly internalPort: number;
@@ -94,6 +99,8 @@ export function projectToFormValues(project: {
   readonly memoryLimitInMb: number | null;
   readonly cpuLimitInMillicores: number | null;
   readonly replicas: number;
+  readonly composeFilePath: string;
+  readonly composeService: string | null;
 }): ProjectFormValues {
   return {
     name: project.name,
@@ -112,6 +119,8 @@ export function projectToFormValues(project: {
     cpuLimitInMillicores:
       project.cpuLimitInMillicores == null ? "" : String(project.cpuLimitInMillicores),
     replicas: String(project.replicas),
+    composeFilePath: project.composeFilePath,
+    composeService: project.composeService ?? "",
   };
 }
 

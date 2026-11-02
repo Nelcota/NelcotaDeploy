@@ -14,6 +14,14 @@ export class ReplicasNeedNoVolumesError extends Error {
   }
 }
 
+/** Thrown when a project with mounted volumes is switched to Docker Compose. */
+export class ComposeNeedsNoVolumesError extends Error {
+  constructor(projectId: string) {
+    super(`Project ${projectId} mounts volumes, which Docker Compose projects cannot use`);
+    this.name = "ComposeNeedsNoVolumesError";
+  }
+}
+
 /** Thrown when another project already uses a slug. */
 export class ProjectSlugTakenError extends Error {
   constructor(slug: string) {
