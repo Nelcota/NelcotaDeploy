@@ -176,6 +176,13 @@
       "when": 1793646355082,
       "tag": "0024_domain_uptime",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "6",
+      "when": 1793646548902,
+      "tag": "0025_uptime_query_indexes",
+      "breakpoints": true
     }
   ]
 }
