@@ -3,12 +3,16 @@ import type { DatabaseEngineName } from "@/shared/schemas/database.schema";
 /** Names of the engines as people know them. */
 export const ENGINE_LABELS: Readonly<Record<DatabaseEngineName, string>> = {
   postgres: "PostgreSQL",
+  mysql: "MySQL",
+  mongodb: "MongoDB",
   redis: "Redis",
 };
 
 /** Variable each engine's URL goes to unless the user picks another, as most libraries expect. */
 export const DEFAULT_ENVIRONMENT_KEYS: Readonly<Record<DatabaseEngineName, string>> = {
   postgres: "DATABASE_URL",
+  mysql: "DATABASE_URL",
+  mongodb: "MONGODB_URI",
   redis: "REDIS_URL",
 };
 

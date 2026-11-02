@@ -1,11 +1,15 @@
 import type { DatabaseEngineName } from "@/shared/schemas/database.schema";
 
 import type { DatabaseEngine } from "./engines/database-engine.strategy";
+import { mongodbEngine } from "./engines/mongodb.engine";
+import { mysqlEngine } from "./engines/mysql.engine";
 import { postgresEngine } from "./engines/postgres.engine";
 import { redisEngine } from "./engines/redis.engine";
 
 const ENGINES = {
   postgres: postgresEngine,
+  mysql: mysqlEngine,
+  mongodb: mongodbEngine,
   redis: redisEngine,
 } as const satisfies Record<DatabaseEngineName, DatabaseEngine>;
 

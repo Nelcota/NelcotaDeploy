@@ -173,7 +173,7 @@ export const projectDatabases = sqliteTable(
     projectId: text("project_id")
       .notNull()
       .references(() => projects.id, { onDelete: "cascade" }),
-    engine: text("engine", { enum: ["postgres", "redis"] }).notNull(),
+    engine: text("engine", { enum: ["postgres", "mysql", "mongodb", "redis"] }).notNull(),
     imageTag: text("image_tag").notNull(),
     // Variable of the project that receives the connection URL.
     environmentKey: text("environment_key").notNull(),
