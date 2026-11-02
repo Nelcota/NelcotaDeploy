@@ -5,7 +5,7 @@ import { type Database, openMemoryDatabase } from "@/db";
 import { getDeployment, requestDeployment } from "@/deployments";
 import { saveEnvironmentVariable } from "@/environments";
 import { listDeploymentLogs } from "@/logs";
-import { runProcess } from "@/process";
+import { type CommandRunner, runProcess } from "@/process";
 import { getProject } from "@/projects";
 import {
   createTestProject,
@@ -65,6 +65,7 @@ async function setup(
     config: {
       // The workspace creates this directory itself.
       workspaceDir: toShellPath(`${tmpdir()}/nelcota-test-${crypto.randomUUID()}`),
+      railpackBinary: "railpack",
       network: "nelcota-test",
       buildTimeoutInSeconds: 60,
       healthCheckTimeoutInSeconds: options.healthTimeout ?? 10,
@@ -240,5 +241,59 @@ describe("runDeployment failures", () => {
 
     expect(status).toBe("failed");
     expect(getDeployment(database, deploymentId).errorMessage).toContain("stopped");
+  }, 15_000);
+});
+
+/** Runs everything for real except the railpack CLI, which only records how it was called. */
+function railpackRunner(calls: string[][]): CommandRunner {
+  return async (command, options) => {
+    if (command[0] === "railpack") {
+      calls.push([...command]);
+      return await Promise.resolve({
+        exitCode: 0,
+        stdout: "",
+        stderr: "",
+        timedOut: false,
+        aborted: false,
+      });
+    }
+    return await runProcess(command, options);
+  };
+}
+
+describe("runDeployment with Railpack", () => {
+  async function railpackSetup() {
+    const context = await setup();
+    const project = createTestProject(context.database, { slug: "web", builder: "railpack" });
+    const railpackCalls: string[][] = [];
+    const dependencies = { ...context.dependencies, runner: railpackRunner(railpackCalls) };
+    return { ...context, project, dependencies, railpackCalls };
+  }
+
+  test("plans with Railpack, then labels the image it built", async () => {
+    const { database, docker, project, dependencies, railpackCalls } = await railpackSetup();
+    const deploymentId = deploy(database, project.id);
+
+    const status = await runDeployment(dependencies, deploymentId, new AbortController().signal);
+
+    expect(status).toBe("succeeded");
+    expect(railpackCalls[0]?.[1]).toBe("prepare");
+    const railpackBuild = docker.calls.findIndex((call) => call.startsWith("railpack build"));
+    const labelBuild = docker.calls.findIndex((call) => call.startsWith("build nelcota/web:"));
+    expect(railpackBuild).toBeGreaterThanOrEqual(0);
+    expect(labelBuild).toBeGreaterThan(railpackBuild);
+    expect(docker.calls.some((call) => call.startsWith("rmi ") && call.endsWith("-railpack"))).toBe(
+      true,
+    );
+  }, 15_000);
+
+  test("tells the container which port to listen on", async () => {
+    const { database, docker, project, dependencies } = await railpackSetup();
+    const deploymentId = deploy(database, project.id);
+
+    await runDeployment(dependencies, deploymentId, new AbortController().signal);
+
+    const environment = [...docker.environments.values()].at(-1);
+    expect(environment?.["PORT"]).toBe("3000");
   }, 15_000);
 });

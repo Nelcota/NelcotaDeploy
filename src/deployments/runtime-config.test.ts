@@ -87,7 +87,36 @@ describe("runtimeConfigFingerprint", () => {
 
     expect(runtimeConfigFingerprint(database, project.id)).not.toBe(before);
   });
+
+  test("changes when a memory limit is set", () => {
+    const database = openMemoryDatabase();
+    const project = createTestProject(database);
+    const before = runtimeConfigFingerprint(database, project.id);
+
+    setLimits(database, project.id, { memoryLimitInMb: 512, cpuLimitInMillicores: null });
+
+    expect(runtimeConfigFingerprint(database, project.id)).not.toBe(before);
+  });
+
+  test("returns to the unlimited fingerprint when the limits are cleared", () => {
+    const database = openMemoryDatabase();
+    const project = createTestProject(database);
+    const unlimited = runtimeConfigFingerprint(database, project.id);
+    setLimits(database, project.id, { memoryLimitInMb: null, cpuLimitInMillicores: 500 });
+
+    setLimits(database, project.id, { memoryLimitInMb: null, cpuLimitInMillicores: null });
+
+    expect(runtimeConfigFingerprint(database, project.id)).toBe(unlimited);
+  });
 });
+
+function setLimits(
+  database: Database,
+  projectId: string,
+  limits: { readonly memoryLimitInMb: number | null; readonly cpuLimitInMillicores: number | null },
+): void {
+  database.update(tables.projects).set(limits).where(eq(tables.projects.id, projectId)).run();
+}
 
 describe("hasPendingRuntimeChanges", () => {
   test("is false for a project that was never deployed", () => {

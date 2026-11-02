@@ -9,6 +9,8 @@ import { getProject } from "@/projects";
 import type { RouteFiles } from "@/routing";
 import { failVolumeDeletion, finishVolumeDeletion } from "@/volumes";
 
+import { deleteProjectDatabaseBackups } from "./databases/database-backup-cleanup";
+import type { BackupStorage } from "./databases/database-backup-runner";
 import type { WorkerDependencies } from "./worker.types";
 
 /** What cleaning a project off one server needs: its Docker and its proxy's route files. */
@@ -44,7 +46,7 @@ export async function runContainerAction(
 }
 
 /**
- * Removes a project's routes, containers, images and volumes from one server. The routes go
+ * Removes a project's routes, containers (its databases' too), images and volumes from one server. The routes go
  * first, so the proxy never sends requests to a container that is being removed.
  *
  * @param server - Docker and route files of that server.
@@ -59,7 +61,9 @@ export async function removeProjectResources(
   await routes?.remove(projectId);
   await routes?.removePrefixed(previewRoutePrefix(projectId));
   const containers = (await docker.listManagedContainers()).filter(
-    (container) => container.labels[LABELS.projectId] === projectId,
+    (container) =>
+      container.labels[LABELS.projectId] === projectId ||
+      container.labels[LABELS.databaseProjectId] === projectId,
   );
   await Promise.all(
     containers.map(async (container) => await docker.removeContainer(container.id)),
@@ -113,7 +117,7 @@ export async function runVolumeDeletion(
 
 /**
  * Removes every container and image of a project from every server it ever ran on, then the
- * project row and its history.
+ * project row and its history. Stored database backups are removed before their metadata.
  *
  * @remarks
  * A server that cannot be reached does not block the deletion: the project row goes anyway,
@@ -121,15 +125,17 @@ export async function runVolumeDeletion(
  *
  * @param database - Database.
  * @param servers - Docker and route files of each server the project ran on.
- * @param projectId - Project being deleted.
+ * @param target - Project id and its backup storage, or null when unconfigured.
  * @returns How many containers, images and volumes were removed, and the errors of unreachable
  *   servers.
+ * @throws {Error} When database backups cannot be removed; project metadata is retained.
  */
 export async function runProjectCleanup(
   database: Database,
   servers: readonly ProjectServer[],
-  projectId: string,
+  { projectId, storage }: { readonly projectId: string; readonly storage: BackupStorage | null },
 ): Promise<{ containers: number; images: number; volumes: number; failures: unknown[] }> {
+  await deleteProjectDatabaseBackups(database, projectId, storage);
   const results = await Promise.allSettled(
     servers.map(async (server) => await removeProjectResources(server, projectId)),
   );

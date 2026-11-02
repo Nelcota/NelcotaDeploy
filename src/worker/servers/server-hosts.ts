@@ -2,7 +2,7 @@ import type { AppConfig } from "@/config";
 import type { Database } from "@/db";
 import { DockerCli } from "@/docker";
 import { GitClient } from "@/git";
-import { createRemoteRunner, SshConnection } from "@/remote";
+import { createRemoteRunner, RemoteFiles, SshConnection } from "@/remote";
 import { RouteFiles } from "@/routing";
 import {
   getServer,
@@ -20,6 +20,8 @@ import { tunnelProbes } from "./tunnel-probes";
 /** Docker binary on servers the install script prepared. */
 export const REMOTE_DOCKER_BINARY = "docker";
 const REMOTE_GIT_BINARY = "git";
+/** Railpack CLI on servers the install script prepared. */
+const REMOTE_RAILPACK_BINARY = "railpack";
 
 type RemoteEntry = {
   readonly key: string;
@@ -133,8 +135,10 @@ export class ServerHosts implements Disposable {
     const host: ServerHost = {
       serverId: server.id,
       runner,
+      files: new RemoteFiles(connection),
       docker: new DockerCli(REMOTE_DOCKER_BINARY, runner),
       git: new GitClient(REMOTE_GIT_BINARY, runner),
+      railpackBinary: REMOTE_RAILPACK_BINARY,
       probes: tunnelProbes(connection),
       workspaceDir: REMOTE_WORKSPACE_DIR,
       platformProxy: true,

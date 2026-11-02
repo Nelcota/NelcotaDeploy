@@ -1,4 +1,15 @@
 import {
+  DatabaseBackupInProgressError,
+  DatabaseBackupNotFoundError,
+  DatabaseBackupUnsupportedError,
+  DatabaseBeingDeletedError,
+  DatabaseLimitError,
+  DatabaseNotFoundError,
+  DatabaseNotRunningError,
+  DatabaseVariableConflictError,
+  ProjectHasDatabasesError,
+} from "@/databases";
+import {
   DeploymentNotFoundError,
   InvalidDeploymentTransitionError,
   NoActiveContainerError,
@@ -25,7 +36,10 @@ import {
   VolumePathOverlapError,
 } from "@/volumes";
 
-/** Portuguese messages for errors of projects, deployments, domains, variables, tasks and volumes. */
+/**
+ * Portuguese messages for errors of projects, deployments, domains, variables, tasks, volumes
+ * and databases.
+ */
 export const PROJECT_ERROR_MESSAGES: readonly (readonly [
   abstract new (...args: never[]) => Error,
   string,
@@ -40,6 +54,24 @@ export const PROJECT_ERROR_MESSAGES: readonly (readonly [
   [
     ProjectHasVolumesError,
     "Projetos com volumes não podem mudar de servidor: os dados ficam no servidor atual.",
+  ],
+  [DatabaseNotFoundError, "Banco de dados não encontrado."],
+  [DatabaseLimitError, "Cada projeto pode ter no máximo 5 bancos de dados."],
+  [
+    DatabaseVariableConflictError,
+    "O projeto já tem uma variável com esse nome. Escolha outro nome ou remova a variável.",
+  ],
+  [DatabaseBeingDeletedError, "Este banco de dados já está sendo excluído."],
+  [DatabaseBackupUnsupportedError, "Backups estão disponíveis só para bancos PostgreSQL."],
+  [
+    DatabaseNotRunningError,
+    "O banco precisa estar ativo. Aguarde ele iniciar ou terminar a restauração em andamento.",
+  ],
+  [DatabaseBackupInProgressError, "Já há um backup deste banco em andamento."],
+  [DatabaseBackupNotFoundError, "Backup não encontrado ou ainda não concluído."],
+  [
+    ProjectHasDatabasesError,
+    "Projetos com bancos de dados não podem mudar de servidor: os dados ficam no servidor atual.",
   ],
   [ProjectSlugTakenError, "Já existe um projeto com este identificador."],
   [

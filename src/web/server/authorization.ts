@@ -1,6 +1,14 @@
 import { getRequest } from "@tanstack/react-start/server";
 
-import { type CurrentUser, getCurrentUser, requireUser } from "@/auth";
+import {
+  type CurrentUser,
+  getCurrentUser,
+  needsTwoFactorSetup,
+  requireUser,
+  TwoFactorRequiredError,
+} from "@/auth";
+import { getDatabase } from "@/db";
+import { getSystemSettings } from "@/settings";
 import type { Permission } from "@/shared/roles";
 
 /**
@@ -10,9 +18,14 @@ import type { Permission } from "@/shared/roles";
  * @returns The authorized user.
  * @throws {UnauthenticatedError} When there is no valid session.
  * @throws {ForbiddenError} When the user's role lacks the permission.
+ * @throws {TwoFactorRequiredError} When an admin must turn on two-factor authentication first.
  */
 export async function authorize(permission: Permission): Promise<CurrentUser> {
-  return await requireUser(getRequest().headers, permission);
+  const user = await requireUser(getRequest().headers, permission);
+  if (needsTwoFactorSetup(user, getSystemSettings(getDatabase()))) {
+    throw new TwoFactorRequiredError();
+  }
+  return user;
 }
 
 /**

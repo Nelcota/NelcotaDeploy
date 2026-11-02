@@ -3,6 +3,7 @@ import {
   ForbiddenError,
   InvalidAvatarError,
   SetupAlreadyDoneError,
+  TwoFactorRequiredError,
   UnauthenticatedError,
   UserOperationError,
 } from "@/auth";
@@ -26,6 +27,10 @@ type ErrorClass = abstract new (...args: never[]) => Error;
 const MESSAGES: readonly (readonly [ErrorClass, string])[] = [
   [UnauthenticatedError, "Sua sessão expirou. Entre novamente."],
   [ForbiddenError, "Você não tem permissão para esta ação."],
+  [
+    TwoFactorRequiredError,
+    "Ative a verificação em duas etapas no menu da sua conta para continuar.",
+  ],
   [GitHubApiError, "Não foi possível falar com o GitHub. Tente novamente em instantes."],
   [SetupAlreadyDoneError, "O painel já tem um administrador. Entre com a sua conta."],
   [InvalidAvatarError, "Imagem inválida. Use uma foto PNG, JPEG ou WebP de até 512 KB."],

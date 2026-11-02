@@ -149,6 +149,10 @@ export async function startContainer(
       labels: deploymentLabels(context),
       environmentKeys: Object.keys(release.runtimeValues),
       volumes,
+      resources: {
+        memoryLimitInMb: project.memoryLimitInMb,
+        cpuLimitInMillicores: project.cpuLimitInMillicores,
+      },
     },
     release.runtimeValues,
   );

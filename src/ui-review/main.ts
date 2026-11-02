@@ -54,6 +54,7 @@ function pagesFor(projectId: string, deploymentId: string) {
     { name: "projeto-metricas", path: `${project}/metrics`, signedIn: true },
     { name: "projeto-variaveis", path: `${project}/environment`, signedIn: true },
     { name: "projeto-dominios", path: `${project}/domains`, signedIn: true },
+    { name: "projeto-bancos", path: `${project}/databases`, signedIn: true },
     { name: "projeto-tasks", path: `${project}/tasks`, signedIn: true },
     { name: "projeto-ajustes", path: `${project}/settings`, signedIn: true },
     { name: "admin-organizacao", path: "/settings?tab=organization", signedIn: true },
@@ -76,6 +77,7 @@ function dialogsFor(project: string) {
     ["modal-nova-variavel", `${project}/environment`, "Nova variável"],
     ["modal-importar-env", `${project}/environment`, "Importar .env"],
     ["modal-nova-task", `${project}/tasks`, "Nova task"],
+    ["modal-backups-banco", `${project}/databases`, "Backups"],
     ["modal-busca", "/", "Buscar projetos e páginas"],
   ].map(([name = "", path = "", opens = ""]) => ({ name, path, signedIn: true, opens }));
 }

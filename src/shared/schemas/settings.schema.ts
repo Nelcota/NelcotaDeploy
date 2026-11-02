@@ -28,6 +28,8 @@ export const systemSettingsSchema = z.object({
       message: "Informe uma URL https://, como a de um webhook do Discord ou do Slack",
     })
     .transform((value) => (value === "" ? null : value)),
+  /** Admins must turn on two-factor authentication before using the panel. */
+  requireAdminTwoFactor: z.boolean(),
 });
 
 const MAX_URL_LENGTH = 2000;
@@ -47,4 +49,5 @@ export const DEFAULT_SYSTEM_SETTINGS: SystemSettings = {
   baseDomain: null,
   httpsByDefault: true,
   alertWebhookUrl: null,
+  requireAdminTwoFactor: false,
 };

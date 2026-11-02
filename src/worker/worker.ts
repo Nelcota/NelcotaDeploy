@@ -137,6 +137,7 @@ export class Worker {
           {
             id: job.id,
             kind: job.kind,
+            payload: job.payload,
             deploymentId: job.deploymentId,
             taskExecutionId: job.taskExecutionId,
             outcome,

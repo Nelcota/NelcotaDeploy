@@ -42,3 +42,11 @@ export class SetupAlreadyDoneError extends Error {
     this.name = "SetupAlreadyDoneError";
   }
 }
+
+/** Thrown when an admin must turn on two-factor authentication before using the panel. */
+export class TwoFactorRequiredError extends Error {
+  constructor() {
+    super("Two-factor authentication is required for admins");
+    this.name = "TwoFactorRequiredError";
+  }
+}

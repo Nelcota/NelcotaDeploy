@@ -4,9 +4,12 @@ import { DockerImages, type DockerImageStore } from "./docker-images";
 import { DockerVolumes, type DockerVolumeStore } from "./docker-volumes";
 import {
   assertContainerReference,
+  assertFilePath,
   buildImageArgs,
   type BuildImageOptions,
   LABELS,
+  railpackBuildArgs,
+  type RailpackBuildOptions,
   runContainerArgs,
   type RunContainerOptions,
   stopContainerArgs,
@@ -22,6 +25,8 @@ import {
 
 const QUICK_COMMAND_TIMEOUT_IN_MS = 30_000;
 const STOP_TIMEOUT_IN_MS = 60_000;
+// Database dumps can take a while to copy on slow disks.
+const COPY_TIMEOUT_IN_MS = 600_000;
 const MS_PER_SECOND = 1000;
 
 /** Callback for streamed command output. */
@@ -120,6 +125,34 @@ export class DockerCli {
     await this.#runChecked(buildImageArgs(options), "build", {
       timeoutInMs: run.timeoutInMs,
       env: { ...buildArgValues, DOCKER_BUILDKIT: "1" },
+      signal: run.signal,
+      onLine: run.onLine,
+      cwd: run.cwd,
+    });
+  }
+
+  /**
+   * Builds a Railpack plan with the Railpack frontend on Docker's BuildKit. The image it
+   * produces carries no platform labels yet.
+   *
+   * @param options - Plan, context, tag, secret names and their hash; see {@link railpackBuildArgs}.
+   * @param secretValues - Values for `options.secretKeys`, passed via the environment.
+   * @param run - Timeout, cancellation and output streaming.
+   * @throws {DockerCommandError} When the build fails, times out or is cancelled.
+   */
+  async buildWithRailpack(
+    options: RailpackBuildOptions,
+    secretValues: Readonly<Record<string, string>>,
+    run: {
+      readonly timeoutInMs: number;
+      readonly signal?: AbortSignal;
+      readonly onLine?: OutputHandler;
+      readonly cwd: string;
+    },
+  ): Promise<void> {
+    await this.#runChecked(railpackBuildArgs(options), "buildx build", {
+      timeoutInMs: run.timeoutInMs,
+      env: { ...secretValues, DOCKER_BUILDKIT: "1" },
       signal: run.signal,
       onLine: run.onLine,
       cwd: run.cwd,
@@ -393,6 +426,46 @@ export class DockerCli {
       ],
       { timeoutInMs: Number.MAX_SAFE_INTEGER, signal, onLine: () => onEvent() },
     );
+  }
+
+  /**
+   * Copies a file out of a platform container to the host.
+   *
+   * @param reference - Container name or id.
+   * @param containerPath - Absolute path inside the container.
+   * @param hostPath - Absolute path on the host; its directory must exist.
+   * @throws {UnmanagedResourceError} When the container is not managed by the platform.
+   * @throws {InvalidDockerArgumentError} When a path is malformed.
+   * @throws {DockerCommandError} When docker cannot copy the file.
+   */
+  async copyFromContainer(
+    reference: string,
+    containerPath: string,
+    hostPath: string,
+  ): Promise<void> {
+    const info = await this.#assertManaged(reference);
+    const source = `${info.id}:${assertFilePath(containerPath)}`;
+    await this.#runChecked(["container", "cp", "--", source, assertFilePath(hostPath)], "cp", {
+      timeoutInMs: COPY_TIMEOUT_IN_MS,
+    });
+  }
+
+  /**
+   * Copies a file from the host into a platform container.
+   *
+   * @param hostPath - Absolute path on the host.
+   * @param reference - Container name or id.
+   * @param containerPath - Absolute path inside the container.
+   * @throws {UnmanagedResourceError} When the container is not managed by the platform.
+   * @throws {InvalidDockerArgumentError} When a path is malformed.
+   * @throws {DockerCommandError} When docker cannot copy the file.
+   */
+  async copyToContainer(hostPath: string, reference: string, containerPath: string): Promise<void> {
+    const info = await this.#assertManaged(reference);
+    const target = `${info.id}:${assertFilePath(containerPath)}`;
+    await this.#runChecked(["container", "cp", "--", assertFilePath(hostPath), target], "cp", {
+      timeoutInMs: COPY_TIMEOUT_IN_MS,
+    });
   }
 
   /**

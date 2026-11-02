@@ -11,6 +11,7 @@ export {
   ForbiddenError,
   InvalidAvatarError,
   SetupAlreadyDoneError,
+  TwoFactorRequiredError,
   UnauthenticatedError,
   UserOperationError,
 } from "./auth.errors";
@@ -20,7 +21,13 @@ export {
   removeUserAvatar,
   saveUserAvatar,
 } from "./avatar.service";
-export { type CurrentUser, getCurrentUser, requireUser, userActor } from "./session";
+export {
+  type CurrentUser,
+  getCurrentUser,
+  needsTwoFactorSetup,
+  requireUser,
+  userActor,
+} from "./session";
 export {
   createUser,
   listUsers,

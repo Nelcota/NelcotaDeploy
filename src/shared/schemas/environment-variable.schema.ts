@@ -12,7 +12,7 @@ const RESERVED_KEY_PREFIXES = ["NELCOTA_", "DOCKER_"];
  * @param key - Variable name.
  * @returns True for POSIX-style names outside the reserved prefixes.
  */
-function isValidEnvironmentVariableKey(key: string): boolean {
+export function isValidEnvironmentVariableKey(key: string): boolean {
   if (key.length === 0 || key.length > MAX_KEY_LENGTH || KEY_PATTERN.test(key) === false) {
     return false;
   }

@@ -1,11 +1,19 @@
 import { describe, expect, test } from "bun:test";
 
 import {
+  assertFilePath,
   buildImageArgs,
   containerNameFor,
+  databaseContainerNameFor,
+  databaseVolumeNameFor,
   imageTagFor,
+  isRailpackBaseTag,
   managedLabels,
   proxyContainerArgs,
+  RAILPACK_VERSION,
+  railpackBaseTagFor,
+  railpackBuildArgs,
+  resourceArgs,
   runContainerArgs,
   stopContainerArgs,
   volumeNameFor,
@@ -224,5 +232,138 @@ describe("runContainerArgs volumes", () => {
 describe("volumeNameFor", () => {
   test("derives a stable name from the volume id", () => {
     expect(volumeNameFor(DEPLOYMENT_ID)).toBe("nelcota-data-0c1d2e3f4a5b");
+  });
+});
+
+describe("database names", () => {
+  test("derives the container and data volume names from the database id", () => {
+    expect(databaseContainerNameFor(DEPLOYMENT_ID)).toBe("nelcota-db-0c1d2e3f4a5b");
+    expect(databaseVolumeNameFor(DEPLOYMENT_ID)).toBe("nelcota-dbdata-0c1d2e3f4a5b");
+  });
+
+  test("throws InvalidDockerArgumentError for a malformed database id", () => {
+    const run = () => databaseContainerNameFor("--rm");
+
+    expect(run).toThrow(InvalidDockerArgumentError);
+  });
+});
+
+describe("runContainerArgs command", () => {
+  test("puts the command after the image", () => {
+    const args = runContainerArgs({
+      ...RUN_BASE,
+      volumes: [],
+      command: ["redis-server", "--appendonly", "yes"],
+    });
+
+    expect(args.slice(-4)).toEqual([RUN_BASE.imageTag, "redis-server", "--appendonly", "yes"]);
+  });
+
+  test("ends with the image when no command is given", () => {
+    const args = runContainerArgs({ ...RUN_BASE, volumes: [] });
+
+    expect(args.at(-1)).toBe(RUN_BASE.imageTag);
+  });
+});
+
+describe("assertFilePath", () => {
+  test("accepts an absolute path of plain segments", () => {
+    expect(assertFilePath("/tmp/nelcota-backup.dump")).toBe("/tmp/nelcota-backup.dump");
+  });
+
+  test.each([["relative"], ["/tmp/../etc"], ["/tmp/a:b"], ["/tmp/a b"]])(
+    "throws InvalidDockerArgumentError for %p",
+    (path) => {
+      expect(() => assertFilePath(path)).toThrow(InvalidDockerArgumentError);
+    },
+  );
+});
+
+describe("resourceArgs", () => {
+  test("adds nothing without limits", () => {
+    expect(resourceArgs({ memoryLimitInMb: null, cpuLimitInMillicores: null })).toEqual([]);
+  });
+
+  test("limits memory in MiB", () => {
+    expect(resourceArgs({ memoryLimitInMb: 512, cpuLimitInMillicores: null })).toEqual([
+      "--memory",
+      "512m",
+    ]);
+  });
+
+  test("writes a fraction of a core without float rounding", () => {
+    expect(resourceArgs({ memoryLimitInMb: null, cpuLimitInMillicores: 250 })).toEqual([
+      "--cpus",
+      "0.250",
+    ]);
+  });
+
+  test("writes whole cores", () => {
+    expect(resourceArgs({ memoryLimitInMb: null, cpuLimitInMillicores: 2000 })).toEqual([
+      "--cpus",
+      "2.000",
+    ]);
+  });
+
+  test.each([[0], [-1], [1.5], [Number.NaN]])(
+    "throws InvalidDockerArgumentError for the memory limit %p",
+    (memoryLimitInMb) => {
+      expect(() => resourceArgs({ memoryLimitInMb, cpuLimitInMillicores: null })).toThrow(
+        InvalidDockerArgumentError,
+      );
+    },
+  );
+});
+
+describe("railpackBuildArgs", () => {
+  const options = {
+    planPath: "/work/railpack-plan.json",
+    contextPath: "/work/repo",
+    imageTag: "nelcota/web:0a1b2c3d4e5f-railpack",
+    secretKeys: ["NEXT_PUBLIC_API_URL"],
+    secretsHash: "a".repeat(64),
+  };
+
+  test("builds the plan with the frontend of the same Railpack version", () => {
+    const args = railpackBuildArgs(options);
+
+    expect(args.slice(0, 2)).toEqual(["buildx", "build"]);
+    expect(args).toContain(
+      `BUILDKIT_SYNTAX=ghcr.io/railwayapp/railpack-frontend:v${RAILPACK_VERSION}`,
+    );
+    expect(args.join(" ")).toContain("--file /work/railpack-plan.json");
+    expect(args.at(-1)).toBe("/work/repo");
+  });
+
+  test("passes build secrets by name only, never their values", () => {
+    const args = railpackBuildArgs(options);
+
+    expect(args.join(" ")).toContain("--secret id=NEXT_PUBLIC_API_URL,env=NEXT_PUBLIC_API_URL");
+  });
+
+  test("throws InvalidDockerArgumentError for a malformed secrets hash", () => {
+    expect(() => railpackBuildArgs({ ...options, secretsHash: "--rm" })).toThrow(
+      InvalidDockerArgumentError,
+    );
+  });
+
+  test("throws InvalidDockerArgumentError for a malformed secret name", () => {
+    expect(() => railpackBuildArgs({ ...options, secretKeys: ["A,env=B"] })).toThrow(
+      InvalidDockerArgumentError,
+    );
+  });
+});
+
+describe("Railpack base tags", () => {
+  test("derives the base tag from the final image tag", () => {
+    expect(railpackBaseTagFor("nelcota/web:0a1b2c3d4e5f")).toBe(
+      "nelcota/web:0a1b2c3d4e5f-railpack",
+    );
+  });
+
+  test("recognizes only platform Railpack base tags", () => {
+    expect(isRailpackBaseTag("nelcota/web:0a1b2c3d4e5f-railpack")).toBe(true);
+    expect(isRailpackBaseTag("nelcota/web:0a1b2c3d4e5f")).toBe(false);
+    expect(isRailpackBaseTag("postgres:18.6-railpack")).toBe(false);
   });
 });

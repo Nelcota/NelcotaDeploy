@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
+import { RAILPACK_VERSION } from "@/docker";
 import { generateSshKeyPair } from "@/remote";
 
 import { buildInstallCommand } from "./install-script";
@@ -33,5 +34,25 @@ describe("buildInstallCommand", () => {
 
   test("throws InvalidInstallInputError for a malformed username", () => {
     expect(() => buildInstallCommand(publicKey, "root;id")).toThrow(InvalidInstallInputError);
+  });
+});
+
+describe("buildInstallCommand Railpack", () => {
+  test("installs the Railpack version the worker builds with", () => {
+    const command = buildInstallCommand(publicKey, "nelcota");
+
+    expect(command).toContain(`/v${RAILPACK_VERSION}/railpack-v${RAILPACK_VERSION}-`);
+  });
+
+  test("checks the archive against its checksum before installing it", () => {
+    const command = buildInstallCommand(publicKey, "nelcota");
+
+    expect(command.indexOf("sha256sum -c")).toBeLessThan(command.indexOf("install -m 755"));
+  });
+
+  test("pins the same Railpack version in the worker image", async () => {
+    const dockerfile = await Bun.file(new URL("../../Dockerfile", import.meta.url)).text();
+
+    expect(dockerfile).toContain(`/v${RAILPACK_VERSION}/railpack-v${RAILPACK_VERSION}-`);
   });
 });

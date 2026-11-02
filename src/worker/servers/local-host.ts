@@ -5,7 +5,21 @@ import { runProcess } from "@/process";
 import { RouteFiles } from "@/routing";
 
 import { networkProbes } from "../probes";
-import type { ServerHost } from "../server-host";
+import type { ServerFiles, ServerHost } from "../server-host";
+
+/** Files of the worker's own host; the limits match those of transfers over SSH. */
+const localFiles: ServerFiles = {
+  read: async (path, limits) => {
+    const file = Bun.file(path);
+    if (file.size > limits.maxBytes) {
+      throw new Error(`File ${path} is larger than ${limits.maxBytes} bytes`);
+    }
+    return await file.bytes();
+  },
+  write: async (path, data) => {
+    await Bun.write(path, data);
+  },
+};
 
 function localRoutes(config: AppConfig): RouteFiles | null {
   if (config.TRAEFIK_ENABLED === false) {
@@ -31,8 +45,10 @@ export function createLocalHost(config: AppConfig, serverId: string): ServerHost
   return {
     serverId,
     runner: runProcess,
+    files: localFiles,
     docker: new DockerCli(config.DOCKER_BINARY),
     git: new GitClient(config.GIT_BINARY),
+    railpackBinary: config.RAILPACK_BINARY,
     probes: networkProbes,
     workspaceDir: config.WORKSPACE_DIR,
     platformProxy: false,

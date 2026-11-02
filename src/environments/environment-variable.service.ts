@@ -33,7 +33,7 @@ function encryptionContext(environmentId: string, key: string): string {
   return `environment:${environmentId}:${key}`;
 }
 
-function productionEnvironmentId(database: Database, projectId: string): string {
+function productionEnvironmentId(database: Database | Transaction, projectId: string): string {
   getProject(database, projectId);
   const environment = database
     .select({ id: tables.environments.id })
@@ -60,7 +60,7 @@ function productionEnvironmentId(database: Database, projectId: string): string 
  * @throws {ProjectNotFoundError} When the project does not exist.
  */
 export function listEnvironmentVariables(
-  database: Database,
+  database: Database | Transaction,
   projectId: string,
 ): EnvironmentVariableView[] {
   const environmentId = productionEnvironmentId(database, projectId);
@@ -104,6 +104,28 @@ export function listEnvironmentVariables(
 export async function saveEnvironmentVariable(
   database: Database,
   secretBox: SecretBox,
+  change: {
+    readonly projectId: string;
+    readonly input: EnvironmentVariableInput;
+    readonly actor: Actor;
+  },
+): Promise<void> {
+  const save = await prepareEnvironmentVariable(database, secretBox, change);
+  save(database);
+}
+
+/**
+ * Encrypts a variable before a synchronous transaction commits it with related records.
+ *
+ * @param database - Database containing the project's environment.
+ * @param secretBox - Encryption box.
+ * @param change - Project, validated variable and actor.
+ * @returns A synchronous writer accepting the database or the caller's transaction.
+ * @throws {ProjectNotFoundError} When the project does not exist.
+ */
+export async function prepareEnvironmentVariable(
+  database: Database,
+  secretBox: SecretBox,
   {
     projectId,
     input,
@@ -113,41 +135,47 @@ export async function saveEnvironmentVariable(
     readonly input: EnvironmentVariableInput;
     readonly actor: Actor;
   },
-): Promise<void> {
+): Promise<(target: Database | Transaction) => void> {
   const environmentId = productionEnvironmentId(database, projectId);
   const keepExistingSecret = input.kind === "secret" && input.value === "";
   const encryptedValue =
     input.kind === "secret" && keepExistingSecret === false
       ? await secretBox.encrypt(input.value, encryptionContext(environmentId, input.key))
       : null;
-  database.transaction((transaction) => {
-    const existing = findVariable(transaction, environmentId, input.key);
-    const previousTime = existing == null ? 0 : Date.parse(existing.updatedAt);
-    if (Number.isFinite(previousTime) === false) {
-      throw new Error(`Invalid update timestamp for environment variable ${input.key}`);
-    }
-    // Two saves in the same millisecond must still produce distinct fingerprints.
-    const now = new Date(Math.max(Date.now(), previousTime + 1)).toISOString();
-    const values = {
-      kind: input.kind,
-      plainValue: input.kind === "plain" ? input.value : null,
-      encryptedValue: keepExistingSecret ? (existing?.encryptedValue ?? null) : encryptedValue,
-      availableAtBuild: input.availableAtBuild,
-      excludeFromPreviews: input.excludeFromPreviews,
-      updatedAt: now,
-    };
-    if (input.kind === "secret" && values.encryptedValue == null) {
-      throw new Error(`Secret ${input.key} needs a value`);
-    }
-    writeVariable(transaction, { existingId: existing?.id, environmentId, key: input.key, values });
-    recordAuditEvent(transaction, {
-      actor,
-      action: existing == null ? "environment_variable.create" : "environment_variable.update",
-      targetType: "project",
-      targetId: projectId,
-      metadata: { key: input.key, kind: input.kind },
+  return (target) =>
+    target.transaction((transaction) => {
+      const existing = findVariable(transaction, environmentId, input.key);
+      const previousTime = existing == null ? 0 : Date.parse(existing.updatedAt);
+      if (Number.isFinite(previousTime) === false) {
+        throw new Error(`Invalid update timestamp for environment variable ${input.key}`);
+      }
+      // Two saves in the same millisecond must still produce distinct fingerprints.
+      const now = new Date(Math.max(Date.now(), previousTime + 1)).toISOString();
+      const values = {
+        kind: input.kind,
+        plainValue: input.kind === "plain" ? input.value : null,
+        encryptedValue: keepExistingSecret ? (existing?.encryptedValue ?? null) : encryptedValue,
+        availableAtBuild: input.availableAtBuild,
+        excludeFromPreviews: input.excludeFromPreviews,
+        updatedAt: now,
+      };
+      if (input.kind === "secret" && values.encryptedValue == null) {
+        throw new Error(`Secret ${input.key} needs a value`);
+      }
+      writeVariable(transaction, {
+        existingId: existing?.id,
+        environmentId,
+        key: input.key,
+        values,
+      });
+      recordAuditEvent(transaction, {
+        actor,
+        action: existing == null ? "environment_variable.create" : "environment_variable.update",
+        targetType: "project",
+        targetId: projectId,
+        metadata: { key: input.key, kind: input.kind },
+      });
     });
-  });
 }
 
 type VariableValues = {

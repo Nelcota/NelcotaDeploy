@@ -12,6 +12,8 @@ import type { DeploymentLogWriter } from "./deployment-log-writer";
 export type DeployRunnerConfig = {
   /** Workspace directory on the server that builds. */
   readonly workspaceDir: string;
+  /** Railpack CLI on the server that builds. */
+  readonly railpackBinary: string;
   readonly network: string;
   readonly buildTimeoutInSeconds: number;
   readonly healthCheckTimeoutInSeconds: number;

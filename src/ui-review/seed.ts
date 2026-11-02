@@ -9,7 +9,7 @@ import { createProject } from "@/projects";
 import { getSecretBox } from "@/secrets";
 import { saveSystemSettings } from "@/settings";
 
-import { seedPreview, seedServers, seedTasks, seedVolumes } from "./seed-extras";
+import { seedDatabases, seedPreview, seedServers, seedTasks, seedVolumes } from "./seed-extras";
 
 const ACTOR = { type: "system", label: "ui-review" } as const;
 const MINUTE_IN_MS = 60_000;
@@ -41,6 +41,7 @@ saveSystemSettings(database, {
   baseDomain: "apps.exemplo.com",
   httpsByDefault: true,
   alertWebhookUrl: null,
+  requireAdminTwoFactor: false,
 });
 
 const api = createProject(
@@ -50,6 +51,7 @@ const api = createProject(
     slug: "api-pagamentos",
     repositoryUrl: "https://github.com/nelcota/api-pagamentos",
     branch: "main",
+    builder: "dockerfile",
     dockerfilePath: "Dockerfile",
     buildContext: ".",
     internalPort: 3000,
@@ -57,6 +59,8 @@ const api = createProject(
     autoDeploy: true,
     autoApplyChanges: true,
     previewsEnabled: true,
+    memoryLimitInMb: null,
+    cpuLimitInMillicores: null,
   },
   { actor: ACTOR, userId: null, isAdmin: true },
 );
@@ -67,6 +71,7 @@ createProject(
     slug: "site-institucional",
     repositoryUrl: "https://github.com/nelcota/site-institucional",
     branch: "feature/nova-pagina-inicial-com-branch-longa",
+    builder: "dockerfile",
     dockerfilePath: "Dockerfile",
     buildContext: ".",
     internalPort: 8080,
@@ -74,6 +79,8 @@ createProject(
     autoDeploy: false,
     autoApplyChanges: true,
     previewsEnabled: false,
+    memoryLimitInMb: null,
+    cpuLimitInMillicores: null,
   },
   { actor: ACTOR, userId: null, isAdmin: false },
 );
@@ -145,6 +152,7 @@ addDomain(database, {
 
 seedTasks(database, api.id);
 seedVolumes(database, api.id);
+await seedDatabases(database, secretBox, api.id);
 seedPreview(database, api.id);
 
 const startedAt = new Date(now - CONTAINER_UPTIME_IN_MINUTES * MINUTE_IN_MS).toISOString();

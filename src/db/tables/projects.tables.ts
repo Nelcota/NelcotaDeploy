@@ -22,6 +22,10 @@ export const projects = sqliteTable(
     repositoryUrl: text("repository_url").notNull(),
     repositoryFullName: text("repository_full_name").notNull(),
     branch: text("branch").notNull(),
+    // How the image is built: the repository's Dockerfile, or Railpack detecting the stack.
+    builder: text("builder", { enum: ["dockerfile", "railpack"] })
+      .notNull()
+      .default("dockerfile"),
     dockerfilePath: text("dockerfile_path").notNull(),
     buildContext: text("build_context").notNull(),
     internalPort: integer("internal_port").notNull(),
@@ -33,6 +37,9 @@ export const projects = sqliteTable(
     autoApplyChanges: integer("auto_apply_changes", { mode: "boolean" }).notNull().default(true),
     // When set, pull requests to the project's branch get their own temporary deployment.
     previewsEnabled: integer("previews_enabled", { mode: "boolean" }).notNull().default(false),
+    // Limits of the application container; null leaves it unlimited, as Docker does.
+    memoryLimitInMb: integer("memory_limit_in_mb"),
+    cpuLimitInMillicores: integer("cpu_limit_in_millicores"),
     deploymentsApproved: integer("deployments_approved", { mode: "boolean" })
       .notNull()
       .default(false),
@@ -123,6 +130,35 @@ export const projectVolumes = sqliteTable(
     createdAt: createdAt(),
   },
   (table) => [uniqueIndex("project_volumes_project_path_idx").on(table.projectId, table.mountPath)],
+);
+
+// Database servers the platform runs for a project, on the project's server. They publish no
+// port: only containers on the platform network reach them, through the connection URL saved
+// as a secret variable of the project.
+export const projectDatabases = sqliteTable(
+  "project_databases",
+  {
+    id: text("id").primaryKey(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    engine: text("engine", { enum: ["postgres", "redis"] }).notNull(),
+    imageTag: text("image_tag").notNull(),
+    // Variable of the project that receives the connection URL.
+    environmentKey: text("environment_key").notNull(),
+    encryptedPassword: text("encrypted_password").notNull(),
+    status: text("status", {
+      enum: ["provisioning", "running", "failed", "restoring"],
+    }).notNull(),
+    errorMessage: text("error_message"),
+    // Set when deletion is requested; the worker removes the container and its data, then the row.
+    deletionRequestedAt: text("deletion_requested_at"),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (table) => [
+    uniqueIndex("project_databases_project_key_idx").on(table.projectId, table.environmentKey),
+  ],
 );
 
 export const deployments = sqliteTable(

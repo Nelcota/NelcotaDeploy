@@ -29,7 +29,8 @@ export function deletedProjectIds(
 ): Set<string> {
   const deleted = new Set<string>();
   for (const container of containers) {
-    const projectId = container.labels[LABELS.projectId];
+    const projectId =
+      container.labels[LABELS.projectId] ?? container.labels[LABELS.databaseProjectId];
     if (projectId != null && existing.has(projectId) === false) {
       deleted.add(projectId);
     }

@@ -13,6 +13,12 @@ import {
   runProjectCleanup,
   runVolumeDeleteJob,
 } from "./container-action-runner";
+import {
+  backupStorage,
+  runDatabaseBackupJob,
+  runDatabaseRestoreJob,
+} from "./databases/database-backup-runner";
+import { runDatabaseDeleteJob, runDatabaseProvisionJob } from "./databases/database-runner";
 import type { DeployRunnerConfig, DeployRunnerDependencies } from "./deploy/deploy-context";
 import { runDeployment } from "./deploy/deploy-runner";
 import { runPreviewCleanupJob } from "./maintenance/preview-cleanup";
@@ -42,6 +48,7 @@ function deployRunnerConfig(
 ): DeployRunnerConfig {
   return {
     workspaceDir: host.workspaceDir,
+    railpackBinary: host.railpackBinary,
     network: config.DOCKER_NETWORK,
     buildTimeoutInSeconds: config.BUILD_TIMEOUT_SECONDS,
     healthCheckTimeoutInSeconds: config.HEALTH_CHECK_TIMEOUT_SECONDS,
@@ -176,13 +183,16 @@ async function runTaskJob(dependencies: WorkerDependencies, job: Job, run: JobRu
 }
 
 async function runProjectCleanupJob(dependencies: WorkerDependencies, job: Job): Promise<void> {
+  const storage =
+    dependencies.offsiteStore == null && dependencies.config.BACKUP_DIR == null
+      ? null
+      : backupStorage(dependencies);
   const serverIds = listDeploymentServerIds(dependencies.database, job.projectId);
   const hosts = dependencies.hosts.hostsOf(dependencies.database, serverIds);
-  const { failures, ...removed } = await runProjectCleanup(
-    dependencies.database,
-    hosts,
-    job.projectId,
-  );
+  const { failures, ...removed } = await runProjectCleanup(dependencies.database, hosts, {
+    projectId: job.projectId,
+    storage,
+  });
   for (const failure of failures) {
     dependencies.logger.warn(
       { err: failure, projectId: job.projectId },
@@ -228,6 +238,22 @@ export async function dispatchJob(
     }
     case "preview_cleanup": {
       await runPreviewCleanupJob(dependencies, job);
+      return;
+    }
+    case "database_provision": {
+      await runDatabaseProvisionJob(dependencies, job, run.signal);
+      return;
+    }
+    case "database_delete": {
+      await runDatabaseDeleteJob(dependencies, job);
+      return;
+    }
+    case "database_backup": {
+      await runDatabaseBackupJob(dependencies, job);
+      return;
+    }
+    case "database_restore": {
+      await runDatabaseRestoreJob(dependencies, job);
     }
   }
 }

@@ -162,7 +162,14 @@ describe("job queue lease recovery", () => {
     const recovered = recoverExpiredJobs(database, afterLease);
 
     expect(recovered).toEqual([
-      { id, kind: "deploy", deploymentId: null, taskExecutionId: null, outcome: "requeued" },
+      {
+        id,
+        kind: "deploy",
+        payload: {},
+        deploymentId: null,
+        taskExecutionId: null,
+        outcome: "requeued",
+      },
     ]);
   });
 

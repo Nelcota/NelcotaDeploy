@@ -108,6 +108,7 @@ describe("requestDeployment validation", () => {
         slug: "unknown",
         repositoryUrl: "https://github.com/someone/unknown",
         branch: "main",
+        builder: "dockerfile",
         dockerfilePath: "Dockerfile",
         buildContext: ".",
         internalPort: 80,
@@ -115,6 +116,8 @@ describe("requestDeployment validation", () => {
         autoDeploy: false,
         autoApplyChanges: true,
         previewsEnabled: false,
+        memoryLimitInMb: null,
+        cpuLimitInMillicores: null,
       },
       { actor: TEST_ACTOR, userId: null, isAdmin: false },
     );

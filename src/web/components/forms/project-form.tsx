@@ -13,6 +13,7 @@ export type ProjectFormValues = {
   readonly slug: string;
   readonly repositoryUrl: string;
   readonly branch: string;
+  readonly builder: "dockerfile" | "railpack";
   readonly dockerfilePath: string;
   readonly buildContext: string;
   readonly internalPort: string;
@@ -20,6 +21,10 @@ export type ProjectFormValues = {
   readonly autoDeploy: boolean;
   readonly autoApplyChanges: boolean;
   readonly previewsEnabled: boolean;
+  /** Blank for no limit. */
+  readonly memoryLimitInMb: string;
+  /** Thousandths of a core as text; blank for no limit. */
+  readonly cpuLimitInMillicores: string;
 };
 
 /** Input accepted by the project server functions. */
@@ -50,6 +55,7 @@ export const EMPTY_PROJECT_FORM: ProjectFormValues = {
   slug: "",
   repositoryUrl: "",
   branch: "main",
+  builder: "dockerfile",
   dockerfilePath: "Dockerfile",
   buildContext: ".",
   // Blank: each build reads the port from the Dockerfile's EXPOSE.
@@ -58,6 +64,8 @@ export const EMPTY_PROJECT_FORM: ProjectFormValues = {
   autoDeploy: true,
   autoApplyChanges: true,
   previewsEnabled: false,
+  memoryLimitInMb: "",
+  cpuLimitInMillicores: "",
 };
 
 /**
@@ -71,6 +79,7 @@ export function projectToFormValues(project: {
   readonly slug: string;
   readonly repositoryUrl: string;
   readonly branch: string;
+  readonly builder: "dockerfile" | "railpack";
   readonly dockerfilePath: string;
   readonly buildContext: string;
   readonly internalPort: number;
@@ -79,12 +88,15 @@ export function projectToFormValues(project: {
   readonly autoDeploy: boolean;
   readonly autoApplyChanges: boolean;
   readonly previewsEnabled: boolean;
+  readonly memoryLimitInMb: number | null;
+  readonly cpuLimitInMillicores: number | null;
 }): ProjectFormValues {
   return {
     name: project.name,
     slug: project.slug,
     repositoryUrl: project.repositoryUrl,
     branch: project.branch,
+    builder: project.builder,
     dockerfilePath: project.dockerfilePath,
     buildContext: project.buildContext,
     internalPort: project.internalPortAuto ? "" : String(project.internalPort),
@@ -92,6 +104,9 @@ export function projectToFormValues(project: {
     autoDeploy: project.autoDeploy,
     autoApplyChanges: project.autoApplyChanges,
     previewsEnabled: project.previewsEnabled,
+    memoryLimitInMb: project.memoryLimitInMb == null ? "" : String(project.memoryLimitInMb),
+    cpuLimitInMillicores:
+      project.cpuLimitInMillicores == null ? "" : String(project.cpuLimitInMillicores),
   };
 }
 

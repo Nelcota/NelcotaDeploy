@@ -50,7 +50,10 @@ export async function createFixtureEnvironment(network: string, cleanups: Cleanu
     .where(eq(tables.projects.id, project.id))
     .run();
   cleanups.push(async () => {
-    await runProjectCleanup(database, [{ docker, routes: null }], project.id);
+    await runProjectCleanup(database, [{ docker, routes: null }], {
+      projectId: project.id,
+      storage: null,
+    });
     await removeDockerNetwork(network);
   });
   const workspaceDir = await createTemporaryDirectory("nelcota-workspaces-", cleanups);
@@ -62,6 +65,7 @@ export async function createFixtureEnvironment(network: string, cleanups: Cleanu
     secretBox,
     config: {
       workspaceDir,
+      railpackBinary: "railpack",
       network,
       buildTimeoutInSeconds: BUILD_TIMEOUT_IN_SECONDS,
       healthCheckTimeoutInSeconds: HEALTH_CHECK_TIMEOUT_IN_SECONDS,

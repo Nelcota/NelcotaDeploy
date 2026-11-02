@@ -20,6 +20,20 @@ export class FakeImages implements ImageStore {
     return await Promise.resolve(this.tags.has(imageTag));
   }
 
+  async ensurePulled(imageTag: string): Promise<void> {
+    if (this.tags.has(imageTag) === false) {
+      this.#calls.push(`pull ${imageTag}`);
+      this.tags.add(imageTag);
+    }
+    await Promise.resolve();
+  }
+
+  async removeRailpackBase(imageTag: string): Promise<void> {
+    this.#calls.push(`rmi ${imageTag}`);
+    this.tags.delete(imageTag);
+    await Promise.resolve();
+  }
+
   async listForProject(): Promise<string[]> {
     return await Promise.resolve([...this.tags].toReversed());
   }

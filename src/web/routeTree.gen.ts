@@ -22,6 +22,7 @@ import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
 import { Route as ApiAvatarsUserIdRouteImport } from './routes/api/avatars/$userId'
 import { Route as ApiWebhooksGithubRouteImport } from './routes/api/webhooks/github'
 import { Route as AppProjectsProjectIdIndexRouteImport } from './routes/_app/projects/$projectId/index'
+import { Route as AppProjectsProjectIdDatabasesRouteImport } from './routes/_app/projects/$projectId/databases'
 import { Route as AppProjectsProjectIdDomainsRouteImport } from './routes/_app/projects/$projectId/domains'
 import { Route as AppProjectsProjectIdEnvironmentRouteImport } from './routes/_app/projects/$projectId/environment'
 import { Route as AppProjectsProjectIdLogsRouteImport } from './routes/_app/projects/$projectId/logs'
@@ -98,6 +99,12 @@ const AppProjectsProjectIdIndexRoute =
   AppProjectsProjectIdIndexRouteImport.update({
     id: '/',
     path: '/',
+    getParentRoute: () => AppProjectsProjectIdRoute,
+  } as any)
+const AppProjectsProjectIdDatabasesRoute =
+  AppProjectsProjectIdDatabasesRouteImport.update({
+    id: '/databases',
+    path: '/databases',
     getParentRoute: () => AppProjectsProjectIdRoute,
   } as any)
 const AppProjectsProjectIdDomainsRoute =
@@ -183,6 +190,7 @@ export interface FileRoutesByFullPath {
   '/api/avatars/$userId': typeof ApiAvatarsUserIdRoute
   '/api/webhooks/github': typeof ApiWebhooksGithubRoute
   '/projects/': typeof AppProjectsIndexRoute
+  '/projects/$projectId/databases': typeof AppProjectsProjectIdDatabasesRoute
   '/projects/$projectId/domains': typeof AppProjectsProjectIdDomainsRoute
   '/projects/$projectId/environment': typeof AppProjectsProjectIdEnvironmentRoute
   '/projects/$projectId/logs': typeof AppProjectsProjectIdLogsRoute
@@ -208,6 +216,7 @@ export interface FileRoutesByTo {
   '/api/avatars/$userId': typeof ApiAvatarsUserIdRoute
   '/api/webhooks/github': typeof ApiWebhooksGithubRoute
   '/projects': typeof AppProjectsIndexRoute
+  '/projects/$projectId/databases': typeof AppProjectsProjectIdDatabasesRoute
   '/projects/$projectId/domains': typeof AppProjectsProjectIdDomainsRoute
   '/projects/$projectId/environment': typeof AppProjectsProjectIdEnvironmentRoute
   '/projects/$projectId/logs': typeof AppProjectsProjectIdLogsRoute
@@ -236,6 +245,7 @@ export interface FileRoutesById {
   '/api/avatars/$userId': typeof ApiAvatarsUserIdRoute
   '/api/webhooks/github': typeof ApiWebhooksGithubRoute
   '/_app/projects/': typeof AppProjectsIndexRoute
+  '/_app/projects/$projectId/databases': typeof AppProjectsProjectIdDatabasesRoute
   '/_app/projects/$projectId/domains': typeof AppProjectsProjectIdDomainsRoute
   '/_app/projects/$projectId/environment': typeof AppProjectsProjectIdEnvironmentRoute
   '/_app/projects/$projectId/logs': typeof AppProjectsProjectIdLogsRoute
@@ -264,6 +274,7 @@ export interface FileRouteTypes {
     | '/api/avatars/$userId'
     | '/api/webhooks/github'
     | '/projects/'
+    | '/projects/$projectId/databases'
     | '/projects/$projectId/domains'
     | '/projects/$projectId/environment'
     | '/projects/$projectId/logs'
@@ -289,6 +300,7 @@ export interface FileRouteTypes {
     | '/api/avatars/$userId'
     | '/api/webhooks/github'
     | '/projects'
+    | '/projects/$projectId/databases'
     | '/projects/$projectId/domains'
     | '/projects/$projectId/environment'
     | '/projects/$projectId/logs'
@@ -316,6 +328,7 @@ export interface FileRouteTypes {
     | '/api/avatars/$userId'
     | '/api/webhooks/github'
     | '/_app/projects/'
+    | '/_app/projects/$projectId/databases'
     | '/_app/projects/$projectId/domains'
     | '/_app/projects/$projectId/environment'
     | '/_app/projects/$projectId/logs'
@@ -437,6 +450,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppProjectsProjectIdIndexRouteImport
       parentRoute: typeof AppProjectsProjectIdRoute
     }
+    '/_app/projects/$projectId/databases': {
+      id: '/_app/projects/$projectId/databases'
+      path: '/databases'
+      fullPath: '/projects/$projectId/databases'
+      preLoaderRoute: typeof AppProjectsProjectIdDatabasesRouteImport
+      parentRoute: typeof AppProjectsProjectIdRoute
+    }
     '/_app/projects/$projectId/domains': {
       id: '/_app/projects/$projectId/domains'
       path: '/domains'
@@ -525,6 +545,7 @@ declare module '@tanstack/react-router' {
 }
 
 interface AppProjectsProjectIdRouteChildren {
+  AppProjectsProjectIdDatabasesRoute: typeof AppProjectsProjectIdDatabasesRoute
   AppProjectsProjectIdDomainsRoute: typeof AppProjectsProjectIdDomainsRoute
   AppProjectsProjectIdEnvironmentRoute: typeof AppProjectsProjectIdEnvironmentRoute
   AppProjectsProjectIdLogsRoute: typeof AppProjectsProjectIdLogsRoute
@@ -537,6 +558,7 @@ interface AppProjectsProjectIdRouteChildren {
 }
 
 const AppProjectsProjectIdRouteChildren: AppProjectsProjectIdRouteChildren = {
+  AppProjectsProjectIdDatabasesRoute: AppProjectsProjectIdDatabasesRoute,
   AppProjectsProjectIdDomainsRoute: AppProjectsProjectIdDomainsRoute,
   AppProjectsProjectIdEnvironmentRoute: AppProjectsProjectIdEnvironmentRoute,
   AppProjectsProjectIdLogsRoute: AppProjectsProjectIdLogsRoute,
