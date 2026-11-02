@@ -6,9 +6,15 @@ type FinishedCommand = {
 };
 
 // The worker writes these in English; the console shows them in Portuguese.
+const UNKNOWN_OUTCOME_TEXT =
+  "O worker reiniciou. Confira o resultado no aplicativo antes de repetir o comando.";
 const KNOWN_FAILURES: readonly (readonly [prefix: string, text: string])[] = [
-  ["Stopped after", "Parado depois de 60 segundos."],
-  ["Interrupted because the worker", "Interrompido porque o worker reiniciou. Rode de novo."],
+  [
+    "Stopped after",
+    "O painel parou de acompanhar após 60 segundos. O comando pode continuar no contêiner. Confira o resultado antes de repetir.",
+  ],
+  ["Interrupted because the worker", UNKNOWN_OUTCOME_TEXT],
+  ["The worker stopped", UNKNOWN_OUTCOME_TEXT],
   ["The project has no live container", "O projeto não tem contêiner no ar."],
 ];
 

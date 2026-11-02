@@ -141,7 +141,8 @@ async function secretRedactor(
  *
  * @remarks
  * The shell runs inside the container, never on the server. Output passes through the same
- * redaction as task output, and the command stops after 60 seconds.
+ * redaction as task output. The worker stops waiting after 60 seconds; disconnecting Docker
+ * exec does not guarantee that the process inside the container has stopped.
  *
  * @param dependencies - Database, Docker and encryption box (for redaction).
  * @param commandId - Command to run.

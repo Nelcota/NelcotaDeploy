@@ -9,14 +9,25 @@ describe("failureText", () => {
     ).toBeNull();
   });
 
-  test("explains a command stopped by the timeout", () => {
+  test("explains a timeout without promising that the container process stopped", () => {
     expect(
       failureText({
         status: "failed",
         exitCode: 137,
         errorMessage: "Stopped after its 60s timeout",
       }),
-    ).toBe("Parado depois de 60 segundos.");
+    ).toBe(
+      "O painel parou de acompanhar após 60 segundos. O comando pode continuar no contêiner. Confira o resultado antes de repetir.",
+    );
+  });
+
+  test.each([
+    "Interrupted because the worker is shutting down",
+    "The worker stopped while the command was pending or running; its outcome is unknown",
+  ])("requires checking the outcome before retrying after %s", (errorMessage) => {
+    expect(failureText({ status: "failed", exitCode: null, errorMessage })).toBe(
+      "O worker reiniciou. Confira o resultado no aplicativo antes de repetir o comando.",
+    );
   });
 
   test("explains a project without a live container", () => {

@@ -36,7 +36,7 @@ function ConsoleHeader() {
   return (
     <TabHeader
       title="Console"
-      description="Cada comando roda uma vez no contêiner no ar, com sh -c, por até 60 segundos. Programas interativos, como editores, não funcionam aqui."
+      description="Cada comando roda uma vez no contêiner no ar, com sh -c. O painel acompanha por até 60 segundos; o processo pode continuar depois desse prazo. Programas interativos, como editores, não funcionam aqui."
     />
   );
 }
