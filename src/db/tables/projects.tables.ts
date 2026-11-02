@@ -35,6 +35,8 @@ export const projects = sqliteTable(
     autoDeploy: integer("auto_deploy", { mode: "boolean" }).notNull().default(false),
     // When set, saving variables or domains recreates the live container with them.
     autoApplyChanges: integer("auto_apply_changes", { mode: "boolean" }).notNull().default(true),
+    // When set, a new version whose containers keep restarting is rolled back on its own.
+    autoRollback: integer("auto_rollback", { mode: "boolean" }).notNull().default(true),
     // When set, pull requests to the project's branch get their own temporary deployment.
     previewsEnabled: integer("previews_enabled", { mode: "boolean" }).notNull().default(false),
     // Limits of the application container; null leaves it unlimited, as Docker does.
@@ -193,7 +195,7 @@ export const deployments = sqliteTable(
       ],
     }).notNull(),
     trigger: text("trigger", {
-      enum: ["manual", "webhook", "redeploy", "rollback", "mcp", "promote"],
+      enum: ["manual", "webhook", "redeploy", "rollback", "auto-rollback", "mcp", "promote"],
     }).notNull(),
     triggeredByUserId: text("triggered_by_user_id").references(() => users.id, {
       onDelete: "set null",
@@ -211,6 +213,10 @@ export const deployments = sqliteTable(
     // Fingerprint of the build-time variables baked into the image; a redeploy keeps its source's.
     buildConfigHash: text("build_config_hash"),
     containerName: text("container_name"),
+    // Set on a version the worker rolled back because its containers kept restarting.
+    autoRolledBackAt: text("auto_rolled_back_at"),
+    // Set when the worker found a version restarting but had no earlier one to roll back to.
+    autoRollbackSkippedAt: text("auto_rollback_skipped_at"),
     // Effective port and encrypted log-redaction values of this particular container.
     internalPort: integer("internal_port"),
     encryptedSecretValues: text("encrypted_secret_values"),

@@ -300,6 +300,15 @@ export function LiveBadge() {
   );
 }
 
+/** Marks a version the panel rolled back on its own because its containers kept restarting. */
+export function AutoRolledBackBadge() {
+  return (
+    <span className="shrink-0 rounded-full bg-warning/15 px-2 py-0.5 text-xs font-medium text-warning">
+      Revertido automaticamente
+    </span>
+  );
+}
+
 /** Heading inside a {@link List} that starts the rows of one day. */
 export function DayHeading({ children }: { readonly children: ReactNode }) {
   return (

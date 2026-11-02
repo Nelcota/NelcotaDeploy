@@ -22,6 +22,7 @@ const BACKUPS_KEPT_RANGE: IntegerRange = { min: 1, max: 365, fallback: 7 };
 const OFFSITE_BACKUPS_KEPT_RANGE: IntegerRange = { min: 1, max: 3650, fallback: 30 };
 const BUILD_CACHE_MAX_GB_RANGE: IntegerRange = { min: 1, max: 1000, fallback: 10 };
 const BUILD_CACHE_RETENTION_DAYS_RANGE: IntegerRange = { min: 1, max: 365, fallback: 7 };
+const AUTO_ROLLBACK_WINDOW_MINUTES_RANGE: IntegerRange = { min: 0, max: 60, fallback: 5 };
 // Folders ending in "/"; a "." or ".." folder would make keys that read like relative paths.
 const S3_PREFIX_PATTERN = /^(?:(?!\.{1,2}\/)[A-Za-z0-9._-]+\/)*$/;
 
@@ -91,6 +92,8 @@ const configSchema = z
     BUILD_CACHE_MAX_GB: boundedInteger(BUILD_CACHE_MAX_GB_RANGE),
     // Build cache unused for longer than this is removed by the daily cleanup.
     BUILD_CACHE_RETENTION_DAYS: boundedInteger(BUILD_CACHE_RETENTION_DAYS_RANGE),
+    // A new version whose containers keep restarting within these minutes is rolled back; 0 turns it off.
+    AUTO_ROLLBACK_WINDOW_MINUTES: boundedInteger(AUTO_ROLLBACK_WINDOW_MINUTES_RANGE),
     // Daily database copies; the directory defaults to "backups" next to the database file.
     BACKUP_DIR: z.string().trim().min(1).optional(),
     BACKUPS_KEPT: boundedInteger(BACKUPS_KEPT_RANGE),

@@ -1,4 +1,17 @@
-import { and, count, desc, eq, inArray, isNotNull, isNull, lt, ne, or, sql } from "drizzle-orm";
+import {
+  and,
+  count,
+  desc,
+  eq,
+  gte,
+  inArray,
+  isNotNull,
+  isNull,
+  lt,
+  ne,
+  or,
+  sql,
+} from "drizzle-orm";
 
 import { type Actor, recordAuditEvent } from "@/audit";
 import { type Database, tables, type Transaction } from "@/db";
@@ -43,6 +56,7 @@ const deploymentColumns = {
   createdAt: tables.deployments.createdAt,
   startedAt: tables.deployments.startedAt,
   finishedAt: tables.deployments.finishedAt,
+  autoRolledBackAt: tables.deployments.autoRolledBackAt,
   // Every query with these columns joins the project, so its current deployment is at hand.
   isLive: sql<boolean>`${tables.projects.currentDeploymentId} = ${tables.deployments.id}`.mapWith(
     (value: unknown) => value === 1 || value === true,
@@ -78,6 +92,8 @@ export type Deployment = {
   readonly createdAt: string;
   readonly startedAt: string | null;
   readonly finishedAt: string | null;
+  /** When the worker rolled this version back because its containers kept restarting. */
+  readonly autoRolledBackAt: string | null;
 };
 
 /**
@@ -366,4 +382,78 @@ export function countActiveDeployments(database: Database): number {
     .where(inArray(tables.deployments.status, ACTIVE_STATUSES))
     .get();
   return row?.total ?? 0;
+}
+
+/** A live version still inside its watch for restart loops. */
+export type WatchedDeployment = {
+  readonly id: string;
+  readonly projectId: string;
+  readonly projectName: string;
+};
+
+/**
+ * Lists the versions to watch for restart loops: live production versions that finished
+ * since a time, on projects that roll back on their own, not rolled back by the worker yet and
+ * not rollbacks the worker made itself, which would otherwise roll back again and again.
+ *
+ * @param database - Database.
+ * @param since - Versions that finished before this are no longer watched.
+ * @returns The watched versions.
+ */
+export function listWatchedDeployments(database: Database, since: Date): WatchedDeployment[] {
+  return database
+    .select({
+      id: tables.deployments.id,
+      projectId: tables.deployments.projectId,
+      projectName: tables.projects.name,
+    })
+    .from(tables.deployments)
+    .innerJoin(tables.projects, eq(tables.projects.currentDeploymentId, tables.deployments.id))
+    .where(
+      and(
+        eq(tables.projects.autoRollback, true),
+        eq(tables.deployments.status, "succeeded"),
+        isNull(tables.deployments.previewId),
+        ne(tables.deployments.trigger, "auto-rollback"),
+        gte(tables.deployments.finishedAt, since.toISOString()),
+        isNull(tables.deployments.autoRolledBackAt),
+        isNull(tables.deployments.autoRollbackSkippedAt),
+      ),
+    )
+    .all();
+}
+
+/**
+ * Records that the worker rolled a version back, so it is no longer watched.
+ *
+ * @param database - Database.
+ * @param deploymentId - The version rolled back.
+ * @param at - When.
+ */
+export function recordAutoRollback(database: Database, deploymentId: string, at: Date): void {
+  database
+    .update(tables.deployments)
+    .set({ autoRolledBackAt: at.toISOString() })
+    .where(eq(tables.deployments.id, deploymentId))
+    .run();
+}
+
+/**
+ * Records that a version kept restarting but had nothing earlier to roll back to, so the
+ * worker alerts about it once.
+ *
+ * @param database - Database.
+ * @param deploymentId - The restarting version.
+ * @param at - When.
+ */
+export function recordAutoRollbackSkipped(
+  database: Database,
+  deploymentId: string,
+  at: Date,
+): void {
+  database
+    .update(tables.deployments)
+    .set({ autoRollbackSkippedAt: at.toISOString() })
+    .where(eq(tables.deployments.id, deploymentId))
+    .run();
 }

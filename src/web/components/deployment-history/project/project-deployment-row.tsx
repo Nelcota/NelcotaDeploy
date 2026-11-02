@@ -8,7 +8,7 @@ import {
   DeploymentTimingColumn,
 } from "@/web/components/deployments/deployment-row";
 import { RollbackButton } from "@/web/components/deployments/rollback-button";
-import { LiveBadge } from "@/web/components/layout/layout";
+import { AutoRolledBackBadge, LiveBadge } from "@/web/components/layout/layout";
 import { DeploymentStatusBadge } from "@/web/components/layout/status-badge";
 
 import { deploymentLabel } from "../deployment-history";
@@ -70,6 +70,7 @@ function CommitCell({
           <span className="truncate">{deployment.branch}</span>
         </span>
         {current ? <LiveBadge /> : null}
+        {deployment.autoRolledBackAt == null ? null : <AutoRolledBackBadge />}
       </div>
       <p
         className="truncate text-sm text-muted-foreground"

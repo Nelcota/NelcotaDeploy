@@ -20,6 +20,7 @@ export type ProjectFormValues = {
   readonly healthCheckPath: string;
   readonly autoDeploy: boolean;
   readonly autoApplyChanges: boolean;
+  readonly autoRollback: boolean;
   readonly previewsEnabled: boolean;
   /** Blank for no limit. */
   readonly memoryLimitInMb: string;
@@ -68,6 +69,7 @@ export const EMPTY_PROJECT_FORM: ProjectFormValues = {
   healthCheckPath: "",
   autoDeploy: true,
   autoApplyChanges: true,
+  autoRollback: true,
   previewsEnabled: false,
   memoryLimitInMb: "",
   cpuLimitInMillicores: "",
@@ -95,6 +97,7 @@ export function projectToFormValues(project: {
   readonly healthCheckPath: string | null;
   readonly autoDeploy: boolean;
   readonly autoApplyChanges: boolean;
+  readonly autoRollback: boolean;
   readonly previewsEnabled: boolean;
   readonly memoryLimitInMb: number | null;
   readonly cpuLimitInMillicores: number | null;
@@ -114,6 +117,7 @@ export function projectToFormValues(project: {
     healthCheckPath: project.healthCheckPath ?? "",
     autoDeploy: project.autoDeploy,
     autoApplyChanges: project.autoApplyChanges,
+    autoRollback: project.autoRollback,
     previewsEnabled: project.previewsEnabled,
     memoryLimitInMb: project.memoryLimitInMb == null ? "" : String(project.memoryLimitInMb),
     cpuLimitInMillicores:

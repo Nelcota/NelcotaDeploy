@@ -13,6 +13,7 @@ export {
   listLatestHostSamples,
   listMoveLeftovers,
   type MoveLeftover,
+  highestRestartCounts,
   listProjectContainers,
   listProjectSamples,
   pruneMetricSamples,

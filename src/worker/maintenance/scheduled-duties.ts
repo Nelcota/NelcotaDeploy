@@ -4,6 +4,7 @@ import { pruneMetricSamples } from "@/monitoring";
 import { scheduleDueTasks } from "@/tasks";
 
 import type { WorkerDependencies } from "../worker.types";
+import { rollBackRestartLoops } from "./auto-rollback";
 import { backupDatabaseIfDue, runDatabaseBackup } from "./database-backup";
 import { checkHealth } from "./health-alerts";
 import { cleanUpServers } from "./server-cleanup";
@@ -42,10 +43,10 @@ function applyRetention({ database, config, logger }: WorkerDependencies): void 
 }
 
 /**
- * Starts the clock-based duties: scheduled tasks every minute, health checks every five
- * minutes, retention and project database
- * backups every hour, and every day the panel database backup (plus one at startup when the
- * newest backup is a day old) and the cleanup of build cache and orphan images on each server.
+ * Starts the clock-based duties: scheduled tasks and the rollback of restart loops every
+ * minute, health checks every five minutes, retention and project database backups every
+ * hour, and every day the panel database backup (plus one at startup when the newest backup
+ * is a day old) and the cleanup of build cache and orphan images on each server.
  *
  * @param dependencies - Worker dependencies.
  * @param guard - The worker's duty wrapper.
@@ -60,6 +61,10 @@ export function startScheduledDuties(
     Bun.cron(
       "* * * * *",
       guard("scheduler", () => scheduleTasks(dependencies)),
+    ),
+    Bun.cron(
+      "* * * * *",
+      guard("auto-rollback", async () => await rollBackRestartLoops(dependencies)),
     ),
     Bun.cron(
       "17 * * * *",
