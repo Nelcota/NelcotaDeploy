@@ -71,7 +71,10 @@ export const PROJECT_ERROR_MESSAGES: readonly (readonly [
     "O projeto já tem uma variável com esse nome. Escolha outro nome ou remova a variável.",
   ],
   [DatabaseBeingDeletedError, "Este banco de dados já está sendo excluído."],
-  [DatabaseBackupUnsupportedError, "Backups estão disponíveis só para bancos PostgreSQL."],
+  [
+    DatabaseBackupUnsupportedError,
+    "Backups estão disponíveis para PostgreSQL, MySQL e MongoDB, mas não para Redis.",
+  ],
   [
     DatabaseNotRunningError,
     "O banco precisa estar ativo. Aguarde ele iniciar ou terminar a restauração em andamento.",
