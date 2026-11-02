@@ -22,6 +22,14 @@ import { DomainNotFoundError, DomainTakenError } from "@/domains";
 import { EnvironmentVariableNotFoundError } from "@/environments";
 import { ProjectNotFoundError, ProjectSlugTakenError } from "@/projects";
 import {
+  InvalidStagingBranchError,
+  NotAProductionProjectError,
+  NotAStagingEnvironmentError,
+  NothingToPromoteError,
+  PromotionRepositoryMismatchError,
+  StagingAlreadyExistsError,
+} from "@/staging";
+import {
   InvalidScheduleError,
   TaskNameTakenError,
   TaskNotFoundError,
@@ -72,6 +80,18 @@ export const PROJECT_ERROR_MESSAGES: readonly (readonly [
   [
     ProjectHasDatabasesError,
     "Projetos com bancos de dados não podem mudar de servidor: os dados ficam no servidor atual.",
+  ],
+  [
+    StagingAlreadyExistsError,
+    "Este projeto já tem um ambiente de staging (ou um ainda sendo excluído). Aguarde e tente de novo.",
+  ],
+  [NotAProductionProjectError, "O staging só pode ser criado a partir do projeto de produção."],
+  [InvalidStagingBranchError, "Nome de branch inválido."],
+  [NotAStagingEnvironmentError, "Só um ambiente de staging pode ser promovido para produção."],
+  [NothingToPromoteError, "O staging ainda não tem um deploy no ar para promover."],
+  [
+    PromotionRepositoryMismatchError,
+    "O staging usa outro repositório que a produção; ajuste o repositório antes de promover.",
   ],
   [ProjectSlugTakenError, "Já existe um projeto com este identificador."],
   [

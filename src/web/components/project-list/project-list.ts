@@ -91,3 +91,32 @@ export function sortProjects<Project extends SortableProject>(
     return sign * leftTime.localeCompare(rightTime);
   });
 }
+
+type EnvironmentProject = { readonly id: string; readonly parentProjectId: string | null };
+
+/**
+ * Places each environment, such as a staging project, right after its production project,
+ * keeping the order of the production projects.
+ *
+ * @param projects - Projects in display order; the array is not changed.
+ * @returns A new array; environments whose production project is not listed go last.
+ */
+export function groupEnvironments<Project extends EnvironmentProject>(
+  projects: readonly Project[],
+): Project[] {
+  const listed = new Set(projects.map((project) => project.id));
+  const byParent = Map.groupBy(
+    projects.filter((project) => project.parentProjectId != null),
+    (project) => project.parentProjectId ?? "",
+  );
+  const grouped: Project[] = [];
+  for (const project of projects) {
+    if (project.parentProjectId == null) {
+      grouped.push(project, ...(byParent.get(project.id) ?? []));
+    }
+  }
+  const orphans = projects.filter(
+    (project) => project.parentProjectId != null && listed.has(project.parentProjectId) === false,
+  );
+  return [...grouped, ...orphans];
+}
