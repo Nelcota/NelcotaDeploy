@@ -1,8 +1,10 @@
 import type { ContainerInfo, DockerEngine, OutputHandler } from "@/docker";
 import type { ProcessResult } from "@/process";
 
+import { FakeCompose } from "./fake-compose";
 import { FakeImages } from "./fake-images";
 import { FakeVolumes } from "./fake-volumes";
+import { fromShellPath } from "./shell-path";
 
 /** In-memory Docker double that records calls and simulates containers. */
 export class FakeDocker implements DockerEngine {
@@ -10,6 +12,11 @@ export class FakeDocker implements DockerEngine {
   readonly containers = new Map<string, ContainerInfo>();
   readonly environments = new Map<string, Readonly<Record<string, string>>>();
   readonly images = new FakeImages(this.calls);
+  readonly compose = new FakeCompose(
+    this.calls,
+    this.containers,
+    async (path) => await Bun.file(fromShellPath(path)).text(),
+  );
   readonly volumes = new FakeVolumes(this.calls, (name) =>
     [...this.mounts.entries()].some(
       ([container, volumes]) =>

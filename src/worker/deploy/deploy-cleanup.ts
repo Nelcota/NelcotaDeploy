@@ -91,7 +91,8 @@ async function removeContainersInOrder(
  *
  * @param dependencies - Docker access.
  * @param logs - Deployment log.
- * @param current - The `projectId` and the `currentDeploymentId` whose container stays.
+ * @param current - The `projectId` and the `currentDeploymentId` whose containers stay,
+ *   and whether the project's Compose services stay too.
  */
 export async function removePreviousContainers(
   dependencies: DeployRunnerDependencies,
@@ -100,11 +101,17 @@ export async function removePreviousContainers(
     projectId,
     currentDeploymentId,
     previewId,
+    keepComposeServices = false,
   }: {
     readonly projectId: string;
     readonly currentDeploymentId: string;
     /** Preview of the new deployment; null for production. Other scopes are left alone. */
     readonly previewId: string | null;
+    /**
+     * Leaves the Compose services alone, which Compose itself recreates or removes. A project
+     * that no longer uses Compose retires them like any other old container.
+     */
+    readonly keepComposeServices?: boolean;
   },
 ): Promise<void> {
   const containers = await dependencies.docker.listManagedContainers();
@@ -112,7 +119,8 @@ export async function removePreviousContainers(
     (container) =>
       container.labels[LABELS.projectId] === projectId &&
       (container.labels[LABELS.previewId] ?? null) === previewId &&
-      container.labels[LABELS.deploymentId] !== currentDeploymentId,
+      container.labels[LABELS.deploymentId] !== currentDeploymentId &&
+      (keepComposeServices === false || container.labels[LABELS.composeProject] == null),
   );
   await removeContainersInOrder(dependencies.docker, previous, logs);
 }

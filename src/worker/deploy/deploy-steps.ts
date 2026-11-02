@@ -7,8 +7,10 @@ import { readDeploymentSecrets, resolveEnvironment, saveDeploymentSecrets } from
 import { appCloneToken } from "@/github";
 import { readRepositoryToken } from "@/projects";
 import { createRedactor } from "@/secrets";
+import type { ProjectBuilder } from "@/shared/schemas/project.schema";
 
 import { networkProbes } from "../probes";
+import { deployCompose } from "./compose/compose-deploy";
 import { routeTrafficTo, startContainers } from "./container-start";
 import {
   assertNotCancelled,
@@ -55,6 +57,20 @@ export async function deploy(
   context.state.useRedactor(createRedactor([...secretValues, repositoryToken ?? ""]));
   logs.useRedactor(context.state.redact);
 
+  if (project.builder === "compose") {
+    // Compose always builds the commit: redeploys and rollbacks have no single image to reuse.
+    const routed = await deployCompose(dependencies, context, {
+      runtimeValues: environment.runtime,
+      buildValues: environment.build,
+      repositoryToken,
+      runtimeConfigHash,
+      buildConfigHash,
+    });
+    await checkHealth(dependencies, context, routed);
+    await routeTrafficTo(dependencies, context, routed);
+    return;
+  }
+
   const reused =
     deployment.sourceDeploymentId == null ? null : await reuseImage(docker, deployment, logs);
   if (reused != null && deployment.internalPort == null) {
@@ -97,7 +113,7 @@ export async function deploy(
  */
 export function withPortVariable(
   values: Readonly<Record<string, string>>,
-  project: { readonly builder: "dockerfile" | "railpack"; readonly internalPort: number },
+  project: { readonly builder: ProjectBuilder; readonly internalPort: number },
 ): Readonly<Record<string, string>> {
   if (project.builder !== "railpack" || Object.hasOwn(values, "PORT")) {
     return values;

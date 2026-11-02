@@ -5,7 +5,7 @@ import { projectInputSchema } from "@/shared/schemas/project.schema";
 import { createTestProject, TEST_ACTOR } from "@/testing";
 import { addProjectVolume, setVolumeAttached } from "@/volumes";
 
-import { ReplicasNeedNoVolumesError } from "./project.errors";
+import { ComposeNeedsNoVolumesError, ReplicasNeedNoVolumesError } from "./project.errors";
 import { getProject, updateProject } from "./project.service";
 
 function setReplicas(
@@ -61,6 +61,32 @@ describe("updateProject replicas", () => {
     setReplicas(database, project, 2);
 
     expect(getProject(database, project.id).replicas).toBe(2);
+  });
+});
+
+describe("updateProject Docker Compose", () => {
+  test("throws ComposeNeedsNoVolumesError when a project that mounts a volume switches", () => {
+    const database = openMemoryDatabase();
+    const project = createTestProject(database);
+    addProjectVolume(database, {
+      projectId: project.id,
+      input: { mountPath: "/app/data" },
+      actor: TEST_ACTOR,
+    });
+    const input = projectInputSchema.parse({
+      ...project,
+      healthCheckPath: "",
+      builder: "compose",
+      composeService: "web",
+    });
+
+    expect(() =>
+      updateProject(database, {
+        projectId: project.id,
+        input,
+        editor: { actor: TEST_ACTOR, isAdmin: true },
+      }),
+    ).toThrow(ComposeNeedsNoVolumesError);
   });
 });
 
