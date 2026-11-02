@@ -8,6 +8,7 @@ import { saveEnvironmentVariable } from "@/environments";
 import { createProject } from "@/projects";
 import { getSecretBox } from "@/secrets";
 import { saveSystemSettings } from "@/settings";
+import { recordCertificate, recordUptimeCheck } from "@/uptime";
 
 import {
   seedDatabases,
@@ -155,6 +156,28 @@ addDomain(database, {
   projectId: api.id,
   input: { hostname: "pagamentos.exemplo.com", httpsEnabled: true },
   actor: ACTOR,
+});
+
+// Half an hour of uptime checks, with a short outage, and a certificate close to expiring.
+const UPTIME_CHECKS = 30;
+const OUTAGE_MINUTES = new Set([12, 13]);
+for (let minute = UPTIME_CHECKS; minute > 0; minute -= 1) {
+  const up = OUTAGE_MINUTES.has(minute) === false;
+  recordUptimeCheck(database, {
+    target: { projectId: api.id, hostname: "pagamentos.exemplo.com" },
+    result: {
+      kind: "checked",
+      up,
+      statusCode: up ? 200 : 502,
+      responseTimeInMs: up ? 140 + (minute % 5) * 10 : null,
+      reason: up ? null : "server-error",
+    },
+    checkedAt: new Date(now - minute * MINUTE_IN_MS),
+  });
+}
+recordCertificate(database, "pagamentos.exemplo.com", {
+  expiresAt: new Date(now + 9 * 24 * 60 * MINUTE_IN_MS),
+  checkedAt: new Date(now),
 });
 
 seedTasks(database, api.id);
