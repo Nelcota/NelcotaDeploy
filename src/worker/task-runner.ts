@@ -1,3 +1,8 @@
+import {
+  CONSOLE_TIMEOUT_IN_SECONDS,
+  getConsoleCommandForRun,
+  updateConsoleCommand,
+} from "@/console";
 import type { Database } from "@/db";
 import { getDeployment } from "@/deployments";
 import type { DockerEngine } from "@/docker";
@@ -53,23 +58,15 @@ export async function runTaskExecution(
     });
     return "failed";
   }
-  const environment = await resolveEnvironment(database, dependencies.secretBox, {
-    projectId: project.id,
-  });
   const docker = dependencies.dockerOf(container.serverId);
-  const saved = await readDeploymentSecrets(
-    database,
-    dependencies.secretBox,
-    project.currentDeploymentId,
-  );
-  const previous = saved ?? (await docker.readContainerEnvironment(container.containerName));
+  const redact = await secretRedactor(dependencies, { project, container, docker });
   updateTaskExecution(database, executionId, { status: "running" });
   return await executeInContainer(
     { database, docker },
     {
       execution: { ...execution, id: executionId },
       containerName: container.containerName,
-      redact: createRedactor([...environment.secretValues, ...previous]),
+      redact,
       signal,
     },
   );
@@ -112,6 +109,106 @@ async function executeInContainer(
   }
 }
 
+/**
+ * Hides from command output the project's secrets, both the current ones and the ones the
+ * live container started with.
+ */
+async function secretRedactor(
+  dependencies: TaskRunnerDependencies,
+  target: {
+    readonly project: { readonly id: string; readonly currentDeploymentId: string | null };
+    readonly container: { readonly containerName: string };
+    readonly docker: DockerEngine;
+  },
+): Promise<(text: string) => string> {
+  const { database, secretBox } = dependencies;
+  const environment = await resolveEnvironment(database, secretBox, {
+    projectId: target.project.id,
+  });
+  const saved = await readDeploymentSecrets(
+    database,
+    secretBox,
+    target.project.currentDeploymentId,
+  );
+  const previous =
+    saved ?? (await target.docker.readContainerEnvironment(target.container.containerName));
+  return createRedactor([...environment.secretValues, ...previous]);
+}
+
+/**
+ * Runs a console command once in the project's live container, through `sh -c`, and stores
+ * its output as it arrives, so the console shows it while the command runs.
+ *
+ * @remarks
+ * The shell runs inside the container, never on the server. Output passes through the same
+ * redaction as task output, and the command stops after 60 seconds.
+ *
+ * @param dependencies - Database, Docker and encryption box (for redaction).
+ * @param commandId - Command to run.
+ * @param signal - Aborted when the worker shuts down.
+ * @returns Final status.
+ * @throws {ConsoleCommandNotFoundError} When the command no longer exists.
+ */
+export async function runConsoleCommandJob(
+  dependencies: TaskRunnerDependencies,
+  commandId: string,
+  signal: AbortSignal,
+): Promise<"succeeded" | "failed" | "skipped"> {
+  const { database } = dependencies;
+  const queued = getConsoleCommandForRun(database, commandId);
+  if (queued.status !== "queued") {
+    return "skipped";
+  }
+  let redact = (text: string) => text;
+  let output = "";
+  let flushedAt = 0;
+  try {
+    const project = getProject(database, queued.projectId);
+    const container = currentContainer(database, project.currentDeploymentId);
+    if (container == null) {
+      updateConsoleCommand(database, commandId, {
+        status: "failed",
+        errorMessage: "The project has no live container",
+      });
+      return "failed";
+    }
+    const docker = dependencies.dockerOf(container.serverId);
+    redact = await secretRedactor(dependencies, { project, container, docker });
+    updateConsoleCommand(database, commandId, { status: "running" });
+    const result = await docker.execInContainer(
+      container.containerName,
+      ["sh", "-c", queued.command],
+      {
+        timeoutInMs: CONSOLE_TIMEOUT_IN_SECONDS * MILLISECONDS_PER_SECOND,
+        signal,
+        onLine: (line) => {
+          output = `${output}${redact(line)}\n`.slice(-MAX_OUTPUT_LENGTH);
+          // At most one write a second, so a chatty command does not flood the database.
+          if (Date.now() - flushedAt >= MILLISECONDS_PER_SECOND) {
+            flushedAt = Date.now();
+            updateConsoleCommand(database, commandId, { status: "running", output });
+          }
+        },
+      },
+    );
+    const status = result.exitCode === 0 ? "succeeded" : "failed";
+    updateConsoleCommand(database, commandId, {
+      status,
+      output,
+      exitCode: result.exitCode,
+      errorMessage: describeFailure(result, CONSOLE_TIMEOUT_IN_SECONDS),
+    });
+    return status;
+  } catch (error) {
+    updateConsoleCommand(database, commandId, {
+      status: "failed",
+      output,
+      errorMessage: redact(error instanceof Error ? error.message : String(error)),
+    });
+    return "failed";
+  }
+}
+
 function currentContainer(
   database: Database,
   currentDeploymentId: string | null,
@@ -131,10 +228,10 @@ function describeFailure(
   timeoutInSeconds: number,
 ): string | null {
   if (result.timedOut) {
-    return `Task exceeded its ${timeoutInSeconds}s timeout and was stopped`;
+    return `Stopped after its ${timeoutInSeconds}s timeout`;
   }
   if (result.aborted) {
-    return "Task interrupted because the worker is shutting down";
+    return "Interrupted because the worker is shutting down";
   }
   return result.exitCode === 0 ? null : `Command exited with code ${result.exitCode}`;
 }

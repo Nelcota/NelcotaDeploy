@@ -5,7 +5,7 @@ import { eq } from "drizzle-orm";
 import { getConfig } from "@/config";
 import { openMemoryDatabase, tables } from "@/db";
 import { getDeployment, requestDeployment } from "@/deployments";
-import { claimNextJob } from "@/jobs";
+import { claimNextJob, enqueueJob } from "@/jobs";
 import { createLogger } from "@/logging";
 import { createTestProject, createTestSecretBox, TEST_ACTOR } from "@/testing";
 
@@ -50,5 +50,35 @@ describe("dispatchJob deploy", () => {
 
     expect(error).toBeInstanceOf(Error);
     expect(getDeployment(database, deploymentId).status).toBe("failed");
+  });
+});
+
+describe("dispatchJob console_command", () => {
+  test("fails a console job that names no command", async () => {
+    const database = openMemoryDatabase();
+    const config = getConfig();
+    const project = createTestProject(database);
+    enqueueJob(database, { kind: "console_command", projectId: project.id, payload: {} });
+    const job = claimNextJob(database, "test");
+    if (job == null) {
+      throw new Error("The console job was not queued");
+    }
+    using hosts = new ServerHosts(config, "unused-key");
+    const dependencies = {
+      workerId: "test",
+      database,
+      hosts,
+      secretBox: await createTestSecretBox(),
+      config,
+      logger: createLogger("test"),
+      offsiteStore: null,
+    };
+
+    const error = await dispatchJob(dependencies, job, {
+      signal: new AbortController().signal,
+      refreshContainers: async () => await Promise.resolve(),
+    }).catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(Error);
   });
 });

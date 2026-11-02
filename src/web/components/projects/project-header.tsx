@@ -118,14 +118,14 @@ function ProjectTabs({ projectId }: { readonly projectId: string }) {
       aria-label="Seções do projeto"
       className="-mx-1 overflow-x-auto px-1 [scrollbar-width:none] max-sm:[mask-image:linear-gradient(to_right,black_calc(100%-2rem),transparent)]"
     >
-      <ul className="flex w-fit min-w-max gap-2 py-0.5">
+      <ul className="flex w-fit min-w-max gap-1.5 py-0.5">
         {PROJECT_SECTIONS.map((section) => (
           <li key={section.to}>
             <Link
               to={section.to}
               params={{ projectId }}
               activeOptions={{ exact: section.exact }}
-              className="inline-flex h-9 items-center gap-2 rounded-full bg-well px-4 text-sm text-foreground ring-1 ring-border transition-colors hover:bg-well-hover focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none data-[status=active]:bg-primary data-[status=active]:text-primary-foreground data-[status=active]:ring-primary"
+              className="inline-flex h-9 items-center gap-2 rounded-full bg-well px-3 text-sm text-foreground ring-1 ring-border transition-colors hover:bg-well-hover focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none data-[status=active]:bg-primary data-[status=active]:text-primary-foreground data-[status=active]:ring-primary"
             >
               <section.icon aria-hidden className="size-4" />
               {section.label}

@@ -183,6 +183,13 @@
       "when": 1793646548902,
       "tag": "0025_uptime_query_indexes",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "6",
+      "when": 1793646712833,
+      "tag": "0026_project_console",
+      "breakpoints": true
     }
   ]
 }
