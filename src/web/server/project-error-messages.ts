@@ -28,6 +28,7 @@ import {
   NothingToPromoteError,
   PromotionRepositoryMismatchError,
   StagingAlreadyExistsError,
+  StagingDeploymentChangedError,
 } from "@/staging";
 import {
   InvalidScheduleError,
@@ -89,6 +90,10 @@ export const PROJECT_ERROR_MESSAGES: readonly (readonly [
   [InvalidStagingBranchError, "Nome de branch inválido."],
   [NotAStagingEnvironmentError, "Só um ambiente de staging pode ser promovido para produção."],
   [NothingToPromoteError, "O staging ainda não tem um deploy no ar para promover."],
+  [
+    StagingDeploymentChangedError,
+    "O deploy do staging mudou. Confira a nova versão e confirme a promoção novamente.",
+  ],
   [
     PromotionRepositoryMismatchError,
     "O staging usa outro repositório que a produção; ajuste o repositório antes de promover.",

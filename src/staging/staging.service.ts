@@ -23,6 +23,7 @@ import {
   NothingToPromoteError,
   PromotionRepositoryMismatchError,
   StagingAlreadyExistsError,
+  StagingDeploymentChangedError,
 } from "./staging.errors";
 
 const STAGING = "staging";
@@ -119,7 +120,44 @@ export async function createStagingEnvironment(
     throw new InvalidStagingBranchError(branch);
   }
   assertNoStaging(database, productionProjectId);
-  const staging = createProject(
+  const staging = createPendingStagingProject(database, { production, branch, creator });
+  try {
+    await copyFromProduction(database, secretBox, {
+      production,
+      stagingProjectId: staging.id,
+      copyVariables: request.copyVariables,
+      actor: creator.actor,
+    });
+    database.transaction((transaction) => {
+      getProject(transaction, productionProjectId);
+      getProject(transaction, staging.id);
+      transaction
+        .update(tables.projects)
+        .set({ autoDeploy: true, deploymentsApproved: creator.isAdmin })
+        .where(eq(tables.projects.id, staging.id))
+        .run();
+    });
+  } catch (error) {
+    // A staging environment without its settings would deploy with the wrong values.
+    requestProjectDeletion(database, staging.id, creator.actor);
+    throw error;
+  }
+  return getProject(database, staging.id);
+}
+
+function createPendingStagingProject(
+  database: Database,
+  {
+    production,
+    branch,
+    creator,
+  }: {
+    readonly production: Project;
+    readonly branch: string;
+    readonly creator: Creator;
+  },
+): Project {
+  return createProject(
     database,
     {
       name: `${production.name} (staging)`,
@@ -131,7 +169,7 @@ export async function createStagingEnvironment(
       buildContext: production.buildContext,
       internalPort: production.internalPortAuto ? null : production.internalPort,
       healthCheckPath: production.healthCheckPath,
-      autoDeploy: true,
+      autoDeploy: false,
       autoApplyChanges: production.autoApplyChanges,
       previewsEnabled: false,
       memoryLimitInMb: production.memoryLimitInMb,
@@ -139,22 +177,11 @@ export async function createStagingEnvironment(
     },
     {
       ...creator,
-      environment: { parentProjectId: productionProjectId, environmentName: STAGING },
+      // Copying yields to encryption; no deployment may start with partial configuration.
+      isAdmin: false,
+      environment: { parentProjectId: production.id, environmentName: STAGING },
     },
   );
-  try {
-    await copyFromProduction(database, secretBox, {
-      production,
-      stagingProjectId: staging.id,
-      copyVariables: request.copyVariables,
-      actor: creator.actor,
-    });
-  } catch (error) {
-    // A staging environment without its settings would deploy with the wrong values.
-    requestProjectDeletion(database, staging.id, creator.actor);
-    throw error;
-  }
-  return getProject(database, staging.id);
 }
 
 async function copyFromProduction(
@@ -175,11 +202,13 @@ async function copyFromProduction(
   if (copy.copyVariables === false) {
     return;
   }
-  const databaseKeys = new Set(
-    listProjectDatabases(database, production.id).map((managed) => managed.environmentKey),
-  );
+  const managedDatabases = listProjectDatabases(database, production.id);
+  const databaseKeys = new Set(managedDatabases.map((managed) => managed.environmentKey));
+  const databaseHosts = new Set(managedDatabases.map((managed) => managed.host.toLowerCase()));
   const variables = (await readVariablesForCopy(database, secretBox, production.id)).filter(
-    (variable) => databaseKeys.has(variable.key) === false,
+    (variable) =>
+      databaseKeys.has(variable.key) === false &&
+      targetsProductionDatabase(variable.value, databaseHosts) === false,
   );
   const writers = await Promise.all(
     variables.map(
@@ -198,16 +227,25 @@ async function copyFromProduction(
   });
 }
 
+function targetsProductionDatabase(value: string, databaseHosts: ReadonlySet<string>): boolean {
+  const trimmed = value.trim();
+  if (trimmed === "" || URL.canParse(trimmed) === false) {
+    return false;
+  }
+  return databaseHosts.has(new URL(trimmed).hostname.toLowerCase());
+}
+
 /**
  * Deploys to production the commit that is live on its staging environment. Production builds
  * it again with its own build variables, which often differ from staging's.
  *
  * @param database - Database.
- * @param request - Staging project and who promotes.
+ * @param request - Staging project, the deployment confirmed by the user and who promotes.
  * @returns The id of the production deployment.
  * @throws {ProjectNotFoundError} When the staging project does not exist.
  * @throws {NotAStagingEnvironmentError} When the project is not a staging environment.
  * @throws {NothingToPromoteError} When staging has no live deployment with a commit.
+ * @throws {StagingDeploymentChangedError} When the confirmed deployment is no longer live.
  * @throws {PromotionRepositoryMismatchError} When staging builds another repository.
  * @throws {ProjectNotApprovedError} When production still awaits approval.
  */
@@ -215,6 +253,7 @@ export function promoteStagingToProduction(
   database: Database,
   request: {
     readonly stagingProjectId: string;
+    readonly expectedDeploymentId: string;
     readonly actor: Actor;
     readonly triggeredByUserId: string | null;
   },
@@ -229,6 +268,9 @@ export function promoteStagingToProduction(
       : getDeployment(database, staging.currentDeploymentId);
   if (live?.commitSha == null) {
     throw new NothingToPromoteError(staging.id);
+  }
+  if (live.id !== request.expectedDeploymentId) {
+    throw new StagingDeploymentChangedError(staging.id);
   }
   const production = getProject(database, staging.parentProjectId);
   if (production.repositoryFullName !== staging.repositoryFullName) {

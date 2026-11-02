@@ -5,6 +5,7 @@ export {
   NothingToPromoteError,
   PromotionRepositoryMismatchError,
   StagingAlreadyExistsError,
+  StagingDeploymentChangedError,
 } from "./staging.errors";
 export {
   createStagingEnvironment,

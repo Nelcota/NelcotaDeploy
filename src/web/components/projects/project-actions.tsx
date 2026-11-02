@@ -218,6 +218,7 @@ export function ProjectActions({
         <PromoteButton
           stagingProjectId={project.id}
           productionProjectId={project.parentProjectId}
+          deploymentId={project.currentDeploymentId}
           commitSha={details.liveCommitSha}
         />
       ) : null}

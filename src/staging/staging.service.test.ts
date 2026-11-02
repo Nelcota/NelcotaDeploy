@@ -26,6 +26,7 @@ import {
   NotAStagingEnvironmentError,
   NothingToPromoteError,
   StagingAlreadyExistsError,
+  StagingDeploymentChangedError,
 } from "./staging.errors";
 import {
   createStagingEnvironment,
@@ -71,7 +72,7 @@ async function saveSecret(
   });
 }
 
-function deployLive(database: Database, projectId: string): void {
+function deployLive(database: Database, projectId: string, commitSha = COMMIT): string {
   const { deploymentId } = requestDeployment(database, {
     projectId,
     trigger: "manual",
@@ -81,7 +82,7 @@ function deployLive(database: Database, projectId: string): void {
   transitionDeployment(database, deploymentId, { to: "cloning" });
   transitionDeployment(database, deploymentId, {
     to: "building",
-    commitSha: COMMIT,
+    commitSha,
     commitMessage: "feat: checkout",
   });
   transitionDeployment(database, deploymentId, {
@@ -91,6 +92,7 @@ function deployLive(database: Database, projectId: string): void {
   });
   transitionDeployment(database, deploymentId, { to: "health_checking" });
   completeDeployment(database, deploymentId);
+  return deploymentId;
 }
 
 describe("createStagingEnvironment", () => {
@@ -213,10 +215,11 @@ describe("promoteStagingToProduction", () => {
   test("deploys the live staging commit to production", async () => {
     const { database, production, create } = await setup();
     const staging = await create();
-    deployLive(database, staging.id);
+    const expectedDeploymentId = deployLive(database, staging.id);
 
     const { deploymentId } = promoteStagingToProduction(database, {
       stagingProjectId: staging.id,
+      expectedDeploymentId,
       actor: TEST_ACTOR,
       triggeredByUserId: null,
     });
@@ -234,6 +237,7 @@ describe("promoteStagingToProduction", () => {
     const promote = () =>
       promoteStagingToProduction(database, {
         stagingProjectId: staging.id,
+        expectedDeploymentId: "missing-deployment",
         actor: TEST_ACTOR,
         triggeredByUserId: null,
       });
@@ -247,6 +251,7 @@ describe("promoteStagingToProduction", () => {
     const promote = () =>
       promoteStagingToProduction(database, {
         stagingProjectId: production.id,
+        expectedDeploymentId: "missing-deployment",
         actor: TEST_ACTOR,
         triggeredByUserId: null,
       });
@@ -257,7 +262,7 @@ describe("promoteStagingToProduction", () => {
   test("throws ProjectNotApprovedError while production awaits approval", async () => {
     const { database, production, create } = await setup();
     const staging = await create();
-    deployLive(database, staging.id);
+    const expectedDeploymentId = deployLive(database, staging.id);
     database
       .update(tables.projects)
       .set({ deploymentsApproved: false })
@@ -267,6 +272,7 @@ describe("promoteStagingToProduction", () => {
     const promote = () =>
       promoteStagingToProduction(database, {
         stagingProjectId: staging.id,
+        expectedDeploymentId,
         actor: TEST_ACTOR,
         triggeredByUserId: null,
       });
@@ -274,4 +280,43 @@ describe("promoteStagingToProduction", () => {
     expect(promote).toThrow(ProjectNotApprovedError);
     expect(getProject(database, production.id).currentDeploymentId).toBeNull();
   });
+});
+
+test("rejects promotion when staging changes after confirmation opens", async () => {
+  const { database, production, create } = await setup();
+  const staging = await create();
+  const expectedDeploymentId = deployLive(database, staging.id);
+  deployLive(database, staging.id, "b".repeat(40));
+
+  const promote = () =>
+    promoteStagingToProduction(database, {
+      stagingProjectId: staging.id,
+      expectedDeploymentId,
+      actor: TEST_ACTOR,
+      triggeredByUserId: null,
+    });
+
+  expect(promote).toThrow(StagingDeploymentChangedError);
+  const productionDeployments = database
+    .select({ id: tables.deployments.id })
+    .from(tables.deployments)
+    .where(eq(tables.deployments.projectId, production.id))
+    .all();
+  expect(productionDeployments).toHaveLength(0);
+});
+
+test("rejects an empty confirmed deployment instead of selecting the current one", async () => {
+  const { database, create } = await setup();
+  const staging = await create();
+  deployLive(database, staging.id);
+
+  const promote = () =>
+    promoteStagingToProduction(database, {
+      stagingProjectId: staging.id,
+      expectedDeploymentId: "",
+      actor: TEST_ACTOR,
+      triggeredByUserId: null,
+    });
+
+  expect(promote).toThrow(StagingDeploymentChangedError);
 });

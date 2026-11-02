@@ -22,7 +22,8 @@ export function useCreateStaging(productionProjectId: string) {
 export function usePromoteStaging(stagingProjectId: string, productionProjectId: string) {
   const navigate = useNavigate();
   return useAction({
-    action: () => promoteStagingFn({ data: { projectId: stagingProjectId } }),
+    action: (expectedDeploymentId: string) =>
+      promoteStagingFn({ data: { projectId: stagingProjectId, expectedDeploymentId } }),
     successMessage: "Promoção colocada na fila",
     invalidate: [["project", productionProjectId], ["deployments"]],
     onSuccess: async () => {

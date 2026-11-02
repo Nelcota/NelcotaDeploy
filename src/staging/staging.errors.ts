@@ -30,6 +30,14 @@ export class NothingToPromoteError extends Error {
   }
 }
 
+/** Thrown when staging changed after the user selected a deployment to promote. */
+export class StagingDeploymentChangedError extends Error {
+  constructor(projectId: string) {
+    super(`The live deployment of staging project ${projectId} changed before promotion`);
+    this.name = "StagingDeploymentChangedError";
+  }
+}
+
 /** Thrown when staging builds another repository than production, so its commit means nothing there. */
 export class PromotionRepositoryMismatchError extends Error {
   constructor(stagingRepository: string, productionRepository: string) {

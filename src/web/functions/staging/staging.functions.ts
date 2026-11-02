@@ -26,11 +26,12 @@ export const createStagingFn = createServerFn({ method: "POST" })
 
 /** Deploys to production the commit that is live on a staging environment. */
 export const promoteStagingFn = createServerFn({ method: "POST" })
-  .validator(z.object({ projectId: idSchema }))
+  .validator(z.object({ projectId: idSchema, expectedDeploymentId: idSchema }))
   .handler(async ({ data }) => {
     const user = await authorize("deployment:create");
     return promoteStagingToProduction(getDatabase(), {
       stagingProjectId: data.projectId,
+      expectedDeploymentId: data.expectedDeploymentId,
       actor: userActor(user),
       triggeredByUserId: user.id,
     });
