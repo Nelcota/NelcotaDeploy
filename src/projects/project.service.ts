@@ -6,9 +6,14 @@ import { enqueueJob } from "@/jobs";
 import type { SecretBox } from "@/secrets";
 import { chooseServerForNewProject } from "@/servers";
 import { assertHostnameOwnership, getSystemSettings } from "@/settings";
-import { parseGitHubRepository, type ProjectInput } from "@/shared/schemas/project.schema";
+import {
+  parseGitHubRepository,
+  type ProjectBuilder,
+  type ProjectInput,
+} from "@/shared/schemas/project.schema";
 
 import {
+  ComposeNeedsNoVolumesError,
   ProjectNotFoundError,
   ProjectSlugTakenError,
   ReplicasNeedNoVolumesError,
@@ -41,6 +46,8 @@ export const projectColumns = {
   memoryLimitInMb: tables.projects.memoryLimitInMb,
   cpuLimitInMillicores: tables.projects.cpuLimitInMillicores,
   replicas: tables.projects.replicas,
+  composeFilePath: tables.projects.composeFilePath,
+  composeService: tables.projects.composeService,
   deploymentsApproved: tables.projects.deploymentsApproved,
   currentDeploymentId: tables.projects.currentDeploymentId,
   hasRepositoryToken: sql<boolean>`${tables.projects.encryptedRepositoryToken} IS NOT NULL`.mapWith(
@@ -62,7 +69,7 @@ export type Project = {
   readonly repositoryFullName: string;
   readonly branch: string;
   /** The repository's Dockerfile, or Railpack detecting the stack. */
-  readonly builder: "dockerfile" | "railpack";
+  readonly builder: ProjectBuilder;
   readonly dockerfilePath: string;
   readonly buildContext: string;
   readonly internalPort: number;
@@ -79,6 +86,10 @@ export type Project = {
   readonly cpuLimitInMillicores: number | null;
   /** Containers each production deployment runs, between 1 and 10. */
   readonly replicas: number;
+  /** Compose file of a Docker Compose project, relative to the repository. */
+  readonly composeFilePath: string;
+  /** Compose service that receives the domains; null unless built with Docker Compose. */
+  readonly composeService: string | null;
   readonly deploymentsApproved: boolean;
   readonly currentDeploymentId: string | null;
   readonly hasRepositoryToken: boolean;
@@ -210,6 +221,8 @@ export function createProject(
  * @throws {ProjectSlugTakenError} When the new slug is used by another project.
  * @throws {ReplicasNeedNoVolumesError} When more than one replica is asked for a project that
  * mounts volumes, which replicas writing at once would corrupt.
+ * @throws {ComposeNeedsNoVolumesError} When a project that mounts volumes switches to Docker
+ * Compose, whose services keep data in their own named volumes.
  */
 export function updateProject(
   database: Database,
@@ -231,6 +244,9 @@ export function updateProject(
     }
     if (input.replicas > 1 && mountsVolumes(transaction, projectId)) {
       throw new ReplicasNeedNoVolumesError(projectId);
+    }
+    if (input.builder === "compose" && mountsVolumes(transaction, projectId)) {
+      throw new ComposeNeedsNoVolumesError(projectId);
     }
     // A different repository is different code, so a non-admin change needs new approval.
     const repositoryChanged = current.repositoryFullName !== repository.fullName;

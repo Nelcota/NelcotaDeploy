@@ -69,6 +69,8 @@ const api = createProject(
     memoryLimitInMb: null,
     cpuLimitInMillicores: null,
     replicas: 1,
+    composeFilePath: "compose.yaml",
+    composeService: null,
   },
   { actor: ACTOR, userId: null, isAdmin: true },
 );
@@ -90,6 +92,8 @@ createProject(
     memoryLimitInMb: null,
     cpuLimitInMillicores: null,
     replicas: 1,
+    composeFilePath: "compose.yaml",
+    composeService: null,
   },
   { actor: ACTOR, userId: null, isAdmin: false },
 );

@@ -14,7 +14,7 @@ RUN bun run build
 FROM dependencies AS production-dependencies
 RUN rm -rf node_modules && bun install --frozen-lockfile --ignore-scripts --production
 
-# The worker shells out to the docker CLI (with BuildKit) and git; the web never uses them.
+# The worker shells out to the docker CLI (with BuildKit and Compose) and git; the web never uses them.
 FROM docker:29-cli AS docker-cli
 
 # Railpack plans the builds of projects without a Dockerfile. Keep the version and checksums in
@@ -37,6 +37,7 @@ RUN apt-get update \
   && rm -rf /var/lib/apt/lists/*
 COPY --from=docker-cli /usr/local/bin/docker /usr/local/bin/docker
 COPY --from=docker-cli /usr/local/libexec/docker/cli-plugins/docker-buildx /usr/local/libexec/docker/cli-plugins/docker-buildx
+COPY --from=docker-cli /usr/local/libexec/docker/cli-plugins/docker-compose /usr/local/libexec/docker/cli-plugins/docker-compose
 COPY --from=railpack /usr/local/bin/railpack /usr/local/bin/railpack
 WORKDIR /app
 ENV NODE_ENV=production \

@@ -21,6 +21,7 @@ import {
 import { DomainNotFoundError, DomainTakenError } from "@/domains";
 import { EnvironmentVariableNotFoundError } from "@/environments";
 import {
+  ComposeNeedsNoVolumesError,
   ProjectNotFoundError,
   ProjectSlugTakenError,
   ReplicasNeedNoVolumesError,
@@ -41,6 +42,7 @@ import {
   TaskRunningError,
 } from "@/tasks";
 import {
+  ComposeProjectVolumeError,
   ProjectHasVolumesError,
   ReplicatedProjectVolumeError,
   VolumeAttachedError,
@@ -62,6 +64,14 @@ export const PROJECT_ERROR_MESSAGES: readonly (readonly [
   [
     ReplicasNeedNoVolumesError,
     "Projetos com volumes rodam só 1 réplica: várias réplicas gravando no mesmo volume corrompem os dados. Desanexe os volumes antes.",
+  ],
+  [
+    ComposeNeedsNoVolumesError,
+    "Projetos Docker Compose não usam os volumes do painel. Desanexe os volumes antes; os serviços guardam dados nos volumes do próprio arquivo Compose.",
+  ],
+  [
+    ComposeProjectVolumeError,
+    "Projetos Docker Compose guardam dados nos volumes do próprio arquivo Compose, não nos do painel.",
   ],
   [
     ReplicatedProjectVolumeError,

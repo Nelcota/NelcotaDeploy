@@ -23,7 +23,7 @@ export const projects = sqliteTable(
     repositoryFullName: text("repository_full_name").notNull(),
     branch: text("branch").notNull(),
     // How the image is built: the repository's Dockerfile, or Railpack detecting the stack.
-    builder: text("builder", { enum: ["dockerfile", "railpack"] })
+    builder: text("builder", { enum: ["dockerfile", "railpack", "compose"] })
       .notNull()
       .default("dockerfile"),
     dockerfilePath: text("dockerfile_path").notNull(),
@@ -42,6 +42,9 @@ export const projects = sqliteTable(
     cpuLimitInMillicores: integer("cpu_limit_in_millicores"),
     // Containers each production deployment runs; the proxy balances requests between them.
     replicas: integer("replicas").notNull().default(1),
+    // Docker Compose projects: the file to run and the service that receives the domains.
+    composeFilePath: text("compose_file_path").notNull().default("compose.yaml"),
+    composeService: text("compose_service"),
     deploymentsApproved: integer("deployments_approved", { mode: "boolean" })
       .notNull()
       .default(false),

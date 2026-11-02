@@ -148,6 +148,13 @@
       "when": 1793638748789,
       "tag": "0020_project_replicas",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "6",
+      "when": 1793639806615,
+      "tag": "0021_compose_projects",
+      "breakpoints": true
     }
   ]
 }

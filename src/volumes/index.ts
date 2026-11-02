@@ -1,5 +1,6 @@
 export {
   ProjectHasVolumesError,
+  ComposeProjectVolumeError,
   ReplicatedProjectVolumeError,
   VolumeAttachedError,
   VolumeBeingDeletedError,

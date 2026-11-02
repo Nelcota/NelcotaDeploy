@@ -119,6 +119,8 @@ describe("requestDeployment validation", () => {
         memoryLimitInMb: null,
         cpuLimitInMillicores: null,
         replicas: 1,
+        composeFilePath: "compose.yaml",
+        composeService: null,
       },
       { actor: TEST_ACTOR, userId: null, isAdmin: false },
     );

@@ -5,8 +5,10 @@ import {
   CPU_LIMIT_OPTIONS_IN_MILLICORES,
   MAX_REPLICAS,
   PROJECT_BUILDERS,
+  type ProjectBuilder,
   slugify,
 } from "@/shared/schemas/project.schema";
+import { ComposeFields } from "@/web/components/forms/compose-fields";
 import { FormField, visibleErrors } from "@/web/components/forms/form-field";
 import type { ProjectFormApi } from "@/web/components/forms/project-form";
 import { identityFromRepository } from "@/web/components/forms/repository-identity";
@@ -197,6 +199,16 @@ export function HealthCheckField({ form }: { readonly form: ProjectFormApi }) {
 /** Dockerfile path and build context inside the repository. */
 export function BuildFields({ form }: { readonly form: ProjectFormApi }) {
   return (
+    <form.Subscribe selector={(state) => state.values.builder}>
+      {(builder) =>
+        builder === "compose" ? <ComposeFields form={form} /> : <DockerfileFields form={form} />
+      }
+    </form.Subscribe>
+  );
+}
+
+function DockerfileFields({ form }: { readonly form: ProjectFormApi }) {
+  return (
     <>
       <form.Field name="dockerfilePath">
         {(field) => (
@@ -329,9 +341,18 @@ export function ResourceLimitFields({ form }: { readonly form: ProjectFormApi })
 const BUILDER_LABELS = {
   dockerfile: "Dockerfile do repositório",
   railpack: "Detectar automaticamente (Railpack)",
-} as const;
+  compose: "Docker Compose do repositório",
+} as const satisfies Record<ProjectBuilder, string>;
 
-/** How the image is built: the repository's Dockerfile, or Railpack detecting the stack. */
+const BUILDER_HINTS = {
+  dockerfile: "Usa o Dockerfile indicado abaixo.",
+  railpack:
+    "Sem Dockerfile: o Railpack detecta Node, Bun, Python, Go e outras. A variável PORT recebe a porta interna.",
+  compose:
+    "Sobe todos os serviços do arquivo, com 1 réplica e sem previews. Os serviços mudados são recriados no lugar, com alguns segundos fora do ar.",
+} as const satisfies Record<ProjectBuilder, string>;
+
+/** How the project is built: its Dockerfile, Railpack detecting the stack, or its Compose file. */
 export function BuilderField({ form }: { readonly form: ProjectFormApi }) {
   return (
     <form.Field name="builder">
@@ -339,11 +360,7 @@ export function BuilderField({ form }: { readonly form: ProjectFormApi }) {
         <FormField
           id="project-builder"
           label="Como construir a imagem"
-          hint={
-            field.state.value === "railpack"
-              ? "Sem Dockerfile: o Railpack detecta Node, Bun, Python, Go e outras. A variável PORT recebe a porta interna."
-              : "Usa o Dockerfile indicado abaixo."
-          }
+          hint={BUILDER_HINTS[field.state.value]}
           errors={visibleErrors(form, field.state.meta)}
         >
           {(props) => (

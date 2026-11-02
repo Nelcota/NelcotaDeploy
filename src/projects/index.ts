@@ -1,4 +1,5 @@
 export {
+  ComposeNeedsNoVolumesError,
   ProjectNotFoundError,
   ProjectSlugTakenError,
   ReplicasNeedNoVolumesError,

@@ -124,9 +124,14 @@ async function finishDeployment(
       projectId: project.id,
       currentDeploymentId: deployment.id,
       previewId: deployment.previewId,
+      keepComposeServices: project.builder === "compose",
     });
   } catch (error) {
     logs.system(`Could not retire previous containers: ${errorMessageOf(error)}`, "warn");
+  }
+  if (project.builder === "compose") {
+    // Compose reuses its image names; the daily cleanup removes the ones it left dangling.
+    return;
   }
   await pruneOldImages(
     dependencies,

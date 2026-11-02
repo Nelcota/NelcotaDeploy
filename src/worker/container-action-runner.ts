@@ -105,6 +105,8 @@ export async function removeProjectResources(
   const volumeRemovals = await Promise.allSettled(
     volumes.map(async (volume) => await docker.volumes.remove(volume)),
   );
+  // Networks a Compose project created; none for other projects.
+  await docker.compose.removeProjectNetworks(projectId);
   return {
     containers: containers.length,
     images: imageRemovals.filter((result) => result.status === "fulfilled").length,
