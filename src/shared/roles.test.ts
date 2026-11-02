@@ -17,6 +17,22 @@ describe("hasPermission", () => {
     expect(hasPermission("developer", "user:manage")).toBe(false);
   });
 
+  test("manager can deploy and manage the project's members", () => {
+    expect(hasPermission("manager", "deployment:create")).toBe(true);
+    expect(hasPermission("manager", "member:manage")).toBe(true);
+  });
+
+  test("manager cannot delete or approve projects nor manage the panel's users", () => {
+    expect(hasPermission("manager", "project:delete")).toBe(false);
+    expect(hasPermission("manager", "project:approve")).toBe(false);
+    expect(hasPermission("manager", "user:manage")).toBe(false);
+    expect(hasPermission("manager", "settings:write")).toBe(false);
+  });
+
+  test("developer cannot manage the project's members", () => {
+    expect(hasPermission("developer", "member:manage")).toBe(false);
+  });
+
   test("viewer can only read", () => {
     expect(hasPermission("viewer", "project:read")).toBe(true);
     expect(hasPermission("viewer", "deployment:create")).toBe(false);

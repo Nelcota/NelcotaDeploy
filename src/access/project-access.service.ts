@@ -3,7 +3,7 @@ import { and, eq, inArray, or } from "drizzle-orm";
 import { ForbiddenError } from "@/auth";
 import { type Database, tables, type Transaction } from "@/db";
 import { getProject, ProjectNotFoundError } from "@/projects";
-import { hasPermission, type Permission, type Role } from "@/shared/roles";
+import { type AccessRole, hasPermission, type Permission, type Role } from "@/shared/roles";
 
 /** The user asking for a project, as access checks see them. */
 export type ProjectAccessUser = { readonly id: string; readonly role: Role };
@@ -35,7 +35,7 @@ export function projectRoleOf(
   database: Database,
   user: ProjectAccessUser,
   projectId: string,
-): Role | null {
+): AccessRole | null {
   const rootProjectId = membershipProjectId(database, projectId);
   if (user.role === "admin") {
     return "admin";
@@ -69,7 +69,7 @@ export function assertProjectPermission(
   database: Database,
   user: ProjectAccessUser,
   request: { readonly projectId: string; readonly permission: Permission },
-): Role {
+): AccessRole {
   const { projectId, permission } = request;
   const role = projectRoleOf(database, user, projectId);
   if (role == null) {
