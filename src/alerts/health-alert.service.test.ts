@@ -86,8 +86,8 @@ describe("reconcileHealthAlerts", () => {
   test("opens a new problem once", () => {
     const database = openMemoryDatabase();
 
-    const first = reconcileHealthAlerts(database, [problem], NOW);
-    const second = reconcileHealthAlerts(database, [problem], NOW);
+    const first = reconcileHealthAlerts(database, [problem], { now: NOW });
+    const second = reconcileHealthAlerts(database, [problem], { now: NOW });
 
     expect(first.opened).toEqual([problem]);
     expect(second.opened).toEqual([]);
@@ -95,11 +95,27 @@ describe("reconcileHealthAlerts", () => {
 
   test("resolves a problem that is gone", () => {
     const database = openMemoryDatabase();
-    reconcileHealthAlerts(database, [problem], NOW);
+    reconcileHealthAlerts(database, [problem], { now: NOW });
 
-    const result = reconcileHealthAlerts(database, [], NOW);
+    const result = reconcileHealthAlerts(database, [], { now: NOW });
 
     expect(result.resolved).toEqual([problem]);
-    expect(reconcileHealthAlerts(database, [], NOW).resolved).toEqual([]);
+    expect(reconcileHealthAlerts(database, [], { now: NOW }).resolved).toEqual([]);
+  });
+
+  test("keeps an unchecked problem open until a later check confirms recovery", () => {
+    const database = openMemoryDatabase();
+    reconcileHealthAlerts(database, [problem], { now: NOW });
+
+    const skipped = reconcileHealthAlerts(database, [], {
+      now: NOW,
+      uncheckedKeys: new Set([problem.key]),
+    });
+    const stillDown = reconcileHealthAlerts(database, [problem], { now: NOW });
+    const recovered = reconcileHealthAlerts(database, [], { now: NOW });
+
+    expect(skipped.resolved).toEqual([]);
+    expect(stillDown.opened).toEqual([]);
+    expect(recovered.resolved).toEqual([problem]);
   });
 });

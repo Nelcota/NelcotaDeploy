@@ -103,13 +103,16 @@ export function findHealthProblems(input: {
  *
  * @param database - Database.
  * @param problems - Problems found now.
- * @param now - Current time.
+ * @param check - Current time and unchecked resource keys whose alerts must stay open.
  * @returns The `opened` problems and the `resolved` ones, as they were announced.
  */
 export function reconcileHealthAlerts(
   database: Database,
   problems: readonly HealthProblem[],
-  now: Date,
+  {
+    now,
+    uncheckedKeys = new Set(),
+  }: { readonly now: Date; readonly uncheckedKeys?: ReadonlySet<string> },
 ): { readonly opened: HealthProblem[]; readonly resolved: HealthProblem[] } {
   return database.transaction((transaction) => {
     const known = transaction
@@ -123,7 +126,9 @@ export function reconcileHealthAlerts(
     const knownKeys = new Set(known.map((alert) => alert.key));
     const currentKeys = new Set(problems.map((problem) => problem.key));
     const opened = problems.filter((problem) => knownKeys.has(problem.key) === false);
-    const resolved = known.filter((alert) => currentKeys.has(alert.key) === false);
+    const resolved = known.filter(
+      (alert) => currentKeys.has(alert.key) === false && uncheckedKeys.has(alert.key) === false,
+    );
     if (opened.length > 0) {
       transaction
         .insert(tables.healthAlerts)
