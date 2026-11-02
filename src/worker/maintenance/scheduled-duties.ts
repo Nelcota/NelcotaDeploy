@@ -2,12 +2,14 @@ import { queueDueDatabaseBackups } from "@/databases";
 import { pruneLogs } from "@/logs";
 import { pruneMetricSamples } from "@/monitoring";
 import { scheduleDueTasks } from "@/tasks";
+import { pruneUptimeChecks } from "@/uptime";
 
 import type { WorkerDependencies } from "../worker.types";
 import { rollBackRestartLoops } from "./auto-rollback";
 import { backupDatabaseIfDue, runDatabaseBackup } from "./database-backup";
 import { checkHealth } from "./health-alerts";
 import { cleanUpServers } from "./server-cleanup";
+import { checkCertificates, checkUptime } from "./uptime-checks";
 
 const MILLISECONDS_PER_HOUR = 3_600_000;
 
@@ -39,14 +41,15 @@ function applyRetention({ database, config, logger }: WorkerDependencies): void 
     database,
     new Date(now.getTime() - config.METRICS_RETENTION_HOURS * MILLISECONDS_PER_HOUR),
   );
+  pruneUptimeChecks(database, now);
   logger.info(pruned, "retention applied");
 }
 
 /**
- * Starts the clock-based duties: scheduled tasks and the rollback of restart loops every
- * minute, health checks every five minutes, retention and project database backups every
- * hour, and every day the panel database backup (plus one at startup when the newest backup
- * is a day old) and the cleanup of build cache and orphan images on each server.
+ * Starts the clock-based duties: scheduled tasks, restart loop rollbacks and uptime checks every minute,
+ * health checks every five minutes, domain certificates daily, retention and project database
+ * backups every hour, and every day the panel database backup (plus one at startup when the
+ * newest backup is a day old) and the cleanup of build cache and orphan images on each server.
  *
  * @param dependencies - Worker dependencies.
  * @param guard - The worker's duty wrapper.
@@ -67,8 +70,17 @@ export function startScheduledDuties(
       guard("auto-rollback", async () => await rollBackRestartLoops(dependencies)),
     ),
     Bun.cron(
+      "* * * * *",
+      guard("uptime", async () => await checkUptime(dependencies)),
+    ),
+    Bun.cron(
       "17 * * * *",
       guard("retention", () => applyRetention(dependencies)),
+    ),
+    // Daily at 06:15 UTC; certificates change rarely and a warning comes two weeks early.
+    Bun.cron(
+      "15 6 * * *",
+      guard("certificates", async () => await checkCertificates(dependencies)),
     ),
     Bun.cron(
       "*/5 * * * *",
