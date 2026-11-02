@@ -10,6 +10,7 @@ import { DangerZone } from "./danger-zone";
 import { ProjectSettingsForm } from "./project-settings-form";
 import { RepositoryTokenSection } from "./repository-token-section";
 import { ServerSection } from "./server-section";
+import { TeamSection } from "./team/team-section";
 import { VolumesSection } from "./volumes/volumes-section";
 
 /** Repository, build and runtime settings of one project, plus its token and deletion. */
@@ -50,6 +51,10 @@ export function ProjectSettingsPage({ projectId }: { readonly projectId: string 
             stagingId={environments.stagingId}
             canEdit={can("project:write")}
           />
+        ) : null}
+        {/* Environments share the members of their production project, managed there. */}
+        {can("user:manage") && project.parentProjectId == null ? (
+          <TeamSection projectId={projectId} />
         ) : null}
         {can("project:approve") ? (
           <RepositoryTokenSection projectId={projectId} hasToken={project.hasRepositoryToken} />

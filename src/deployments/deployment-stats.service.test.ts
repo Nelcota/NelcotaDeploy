@@ -40,6 +40,20 @@ function setup(): { database: Database; projectId: string } {
 }
 
 describe("summarizeDeployments", () => {
+  test("counts only the deploys of the given projects", () => {
+    const { database, projectId } = setup();
+    const other = createTestProject(database, { name: "Web", slug: "web" });
+    insertDeployment(database, projectId, {
+      status: "succeeded",
+      createdAt: "2026-10-28T14:00:00Z",
+    });
+    insertDeployment(database, other.id, { status: "failed", createdAt: "2026-10-28T14:00:00Z" });
+
+    const stats = summarizeDeployments(database, { days: 7, now: NOW, projectIds: [other.id] });
+
+    expect(stats).toMatchObject({ total: 1, succeeded: 0, failed: 1 });
+  });
+
   test("counts deploys by outcome inside the window", () => {
     const { database, projectId } = setup();
     insertDeployment(database, projectId, {

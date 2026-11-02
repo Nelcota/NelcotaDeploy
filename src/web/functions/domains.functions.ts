@@ -6,14 +6,14 @@ import { getDatabase } from "@/db";
 import { applyRuntimeChanges } from "@/deployments";
 import { addDomain, removeDomain } from "@/domains";
 import { domainInputSchema } from "@/shared/schemas/domain.schema";
-import { authorize } from "@/web/server/authorization";
+import { authorizeProject } from "@/web/server/authorization";
 
 import { idSchema } from "./ids";
 
 export const addDomainFn = createServerFn({ method: "POST" })
   .validator(z.object({ projectId: idSchema, domain: domainInputSchema }))
   .handler(async ({ data }) => {
-    const user = await authorize("domain:write");
+    const user = await authorizeProject("domain:write", data.projectId);
     const database = getDatabase();
     addDomain(database, {
       projectId: data.projectId,
@@ -29,7 +29,7 @@ export const addDomainFn = createServerFn({ method: "POST" })
 export const removeDomainFn = createServerFn({ method: "POST" })
   .validator(z.object({ projectId: idSchema, domainId: idSchema }))
   .handler(async ({ data }) => {
-    const user = await authorize("domain:write");
+    const user = await authorizeProject("domain:write", data.projectId);
     const database = getDatabase();
     removeDomain(database, {
       projectId: data.projectId,

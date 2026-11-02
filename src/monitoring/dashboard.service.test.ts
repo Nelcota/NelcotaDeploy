@@ -63,6 +63,21 @@ describe("getDashboardSummary", () => {
     expect(summary.failuresLastDayCount).toBe(0);
   });
 
+  test("summarizes only the given projects", () => {
+    const database = openMemoryDatabase();
+    const hidden = createTestProject(database).id;
+    const visible = createTestProject(database, { name: "Web", slug: "web" }).id;
+    insertDeployment(database, hidden, { status: "failed", createdAt: "2026-10-28T14:00:00Z" });
+    insertDeployment(database, visible, { status: "succeeded", createdAt: "2026-10-28T14:00:00Z" });
+
+    const summary = getDashboardSummary(database, NOW, [visible]);
+
+    expect(summary.projectCount).toBe(1);
+    expect(summary.deploymentsLastDayCount).toBe(1);
+    expect(summary.failuresLastDayCount).toBe(0);
+    expect(summary.recentDeployments.map((deployment) => deployment.projectId)).toEqual([visible]);
+  });
+
   test("counts zero without any deploy", () => {
     const database = openMemoryDatabase();
 

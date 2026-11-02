@@ -186,6 +186,30 @@ describe("countActiveDeployments", () => {
     transitionDeployment(database, running.deploymentId, { to: "cloning" });
     requestDeployment(database, { projectId: project.id, ...manual, commitSha: "c".repeat(40) });
 
-    expect(countActiveDeployments(database)).toBe(2);
+    expect(countActiveDeployments(database, null)).toBe(2);
+  });
+
+  test("counts only the deployments of the given projects", () => {
+    const database = openMemoryDatabase();
+    const project = createTestProject(database);
+    const other = createTestProject(database, { name: "Web", slug: "web" });
+    requestDeployment(database, { projectId: project.id, ...manual, commitSha: "a".repeat(40) });
+    requestDeployment(database, { projectId: other.id, ...manual, commitSha: "b".repeat(40) });
+
+    expect(countActiveDeployments(database, [other.id])).toBe(1);
+  });
+});
+
+describe("listDeployments with project ids", () => {
+  test("lists only the deployments of the given projects", () => {
+    const database = openMemoryDatabase();
+    const project = createTestProject(database);
+    const other = createTestProject(database, { name: "Web", slug: "web" });
+    requestDeployment(database, { projectId: project.id, ...manual, commitSha: "a".repeat(40) });
+    requestDeployment(database, { projectId: other.id, ...manual, commitSha: "b".repeat(40) });
+
+    const deployments = listDeployments(database, { limit: 10, projectIds: [other.id] });
+
+    expect(deployments.map((deployment) => deployment.projectId)).toEqual([other.id]);
   });
 });

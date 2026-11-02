@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 
+import { assertProjectPermission } from "@/access";
 import { getCurrentUser, requireUser } from "@/auth";
 import { getDatabase } from "@/db";
 import { getDeployment, isTerminalStatus } from "@/deployments";
@@ -18,15 +19,26 @@ export const Route = createFileRoute("/api/deployments/$deploymentId/logs")({
           return new Response("Unauthorized", { status: 401 });
         }
         const database = getDatabase();
+        let projectId: string;
         try {
-          getDeployment(database, params.deploymentId);
+          projectId = getDeployment(database, params.deploymentId).projectId;
+          // Non-members get the same answer as for a missing deployment.
+          assertProjectPermission(database, user, {
+            projectId,
+            permission: "project:read",
+          });
         } catch {
           return new Response("Not found", { status: 404 });
         }
         return createEventStreamResponse(
           request,
           async (afterId) => {
-            await requireUser(request.headers, "project:read");
+            // Checked on every read, so removing a member ends their open stream.
+            const reader = await requireUser(request.headers, "project:read");
+            assertProjectPermission(database, reader, {
+              projectId,
+              permission: "project:read",
+            });
             const deployment = getDeployment(database, params.deploymentId);
             const items = listDeploymentLogs(database, params.deploymentId, {
               afterId,

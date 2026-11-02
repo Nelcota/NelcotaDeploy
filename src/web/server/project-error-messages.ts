@@ -1,3 +1,4 @@
+import { InvalidProjectMemberError, ProjectMemberNotFoundError } from "@/access";
 import {
   DatabaseBackupInProgressError,
   DatabaseBackupNotFoundError,
@@ -46,14 +47,19 @@ import {
 } from "@/volumes";
 
 /**
- * Portuguese messages for errors of projects, deployments, domains, variables, tasks, volumes
- * and databases.
+ * Portuguese messages for errors of projects, members, deployments, domains, variables, tasks,
+ * volumes and databases.
  */
 export const PROJECT_ERROR_MESSAGES: readonly (readonly [
   abstract new (...args: never[]) => Error,
   string,
 ])[] = [
   [ProjectNotFoundError, "Projeto não encontrado."],
+  [
+    InvalidProjectMemberError,
+    "Não foi possível adicionar este usuário: ele já é membro, é administrador ou não existe.",
+  ],
+  [ProjectMemberNotFoundError, "Este usuário não é membro do projeto."],
   [PreviewNotActiveError, "Este preview foi encerrado com o pull request."],
   [VolumeNotFoundError, "Volume não encontrado."],
   [VolumeLimitError, "Cada projeto pode ter no máximo 10 volumes."],

@@ -1,5 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 
+import { assertProjectPermission } from "@/access";
 import { getDatabase } from "@/db";
 import { getDeployment, hasPendingRuntimeChanges } from "@/deployments";
 import { listProjectDomains } from "@/domains";
@@ -8,20 +9,27 @@ import { getProject } from "@/projects";
 import { getSystemSettings } from "@/settings";
 import { findStagingProject } from "@/staging";
 import { authorize } from "@/web/server/authorization";
+import { uiPermissionsOf } from "@/web/server/ui-permissions";
 
 import { projectIdInput } from "./ids";
 
 export const getProjectFn = createServerFn({ method: "GET" })
   .validator(projectIdInput)
   .handler(async ({ data }) => {
-    await authorize("project:read");
+    const user = await authorize("project:read");
     const database = getDatabase();
+    const role = assertProjectPermission(database, user, {
+      projectId: data.projectId,
+      permission: "project:read",
+    });
     const project = getProject(database, data.projectId);
     // A staging project points at its production one; production finds its staging.
     const staging =
       project.parentProjectId == null ? findStagingProject(database, project.id) : project;
     return {
       project,
+      /** What the interface lets the user do on this project, from their role on it. */
+      permissions: uiPermissionsOf(role),
       domains: listProjectDomains(database, project.id, getSystemSettings(database)),
       containers: listProjectContainers(database, project.id),
       worker: getWorkerStatus(database),
