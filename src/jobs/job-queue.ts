@@ -259,6 +259,7 @@ export function cancelQueuedJobs(
 export type RecoveredJob = {
   readonly id: string;
   readonly kind: JobKind;
+  readonly payload: Job["payload"];
   readonly deploymentId: string | null;
   readonly taskExecutionId: string | null;
   readonly outcome: "requeued" | "failed";
@@ -277,6 +278,7 @@ export function recoverExpiredJobs(database: Database, now: Date = new Date()): 
       .select({
         id: tables.jobs.id,
         kind: tables.jobs.kind,
+        payload: tables.jobs.payload,
         deploymentId: tables.jobs.deploymentId,
         taskExecutionId: tables.jobs.taskExecutionId,
       })

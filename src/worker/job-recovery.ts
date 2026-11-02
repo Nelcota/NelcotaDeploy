@@ -1,5 +1,6 @@
 import type { Logger } from "pino";
 
+import { recoverDatabaseJob } from "@/databases";
 import type { Database } from "@/db";
 import { getDeployment, isTerminalStatus, transitionDeployment } from "@/deployments";
 import type { RecoveredJob } from "@/jobs";
@@ -29,7 +30,7 @@ function recoverDeployment(
 }
 
 /**
- * Brings deployments and task executions of jobs interrupted by a crash back in line with
+ * Brings deployments, databases, backups and task executions interrupted by a crash back in line with
  * what the queue decided for them.
  *
  * @param database - Database.
@@ -43,6 +44,7 @@ export function handleRecoveredJobs(
 ): void {
   const failedExecutions: string[] = [];
   for (const job of recovered) {
+    recoverDatabaseJob(database, job);
     logger.warn(
       { jobId: job.id, kind: job.kind, outcome: job.outcome },
       "recovered interrupted job",
