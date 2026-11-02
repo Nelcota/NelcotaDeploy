@@ -41,6 +41,8 @@ export const projectColumns = {
   hasRepositoryToken: sql<boolean>`${tables.projects.encryptedRepositoryToken} IS NOT NULL`.mapWith(
     Boolean,
   ),
+  parentProjectId: tables.projects.parentProjectId,
+  environmentName: tables.projects.environmentName,
   createdAt: tables.projects.createdAt,
   updatedAt: tables.projects.updatedAt,
 };
@@ -73,6 +75,10 @@ export type Project = {
   readonly deploymentsApproved: boolean;
   readonly currentDeploymentId: string | null;
   readonly hasRepositoryToken: boolean;
+  /** Production project of this environment; null for a production project. */
+  readonly parentProjectId: string | null;
+  /** Name of the environment, such as "staging"; null for a production project. */
+  readonly environmentName: "staging" | null;
   readonly createdAt: string;
   readonly updatedAt: string;
 };
@@ -112,7 +118,8 @@ function repositoryFullNameOf(repositoryUrl: string): { fullName: string; cloneU
  *
  * @param database - Database.
  * @param input - Validated project fields.
- * @param creator - Creating user and whether they are an admin.
+ * @param creator - Creating user, whether they are an admin and, for an environment such as
+ *   staging, the production project it belongs to.
  * @returns The new project.
  * @throws {ProjectSlugTakenError} When the slug is already used.
  * @throws {NoServerAvailableError} When no server accepts new applications.
@@ -120,8 +127,17 @@ function repositoryFullNameOf(repositoryUrl: string): { fullName: string; cloneU
 export function createProject(
   database: Database,
   input: ProjectInput,
-  creator: { readonly actor: Actor; readonly userId: string | null; readonly isAdmin: boolean },
+  creator: {
+    readonly actor: Actor;
+    readonly userId: string | null;
+    readonly isAdmin: boolean;
+    readonly environment?: {
+      readonly parentProjectId: string;
+      readonly environmentName: "staging";
+    };
+  },
 ): Project {
+  const { environment } = creator;
   const repository = repositoryFullNameOf(input.repositoryUrl);
   const projectId = Bun.randomUUIDv7();
   const now = new Date().toISOString();
@@ -142,6 +158,8 @@ export function createProject(
         serverId,
         deploymentsApproved: creator.isAdmin,
         createdByUserId: creator.userId,
+        parentProjectId: environment?.parentProjectId ?? null,
+        environmentName: environment?.environmentName ?? null,
         createdAt: now,
         updatedAt: now,
       })
@@ -259,29 +277,52 @@ export function approveProject(database: Database, projectId: string, actor: Act
 export function requestProjectDeletion(database: Database, projectId: string, actor: Actor): void {
   database.transaction((transaction) => {
     const project = findActiveProjectRow(transaction, projectId);
-    const now = new Date();
-    transaction
-      .update(tables.projects)
-      .set({ deletionRequestedAt: now.toISOString(), autoDeploy: false })
-      .where(eq(tables.projects.id, projectId))
-      .run();
-    transaction
-      .update(tables.tasks)
-      .set({ enabled: false })
-      .where(eq(tables.tasks.projectId, projectId))
-      .run();
-    enqueueJob(
-      transaction,
-      { kind: "project_cleanup", projectId, dedupeKey: `cleanup:${projectId}`, maxAttempts: 3 },
-      now,
-    );
-    recordAuditEvent(transaction, {
-      actor,
-      action: "project.delete",
-      targetType: "project",
-      targetId: projectId,
-      metadata: { slug: project.slug },
-    });
+    markForDeletion(transaction, { id: projectId, slug: project.slug }, actor);
+    // The environments of a production project, such as its staging, go with it.
+    const environments = transaction
+      .select({ id: tables.projects.id, slug: tables.projects.slug })
+      .from(tables.projects)
+      .where(
+        and(
+          eq(tables.projects.parentProjectId, projectId),
+          isNull(tables.projects.deletionRequestedAt),
+        ),
+      )
+      .all();
+    for (const environment of environments) {
+      markForDeletion(transaction, environment, actor);
+    }
+  });
+}
+
+function markForDeletion(
+  transaction: Transaction,
+  project: { readonly id: string; readonly slug: string },
+  actor: Actor,
+): void {
+  const projectId = project.id;
+  const now = new Date();
+  transaction
+    .update(tables.projects)
+    .set({ deletionRequestedAt: now.toISOString(), autoDeploy: false })
+    .where(eq(tables.projects.id, projectId))
+    .run();
+  transaction
+    .update(tables.tasks)
+    .set({ enabled: false })
+    .where(eq(tables.tasks.projectId, projectId))
+    .run();
+  enqueueJob(
+    transaction,
+    { kind: "project_cleanup", projectId, dedupeKey: `cleanup:${projectId}`, maxAttempts: 3 },
+    now,
+  );
+  recordAuditEvent(transaction, {
+    actor,
+    action: "project.delete",
+    targetType: "project",
+    targetId: projectId,
+    metadata: { slug: project.slug },
   });
 }
 

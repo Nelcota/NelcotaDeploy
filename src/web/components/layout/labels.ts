@@ -1,4 +1,5 @@
 import {
+  ArrowUpFromLineIcon,
   BotIcon,
   HandIcon,
   type LucideIcon,
@@ -27,6 +28,7 @@ export const DEPLOYMENT_TRIGGER_LABELS: Record<DeploymentTrigger, string> = {
   redeploy: "Redeploy",
   rollback: "Rollback",
   mcp: "MCP",
+  promote: "Promoção do staging",
 };
 
 /** Icon shown beside each deploy origin, so the origin reads at a glance. */
@@ -36,6 +38,7 @@ export const DEPLOYMENT_TRIGGER_ICONS: Record<DeploymentTrigger, LucideIcon> = {
   redeploy: RefreshCwIcon,
   rollback: Undo2Icon,
   mcp: BotIcon,
+  promote: ArrowUpFromLineIcon,
 };
 
 export const ROLE_LABELS: Record<Role, string> = {
