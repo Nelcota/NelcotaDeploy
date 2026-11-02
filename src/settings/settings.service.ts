@@ -36,6 +36,10 @@ export function getSystemSettings(
     ),
     alertWebhookUrl:
       options.includeSecrets === false ? null : readNullableString(stored.get("alertWebhookUrl")),
+    requireAdminTwoFactor: readBoolean(
+      stored.get("requireAdminTwoFactor"),
+      DEFAULT_SYSTEM_SETTINGS.requireAdminTwoFactor,
+    ),
   };
 }
 

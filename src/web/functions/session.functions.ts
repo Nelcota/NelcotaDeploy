@@ -7,11 +7,13 @@ import {
   MAX_AVATAR_BYTES,
   isGitHubLoginEnabled,
   needsFirstAdmin,
+  needsTwoFactorSetup,
   removeUserAvatar,
   saveUserAvatar,
   UnauthenticatedError,
 } from "@/auth";
 import { getDatabase } from "@/db";
+import { getSystemSettings } from "@/settings";
 import { hasPermission, type Permission } from "@/shared/roles";
 import { firstAdminSchema } from "@/shared/schemas/user.schema";
 import { currentUser } from "@/web/server/authorization";
@@ -39,7 +41,9 @@ export const getSessionFn = createServerFn({ method: "GET" }).handler(async () =
     return null;
   }
   const permissions = UI_PERMISSIONS.filter((permission) => hasPermission(user.role, permission));
-  return { ...user, permissions };
+  // The panel shows only the setup screen; every server function refuses the user meanwhile.
+  const twoFactorSetupRequired = needsTwoFactorSetup(user, getSystemSettings(getDatabase()));
+  return { ...user, permissions, twoFactorSetupRequired };
 });
 
 export type SessionUser = NonNullable<Awaited<ReturnType<typeof getSessionFn>>>;

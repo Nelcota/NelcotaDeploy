@@ -11,6 +11,7 @@ import {
   AlertWebhookField,
   AutomaticDomainFields,
   OrganizationNameField,
+  RequireAdminTwoFactorField,
 } from "./organization-fields";
 import { type OrganizationFormApi, useOrganizationForm } from "./use-organization-form";
 
@@ -80,6 +81,7 @@ export function OrganizationForm({
           <OrganizationNameField form={form} canEdit={canEdit} />
           <AutomaticDomainFields form={form} canEdit={canEdit} />
           <AlertWebhookField form={form} canEdit={canEdit} />
+          <RequireAdminTwoFactorField form={form} canEdit={canEdit} />
           {traefikEnabled ? null : (
             <p role="status" className="flex items-start gap-1.5 text-sm text-warning">
               <TriangleAlertIcon aria-hidden className="mt-0.5 size-4 shrink-0" />O Traefik está

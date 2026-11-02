@@ -18,6 +18,7 @@ export function useOrganizationForm(initial: SystemSettings) {
       baseDomain: initial.baseDomain ?? "",
       httpsByDefault: initial.httpsByDefault,
       alertWebhookUrl: initial.alertWebhookUrl ?? "",
+      requireAdminTwoFactor: initial.requireAdminTwoFactor,
     },
     validators: { onChange: systemSettingsSchema },
     onSubmit: ({ value }) => save.mutate(value),

@@ -41,6 +41,7 @@ saveSystemSettings(database, {
   baseDomain: "apps.exemplo.com",
   httpsByDefault: true,
   alertWebhookUrl: null,
+  requireAdminTwoFactor: false,
 });
 
 const api = createProject(

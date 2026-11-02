@@ -2,7 +2,50 @@ import { describe, expect, test } from "bun:test";
 
 import { openMemoryDatabase } from "@/db";
 
-import { configureGitHubLogin, createAuth, isGitHubLoginEnabled } from "./auth";
+import { configureGitHubLogin, createAuth, isGitHubLoginEnabled, mayOpenSession } from "./auth";
+
+describe("mayOpenSession", () => {
+  const active = { disabled: false, twoFactorEnabled: false };
+
+  test("opens a session for an active user", () => {
+    expect(mayOpenSession(active, "/sign-in/email")).toBe(true);
+  });
+
+  test("refuses a disabled user", () => {
+    expect(mayOpenSession({ ...active, disabled: true }, "/sign-in/email")).toBe(false);
+  });
+
+  test("refuses a user that no longer exists", () => {
+    expect(mayOpenSession(null, "/sign-in/email")).toBe(false);
+  });
+
+  test("refuses GitHub sign-in for a user with two-factor authentication", () => {
+    const user = { ...active, twoFactorEnabled: true };
+
+    expect(mayOpenSession(user, "/callback/github")).toBe(false);
+  });
+
+  test("lets a user with two-factor authentication finish the code step", () => {
+    const user = { ...active, twoFactorEnabled: true };
+
+    expect(mayOpenSession(user, "/two-factor/verify-totp")).toBe(true);
+  });
+
+  test("lets GitHub sign in a user without two-factor authentication", () => {
+    expect(mayOpenSession(active, "/callback/github")).toBe(true);
+  });
+});
+
+describe("createAuth two-factor", () => {
+  test("enables the two-factor plugin", () => {
+    const auth = createAuth(openMemoryDatabase(), {
+      secret: "test-secret-with-enough-length-0123456789",
+      baseURL: "http://localhost:3000",
+    });
+
+    expect(auth.options.plugins.map((plugin) => plugin.id)).toContain("two-factor");
+  });
+});
 
 const OPTIONS = {
   secret: "test-secret-with-enough-length-0123456789",

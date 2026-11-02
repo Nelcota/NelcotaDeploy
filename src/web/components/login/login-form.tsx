@@ -8,6 +8,7 @@ import { Input } from "@/web/components/ui/input";
 import { Label } from "@/web/components/ui/label";
 
 import { safeRedirectTarget } from "./sign-in-redirect";
+import { TwoFactorStep } from "./two-factor-step";
 
 const TOO_MANY_REQUESTS = 429;
 
@@ -22,6 +23,7 @@ function useLogin(redirectTarget: string | undefined) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [needsCode, setNeedsCode] = useState(false);
 
   const submit = async (email: string, password: string) => {
     if (email.trim() === "" || password === "") {
@@ -47,9 +49,14 @@ function useLogin(redirectTarget: string | undefined) {
       setError(signInErrorMessage(result.error.status));
       return;
     }
+    if ("twoFactorRedirect" in result.data && result.data.twoFactorRedirect === true) {
+      setSubmitting(false);
+      setNeedsCode(true);
+      return;
+    }
     await router.navigate({ to: safeRedirectTarget(redirectTarget) });
   };
-  return { error, submitting, submit };
+  return { error, submitting, needsCode, submit };
 }
 
 /**
@@ -60,8 +67,11 @@ function useLogin(redirectTarget: string | undefined) {
 export function LoginForm({ redirectTarget }: { readonly redirectTarget: string | undefined }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const { error, submitting, submit } = useLogin(redirectTarget);
+  const { error, submitting, needsCode, submit } = useLogin(redirectTarget);
   const errorId = error == null ? undefined : "login-error";
+  if (needsCode) {
+    return <TwoFactorStep redirectTarget={redirectTarget} />;
+  }
 
   const onSubmit = (event: FormEvent) => {
     event.preventDefault();

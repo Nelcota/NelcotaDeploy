@@ -135,3 +135,31 @@ export function AlertWebhookField({ form, canEdit }: FieldsProps) {
     </form.Field>
   );
 }
+
+/** Whether admins must turn on two-factor authentication before using the panel. */
+export function RequireAdminTwoFactorField({ form, canEdit }: FieldsProps) {
+  return (
+    <form.Field name="requireAdminTwoFactor">
+      {(field) => (
+        <div className="flex items-start gap-3">
+          <Switch
+            id="require-admin-two-factor"
+            disabled={canEdit === false}
+            checked={field.state.value}
+            onCheckedChange={field.handleChange}
+            aria-describedby="require-admin-two-factor-hint"
+          />
+          <div className="space-y-1">
+            <Label htmlFor="require-admin-two-factor">
+              Exigir verificação em duas etapas dos administradores
+            </Label>
+            <p id="require-admin-two-factor-hint" className="text-xs text-muted-foreground">
+              Administradores sem ela só veem a tela de ativação até configurarem um app
+              autenticador.
+            </p>
+          </div>
+        </div>
+      )}
+    </form.Field>
+  );
+}

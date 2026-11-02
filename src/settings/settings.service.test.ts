@@ -10,6 +10,7 @@ const SAVED = {
   baseDomain: "apps.example.com",
   httpsByDefault: false,
   alertWebhookUrl: "https://discord.com/api/webhooks/1/abc",
+  requireAdminTwoFactor: true,
 };
 
 describe("saveSystemSettings", () => {

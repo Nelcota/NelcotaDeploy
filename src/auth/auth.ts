@@ -1,5 +1,6 @@
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
+import { twoFactor } from "better-auth/plugins";
 import { eq } from "drizzle-orm";
 
 import { getConfig, requireConfigValue } from "@/config";
@@ -13,6 +14,10 @@ const SESSION_REFRESH_AGE_IN_SECONDS = SECONDS_PER_DAY;
 const RATE_LIMIT_WINDOW_IN_SECONDS = 60;
 const RATE_LIMIT_MAX_REQUESTS = 100;
 const SIGN_IN_MAX_ATTEMPTS_PER_WINDOW = 5;
+/** Name authenticator apps show next to the account. */
+const TWO_FACTOR_ISSUER = "Nelcota Deploy";
+/** Social sign-in returns through these paths, which the two-factor plugin does not cover. */
+const SOCIAL_CALLBACK_PREFIX = "/callback/";
 
 const BUN_PASSWORD_HASHING = {
   hash: async (password: string) => await Bun.password.hash(password),
@@ -48,6 +53,14 @@ const RATE_LIMIT = {
       window: RATE_LIMIT_WINDOW_IN_SECONDS,
       max: SIGN_IN_MAX_ATTEMPTS_PER_WINDOW,
     },
+    "/two-factor/verify-totp": {
+      window: RATE_LIMIT_WINDOW_IN_SECONDS,
+      max: SIGN_IN_MAX_ATTEMPTS_PER_WINDOW,
+    },
+    "/two-factor/verify-backup-code": {
+      window: RATE_LIMIT_WINDOW_IN_SECONDS,
+      max: SIGN_IN_MAX_ATTEMPTS_PER_WINDOW,
+    },
   },
 };
 
@@ -78,7 +91,9 @@ function socialSignIn(github: { readonly clientId: string; readonly clientSecret
  *
  * @remarks
  * Public sign-up is disabled: accounts come from the bootstrap command or from an admin.
- * Passwords use `Bun.password` (argon2id). Disabled users cannot open new sessions.
+ * Passwords use `Bun.password` (argon2id). Disabled users cannot open new sessions. Users may
+ * turn on two-factor authentication with an authenticator app; they then sign in with their
+ * password and a code, never with GitHub.
  *
  * With `github`, people can also sign in with GitHub, but only into an account that already
  * exists with the same e-mail, which GitHub must report as verified: GitHub never creates
@@ -107,8 +122,10 @@ export function createAuth(
         session: tables.sessions,
         account: tables.accounts,
         verification: tables.verifications,
+        twoFactor: tables.twoFactors,
       },
     }),
+    plugins: [twoFactor({ issuer: TWO_FACTOR_ISSUER })],
     ...socialSignIn(options.github ?? null),
     emailAndPassword: EMAIL_AND_PASSWORD,
     user: USER_FIELDS,
@@ -123,20 +140,48 @@ export function createAuth(
     databaseHooks: {
       session: {
         create: {
-          before: (session) => Promise.resolve(isUserActive(database, session.userId)),
+          before: (session, context) =>
+            Promise.resolve(
+              mayOpenSession(findSessionUser(database, session.userId), context?.path),
+            ),
         },
       },
     },
   });
 }
 
-function isUserActive(database: Database, userId: string): boolean {
-  const user = database
-    .select({ disabled: tables.users.disabled })
-    .from(tables.users)
-    .where(eq(tables.users.id, userId))
-    .get();
-  return user?.disabled === false;
+function findSessionUser(database: Database, userId: string) {
+  return (
+    database
+      .select({
+        disabled: tables.users.disabled,
+        twoFactorEnabled: tables.users.twoFactorEnabled,
+      })
+      .from(tables.users)
+      .where(eq(tables.users.id, userId))
+      .get() ?? null
+  );
+}
+
+/**
+ * Tells whether a session may be opened for a user.
+ *
+ * @remarks
+ * The two-factor plugin only challenges password sign-ins, so a social sign-in would skip the
+ * second factor: accounts with two-factor authentication sign in with their password instead.
+ *
+ * @param user - Whether the user is `disabled` and has `twoFactorEnabled`; null when missing.
+ * @param path - Auth endpoint opening the session, when known.
+ * @returns True when the session may be created.
+ */
+export function mayOpenSession(
+  user: { readonly disabled: boolean; readonly twoFactorEnabled: boolean } | null,
+  path: string | undefined,
+): boolean {
+  if (user == null || user.disabled) {
+    return false;
+  }
+  return user.twoFactorEnabled === false || path?.startsWith(SOCIAL_CALLBACK_PREFIX) !== true;
 }
 
 export type Auth = ReturnType<typeof createAuth>;

@@ -10,6 +10,8 @@ export type CurrentUser = {
   readonly name: string;
   readonly email: string;
   readonly role: Role;
+  /** The user confirmed an authenticator app and signs in with a code as well. */
+  readonly twoFactorEnabled: boolean;
   /** Address of the profile photo, or null to show the initials. */
   readonly image: string | null;
 };
@@ -35,6 +37,7 @@ export async function getCurrentUser(headers: Headers): Promise<CurrentUser | nu
     email: user.email,
     role: user.role,
     image: user.image ?? null,
+    twoFactorEnabled: user.twoFactorEnabled === true,
   };
 }
 
@@ -77,4 +80,18 @@ function assertPermission(role: Role, permission: Permission): void {
  */
 export function userActor(user: CurrentUser): Actor {
   return { type: "user", id: user.id, label: user.email };
+}
+
+/**
+ * Tells whether a user must turn on two-factor authentication before using the panel.
+ *
+ * @param user - Role and two-factor status of the user.
+ * @param settings - Whether the organization requires it from admins.
+ * @returns True for an admin without two-factor authentication when it is required.
+ */
+export function needsTwoFactorSetup(
+  user: Pick<CurrentUser, "role" | "twoFactorEnabled">,
+  settings: { readonly requireAdminTwoFactor: boolean },
+): boolean {
+  return settings.requireAdminTwoFactor && user.role === "admin" && user.twoFactorEnabled === false;
 }

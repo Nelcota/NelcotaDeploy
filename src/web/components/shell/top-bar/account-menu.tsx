@@ -1,7 +1,8 @@
-import { ImageUpIcon, LogOutIcon, MoonIcon, SunIcon } from "lucide-react";
+import { ImageUpIcon, LogOutIcon, MoonIcon, ShieldCheckIcon, SunIcon } from "lucide-react";
 import { useState } from "react";
 
 import { ProfilePhotoDialog } from "@/web/components/account/profile-photo-dialog";
+import { TwoFactorDialog } from "@/web/components/account/two-factor-dialog";
 import { ROLE_LABELS } from "@/web/components/layout/labels";
 import { useTheme } from "@/web/components/shell/theme";
 import { AccountButton } from "@/web/components/shell/top-bar/account-button";
@@ -16,11 +17,12 @@ import {
 } from "@/web/components/ui/dropdown-menu";
 import type { SessionUser } from "@/web/functions/session.functions";
 
-/** Avatar menu with the profile photo, the theme switch and sign out. */
+/** Avatar menu with the profile photo, two-factor authentication, the theme switch and sign out. */
 export function AccountMenu({ user }: { readonly user: SessionUser }) {
   const { theme, toggleTheme } = useTheme();
   const signOut = useSignOut();
   const [photoOpen, setPhotoOpen] = useState(false);
+  const [twoFactorOpen, setTwoFactorOpen] = useState(false);
   return (
     <>
       <DropdownMenu>
@@ -39,6 +41,12 @@ export function AccountMenu({ user }: { readonly user: SessionUser }) {
             <ImageUpIcon aria-hidden />
             Foto de perfil
           </DropdownMenuItem>
+          <DropdownMenuItem onSelect={() => setTwoFactorOpen(true)}>
+            <ShieldCheckIcon aria-hidden />
+            {user.twoFactorEnabled
+              ? "Verificação em duas etapas: ativa"
+              : "Ativar verificação em duas etapas"}
+          </DropdownMenuItem>
           <DropdownMenuItem onSelect={toggleTheme}>
             {theme === "dark" ? <SunIcon aria-hidden /> : <MoonIcon aria-hidden />}
             {theme === "dark" ? "Tema claro" : "Tema escuro"}
@@ -50,6 +58,11 @@ export function AccountMenu({ user }: { readonly user: SessionUser }) {
         </DropdownMenuContent>
       </DropdownMenu>
       <ProfilePhotoDialog user={user} open={photoOpen} onOpenChange={setPhotoOpen} />
+      <TwoFactorDialog
+        enabled={user.twoFactorEnabled}
+        open={twoFactorOpen}
+        onOpenChange={setTwoFactorOpen}
+      />
     </>
   );
 }
