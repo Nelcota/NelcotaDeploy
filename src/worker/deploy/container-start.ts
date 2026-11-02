@@ -1,5 +1,5 @@
 import { transitionDeployment } from "@/deployments";
-import { containerNameFor, volumeNameFor } from "@/docker";
+import { replicaContainerNameFor, volumeNameFor } from "@/docker";
 import { listProjectDomains } from "@/domains";
 import { getPreview, previewHostname, previewRouteName } from "@/previews";
 import { projectRouteConfig } from "@/routing";
@@ -14,12 +14,13 @@ import {
 } from "./deploy-context";
 
 /**
- * Points the project's routes at the new container, alone, once it is healthy. Requests that
- * already reached the old container finish there; new ones go to the new container.
+ * Points the project's routes at the new replicas, alone, once they are healthy. Requests that
+ * already reached the old containers finish there; new ones are balanced between the new
+ * replicas.
  *
  * @param dependencies - Database, route files and settings.
  * @param context - Deployment being run.
- * @param containerName - The healthy new container.
+ * @param containerNames - The healthy new replicas.
  * @throws {RouteFileError} When the routes cannot be written on the server.
  * @throws {InvalidRouteError} When a hostname or name could not go into the routes.
  */
@@ -28,7 +29,7 @@ export async function routeTrafficTo(
     readonly config: Pick<DeployRunnerConfig, "routingSettleInMs" | "traefik">;
   },
   context: Pick<DeployContext, "deployment" | "project" | "logs">,
-  containerName: string,
+  containerNames: readonly string[],
 ): Promise<void> {
   const { routes, config } = dependencies;
   const { logs } = context;
@@ -47,7 +48,7 @@ export async function routeTrafficTo(
     projectRouteConfig({
       routeName: target.routeName,
       domains: target.domains,
-      containerName,
+      containerNames,
       internalPort: context.project.internalPort,
       entrypoints: {
         http: config.traefik.httpEntrypoint,
@@ -57,7 +58,7 @@ export async function routeTrafficTo(
       compress: config.traefik.compress,
     }),
   );
-  logs.system(`Routing ${hostnames} to ${containerName}`);
+  logs.system(`Routing ${hostnames} to ${containerNames.join(", ")}`);
   // The proxy applies new routes after a short delay; the old container must still answer.
   await Bun.sleep(config.routingSettleInMs);
 }
@@ -98,16 +99,30 @@ function routeTarget(
 }
 
 /**
- * Starts the new container next to the running one, attached to the proxy network. It gets
- * no traffic until {@link routeTrafficTo} switches the routes to it.
+ * How many containers a deployment runs: the project's replicas in production, one for a pull
+ * request preview, which is only there to be looked at.
+ *
+ * @param context - Deployment being run and its project.
+ * @returns The number of replicas, at least one.
+ */
+export function replicaCountOf(context: Pick<DeployContext, "deployment" | "project">): number {
+  if (context.deployment.previewId != null) {
+    return 1;
+  }
+  return Math.max(1, context.project.replicas);
+}
+
+/**
+ * Starts the new replicas next to the running containers, attached to the proxy network. They
+ * get no traffic until {@link routeTrafficTo} switches the routes to them.
  *
  * @param dependencies - Database, Docker and settings.
  * @param context - Deployment being run.
  * @param release - The `imageTag` to run, its `runtimeValues` (environment variables) and the
  *   `runtimeConfigHash` they were taken with, and the `buildConfigHash` of a new build.
- * @returns The new container name.
+ * @returns The new container names, the deployment's own name first.
  */
-export async function startContainer(
+export async function startContainers(
   dependencies: Pick<DeployRunnerDependencies, "database" | "docker"> & {
     readonly config: Pick<DeployRunnerConfig, "network">;
   },
@@ -119,44 +134,73 @@ export async function startContainer(
     /** Null when the image was reused, which keeps the hash copied from its source. */
     readonly buildConfigHash: string | null;
   },
-): Promise<string> {
+): Promise<string[]> {
   const { database, docker, config } = dependencies;
   const { deployment, project, logs } = context;
-  const containerName = containerNameFor(project.slug, deployment.id);
+  const containerNames = Array.from({ length: replicaCountOf(context) }, (_, index) =>
+    replicaContainerNameFor(project.slug, deployment.id, index + 1),
+  );
+  const [containerName = ""] = containerNames;
   transitionDeployment(database, deployment.id, {
     to: "starting",
     imageTag: release.imageTag,
+    // Tasks and container logs use the first replica, which keeps the deployment's own name.
     containerName,
     internalPort: project.internalPort,
     runtimeConfigHash: release.runtimeConfigHash,
     ...(release.buildConfigHash == null ? {} : { buildConfigHash: release.buildConfigHash }),
   });
-  logs.system(`Starting container ${containerName}`);
+  logs.system(
+    containerNames.length === 1
+      ? `Starting container ${containerName}`
+      : `Starting ${containerNames.length} replicas: ${containerNames.join(", ")}`,
+  );
   await docker.ensureNetwork(config.network);
-  const leftover = await docker.inspectContainer(containerName);
-  if (leftover != null) {
-    // Left behind by a previous attempt of this same deployment that crashed.
-    await docker.removeContainer(containerName);
-  }
   // Previews never mount production's data.
   const volumes = deployment.previewId == null ? await prepareVolumes(dependencies, context) : [];
-  context.state.useContainer(containerName);
+  await Promise.all(
+    containerNames.map(
+      async (name) => await startReplica(dependencies, context, { ...release, name, volumes }),
+    ),
+  );
+  return containerNames;
+}
+
+async function startReplica(
+  dependencies: Pick<DeployRunnerDependencies, "docker"> & {
+    readonly config: Pick<DeployRunnerConfig, "network">;
+  },
+  context: Pick<DeployContext, "deployment" | "project" | "state">,
+  replica: {
+    readonly name: string;
+    readonly imageTag: string;
+    readonly runtimeValues: Readonly<Record<string, string>>;
+    readonly volumes: readonly { readonly name: string; readonly target: string }[];
+  },
+): Promise<void> {
+  const { docker, config } = dependencies;
+  const { project } = context;
+  const leftover = await docker.inspectContainer(replica.name);
+  if (leftover != null) {
+    // Left behind by a previous attempt of this same deployment that crashed.
+    await docker.removeContainer(replica.name);
+  }
+  context.state.useContainer(replica.name);
   await docker.runContainer(
     {
-      containerName,
-      imageTag: release.imageTag,
+      containerName: replica.name,
+      imageTag: replica.imageTag,
       network: config.network,
       labels: deploymentLabels(context),
-      environmentKeys: Object.keys(release.runtimeValues),
-      volumes,
+      environmentKeys: Object.keys(replica.runtimeValues),
+      volumes: [...replica.volumes],
       resources: {
         memoryLimitInMb: project.memoryLimitInMb,
         cpuLimitInMillicores: project.cpuLimitInMillicores,
       },
     },
-    release.runtimeValues,
+    replica.runtimeValues,
   );
-  return containerName;
 }
 
 /** Creates the project's attached volumes on the server when missing and lists their mounts. */

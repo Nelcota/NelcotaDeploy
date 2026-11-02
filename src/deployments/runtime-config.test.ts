@@ -108,6 +108,20 @@ describe("runtimeConfigFingerprint", () => {
 
     expect(runtimeConfigFingerprint(database, project.id)).toBe(unlimited);
   });
+
+  test("changes when the number of replicas changes", () => {
+    const database = openMemoryDatabase();
+    const project = createTestProject(database);
+    const single = runtimeConfigFingerprint(database, project.id);
+
+    database
+      .update(tables.projects)
+      .set({ replicas: 3 })
+      .where(eq(tables.projects.id, project.id))
+      .run();
+
+    expect(runtimeConfigFingerprint(database, project.id)).not.toBe(single);
+  });
 });
 
 function setLimits(

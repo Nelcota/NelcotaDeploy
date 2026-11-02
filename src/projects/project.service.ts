@@ -8,7 +8,11 @@ import { chooseServerForNewProject } from "@/servers";
 import { assertHostnameOwnership, getSystemSettings } from "@/settings";
 import { parseGitHubRepository, type ProjectInput } from "@/shared/schemas/project.schema";
 
-import { ProjectNotFoundError, ProjectSlugTakenError } from "./project.errors";
+import {
+  ProjectNotFoundError,
+  ProjectSlugTakenError,
+  ReplicasNeedNoVolumesError,
+} from "./project.errors";
 
 /** Port assumed until a build finds an EXPOSE in the Dockerfile. */
 const DEFAULT_INTERNAL_PORT = 3000;
@@ -36,6 +40,7 @@ export const projectColumns = {
   previewsEnabled: tables.projects.previewsEnabled,
   memoryLimitInMb: tables.projects.memoryLimitInMb,
   cpuLimitInMillicores: tables.projects.cpuLimitInMillicores,
+  replicas: tables.projects.replicas,
   deploymentsApproved: tables.projects.deploymentsApproved,
   currentDeploymentId: tables.projects.currentDeploymentId,
   hasRepositoryToken: sql<boolean>`${tables.projects.encryptedRepositoryToken} IS NOT NULL`.mapWith(
@@ -72,6 +77,8 @@ export type Project = {
   readonly memoryLimitInMb: number | null;
   /** CPU limit of the application container in thousandths of a core; null for none. */
   readonly cpuLimitInMillicores: number | null;
+  /** Containers each production deployment runs, between 1 and 10. */
+  readonly replicas: number;
   readonly deploymentsApproved: boolean;
   readonly currentDeploymentId: string | null;
   readonly hasRepositoryToken: boolean;
@@ -98,6 +105,18 @@ function isSlugTaken(
     .where(eq(tables.projects.slug, slug))
     .get();
   return existing != null && existing.id !== exceptProjectId;
+}
+
+/** Read here rather than through the volumes package, which depends on this one. */
+function mountsVolumes(database: Database | Transaction, projectId: string): boolean {
+  const volume = database
+    .select({ id: tables.projectVolumes.id })
+    .from(tables.projectVolumes)
+    .where(
+      and(eq(tables.projectVolumes.projectId, projectId), eq(tables.projectVolumes.attached, true)),
+    )
+    .get();
+  return volume != null;
 }
 
 function repositoryFullNameOf(repositoryUrl: string): { fullName: string; cloneUrl: string } {
@@ -189,6 +208,8 @@ export function createProject(
  * @returns The updated project.
  * @throws {ProjectNotFoundError} When the project does not exist.
  * @throws {ProjectSlugTakenError} When the new slug is used by another project.
+ * @throws {ReplicasNeedNoVolumesError} When more than one replica is asked for a project that
+ * mounts volumes, which replicas writing at once would corrupt.
  */
 export function updateProject(
   database: Database,
@@ -207,6 +228,9 @@ export function updateProject(
     const current = findActiveProjectRow(transaction, projectId);
     if (isSlugTaken(transaction, input.slug, projectId)) {
       throw new ProjectSlugTakenError(input.slug);
+    }
+    if (input.replicas > 1 && mountsVolumes(transaction, projectId)) {
+      throw new ReplicasNeedNoVolumesError(projectId);
     }
     // A different repository is different code, so a non-admin change needs new approval.
     const repositoryChanged = current.repositoryFullName !== repository.fullName;

@@ -16,6 +16,7 @@ export {
   listProjectContainers,
   listProjectSamples,
   pruneMetricSamples,
+  combineSamplesByProject,
   recordContainerSamples,
   recordHostSample,
   recordWorkerHeartbeat,

@@ -40,6 +40,8 @@ export const projects = sqliteTable(
     // Limits of the application container; null leaves it unlimited, as Docker does.
     memoryLimitInMb: integer("memory_limit_in_mb"),
     cpuLimitInMillicores: integer("cpu_limit_in_millicores"),
+    // Containers each production deployment runs; the proxy balances requests between them.
+    replicas: integer("replicas").notNull().default(1),
     deploymentsApproved: integer("deployments_approved", { mode: "boolean" })
       .notNull()
       .default(false),

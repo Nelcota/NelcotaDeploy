@@ -118,6 +118,7 @@ describe("requestDeployment validation", () => {
         previewsEnabled: false,
         memoryLimitInMb: null,
         cpuLimitInMillicores: null,
+        replicas: 1,
       },
       { actor: TEST_ACTOR, userId: null, isAdmin: false },
     );

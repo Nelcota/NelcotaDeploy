@@ -20,7 +20,11 @@ import {
 } from "@/deployments";
 import { DomainNotFoundError, DomainTakenError } from "@/domains";
 import { EnvironmentVariableNotFoundError } from "@/environments";
-import { ProjectNotFoundError, ProjectSlugTakenError } from "@/projects";
+import {
+  ProjectNotFoundError,
+  ProjectSlugTakenError,
+  ReplicasNeedNoVolumesError,
+} from "@/projects";
 import {
   InvalidStagingBranchError,
   NotAProductionProjectError,
@@ -38,6 +42,7 @@ import {
 } from "@/tasks";
 import {
   ProjectHasVolumesError,
+  ReplicatedProjectVolumeError,
   VolumeAttachedError,
   VolumeBeingDeletedError,
   VolumeLimitError,
@@ -54,6 +59,14 @@ export const PROJECT_ERROR_MESSAGES: readonly (readonly [
   string,
 ])[] = [
   [ProjectNotFoundError, "Projeto não encontrado."],
+  [
+    ReplicasNeedNoVolumesError,
+    "Projetos com volumes rodam só 1 réplica: várias réplicas gravando no mesmo volume corrompem os dados. Desanexe os volumes antes.",
+  ],
+  [
+    ReplicatedProjectVolumeError,
+    "Projetos com mais de 1 réplica não podem montar volumes. Volte para 1 réplica antes.",
+  ],
   [PreviewNotActiveError, "Este preview foi encerrado com o pull request."],
   [VolumeNotFoundError, "Volume não encontrado."],
   [VolumeLimitError, "Cada projeto pode ter no máximo 10 volumes."],

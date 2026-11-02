@@ -5,7 +5,7 @@ import { getDeployment, requestDeployment } from "@/deployments";
 import { createTestProject, FakeDocker, TEST_ACTOR } from "@/testing";
 import { addProjectVolume, setVolumeAttached } from "@/volumes";
 
-import { startContainer } from "./container-start";
+import { replicaCountOf, startContainers } from "./container-start";
 import { DeployState } from "./deploy-context";
 import { DeploymentLogWriter } from "./deployment-log-writer";
 
@@ -16,7 +16,7 @@ const RELEASE = {
   buildConfigHash: null,
 };
 
-describe("startContainer volumes", () => {
+describe("startContainers volumes", () => {
   test("creates and mounts the attached volumes, never the detached ones", async () => {
     const database = openMemoryDatabase();
     const project = createTestProject(database);
@@ -49,10 +49,58 @@ describe("startContainer volumes", () => {
       state: new DeployState(),
     };
 
-    await startContainer({ database, docker, config: { network: "nelcota" } }, context, RELEASE);
+    await startContainers({ database, docker, config: { network: "nelcota" } }, context, RELEASE);
 
     const [mounts = []] = docker.mounts.values();
     expect(mounts.map((mount) => mount.target)).toEqual(["/app/data"]);
     expect([...docker.volumes.owners.keys()]).toEqual(mounts.map((mount) => mount.name));
+  });
+});
+
+function startSetup(replicas: number) {
+  const database = openMemoryDatabase();
+  const project = createTestProject(database, { replicas });
+  const { deploymentId } = requestDeployment(database, {
+    projectId: project.id,
+    trigger: "manual",
+    actor: TEST_ACTOR,
+    triggeredByUserId: null,
+  });
+  return { database, project, deployment: getDeployment(database, deploymentId) };
+}
+
+describe("startContainers replicas", () => {
+  test("starts one container per replica, the deployment's own name first", async () => {
+    const { database, project, deployment } = startSetup(3);
+    const docker = new FakeDocker();
+    using logs = new DeploymentLogWriter(database, deployment.id);
+    const state = new DeployState();
+
+    const names = await startContainers(
+      { database, docker, config: { network: "nelcota" } },
+      { deployment, project, logs, state },
+      RELEASE,
+    );
+
+    expect(names).toHaveLength(3);
+    expect(names[1]).toBe(`${names[0]}-2`);
+    expect(names[2]).toBe(`${names[0]}-3`);
+    expect(state.containerNames.toSorted()).toEqual(names.toSorted());
+    expect(getDeployment(database, deployment.id).containerName).toBe(names[0] ?? "");
+  });
+});
+
+describe("replicaCountOf", () => {
+  test("runs the project's replicas in production", () => {
+    const { project, deployment } = startSetup(4);
+
+    expect(replicaCountOf({ deployment, project })).toBe(4);
+  });
+
+  test("runs a single container for a pull request preview", () => {
+    const { project, deployment } = startSetup(4);
+    const preview = { ...deployment, previewId: "preview-1" };
+
+    expect(replicaCountOf({ deployment: preview, project })).toBe(1);
   });
 });

@@ -10,7 +10,11 @@ import {
 import { getProject } from "@/projects";
 
 import { DeploymentCancelledError } from "../worker.errors";
-import { discardFailedContainer, pruneOldImages, removePreviousContainers } from "./deploy-cleanup";
+import {
+  discardFailedContainers,
+  pruneOldImages,
+  removePreviousContainers,
+} from "./deploy-cleanup";
 import {
   type DeployContext,
   type DeployRunnerDependencies,
@@ -90,7 +94,7 @@ export async function runDeployment(
     completeDeployment(database, deployment.id);
   } catch (error) {
     if (jobSignal.aborted && cancellation.signal.aborted === false) {
-      await discardFailedContainer(dependencies.docker, context.state.containerName, logs);
+      await discardFailedContainers(dependencies.docker, context.state.containerNames, logs);
       requeueDeployment(database, deployment.id);
       throw error;
     }
@@ -137,7 +141,7 @@ async function recordFailure(
   { error, cancelled }: { readonly error: unknown; readonly cancelled: boolean },
 ): Promise<void> {
   const { deployment, logs, state } = context;
-  await discardFailedContainer(dependencies.docker, state.containerName, logs);
+  await discardFailedContainers(dependencies.docker, state.containerNames, logs);
   const message = cancelled
     ? "Deployment cancelled by a user"
     : state.redact(errorMessageOf(error));
