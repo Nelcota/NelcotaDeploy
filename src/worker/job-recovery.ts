@@ -1,5 +1,6 @@
 import type { Logger } from "pino";
 
+import { recoverConsoleJob } from "@/console";
 import { recoverDatabaseJob } from "@/databases";
 import type { Database } from "@/db";
 import { getDeployment, isTerminalStatus, transitionDeployment } from "@/deployments";
@@ -44,6 +45,7 @@ export function handleRecoveredJobs(
 ): void {
   const failedExecutions: string[] = [];
   for (const job of recovered) {
+    recoverConsoleJob(database, job);
     recoverDatabaseJob(database, job);
     logger.warn(
       { jobId: job.id, kind: job.kind, outcome: job.outcome },

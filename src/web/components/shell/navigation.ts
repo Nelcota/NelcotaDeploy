@@ -14,6 +14,7 @@ import {
   SettingsIcon,
   ShieldCheckIcon,
   ShieldIcon,
+  TerminalIcon,
   UsersIcon,
   VariableIcon,
 } from "lucide-react";
@@ -44,6 +45,7 @@ export const PROJECT_SECTIONS = [
   { to: "/projects/$projectId/domains", label: "Domínios", icon: GlobeIcon, exact: false },
   { to: "/projects/$projectId/databases", label: "Bancos", icon: DatabaseIcon, exact: false },
   { to: "/projects/$projectId/tasks", label: "Tasks", icon: ClockIcon, exact: false },
+  { to: "/projects/$projectId/console", label: "Console", icon: TerminalIcon, exact: false },
   { to: "/projects/$projectId/settings", label: "Ajustes", icon: SettingsIcon, exact: false },
 ] as const;
 

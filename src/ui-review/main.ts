@@ -56,6 +56,7 @@ function pagesFor(projectId: string, deploymentId: string) {
     { name: "projeto-dominios", path: `${project}/domains`, signedIn: true },
     { name: "projeto-bancos", path: `${project}/databases`, signedIn: true },
     { name: "projeto-tasks", path: `${project}/tasks`, signedIn: true },
+    { name: "projeto-console", path: `${project}/console`, signedIn: true },
     { name: "projeto-ajustes", path: `${project}/settings`, signedIn: true },
     { name: "admin-organizacao", path: "/settings?tab=organization", signedIn: true },
     { name: "admin-usuarios", path: "/settings?tab=users", signedIn: true },

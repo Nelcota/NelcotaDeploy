@@ -27,7 +27,7 @@ import {
   reportDeploymentStatus,
 } from "./notifications/deployment-notifications";
 import type { ServerHost } from "./server-host";
-import { runTaskExecution } from "./task-runner";
+import { runConsoleCommandJob, runTaskExecution } from "./task-runner";
 import type { WorkerDependencies } from "./worker.types";
 
 // Traefik applies provider changes after a 2 s throttle; a little more lets it switch to the
@@ -254,6 +254,33 @@ export async function dispatchJob(
     }
     case "database_restore": {
       await runDatabaseRestoreJob(dependencies, job);
+      return;
     }
+    case "console_command": {
+      await runConsoleJob(dependencies, job, run);
+    }
+  }
+}
+
+async function runConsoleJob(
+  dependencies: WorkerDependencies,
+  job: Job,
+  run: JobRun,
+): Promise<void> {
+  const commandId = job.payload["commandId"];
+  if (typeof commandId !== "string" || commandId === "") {
+    throw new Error(`Job ${job.id} has no console command`);
+  }
+  const status = await runConsoleCommandJob(
+    {
+      database: dependencies.database,
+      secretBox: dependencies.secretBox,
+      dockerOf: (serverId) => dependencies.hosts.hostOf(dependencies.database, serverId).docker,
+    },
+    commandId,
+    run.signal,
+  );
+  if (status === "failed") {
+    throw new Error("Console command failed");
   }
 }

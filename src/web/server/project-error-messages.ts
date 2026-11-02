@@ -1,5 +1,11 @@
 import { InvalidProjectMemberError, ProjectMemberNotFoundError } from "@/access";
 import {
+  ConsoleBusyError,
+  ConsoleCommandNotFoundError,
+  ConsoleUnavailableError,
+  InvalidConsoleCommandError,
+} from "@/console";
+import {
   DatabaseBackupInProgressError,
   DatabaseBackupNotFoundError,
   DatabaseBackupUnsupportedError,
@@ -54,14 +60,18 @@ import {
 } from "@/volumes";
 
 /**
- * Portuguese messages for errors of projects, members, deployments, domains, variables, tasks,
- * volumes and databases.
+ * Portuguese messages for errors of projects, members, the console, deployments, domains,
+ * variables, tasks, volumes and databases.
  */
 export const PROJECT_ERROR_MESSAGES: readonly (readonly [
   abstract new (...args: never[]) => Error,
   string,
 ])[] = [
   [ProjectNotFoundError, "Projeto não encontrado."],
+  [InvalidConsoleCommandError, "Digite um comando de até 2.000 caracteres, em uma linha só."],
+  [ConsoleBusyError, "Espere o comando anterior terminar antes de rodar outro."],
+  [ConsoleUnavailableError, "Faça o primeiro deploy antes de usar o console."],
+  [ConsoleCommandNotFoundError, "Comando não encontrado."],
   [
     InvalidProjectMemberError,
     "Não foi possível adicionar este usuário: ele já é membro, é administrador ou não existe.",
