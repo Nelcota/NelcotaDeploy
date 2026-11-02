@@ -2,9 +2,11 @@ import type { Logger } from "pino";
 
 import {
   claimNextJob,
+  assertJobOwnership,
   completeJob,
   failJob,
   type Job,
+  JobLeaseLostError,
   recoverExpiredJobs,
   releaseWorkerJobs,
   renewJobLeases,
@@ -13,7 +15,9 @@ import { recordWorkerHeartbeat } from "@/monitoring";
 
 import { dispatchJob } from "./job-dispatch";
 import { handleRecoveredJobs } from "./job-recovery";
+import { requeueFailedCleanups } from "./maintenance/cleanup-recovery";
 import { finishProjectMoves } from "./maintenance/project-moves";
+import { recoverFailedResources } from "./maintenance/resource-recovery";
 import { startScheduledDuties } from "./maintenance/scheduled-duties";
 import { ServerFleet } from "./servers/server-fleet";
 import type { WorkerDependencies } from "./worker.types";
@@ -27,6 +31,11 @@ const MOVE_CHECK_INTERVAL_IN_MS = 60_000;
 const SHUTDOWN_GRACE_IN_MS = 90_000;
 const ABORT_GRACE_IN_MS = 10_000;
 const MILLISECONDS_PER_SECOND = 1000;
+type ActiveJob = {
+  readonly job: Job;
+  readonly controller: AbortController;
+  readonly promise: Promise<void>;
+};
 
 type PeriodicDuty = () => Promise<void> | void;
 
@@ -57,7 +66,7 @@ function guardDuty(logger: Logger, name: string, duty: PeriodicDuty): () => Prom
 export class Worker {
   readonly #dependencies: WorkerDependencies;
   readonly #startedAt = new Date().toISOString();
-  readonly #active = new Map<string, Promise<void>>();
+  readonly #active = new Map<string, ActiveJob>();
   readonly #shutdown = new AbortController();
   /** Aborted only when running jobs outlive the shutdown grace period. */
   readonly #abortJobs = new AbortController();
@@ -75,7 +84,13 @@ export class Worker {
    */
   async run(): Promise<void> {
     const { database, workerId, logger } = this.#dependencies;
-    handleRecoveredJobs(database, logger, releaseWorkerJobs(database, workerId));
+    database.transaction(
+      () => {
+        handleRecoveredJobs(database, logger, releaseWorkerJobs(database, workerId));
+        recoverFailedResources(database, logger);
+      },
+      { behavior: "immediate" },
+    );
     this.#fleet.check();
     this.#heartbeat();
     this.#startPeriodicDuties();
@@ -111,40 +126,64 @@ export class Worker {
         return;
       }
       logger.info({ jobId: job.id, kind: job.kind, projectId: job.projectId }, "job claimed");
-      const execution = this.#execute(job).finally(() => this.#active.delete(job.id));
-      this.#active.set(job.id, execution);
+      const controller = new AbortController();
+      const signal = AbortSignal.any([this.#abortJobs.signal, controller.signal]);
+      const promise = this.#execute(job, signal).finally(() => this.#active.delete(job.id));
+      this.#active.set(job.id, { job, controller, promise });
     }
   }
 
-  async #execute(job: Job): Promise<void> {
+  async #execute(job: Job, signal: AbortSignal): Promise<void> {
     const { database, logger } = this.#dependencies;
     try {
       await dispatchJob(this.#dependencies, job, {
-        signal: this.#abortJobs.signal,
+        signal,
+        assertOwnership: () => assertJobOwnership(database, job),
         refreshContainers: async (serverId) => await this.#fleet.refreshServer(serverId),
       });
-      completeJob(database, job.id);
+      if (completeJob(database, job) === false) {
+        throw new JobLeaseLostError(job.id);
+      }
       logger.info({ jobId: job.id, kind: job.kind }, "job finished");
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      // Only a shutdown mid-job is worth retrying; other failures would fail the same way.
-      const outcome = failJob(database, job.id, {
-        errorMessage: message,
-        retryable: this.#abortJobs.signal.aborted,
-      });
-      if (this.#abortJobs.signal.aborted) {
-        handleRecoveredJobs(database, logger, [
-          {
-            id: job.id,
-            kind: job.kind,
-            deploymentId: job.deploymentId,
-            taskExecutionId: job.taskExecutionId,
-            outcome,
-          },
-        ]);
+      if (error instanceof JobLeaseLostError || signal.reason instanceof JobLeaseLostError) {
+        logger.warn({ jobId: job.id }, "job lease lost; the previous attempt stopped");
+        return;
       }
-      logger.error({ jobId: job.id, kind: job.kind, err: error, outcome }, "job failed");
+      this.#recordFailure(job, error);
     }
+  }
+
+  #recordFailure(job: Job, error: unknown): void {
+    const { database, logger } = this.#dependencies;
+    const message = error instanceof Error ? error.message : String(error);
+    const outcome = database.transaction(
+      (transaction) => {
+        const result = failJob(transaction, job, {
+          errorMessage: message,
+          retryable:
+            this.#abortJobs.signal.aborted ||
+            job.kind === "project_cleanup" ||
+            job.kind === "preview_cleanup",
+        });
+        if (result !== "lost") {
+          handleRecoveredJobs(database, logger, [
+            {
+              id: job.id,
+              kind: job.kind,
+              deploymentId: job.deploymentId,
+              taskExecutionId: job.taskExecutionId,
+              payload: job.payload,
+              reason: message,
+              outcome: result,
+            },
+          ]);
+        }
+        return result;
+      },
+      { behavior: "immediate" },
+    );
+    logger.error({ jobId: job.id, kind: job.kind, err: error, outcome }, "job failed");
   }
 
   #startPeriodicDuties(): void {
@@ -162,6 +201,9 @@ export class Worker {
       "moves",
       async () => await finishProjectMoves(this.#dependencies),
     );
+    every(MOVE_CHECK_INTERVAL_IN_MS, "cleanup-recovery", () => {
+      requeueFailedCleanups(this.#dependencies.database);
+    });
     const refreshContainers = guard(
       "containers",
       async () => await this.#fleet.refreshContainers(),
@@ -184,8 +226,19 @@ export class Worker {
       dockerAvailable: this.#fleet.applicationsReady(),
       dockerVersion: this.#fleet.localDockerVersion,
     });
-    renewJobLeases(database, { workerId, jobIds: [...this.#active.keys()] });
-    handleRecoveredJobs(database, this.#dependencies.logger, recoverExpiredJobs(database));
+    const active = [...this.#active.values()];
+    const renewed = renewJobLeases(database, { leases: active.map((entry) => entry.job) });
+    for (const entry of active) {
+      if (renewed.has(entry.job.id) === false) {
+        entry.controller.abort(new JobLeaseLostError(entry.job.id));
+      }
+    }
+    database.transaction(
+      () => {
+        handleRecoveredJobs(database, this.#dependencies.logger, recoverExpiredJobs(database));
+      },
+      { behavior: "immediate" },
+    );
   }
 
   async #drain(): Promise<void> {
@@ -203,7 +256,7 @@ export class Worker {
         clearInterval(timer);
       }
     }
-    const pending = [...this.#active.values()];
+    const pending = [...this.#active.values()].map((entry) => entry.promise);
     await Promise.race([Promise.allSettled(pending), Bun.sleep(SHUTDOWN_GRACE_IN_MS)]);
     this.#abortJobs.abort();
     await Promise.race([Promise.allSettled(pending), Bun.sleep(ABORT_GRACE_IN_MS)]);

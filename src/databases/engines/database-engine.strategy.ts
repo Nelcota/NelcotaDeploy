@@ -7,6 +7,12 @@ type DatabaseContainerSettings = {
   readonly command: readonly string[];
 };
 
+/** Commands that dump a database to a file inside its container and load it back. */
+type DatabaseBackupCommands = {
+  readonly dump: (path: string) => readonly string[];
+  readonly restore: (path: string) => readonly string[];
+};
+
 /** What differs between the database servers the platform runs. */
 export type DatabaseEngine = {
   /** Pinned image, so a redeploy never jumps to another major version. */
@@ -24,4 +30,6 @@ export type DatabaseEngine = {
   /** Command run inside the container to tell whether the server accepts connections. */
   readonly readinessCommand: readonly string[];
   readonly isReady: (result: ProcessResult) => boolean;
+  /** Null when the platform does not back the engine up. */
+  readonly backup: DatabaseBackupCommands | null;
 };

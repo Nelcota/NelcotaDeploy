@@ -117,34 +117,37 @@ export function addProjectVolume(
   request: { readonly projectId: string; readonly input: VolumeInput; readonly actor: Actor },
 ): ProjectVolume {
   const { projectId, input, actor } = request;
-  return database.transaction((transaction) => {
-    getProject(transaction, projectId);
-    const volumes = listProjectVolumes(transaction, projectId);
-    if (volumes.length >= MAX_VOLUMES_PER_PROJECT) {
-      throw new VolumeLimitError(MAX_VOLUMES_PER_PROJECT);
-    }
-    assertNoOverlap(volumes, input.mountPath);
-    const volume = {
-      id: Bun.randomUUIDv7(),
-      mountPath: input.mountPath,
-      attached: true,
-      deletionRequestedAt: null,
-      deletionError: null,
-      createdAt: new Date().toISOString(),
-    };
-    transaction
-      .insert(tables.projectVolumes)
-      .values({ ...volume, projectId })
-      .run();
-    recordAuditEvent(transaction, {
-      actor,
-      action: "volume.add",
-      targetType: "volume",
-      targetId: volume.id,
-      metadata: { projectId, mountPath: volume.mountPath },
-    });
-    return volume;
-  });
+  return database.transaction(
+    (transaction) => {
+      getProject(transaction, projectId);
+      const volumes = listProjectVolumes(transaction, projectId);
+      if (volumes.length >= MAX_VOLUMES_PER_PROJECT) {
+        throw new VolumeLimitError(MAX_VOLUMES_PER_PROJECT);
+      }
+      assertNoOverlap(volumes, input.mountPath);
+      const volume = {
+        id: Bun.randomUUIDv7(),
+        mountPath: input.mountPath,
+        attached: true,
+        deletionRequestedAt: null,
+        deletionError: null,
+        createdAt: new Date().toISOString(),
+      };
+      transaction
+        .insert(tables.projectVolumes)
+        .values({ ...volume, projectId })
+        .run();
+      recordAuditEvent(transaction, {
+        actor,
+        action: "volume.add",
+        targetType: "volume",
+        targetId: volume.id,
+        metadata: { projectId, mountPath: volume.mountPath },
+      });
+      return volume;
+    },
+    { behavior: "immediate" },
+  );
 }
 
 function getProjectVolume(
@@ -173,24 +176,27 @@ export function setVolumeAttached(
   change: VolumeChange & { readonly attached: boolean },
 ): void {
   const { projectId, volumeId, actor, attached } = change;
-  database.transaction((transaction) => {
-    const volume = getProjectVolume(transaction, projectId, volumeId);
-    if (volume.deletionRequestedAt != null) {
-      throw new VolumeBeingDeletedError(volumeId);
-    }
-    transaction
-      .update(tables.projectVolumes)
-      .set({ attached })
-      .where(eq(tables.projectVolumes.id, volumeId))
-      .run();
-    recordAuditEvent(transaction, {
-      actor,
-      action: attached ? "volume.attach" : "volume.detach",
-      targetType: "volume",
-      targetId: volumeId,
-      metadata: { projectId, mountPath: volume.mountPath },
-    });
-  });
+  database.transaction(
+    (transaction) => {
+      const volume = getProjectVolume(transaction, projectId, volumeId);
+      if (volume.deletionRequestedAt != null) {
+        throw new VolumeBeingDeletedError(volumeId);
+      }
+      transaction
+        .update(tables.projectVolumes)
+        .set({ attached })
+        .where(eq(tables.projectVolumes.id, volumeId))
+        .run();
+      recordAuditEvent(transaction, {
+        actor,
+        action: attached ? "volume.attach" : "volume.detach",
+        targetType: "volume",
+        targetId: volumeId,
+        metadata: { projectId, mountPath: volume.mountPath },
+      });
+    },
+    { behavior: "immediate" },
+  );
 }
 
 /**
@@ -205,38 +211,41 @@ export function setVolumeAttached(
  */
 export function requestVolumeDeletion(database: Database, change: VolumeChange): void {
   const { projectId, volumeId, actor } = change;
-  database.transaction((transaction) => {
-    const volume = getProjectVolume(transaction, projectId, volumeId);
-    if (volume.attached) {
-      throw new VolumeAttachedError(volumeId);
-    }
-    if (volume.deletionRequestedAt != null) {
-      throw new VolumeBeingDeletedError(volumeId);
-    }
-    const now = new Date();
-    transaction
-      .update(tables.projectVolumes)
-      .set({ deletionRequestedAt: now.toISOString(), deletionError: null })
-      .where(eq(tables.projectVolumes.id, volumeId))
-      .run();
-    enqueueJob(
-      transaction,
-      {
-        kind: "volume_delete",
-        projectId,
-        payload: { volumeId },
-        dedupeKey: `volume-delete:${volumeId}`,
-      },
-      now,
-    );
-    recordAuditEvent(transaction, {
-      actor,
-      action: "volume.delete",
-      targetType: "volume",
-      targetId: volumeId,
-      metadata: { projectId, mountPath: volume.mountPath },
-    });
-  });
+  database.transaction(
+    (transaction) => {
+      const volume = getProjectVolume(transaction, projectId, volumeId);
+      if (volume.attached) {
+        throw new VolumeAttachedError(volumeId);
+      }
+      if (volume.deletionRequestedAt != null) {
+        throw new VolumeBeingDeletedError(volumeId);
+      }
+      const now = new Date();
+      transaction
+        .update(tables.projectVolumes)
+        .set({ deletionRequestedAt: now.toISOString(), deletionError: null })
+        .where(eq(tables.projectVolumes.id, volumeId))
+        .run();
+      enqueueJob(
+        transaction,
+        {
+          kind: "volume_delete",
+          projectId,
+          payload: { volumeId },
+          dedupeKey: `volume-delete:${volumeId}`,
+        },
+        now,
+      );
+      recordAuditEvent(transaction, {
+        actor,
+        action: "volume.delete",
+        targetType: "volume",
+        targetId: volumeId,
+        metadata: { projectId, mountPath: volume.mountPath },
+      });
+    },
+    { behavior: "immediate" },
+  );
 }
 
 /**

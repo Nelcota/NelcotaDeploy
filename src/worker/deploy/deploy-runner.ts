@@ -7,6 +7,7 @@ import {
   ProjectNotApprovedError,
   transitionDeployment,
 } from "@/deployments";
+import { JobLeaseLostError } from "@/jobs";
 import { getProject } from "@/projects";
 
 import { DeploymentCancelledError } from "../worker.errors";
@@ -57,6 +58,8 @@ export async function runDeployment(
   jobSignal: AbortSignal,
 ): Promise<DeploymentOutcome> {
   const { database } = dependencies;
+  const assertOwnership = dependencies.assertOwnership ?? (() => undefined);
+  assertOwnership();
   const deployment = getDeployment(database, deploymentId);
   if (isTerminalStatus(deployment.status)) {
     return "skipped";
@@ -71,6 +74,7 @@ export async function runDeployment(
   using logs = new DeploymentLogWriter(database, deploymentId);
   using _cancellationWatch = watchCancellation(database, deploymentId, cancellation);
   const context: DeployContext = {
+    assertOwnership,
     deployment,
     project,
     logs,
@@ -86,9 +90,14 @@ export async function runDeployment(
       throw new ProjectNotApprovedError(project.id);
     }
     await deploy(dependencies, context);
+    assertOwnership();
     logs.flush();
     completeDeployment(database, deployment.id);
   } catch (error) {
+    assertOwnership();
+    if (error instanceof JobLeaseLostError || jobSignal.reason instanceof JobLeaseLostError) {
+      throw error;
+    }
     if (jobSignal.aborted && cancellation.signal.aborted === false) {
       await discardFailedContainer(dependencies.docker, context.state.containerName, logs);
       requeueDeployment(database, deployment.id);
@@ -99,6 +108,7 @@ export async function runDeployment(
     return cancelled ? "cancelled" : "failed";
   }
   // Cleanup cannot turn a committed deployment into a failed one or remove its live container.
+  assertOwnership();
   await finishDeployment(dependencies, context);
   return "succeeded";
 }
@@ -113,15 +123,21 @@ async function finishDeployment(
   dependencies: DeployRunnerDependencies,
   context: DeployContext,
 ): Promise<void> {
-  const { deployment, project, logs } = context;
+  const { deployment, project, logs, state } = context;
+  if (state.containerName == null) {
+    throw new Error(`Successful deployment ${deployment.id} has no container`);
+  }
   logs.system("Deployment succeeded");
   try {
     await removePreviousContainers(dependencies, logs, {
       projectId: project.id,
-      currentDeploymentId: deployment.id,
+      currentContainerName: state.containerName,
       previewId: deployment.previewId,
     });
   } catch (error) {
+    if (error instanceof JobLeaseLostError) {
+      throw error;
+    }
     logs.system(`Could not retire previous containers: ${errorMessageOf(error)}`, "warn");
   }
   await pruneOldImages(
@@ -138,6 +154,7 @@ async function recordFailure(
 ): Promise<void> {
   const { deployment, logs, state } = context;
   await discardFailedContainer(dependencies.docker, state.containerName, logs);
+  context.assertOwnership();
   const message = cancelled
     ? "Deployment cancelled by a user"
     : state.redact(errorMessageOf(error));

@@ -36,6 +36,7 @@ export type DeployRunnerDependencies = Pick<ServerHost, "runner" | "docker" | "g
     readonly database: Database;
     readonly secretBox: SecretBox;
     readonly config: DeployRunnerConfig;
+    readonly assertOwnership?: () => void;
   };
 
 /** Facts learned while deploying that the failure path needs. */
@@ -54,6 +55,7 @@ export class DeployState {
 
 /** The deployment being run and what its steps share. */
 export type DeployContext = {
+  readonly assertOwnership: () => void;
   readonly deployment: Deployment;
   readonly project: Project;
   readonly logs: DeploymentLogWriter;

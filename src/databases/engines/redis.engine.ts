@@ -29,4 +29,6 @@ export const redisEngine: DatabaseEngine = {
     const output = `${result.stdout}\n${result.stderr}`;
     return READY_REPLIES.some((reply) => output.includes(reply));
   },
+  // Usually a cache; restoring needs the server stopped and its append-only files replaced.
+  backup: null,
 };

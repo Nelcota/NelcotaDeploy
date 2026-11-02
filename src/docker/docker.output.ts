@@ -2,6 +2,34 @@ import { z } from "zod";
 
 import { DockerCommandError } from "./docker.errors";
 
+const MAX_PORT = 65_535;
+
+/** Reads exposed TCP ports from Docker image metadata, ignoring UDP and SCTP ports. */
+export function parseExposedPorts(output: string): readonly number[] {
+  let value: unknown;
+  try {
+    value = JSON.parse(output) as unknown;
+  } catch {
+    throw new DockerCommandError("Docker returned invalid exposed port JSON", 1);
+  }
+  const parsed = z.record(z.string(), z.unknown()).nullable().safeParse(value);
+  if (parsed.success === false) {
+    throw new DockerCommandError("Docker returned invalid exposed port metadata", 1);
+  }
+  const ports: number[] = [];
+  for (const key of Object.keys(parsed.data ?? {})) {
+    const match = /^(\d+)\/(tcp|udp|sctp)$/.exec(key);
+    const port = Number(match?.[1]);
+    if (Number.isInteger(port) === false || port < 1 || port > MAX_PORT) {
+      throw new DockerCommandError("Docker returned an invalid exposed port", 1);
+    }
+    if (match?.[2] === "tcp") {
+      ports.push(port);
+    }
+  }
+  return ports.toSorted((left, right) => left - right);
+}
+
 /**
  * Reads environment values without exposing malformed secret-bearing output in errors.
  *

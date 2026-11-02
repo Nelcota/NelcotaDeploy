@@ -6,10 +6,11 @@ import type { DatabaseEngineName } from "@/shared/schemas/database.schema";
 
 const MAX_ERROR_LENGTH = 500;
 
-export type DatabaseStatus = "provisioning" | "running" | "failed";
+export type DatabaseStatus = "provisioning" | "running" | "failed" | "restoring";
 
 /** What the worker needs to run or remove a database. */
 export type DatabaseRecord = {
+  readonly status: DatabaseStatus;
   readonly id: string;
   readonly projectId: string;
   readonly engine: DatabaseEngineName;
@@ -33,6 +34,7 @@ export function findDatabaseRecord(database: Database, databaseId: string): Data
   return (
     database
       .select({
+        status: tables.projectDatabases.status,
         id: tables.projectDatabases.id,
         projectId: tables.projectDatabases.projectId,
         engine: tables.projectDatabases.engine,

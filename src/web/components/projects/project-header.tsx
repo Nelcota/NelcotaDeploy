@@ -1,7 +1,8 @@
 import { Link, useRouterState } from "@tanstack/react-router";
-import { FolderGit2Icon, GitBranchIcon, GlobeIcon } from "lucide-react";
+import { GitBranchIcon, GlobeIcon } from "lucide-react";
 import { type ReactNode, useEffect, useRef } from "react";
 
+import { GitHubIcon } from "@/web/components/github/github.icon";
 import { ContainerStateBadge } from "@/web/components/layout/status-badge";
 import { ProjectActions } from "@/web/components/projects/project-actions";
 import type { ProjectDetails } from "@/web/components/projects/project-query";
@@ -56,7 +57,7 @@ function ProjectLinks({
         title={project.repositoryFullName}
         className={`${HEADER_LINK} inline-flex items-center gap-1.5`}
       >
-        <FolderGit2Icon aria-hidden className="size-3.5 shrink-0" />
+        <GitHubIcon aria-hidden className="size-3.5 shrink-0" />
         <span className="truncate">{project.repositoryFullName}</span>
         <span className="sr-only"> (repositório no GitHub, abre em nova aba)</span>
       </a>

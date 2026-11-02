@@ -12,7 +12,7 @@ export function ContainerCard({ details }: { readonly details: ProjectDetails })
   const container = currentContainer(details);
   const others = details.containers.length - (container == null ? 0 : 1);
   return (
-    <Card className="gap-3 p-5">
+    <Card className="h-full gap-3 p-5">
       <CardTitleRow icon={BoxIcon} title="Contêiner" />
       {container == null ? (
         <p className="py-2.5 text-sm text-muted-foreground">Nenhum contêiner em execução.</p>

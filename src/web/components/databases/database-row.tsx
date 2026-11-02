@@ -1,11 +1,13 @@
-import { DatabaseIcon, RotateCwIcon, Trash2Icon } from "lucide-react";
+import { RotateCwIcon, Trash2Icon } from "lucide-react";
 
 import type { DatabaseEngineName } from "@/shared/schemas/database.schema";
 import { ConfirmDialog } from "@/web/components/layout/confirm-dialog";
 import { ListRow, Tag } from "@/web/components/layout/layout";
 import { Button } from "@/web/components/ui/button";
 
+import { DatabaseBackupsButton } from "./database-backups-dialog";
 import { databaseState, ENGINE_LABELS, engineVersion } from "./database-state";
+import { EngineLogo } from "./engine-logo";
 
 type DatabaseItem = {
   readonly id: string;
@@ -16,13 +18,15 @@ type DatabaseItem = {
   readonly port: number;
   readonly user: string | null;
   readonly databaseName: string | null;
-  readonly status: "provisioning" | "running" | "failed";
+  readonly status: "provisioning" | "running" | "failed" | "restoring";
   readonly errorMessage: string | null;
   readonly deletionRequestedAt: string | null;
+  readonly backupsAvailable: boolean;
 };
 
 /** One database: engine, state, how applications reach it and the actions the user may take. */
 export function DatabaseRow({
+  projectId,
   database,
   canEdit,
   canDelete,
@@ -30,6 +34,7 @@ export function DatabaseRow({
   onRetry,
   onDelete,
 }: {
+  readonly projectId: string;
   readonly database: DatabaseItem;
   readonly canEdit: boolean;
   /** The user may delete data, which only admins can. */
@@ -43,7 +48,7 @@ export function DatabaseRow({
     <ListRow className="flex-col items-start sm:flex-row sm:items-center">
       <div className="min-w-0 flex-1 space-y-1.5">
         <p className="flex flex-wrap items-center gap-2">
-          <DatabaseIcon aria-hidden className="size-4 shrink-0 text-muted-foreground" />
+          <EngineLogo engine={database.engine} className="size-4 shrink-0" />
           <span className="text-sm font-medium">
             {ENGINE_LABELS[database.engine]} {engineVersion(database.imageTag)}
           </span>
@@ -55,6 +60,13 @@ export function DatabaseRow({
         )}
       </div>
       <div className="flex shrink-0 gap-2">
+        {database.backupsAvailable && database.deletionRequestedAt == null ? (
+          <DatabaseBackupsButton
+            projectId={projectId}
+            databaseId={database.id}
+            environmentKey={database.environmentKey}
+          />
+        ) : null}
         {canEdit && state.canRetry ? (
           <Button variant="outline" size="sm" disabled={busy} onClick={onRetry}>
             <RotateCwIcon aria-hidden />

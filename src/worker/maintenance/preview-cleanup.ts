@@ -34,12 +34,10 @@ async function removePreviewResources(
   const images = await docker.images.listForProject(preview.projectId, {
     previewId: preview.previewId,
   });
-  const removals = await Promise.allSettled(
-    images.map(async (image) => await docker.images.remove(image)),
-  );
+  await Promise.all(images.map(async (image) => await docker.images.remove(image)));
   return {
     containers: containers.length,
-    images: removals.filter((result) => result.status === "fulfilled").length,
+    images: images.length,
   };
 }
 
@@ -66,7 +64,7 @@ export async function runPreviewCleanupJob(
   }
   const { database, hosts, logger } = dependencies;
   const preview = getPreview(database, previewId);
-  if (preview == null) {
+  if (preview?.status !== "closed") {
     // The project and its previews were deleted; the project cleanup removed everything.
     return;
   }

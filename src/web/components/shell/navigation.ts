@@ -1,34 +1,36 @@
 import {
   ActivityIcon,
-  BoxesIcon,
   Building2Icon,
   ClockIcon,
   DatabaseIcon,
   GlobeIcon,
-  HomeIcon,
   KeyRoundIcon,
   type LucideIcon,
-  RocketIcon,
   ScrollTextIcon,
   ServerIcon,
   SettingsIcon,
-  ShieldCheckIcon,
   ShieldIcon,
   UsersIcon,
   VariableIcon,
 } from "lucide-react";
 
 import type { Permission } from "@/shared/roles";
+import {
+  AdministrationIcon,
+  DeploysIcon,
+  OverviewIcon,
+  ProjectsIcon,
+} from "@/web/components/shell/navigation.icons";
 
 /** Top-level areas of the panel; `group` places each one in the sidebar. */
 export const MAIN_AREAS = [
-  { to: "/", label: "Painel", icon: HomeIcon, exact: true, group: "overview" },
-  { to: "/projects", label: "Projetos", icon: BoxesIcon, exact: false, group: "overview" },
-  { to: "/deployments", label: "Deploys", icon: RocketIcon, exact: false, group: "overview" },
+  { to: "/", label: "Painel", icon: OverviewIcon, exact: true, group: "overview" },
+  { to: "/projects", label: "Projetos", icon: ProjectsIcon, exact: false, group: "overview" },
+  { to: "/deployments", label: "Deploys", icon: DeploysIcon, exact: false, group: "overview" },
   {
     to: "/settings",
     label: "Administração",
-    icon: ShieldCheckIcon,
+    icon: AdministrationIcon,
     exact: false,
     group: "account",
   },
@@ -36,8 +38,8 @@ export const MAIN_AREAS = [
 
 /** Pages of one project, shown as tabs under the project header. */
 export const PROJECT_SECTIONS = [
-  { to: "/projects/$projectId", label: "Visão geral", icon: HomeIcon, exact: true },
-  { to: "/projects/$projectId/deployments", label: "Deploys", icon: RocketIcon, exact: false },
+  { to: "/projects/$projectId", label: "Visão geral", icon: OverviewIcon, exact: true },
+  { to: "/projects/$projectId/deployments", label: "Deploys", icon: DeploysIcon, exact: false },
   { to: "/projects/$projectId/logs", label: "Logs", icon: ScrollTextIcon, exact: false },
   { to: "/projects/$projectId/metrics", label: "Métricas", icon: ActivityIcon, exact: false },
   { to: "/projects/$projectId/environment", label: "Variáveis", icon: VariableIcon, exact: false },

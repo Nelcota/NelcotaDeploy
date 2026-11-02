@@ -1,6 +1,7 @@
 import { type CommandRunner, type OutputStream, type ProcessResult, runProcess } from "@/process";
 import { isValidEnvironmentVariableKey } from "@/shared/schemas/environment-variable.schema";
 
+import { runContainerExec } from "./docker-exec";
 import { DockerImages, type DockerImageStore } from "./docker-images";
 import { DockerVolumes, type DockerVolumeStore } from "./docker-volumes";
 import {
@@ -13,7 +14,11 @@ import {
   type RunContainerOptions,
   stopContainerArgs,
 } from "./docker.commands";
-import { DockerCommandError, InvalidDockerArgumentError, UnmanagedResourceError } from "./docker.errors";
+import {
+  DockerCommandError,
+  InvalidDockerArgumentError,
+  UnmanagedResourceError,
+} from "./docker.errors";
 import {
   type ContainerInfo,
   type ContainerStats,
@@ -31,7 +36,9 @@ const MS_PER_SECOND = 1000;
 function assertApplicationEnvironment(values: Readonly<Record<string, string>>): void {
   for (const key of Object.keys(values)) {
     if (isValidEnvironmentVariableKey(key) === false) {
-      throw new InvalidDockerArgumentError(`Reserved or invalid application environment key: ${key}`);
+      throw new InvalidDockerArgumentError(
+        `Reserved or invalid application environment key: ${key}`,
+      );
     }
   }
 }
@@ -450,7 +457,8 @@ export class DockerCli {
   }
 
   /**
-   * Runs a command inside a platform container, without a shell.
+   * Runs an argument vector inside a platform container, supervised by its POSIX shell.
+   * Timeout and cancellation stop the command's descendants through Linux procfs.
    *
    * @param reference - Name or id.
    * @param command - Argument vector.
@@ -468,11 +476,15 @@ export class DockerCli {
     },
   ): Promise<ProcessResult> {
     const info = await this.#assertManaged(reference);
-    return await this.#run(["container", "exec", info.id, ...command], {
-      timeoutInMs: run.timeoutInMs,
-      onLine: run.onLine,
-      signal: run.signal,
-    });
+    return await runContainerExec(
+      this.#runner,
+      {
+        binary: this.#binary,
+        containerId: info.id,
+        command,
+      },
+      run,
+    );
   }
 }
 

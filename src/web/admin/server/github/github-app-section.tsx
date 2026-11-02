@@ -1,5 +1,4 @@
-import { GitBranchIcon } from "lucide-react";
-
+import { GitHubIcon } from "@/web/components/github/github.icon";
 import { Section } from "@/web/components/layout/layout";
 import { useCan } from "@/web/components/shell/use-permissions";
 
@@ -11,7 +10,7 @@ import { ConnectedGitHubApp } from "./github-app-connected";
 export function GitHubAppSection({ server }: { readonly server: ServerData }) {
   const can = useCan();
   return (
-    <Section icon={GitBranchIcon} title="GitHub">
+    <Section icon={GitHubIcon} title="GitHub">
       {server.githubApp == null ? (
         <ConnectGitHubApp canEdit={can("settings:write")} server={server} />
       ) : (

@@ -3,6 +3,24 @@ import { describe, expect, test } from "bun:test";
 import { detectExposedPort } from "./exposed-port";
 
 describe("detectExposedPort", () => {
+  test("ignores the EXPOSE of a discarded builder when the final stage has none", () => {
+    expect(detectExposedPort("FROM builder AS build\nEXPOSE 3000\nFROM nginx:alpine\n")).toBeNull();
+  });
+
+  test("inherits EXPOSE from a named stage used as the final base", () => {
+    expect(
+      detectExposedPort(
+        "FROM builder AS base\nEXPOSE 3000\nFROM scratch AS unused\nEXPOSE 9000\nFROM BASE\n",
+      ),
+    ).toBe(3000);
+  });
+
+  test("handles FROM platform options without carrying the preceding stage's port", () => {
+    expect(
+      detectExposedPort("FROM builder\nEXPOSE 3000\nFROM --platform=linux/amd64 scratch\n"),
+    ).toBeNull();
+  });
+
   test("reads the exposed port", () => {
     expect(detectExposedPort("FROM node:24\nEXPOSE 8080\nCMD node server.js")).toBe(8080);
   });

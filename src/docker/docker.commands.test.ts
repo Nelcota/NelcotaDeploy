@@ -73,6 +73,62 @@ describe("buildImageArgs", () => {
 });
 
 describe("runContainerArgs", () => {
+  const base = {
+    containerName: "app",
+    imageTag: "nelcota/api:abc",
+    network: "nelcota",
+    labels: {},
+    environmentKeys: [],
+    volumes: [],
+  };
+
+  test("enforces memory in MiB and fractional CPU cores", () => {
+    const args = runContainerArgs({ ...base, memoryLimitInMb: 128, cpuLimitInMillicores: 250 });
+
+    expect(args.slice(args.indexOf("--memory"), args.indexOf("--memory") + 2)).toEqual([
+      "--memory",
+      "128m",
+    ]);
+    expect(args.slice(args.indexOf("--cpus"), args.indexOf("--cpus") + 2)).toEqual([
+      "--cpus",
+      "0.25",
+    ]);
+  });
+
+  test("leaves resources unlimited for absent or null limits", () => {
+    for (const options of [base, { ...base, memoryLimitInMb: null, cpuLimitInMillicores: null }]) {
+      const args = runContainerArgs(options);
+      expect(args).not.toContain("--memory");
+      expect(args).not.toContain("--cpus");
+    }
+  });
+
+  test.each([0, -1, 63, 128.5, 1_048_577, Number.NaN, Number.POSITIVE_INFINITY])(
+    "rejects invalid memory limit %p",
+    (memoryLimitInMb) => {
+      expect(() => runContainerArgs({ ...base, memoryLimitInMb })).toThrow(
+        InvalidDockerArgumentError,
+      );
+    },
+  );
+
+  test.each([0, -1, 99, 250.5, 256_001, Number.NaN, Number.POSITIVE_INFINITY])(
+    "rejects invalid CPU limit %p",
+    (cpuLimitInMillicores) => {
+      expect(() => runContainerArgs({ ...base, cpuLimitInMillicores })).toThrow(
+        InvalidDockerArgumentError,
+      );
+    },
+  );
+
+  test.each([64, 1_048_576])("accepts memory boundary %p", (memoryLimitInMb) => {
+    expect(runContainerArgs({ ...base, memoryLimitInMb })).toContain(`${memoryLimitInMb}m`);
+  });
+
+  test.each([100, 256_000])("accepts CPU boundary %p", (cpuLimitInMillicores) => {
+    expect(runContainerArgs({ ...base, cpuLimitInMillicores })).toContain("--cpus");
+  });
+
   test("runs detached on the platform network without publishing host ports", () => {
     const args = runContainerArgs({
       containerName: "nelcota-api-abc",
@@ -115,20 +171,46 @@ describe("runContainerArgs", () => {
 
 test("prevents caller labels from enabling Docker-provider routing", () => {
   const args = runContainerArgs({
-    containerName: "app", imageTag: "nelcota/api:abc", network: "nelcota",
-    labels: { "traefik.enable": "true" }, environmentKeys: [], volumes: [],
+    containerName: "app",
+    imageTag: "nelcota/api:abc",
+    network: "nelcota",
+    labels: { "traefik.enable": "true" },
+    environmentKeys: [],
+    volumes: [],
   });
   expect(args).toContain("traefik.enable=false");
   expect(args).not.toContain("traefik.enable=true");
 });
 
-test.each(["PATH", "HOME", "LD_PRELOAD", "DYLD_INSERT_LIBRARIES", "BUILDX_CONFIG", "HTTP_PROXY", "BASH_ENV"])(
-  "refuses process-control variable %s in Docker arguments",
-  (key) => {
-    expect(() => buildImageArgs({dockerfilePath: "Dockerfile", contextPath: ".", imageTag: "nelcota/api:abc", labels: {}, buildArgKeys: [key]})).toThrow(InvalidDockerArgumentError);
-    expect(() => runContainerArgs({containerName: "app", imageTag: "nelcota/api:abc", network: "nelcota", labels: {}, environmentKeys: [key], volumes: []})).toThrow(InvalidDockerArgumentError);
-  },
-);
+test.each([
+  "PATH",
+  "HOME",
+  "LD_PRELOAD",
+  "DYLD_INSERT_LIBRARIES",
+  "BUILDX_CONFIG",
+  "HTTP_PROXY",
+  "BASH_ENV",
+])("refuses process-control variable %s in Docker arguments", (key) => {
+  expect(() =>
+    buildImageArgs({
+      dockerfilePath: "Dockerfile",
+      contextPath: ".",
+      imageTag: "nelcota/api:abc",
+      labels: {},
+      buildArgKeys: [key],
+    }),
+  ).toThrow(InvalidDockerArgumentError);
+  expect(() =>
+    runContainerArgs({
+      containerName: "app",
+      imageTag: "nelcota/api:abc",
+      network: "nelcota",
+      labels: {},
+      environmentKeys: [key],
+      volumes: [],
+    }),
+  ).toThrow(InvalidDockerArgumentError);
+});
 
 const PROXY_BASE = {
   network: "nelcota",

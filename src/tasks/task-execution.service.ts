@@ -101,45 +101,48 @@ export function enqueueExecution(
  * @returns Ids of the executions queued.
  */
 export function scheduleDueTasks(database: Database, now: Date, timeZone: string): string[] {
-  return database.transaction((transaction) => {
-    const due = transaction
-      .select({
-        id: tables.tasks.id,
-        projectId: tables.tasks.projectId,
-        schedule: tables.tasks.schedule,
-        nextRunAt: tables.tasks.nextRunAt,
-      })
-      .from(tables.tasks)
-      .innerJoin(tables.projects, eq(tables.projects.id, tables.tasks.projectId))
-      .where(
-        and(
-          eq(tables.tasks.enabled, true),
-          isNotNull(tables.tasks.schedule),
-          lte(tables.tasks.nextRunAt, now.toISOString()),
-          sql`${tables.projects.deletionRequestedAt} IS NULL`,
-        ),
-      )
-      .all();
-    const queued: string[] = [];
-    for (const task of due) {
-      const executionId = enqueueExecution(transaction, {
-        task,
-        trigger: "schedule",
-        scheduledFor: task.nextRunAt,
-        userId: null,
-        now,
-      });
-      if (executionId != null) {
-        queued.push(executionId);
+  return database.transaction(
+    (transaction) => {
+      const due = transaction
+        .select({
+          id: tables.tasks.id,
+          projectId: tables.tasks.projectId,
+          schedule: tables.tasks.schedule,
+          nextRunAt: tables.tasks.nextRunAt,
+        })
+        .from(tables.tasks)
+        .innerJoin(tables.projects, eq(tables.projects.id, tables.tasks.projectId))
+        .where(
+          and(
+            eq(tables.tasks.enabled, true),
+            isNotNull(tables.tasks.schedule),
+            lte(tables.tasks.nextRunAt, now.toISOString()),
+            sql`${tables.projects.deletionRequestedAt} IS NULL`,
+          ),
+        )
+        .all();
+      const queued: string[] = [];
+      for (const task of due) {
+        const executionId = enqueueExecution(transaction, {
+          task,
+          trigger: "schedule",
+          scheduledFor: task.nextRunAt,
+          userId: null,
+          now,
+        });
+        if (executionId != null) {
+          queued.push(executionId);
+        }
+        transaction
+          .update(tables.tasks)
+          .set({ nextRunAt: nextScheduledRun(task.schedule ?? "", now, timeZone).toISOString() })
+          .where(eq(tables.tasks.id, task.id))
+          .run();
       }
-      transaction
-        .update(tables.tasks)
-        .set({ nextRunAt: nextScheduledRun(task.schedule ?? "", now, timeZone).toISOString() })
-        .where(eq(tables.tasks.id, task.id))
-        .run();
-    }
-    return queued;
-  });
+      return queued;
+    },
+    { behavior: "immediate" },
+  );
 }
 
 /**
@@ -244,6 +247,11 @@ export function failTaskExecutions(
   database
     .update(tables.taskExecutions)
     .set({ status: "failed", errorMessage: reason, finishedAt: new Date().toISOString() })
-    .where(inArray(tables.taskExecutions.id, [...executionIds]))
+    .where(
+      and(
+        inArray(tables.taskExecutions.id, [...executionIds]),
+        inArray(tables.taskExecutions.status, ["queued", "running"]),
+      ),
+    )
     .run();
 }

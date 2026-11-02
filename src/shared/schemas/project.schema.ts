@@ -6,6 +6,13 @@ const MAX_RELATIVE_PATH_LENGTH = 200;
 const MAX_BRANCH_LENGTH = 200;
 const MAX_PORT = 65_535;
 const MAX_TOKEN_LENGTH = 512;
+/** Smallest memory limit Docker accepts with room for a real application, in MiB. */
+export const MIN_MEMORY_LIMIT_IN_MB = 64;
+export const MAX_MEMORY_LIMIT_IN_MB = 1_048_576;
+/** CPU limits offered in the interface, in thousandths of a core. */
+export const CPU_LIMIT_OPTIONS_IN_MILLICORES = [250, 500, 1000, 2000, 4000, 8000] as const;
+export const MIN_CPU_LIMIT_IN_MILLICORES = 100;
+export const MAX_CPU_LIMIT_IN_MILLICORES = 256_000;
 
 const SLUG_PATTERN = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/;
 const GITHUB_URL_PATTERN =
@@ -143,6 +150,27 @@ const healthCheckPathSchema = z
   })
   .transform((value) => (value === "" ? null : value));
 
+/** A whole number between the bounds, or blank for none. */
+function optionalLimit(bounds: {
+  readonly min: number;
+  readonly max: number;
+  readonly rangeMessage: string;
+}) {
+  return z
+    .union([
+      z
+        .literal("")
+        .or(z.null())
+        .transform(() => null),
+      z.coerce
+        .number()
+        .int("Informe um número inteiro")
+        .min(bounds.min, bounds.rangeMessage)
+        .max(bounds.max, bounds.rangeMessage),
+    ])
+    .default(null);
+}
+
 /** Fields accepted when creating or editing a project. */
 export const projectInputSchema = z.object({
   name: trimmedText(MAX_NAME_LENGTH),
@@ -172,6 +200,17 @@ export const projectInputSchema = z.object({
   autoDeploy: z.boolean(),
   autoApplyChanges: z.boolean(),
   previewsEnabled: z.boolean(),
+  // Blank means no limit, as Docker runs containers by default.
+  memoryLimitInMb: optionalLimit({
+    min: MIN_MEMORY_LIMIT_IN_MB,
+    max: MAX_MEMORY_LIMIT_IN_MB,
+    rangeMessage: "Use pelo menos 64 MB",
+  }),
+  cpuLimitInMillicores: optionalLimit({
+    min: MIN_CPU_LIMIT_IN_MILLICORES,
+    max: MAX_CPU_LIMIT_IN_MILLICORES,
+    rangeMessage: "Limite de CPU inválido",
+  }),
 });
 
 export type ProjectInput = z.infer<typeof projectInputSchema>;

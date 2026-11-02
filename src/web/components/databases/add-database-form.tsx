@@ -19,6 +19,7 @@ import {
 } from "@/web/components/ui/select";
 
 import { DEFAULT_ENVIRONMENT_KEYS, ENGINE_LABELS } from "./database-state";
+import { EngineLogo } from "./engine-logo";
 
 const ERROR_ID = "database-key-error";
 
@@ -118,6 +119,7 @@ function EngineSelect({
         <SelectContent>
           {DATABASE_ENGINES.map((name) => (
             <SelectItem key={name} value={name}>
+              <EngineLogo engine={name} className="size-4" />
               {ENGINE_LABELS[name]}
             </SelectItem>
           ))}

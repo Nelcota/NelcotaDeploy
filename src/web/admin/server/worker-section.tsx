@@ -9,8 +9,6 @@ import {
   LayersIcon,
   LockKeyholeIcon,
   type LucideIcon,
-  NetworkIcon,
-  RouteIcon,
 } from "lucide-react";
 import type { ReactNode } from "react";
 
@@ -19,9 +17,11 @@ import { useNow } from "@/web/components/clock/use-now";
 import { Section } from "@/web/components/layout/layout";
 import { StatusPill } from "@/web/components/layout/status-badge";
 
+import { DockerIcon } from "./docker.icon";
 import { offsiteBackupState } from "./offsite-backup-state";
 import type { ServerData } from "./server-data";
 import { ToggleStatusPill } from "./toggle-status-pill";
+import { TraefikIcon } from "./traefik.icon";
 
 function InfoRow({
   icon: Icon,
@@ -76,10 +76,10 @@ function WorkerRows({ worker }: { readonly worker: ServerData["worker"] }) {
 function ConfigurationRows({ server }: { readonly server: ServerData }) {
   return (
     <>
-      <InfoRow icon={NetworkIcon} label="Rede Docker">
+      <InfoRow icon={DockerIcon} label="Rede Docker">
         <span className="font-mono">{server.dockerNetwork}</span>
       </InfoRow>
-      <InfoRow icon={RouteIcon} label="Traefik">
+      <InfoRow icon={TraefikIcon} label="Traefik">
         <ToggleStatusPill
           on={server.traefikEnabled}
           onLabel="Ativado"

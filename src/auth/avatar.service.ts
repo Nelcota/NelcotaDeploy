@@ -84,21 +84,24 @@ export function saveUserAvatar(
   }
   const url = avatarUrl(userId, now);
   const content = Buffer.from(bytes);
-  database.transaction((transaction) => {
-    transaction
-      .insert(tables.userAvatars)
-      .values({ userId, contentType, content, updatedAt: now.toISOString() })
-      .onConflictDoUpdate({
-        target: tables.userAvatars.userId,
-        set: { contentType, content, updatedAt: now.toISOString() },
-      })
-      .run();
-    transaction
-      .update(tables.users)
-      .set({ image: url, updatedAt: now })
-      .where(eq(tables.users.id, userId))
-      .run();
-  });
+  database.transaction(
+    (transaction) => {
+      transaction
+        .insert(tables.userAvatars)
+        .values({ userId, contentType, content, updatedAt: now.toISOString() })
+        .onConflictDoUpdate({
+          target: tables.userAvatars.userId,
+          set: { contentType, content, updatedAt: now.toISOString() },
+        })
+        .run();
+      transaction
+        .update(tables.users)
+        .set({ image: url, updatedAt: now })
+        .where(eq(tables.users.id, userId))
+        .run();
+    },
+    { behavior: "immediate" },
+  );
   return url;
 }
 
@@ -110,14 +113,17 @@ export function saveUserAvatar(
  * @param now - Time of the change; injectable for tests.
  */
 export function removeUserAvatar(database: Database, userId: string, now: Date = new Date()): void {
-  database.transaction((transaction) => {
-    transaction.delete(tables.userAvatars).where(eq(tables.userAvatars.userId, userId)).run();
-    transaction
-      .update(tables.users)
-      .set({ image: null, updatedAt: now })
-      .where(eq(tables.users.id, userId))
-      .run();
-  });
+  database.transaction(
+    (transaction) => {
+      transaction.delete(tables.userAvatars).where(eq(tables.userAvatars.userId, userId)).run();
+      transaction
+        .update(tables.users)
+        .set({ image: null, updatedAt: now })
+        .where(eq(tables.users.id, userId))
+        .run();
+    },
+    { behavior: "immediate" },
+  );
 }
 
 /**

@@ -9,6 +9,7 @@ export class FakeDocker implements DockerEngine {
   readonly calls: string[] = [];
   readonly containers = new Map<string, ContainerInfo>();
   readonly environments = new Map<string, Readonly<Record<string, string>>>();
+  readonly definitions = new Map<string, Parameters<DockerEngine["runContainer"]>[0]>();
   readonly images = new FakeImages(this.calls);
   readonly volumes = new FakeVolumes(this.calls, (name) =>
     [...this.mounts.entries()].some(
@@ -59,6 +60,7 @@ export class FakeDocker implements DockerEngine {
     this.calls.push(`run ${options.containerName} env=${Object.keys(environmentValues).join(",")}`);
     this.mounts.set(options.containerName, options.volumes);
     this.environments.set(options.containerName, environmentValues);
+    this.definitions.set(options.containerName, options);
     const id = `id-${options.containerName}`;
     this.containers.set(options.containerName, {
       id,

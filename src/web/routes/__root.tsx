@@ -39,7 +39,7 @@ function RootComponent() {
       <ThemeProvider>
         <TooltipProvider delayDuration={300}>
           <Outlet />
-          <Toaster richColors closeButton position="bottom-right" />
+          <Toaster closeButton position="bottom-right" />
         </TooltipProvider>
       </ThemeProvider>
     </QueryClientProvider>

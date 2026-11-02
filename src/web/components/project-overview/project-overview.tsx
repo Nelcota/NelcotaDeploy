@@ -28,7 +28,7 @@ export function ProjectOverview({ projectId }: { readonly projectId: string }) {
         latest={recent.data?.[0] ?? null}
         latestLoading={recent.isPending}
       />
-      {/* Both rows share one three-column grid so card edges line up. */}
+      {/* Both two-card rows use the same three-column grid so card edges line up. */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <div className="min-w-0 lg:col-span-2">
           <ResourcesCard projectId={projectId} />
@@ -45,8 +45,10 @@ export function ProjectOverview({ projectId }: { readonly projectId: string }) {
         enabled={data.project.previewsEnabled}
       />
       {/* Domains, repository and branch are already in the project header. */}
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        <ContainerCard details={data} />
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+        <div className="min-w-0 lg:col-span-2">
+          <ContainerCard details={data} />
+        </div>
         <ConfigurationCard details={data} />
       </div>
     </div>

@@ -20,6 +20,7 @@ import { listMountedVolumes } from "@/volumes";
  * @throws {ProjectNotFoundError} When the project does not exist.
  */
 export function runtimeConfigFingerprint(database: Database, projectId: string): string {
+  const project = getProject(database, projectId);
   const variables = listEnvironmentVariables(database, projectId).map((variable) => [
     variable.key,
     variable.kind,
@@ -34,7 +35,11 @@ export function runtimeConfigFingerprint(database: Database, projectId: string):
     volume.mountPath,
   ]);
   const hasher = new Bun.CryptoHasher("sha256");
-  hasher.update(JSON.stringify({ variables, domains, volumes }));
+  const limits = {
+    memoryLimitInMb: project.memoryLimitInMb,
+    cpuLimitInMillicores: project.cpuLimitInMillicores,
+  };
+  hasher.update(JSON.stringify({ variables, domains, volumes, limits }));
   return hasher.digest("hex");
 }
 

@@ -37,6 +37,8 @@ export function createTestProject(
       autoDeploy: true,
       autoApplyChanges: true,
       previewsEnabled: false,
+      memoryLimitInMb: null,
+      cpuLimitInMillicores: null,
       ...overrides,
     },
     { actor: TEST_ACTOR, userId: null, isAdmin: true },

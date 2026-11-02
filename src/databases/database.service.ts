@@ -6,7 +6,7 @@ import { databaseContainerNameFor } from "@/docker";
 import {
   deleteEnvironmentVariable,
   listEnvironmentVariables,
-  saveEnvironmentVariable,
+  prepareEnvironmentVariable,
 } from "@/environments";
 import { enqueueJob } from "@/jobs";
 import { getProject } from "@/projects";
@@ -41,6 +41,8 @@ type ProjectDatabase = {
   readonly port: number;
   readonly user: string | null;
   readonly databaseName: string | null;
+  /** Whether the platform backs this engine up. */
+  readonly backupsAvailable: boolean;
   readonly status: DatabaseStatus;
   /** Why provisioning or deletion last failed. */
   readonly errorMessage: string | null;
@@ -88,6 +90,7 @@ function toView(row: {
     port: engine.port,
     user: engine.user,
     databaseName: engine.databaseName,
+    backupsAvailable: engine.backup != null,
   };
 }
 
@@ -111,7 +114,7 @@ export function listProjectDatabases(
     .map(toView);
 }
 
-function getProjectDatabase(
+export function getProjectDatabase(
   database: Database | Transaction,
   projectId: string,
   databaseId: string,
@@ -172,7 +175,7 @@ export async function createProjectDatabase(
   const id = Bun.randomUUIDv7();
   const password = generatePassword();
   const encryptedPassword = await secretBox.encrypt(password, passwordContext(id));
-  await saveEnvironmentVariable(database, secretBox, {
+  const writeVariable = await prepareEnvironmentVariable(database, secretBox, {
     projectId,
     input: {
       key: input.environmentKey,
@@ -193,39 +196,51 @@ export async function createProjectDatabase(
     deletionRequestedAt: null,
     createdAt: new Date().toISOString(),
   };
-  try {
-    insertDatabase(database, { row, projectId, encryptedPassword, actor });
-  } catch (error) {
-    // The variable would point to a database that does not exist.
-    removeConnectionVariable(database, { projectId, environmentKey: input.environmentKey, actor });
-    throw error;
-  }
+  database.transaction(
+    (transaction) => {
+      getProject(transaction, projectId);
+      if (listProjectDatabases(transaction, projectId).length >= MAX_DATABASES_PER_PROJECT) {
+        throw new DatabaseLimitError(MAX_DATABASES_PER_PROJECT);
+      }
+      if (
+        listEnvironmentVariables(transaction, projectId).some(
+          (variable) => variable.key === input.environmentKey,
+        )
+      ) {
+        throw new DatabaseVariableConflictError(input.environmentKey);
+      }
+      writeVariable(transaction);
+      insertDatabase(transaction, { row, projectId, encryptedPassword, actor });
+    },
+    { behavior: "immediate" },
+  );
   return toView(row);
 }
 
 function insertDatabase(
-  database: Database,
+  transaction: Transaction,
   insert: {
-    readonly row: Omit<ProjectDatabase, "host" | "port" | "user" | "databaseName">;
+    readonly row: Omit<
+      ProjectDatabase,
+      "host" | "port" | "user" | "databaseName" | "backupsAvailable"
+    >;
     readonly projectId: string;
     readonly encryptedPassword: string;
     readonly actor: Actor;
   },
 ): void {
   const { row, projectId, encryptedPassword, actor } = insert;
-  database.transaction((transaction) => {
-    transaction
-      .insert(tables.projectDatabases)
-      .values({ ...row, projectId, encryptedPassword, updatedAt: row.createdAt })
-      .run();
-    enqueueProvision(transaction, projectId, row.id);
-    recordAuditEvent(transaction, {
-      actor,
-      action: "database.create",
-      targetType: "database",
-      targetId: row.id,
-      metadata: { projectId, engine: row.engine, environmentKey: row.environmentKey },
-    });
+  transaction
+    .insert(tables.projectDatabases)
+    .values({ ...row, projectId, encryptedPassword, updatedAt: row.createdAt })
+    .run();
+  enqueueProvision(transaction, projectId, row.id);
+  recordAuditEvent(transaction, {
+    actor,
+    action: "database.create",
+    targetType: "database",
+    targetId: row.id,
+    metadata: { projectId, engine: row.engine, environmentKey: row.environmentKey },
   });
 }
 
@@ -248,24 +263,27 @@ function enqueueProvision(transaction: Transaction, projectId: string, databaseI
  */
 export function retryDatabaseProvision(database: Database, target: DatabaseTarget): void {
   const { projectId, databaseId, actor } = target;
-  database.transaction((transaction) => {
-    const found = getProjectDatabase(transaction, projectId, databaseId);
-    if (found.deletionRequestedAt != null) {
-      throw new DatabaseBeingDeletedError(databaseId);
-    }
-    if (found.status !== "failed") {
-      return;
-    }
-    setStatus(transaction, databaseId, { status: "provisioning", errorMessage: null });
-    enqueueProvision(transaction, projectId, databaseId);
-    recordAuditEvent(transaction, {
-      actor,
-      action: "database.retry",
-      targetType: "database",
-      targetId: databaseId,
-      metadata: { projectId },
-    });
-  });
+  database.transaction(
+    (transaction) => {
+      const found = getProjectDatabase(transaction, projectId, databaseId);
+      if (found.deletionRequestedAt != null) {
+        throw new DatabaseBeingDeletedError(databaseId);
+      }
+      if (found.status !== "failed") {
+        return;
+      }
+      setStatus(transaction, databaseId, { status: "provisioning", errorMessage: null });
+      enqueueProvision(transaction, projectId, databaseId);
+      recordAuditEvent(transaction, {
+        actor,
+        action: "database.retry",
+        targetType: "database",
+        targetId: databaseId,
+        metadata: { projectId },
+      });
+    },
+    { behavior: "immediate" },
+  );
 }
 
 /**
@@ -279,40 +297,43 @@ export function retryDatabaseProvision(database: Database, target: DatabaseTarge
  */
 export function requestDatabaseDeletion(database: Database, target: DatabaseTarget): void {
   const { projectId, databaseId, actor } = target;
-  const found = database.transaction((transaction) => {
-    const existing = getProjectDatabase(transaction, projectId, databaseId);
-    if (existing.deletionRequestedAt != null) {
-      throw new DatabaseBeingDeletedError(databaseId);
-    }
-    const now = new Date();
-    transaction
-      .update(tables.projectDatabases)
-      .set({
-        deletionRequestedAt: now.toISOString(),
-        errorMessage: null,
-        updatedAt: now.toISOString(),
-      })
-      .where(eq(tables.projectDatabases.id, databaseId))
-      .run();
-    enqueueJob(
-      transaction,
-      {
-        kind: "database_delete",
-        projectId,
-        payload: { databaseId },
-        dedupeKey: `database-delete:${databaseId}`,
-      },
-      now,
-    );
-    recordAuditEvent(transaction, {
-      actor,
-      action: "database.delete",
-      targetType: "database",
-      targetId: databaseId,
-      metadata: { projectId, engine: existing.engine },
-    });
-    return existing;
-  });
+  const found = database.transaction(
+    (transaction) => {
+      const existing = getProjectDatabase(transaction, projectId, databaseId);
+      if (existing.deletionRequestedAt != null) {
+        throw new DatabaseBeingDeletedError(databaseId);
+      }
+      const now = new Date();
+      transaction
+        .update(tables.projectDatabases)
+        .set({
+          deletionRequestedAt: now.toISOString(),
+          errorMessage: null,
+          updatedAt: now.toISOString(),
+        })
+        .where(eq(tables.projectDatabases.id, databaseId))
+        .run();
+      enqueueJob(
+        transaction,
+        {
+          kind: "database_delete",
+          projectId,
+          payload: { databaseId },
+          dedupeKey: `database-delete:${databaseId}`,
+        },
+        now,
+      );
+      recordAuditEvent(transaction, {
+        actor,
+        action: "database.delete",
+        targetType: "database",
+        targetId: databaseId,
+        metadata: { projectId, engine: existing.engine },
+      });
+      return existing;
+    },
+    { behavior: "immediate" },
+  );
   removeConnectionVariable(database, { projectId, environmentKey: found.environmentKey, actor });
 }
 

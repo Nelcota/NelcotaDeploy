@@ -35,6 +35,8 @@ export type CommandRunner = (
 
 /** Bytes of output kept in a result when the caller sets no limit. */
 export const DEFAULT_MAX_CAPTURED_BYTES = 1_048_576;
+const MAX_OUTPUT_LINE_LENGTH = 65_536;
+const OMITTED_LINE = "[Output line omitted: exceeds 65536 characters]";
 
 /** Variables a child process may inherit. Platform secrets are deliberately not in this list. */
 const INHERITED_VARIABLES = [
@@ -80,18 +82,36 @@ export async function readLines(
   onLine: (line: string) => void,
 ): Promise<void> {
   const decoder = new TextDecoder();
-  let pending = "";
-  for await (const chunk of stream) {
-    pending += decoder.decode(chunk, { stream: true });
-    const lines = pending.split(/\r?\n|\r/);
-    pending = lines.pop() ?? "";
-    for (const line of lines) {
-      onLine(line);
+  const state = { pending: "", discarding: false, endedWithCarriageReturn: false };
+  const consume = (text: string) => {
+    if (text === "") {
+      return;
     }
+    const value = state.endedWithCarriageReturn && text.startsWith("\n") ? text.slice(1) : text;
+    state.endedWithCarriageReturn = value.endsWith("\r");
+    for (const [index, fragment] of value.split(/\r\n|\n|\r/).entries()) {
+      if (index > 0) {
+        onLine(state.discarding ? OMITTED_LINE : state.pending);
+        state.pending = "";
+        state.discarding = false;
+      }
+      if (state.discarding) {
+        continue;
+      }
+      if (state.pending.length + fragment.length > MAX_OUTPUT_LINE_LENGTH) {
+        state.pending = "";
+        state.discarding = true;
+        continue;
+      }
+      state.pending += fragment;
+    }
+  };
+  for await (const chunk of stream) {
+    consume(decoder.decode(chunk, { stream: true }));
   }
-  pending += decoder.decode();
-  if (pending !== "") {
-    onLine(pending);
+  consume(decoder.decode());
+  if (state.pending !== "" || state.discarding) {
+    onLine(state.discarding ? OMITTED_LINE : state.pending);
   }
 }
 

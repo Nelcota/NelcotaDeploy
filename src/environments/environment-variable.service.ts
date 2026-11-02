@@ -33,7 +33,7 @@ function encryptionContext(environmentId: string, key: string): string {
   return `environment:${environmentId}:${key}`;
 }
 
-function productionEnvironmentId(database: Database, projectId: string): string {
+function productionEnvironmentId(database: Database | Transaction, projectId: string): string {
   getProject(database, projectId);
   const environment = database
     .select({ id: tables.environments.id })
@@ -60,7 +60,7 @@ function productionEnvironmentId(database: Database, projectId: string): string 
  * @throws {ProjectNotFoundError} When the project does not exist.
  */
 export function listEnvironmentVariables(
-  database: Database,
+  database: Database | Transaction,
   projectId: string,
 ): EnvironmentVariableView[] {
   const environmentId = productionEnvironmentId(database, projectId);
@@ -101,7 +101,7 @@ export function listEnvironmentVariables(
  * @param change - Project id, validated variable and who changes it.
  * @throws {ProjectNotFoundError} When the project does not exist.
  */
-export async function saveEnvironmentVariable(
+export async function prepareEnvironmentVariable(
   database: Database,
   secretBox: SecretBox,
   {
@@ -113,14 +113,15 @@ export async function saveEnvironmentVariable(
     readonly input: EnvironmentVariableInput;
     readonly actor: Actor;
   },
-): Promise<void> {
+): Promise<(transaction: Transaction) => void> {
   const environmentId = productionEnvironmentId(database, projectId);
   const keepExistingSecret = input.kind === "secret" && input.value === "";
   const encryptedValue =
     input.kind === "secret" && keepExistingSecret === false
       ? await secretBox.encrypt(input.value, encryptionContext(environmentId, input.key))
       : null;
-  database.transaction((transaction) => {
+  return (transaction) => {
+    getProject(transaction, projectId);
     const existing = findVariable(transaction, environmentId, input.key);
     const previousTime = existing == null ? 0 : Date.parse(existing.updatedAt);
     if (Number.isFinite(previousTime) === false) {
@@ -147,7 +148,17 @@ export async function saveEnvironmentVariable(
       targetId: projectId,
       metadata: { key: input.key, kind: input.kind },
     });
-  });
+  };
+}
+
+/** Encrypts a variable and commits its audited write. */
+export async function saveEnvironmentVariable(
+  database: Database,
+  secretBox: SecretBox,
+  change: Parameters<typeof prepareEnvironmentVariable>[2],
+): Promise<void> {
+  const write = await prepareEnvironmentVariable(database, secretBox, change);
+  database.transaction(write, { behavior: "immediate" });
 }
 
 type VariableValues = {
@@ -223,28 +234,31 @@ export function deleteEnvironmentVariable(
   }: { readonly projectId: string; readonly variableId: string; readonly actor: Actor },
 ): void {
   const environmentId = productionEnvironmentId(database, projectId);
-  database.transaction((transaction) => {
-    const deleted = transaction
-      .delete(tables.environmentVariables)
-      .where(
-        and(
-          eq(tables.environmentVariables.id, variableId),
-          eq(tables.environmentVariables.environmentId, environmentId),
-        ),
-      )
-      .returning({ key: tables.environmentVariables.key })
-      .get();
-    if (deleted == null) {
-      throw new EnvironmentVariableNotFoundError(variableId);
-    }
-    recordAuditEvent(transaction, {
-      actor,
-      action: "environment_variable.delete",
-      targetType: "project",
-      targetId: projectId,
-      metadata: { key: deleted.key },
-    });
-  });
+  database.transaction(
+    (transaction) => {
+      const deleted = transaction
+        .delete(tables.environmentVariables)
+        .where(
+          and(
+            eq(tables.environmentVariables.id, variableId),
+            eq(tables.environmentVariables.environmentId, environmentId),
+          ),
+        )
+        .returning({ key: tables.environmentVariables.key })
+        .get();
+      if (deleted == null) {
+        throw new EnvironmentVariableNotFoundError(variableId);
+      }
+      recordAuditEvent(transaction, {
+        actor,
+        action: "environment_variable.delete",
+        targetType: "project",
+        targetId: projectId,
+        metadata: { key: deleted.key },
+      });
+    },
+    { behavior: "immediate" },
+  );
 }
 
 /**

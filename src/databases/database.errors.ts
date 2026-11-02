@@ -37,3 +37,35 @@ export class ProjectHasDatabasesError extends Error {
     this.name = "ProjectHasDatabasesError";
   }
 }
+
+/** Thrown when backing up or restoring a database whose engine the platform does not back up. */
+export class DatabaseBackupUnsupportedError extends Error {
+  constructor(engine: string) {
+    super(`Backups are not available for ${engine} databases`);
+    this.name = "DatabaseBackupUnsupportedError";
+  }
+}
+
+/** Thrown when backing up or restoring a database that is not running. */
+export class DatabaseNotRunningError extends Error {
+  constructor(databaseId: string, status: string) {
+    super(`Database ${databaseId} is ${status}, not running`);
+    this.name = "DatabaseNotRunningError";
+  }
+}
+
+/** Thrown when a backup of the database is already queued or running. */
+export class DatabaseBackupInProgressError extends Error {
+  constructor(databaseId: string) {
+    super(`A backup of database ${databaseId} is already in progress`);
+    this.name = "DatabaseBackupInProgressError";
+  }
+}
+
+/** Thrown when a backup does not exist, belongs to another database or cannot be restored. */
+export class DatabaseBackupNotFoundError extends Error {
+  constructor(backupId: string) {
+    super(`Backup ${backupId} not found or not restorable`);
+    this.name = "DatabaseBackupNotFoundError";
+  }
+}

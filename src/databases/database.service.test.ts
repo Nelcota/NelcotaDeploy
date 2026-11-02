@@ -50,6 +50,31 @@ async function setup() {
 }
 
 describe("createProjectDatabase", () => {
+  test("admits only one concurrent creation for a connection key without deleting its value", async () => {
+    const { database, secretBox, project, create } = await setup();
+    const results = await Promise.allSettled([create(), create()]);
+    expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(1);
+    const record = listProjectDatabases(database, project.id).at(0);
+    const values = await resolveEnvironment(database, secretBox, { projectId: project.id });
+    expect(record).toBeDefined();
+    expect(values.runtime["DATABASE_URL"]).toContain(record?.host ?? "missing-host");
+    const rejected = results.find((result) => result.status === "rejected");
+    expect(rejected?.status === "rejected" ? rejected.reason : null).toBeInstanceOf(
+      DatabaseVariableConflictError,
+    );
+  });
+
+  test("enforces the database limit across concurrent encrypted writes", async () => {
+    const { database, project, create } = await setup();
+    const results = await Promise.allSettled(
+      Array.from({ length: MAX_DATABASES_PER_PROJECT + 2 }, (_, index) => create(`DB_${index}`)),
+    );
+    expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(
+      MAX_DATABASES_PER_PROJECT,
+    );
+    expect(listProjectDatabases(database, project.id)).toHaveLength(MAX_DATABASES_PER_PROJECT);
+    expect(listEnvironmentVariables(database, project.id)).toHaveLength(MAX_DATABASES_PER_PROJECT);
+  });
   test("saves the connection URL as a secret variable kept out of previews", async () => {
     const { database, secretBox, project, create } = await setup();
 
@@ -193,7 +218,10 @@ describe("retryDatabaseProvision", () => {
     const { database, project, create, target } = await setup();
     const created = await create();
     const job = claimNextJob(database, "worker-1");
-    failJob(database, job?.id ?? "", { errorMessage: "timeout", retryable: false });
+    if (job == null) {
+      throw new Error("Expected a claimed database job");
+    }
+    failJob(database, job, { errorMessage: "timeout", retryable: false });
     markDatabaseFailed(database, created.id, "timeout");
 
     retryDatabaseProvision(database, target(created.id));

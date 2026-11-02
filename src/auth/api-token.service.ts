@@ -40,27 +40,30 @@ export function createApiToken(
 ): { id: string; token: string } {
   const token = `${TOKEN_PREFIX}${Buffer.from(crypto.getRandomValues(new Uint8Array(TOKEN_RANDOM_BYTES))).toString("base64url")}`;
   const id = Bun.randomUUIDv7();
-  database.transaction((transaction) => {
-    transaction
-      .insert(tables.apiTokens)
-      .values({
-        id,
-        name: input.name,
-        tokenHash: hashToken(token),
-        scopes: [...new Set(input.scopes)],
-        createdByUserId: input.createdByUserId,
-        expiresAt: input.expiresAt,
-        createdAt: new Date().toISOString(),
-      })
-      .run();
-    recordAuditEvent(transaction, {
-      actor,
-      action: "api_token.create",
-      targetType: "api_token",
-      targetId: id,
-      metadata: { name: input.name, scopes: input.scopes },
-    });
-  });
+  database.transaction(
+    (transaction) => {
+      transaction
+        .insert(tables.apiTokens)
+        .values({
+          id,
+          name: input.name,
+          tokenHash: hashToken(token),
+          scopes: [...new Set(input.scopes)],
+          createdByUserId: input.createdByUserId,
+          expiresAt: input.expiresAt,
+          createdAt: new Date().toISOString(),
+        })
+        .run();
+      recordAuditEvent(transaction, {
+        actor,
+        action: "api_token.create",
+        targetType: "api_token",
+        targetId: id,
+        metadata: { name: input.name, scopes: input.scopes },
+      });
+    },
+    { behavior: "immediate" },
+  );
   return { id, token };
 }
 
@@ -136,17 +139,20 @@ export function listApiTokens(database: Database) {
  * @param actor - Who revokes it.
  */
 export function revokeApiToken(database: Database, tokenId: string, actor: Actor): void {
-  database.transaction((transaction) => {
-    transaction
-      .update(tables.apiTokens)
-      .set({ revokedAt: new Date().toISOString() })
-      .where(and(eq(tables.apiTokens.id, tokenId), isNull(tables.apiTokens.revokedAt)))
-      .run();
-    recordAuditEvent(transaction, {
-      actor,
-      action: "api_token.revoke",
-      targetType: "api_token",
-      targetId: tokenId,
-    });
-  });
+  database.transaction(
+    (transaction) => {
+      transaction
+        .update(tables.apiTokens)
+        .set({ revokedAt: new Date().toISOString() })
+        .where(and(eq(tables.apiTokens.id, tokenId), isNull(tables.apiTokens.revokedAt)))
+        .run();
+      recordAuditEvent(transaction, {
+        actor,
+        action: "api_token.revoke",
+        targetType: "api_token",
+        targetId: tokenId,
+      });
+    },
+    { behavior: "immediate" },
+  );
 }

@@ -20,7 +20,7 @@
     "typecheck": "tsc --noEmit",
     "knip": "knip",
     "package-size": "bun run lint/check-package-size.ts",
-    "test": "bun test --path-ignore-patterns='**/*.integration.test.ts'",
+    "test": "bun test ./src ./lint --path-ignore-patterns='**/*.integration.test.ts'",
     "ui:review": "bun run src/ui-review/main.ts",
     "test:docker": "bun test integration.test",
     "check": "bun run format:check && bun run lint && bun run typecheck && bun run knip && bun run package-size && bun run test",

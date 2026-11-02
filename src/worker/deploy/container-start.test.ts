@@ -43,6 +43,8 @@ describe("startContainer volumes", () => {
     const docker = new FakeDocker();
     using logs = new DeploymentLogWriter(database, deploymentId);
     const context = {
+      assertOwnership: () => undefined,
+      signal: new AbortController().signal,
       deployment: getDeployment(database, deploymentId),
       project,
       logs,

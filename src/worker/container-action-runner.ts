@@ -1,5 +1,6 @@
 import { eq } from "drizzle-orm";
 
+import { listProjectDatabases } from "@/databases";
 import { type Database, tables } from "@/db";
 import { type ContainerAction, getDeployment } from "@/deployments";
 import { type DockerEngine, LABELS, volumeNameFor } from "@/docker";
@@ -9,6 +10,10 @@ import { getProject } from "@/projects";
 import type { RouteFiles } from "@/routing";
 import { failVolumeDeletion, finishVolumeDeletion } from "@/volumes";
 
+import {
+  type BackupStorage,
+  deleteStoredDatabaseBackups,
+} from "./databases/database-backup-runner";
 import type { WorkerDependencies } from "./worker.types";
 
 /** What cleaning a project off one server needs: its Docker and its proxy's route files. */
@@ -75,6 +80,12 @@ export async function removeProjectResources(
   const volumeRemovals = await Promise.allSettled(
     volumes.map(async (volume) => await docker.volumes.remove(volume)),
   );
+  const failures = [...imageRemovals, ...volumeRemovals].flatMap((result) =>
+    result.status === "rejected" ? [result.reason as unknown] : [],
+  );
+  if (failures.length > 0) {
+    throw new AggregateError(failures, `Could not remove all resources of project ${projectId}`);
+  }
   return {
     containers: containers.length,
     images: imageRemovals.filter((result) => result.status === "fulfilled").length,
@@ -118,24 +129,24 @@ export async function runVolumeDeletion(
  * project row and its history.
  *
  * @remarks
- * A server that cannot be reached does not block the deletion: the project row goes anyway,
- * and the worker removes containers of deleted projects when that server is back.
+ * The deletion request stays until every server was cleaned. Failed cleanup jobs retry
+ * after a server returns, including when only volumes are left there.
  *
  * @param database - Database.
  * @param servers - Docker and route files of each server the project ran on.
- * @param projectId - Project being deleted.
+ * @param target - Project being deleted and its backup storage, when configured.
  * @returns How many containers, images and volumes were removed, and the errors of unreachable
  *   servers.
  */
 export async function runProjectCleanup(
   database: Database,
   servers: readonly ProjectServer[],
-  projectId: string,
-): Promise<{ containers: number; images: number; volumes: number; failures: unknown[] }> {
+  target: { readonly projectId: string; readonly storage: BackupStorage | null },
+): Promise<{ containers: number; images: number; volumes: number }> {
+  const { projectId, storage } = target;
   const results = await Promise.allSettled(
     servers.map(async (server) => await removeProjectResources(server, projectId)),
   );
-  database.delete(tables.projects).where(eq(tables.projects.id, projectId)).run();
   const removed = { containers: 0, images: 0, volumes: 0, failures: [] as unknown[] };
   for (const result of results) {
     if (result.status === "rejected") {
@@ -146,7 +157,21 @@ export async function runProjectCleanup(
     removed.images += result.value.images;
     removed.volumes += result.value.volumes;
   }
-  return removed;
+  if (removed.failures.length > 0) {
+    throw new AggregateError(
+      removed.failures,
+      `Project ${projectId} still has resources to remove`,
+    );
+  }
+  if (storage != null) {
+    await Promise.all(
+      listProjectDatabases(database, projectId).map(
+        async (record) => await deleteStoredDatabaseBackups(storage, record.id),
+      ),
+    );
+  }
+  database.delete(tables.projects).where(eq(tables.projects.id, projectId)).run();
+  return { containers: removed.containers, images: removed.images, volumes: removed.volumes };
 }
 
 /**

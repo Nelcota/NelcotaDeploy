@@ -57,6 +57,8 @@ const api = createProject(
     autoDeploy: true,
     autoApplyChanges: true,
     previewsEnabled: true,
+    memoryLimitInMb: null,
+    cpuLimitInMillicores: null,
   },
   { actor: ACTOR, userId: null, isAdmin: true },
 );
@@ -74,6 +76,8 @@ createProject(
     autoDeploy: false,
     autoApplyChanges: true,
     previewsEnabled: false,
+    memoryLimitInMb: null,
+    cpuLimitInMillicores: null,
   },
   { actor: ACTOR, userId: null, isAdmin: false },
 );

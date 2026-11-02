@@ -5,7 +5,12 @@ import { claimNextJob } from "@/jobs";
 import { taskInputSchema } from "@/shared/schemas/task.schema";
 import { createTestProject, TEST_ACTOR } from "@/testing";
 
-import { scheduleDueTasks } from "./task-execution.service";
+import {
+  failTaskExecutions,
+  listTaskExecutions,
+  scheduleDueTasks,
+  updateTaskExecution,
+} from "./task-execution.service";
 import { InvalidScheduleError, TaskRunningError } from "./task.errors";
 import { createTask, deleteTask, listTasks, runTask } from "./task.service";
 
@@ -24,6 +29,33 @@ function input(overrides: Record<string, unknown> = {}) {
 }
 
 describe("tasks", () => {
+  test("crash recovery preserves a task's recorded failure instead of replacing its reason", () => {
+    const database = openMemoryDatabase();
+    const project = createTestProject(database);
+    const taskId = createTask(database, {
+      projectId: project.id,
+      input: input(),
+      actor: TEST_ACTOR,
+      userId: null,
+      timeZone: TIME_ZONE,
+    });
+    const executionId = runTask(database, {
+      projectId: project.id,
+      taskId,
+      trigger: "manual",
+      actor: TEST_ACTOR,
+      userId: null,
+    });
+    updateTaskExecution(database, executionId, {
+      status: "failed",
+      errorMessage: "Task exceeded its timeout",
+    });
+    failTaskExecutions(database, [executionId], "Generic job failure");
+    expect(
+      listTaskExecutions(database, { projectId: project.id, taskId, limit: 10 }).at(0)
+        ?.errorMessage,
+    ).toBe("Task exceeded its timeout");
+  });
   test("refuses deletion while a worker owns a task execution", () => {
     const database = openMemoryDatabase();
     const project = createTestProject(database);

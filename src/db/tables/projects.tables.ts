@@ -33,6 +33,9 @@ export const projects = sqliteTable(
     autoApplyChanges: integer("auto_apply_changes", { mode: "boolean" }).notNull().default(true),
     // When set, pull requests to the project's branch get their own temporary deployment.
     previewsEnabled: integer("previews_enabled", { mode: "boolean" }).notNull().default(false),
+    // Limits of the application container; null leaves it unlimited, as Docker does.
+    memoryLimitInMb: integer("memory_limit_in_mb"),
+    cpuLimitInMillicores: integer("cpu_limit_in_millicores"),
     deploymentsApproved: integer("deployments_approved", { mode: "boolean" })
       .notNull()
       .default(false),
@@ -140,7 +143,9 @@ export const projectDatabases = sqliteTable(
     // Variable of the project that receives the connection URL.
     environmentKey: text("environment_key").notNull(),
     encryptedPassword: text("encrypted_password").notNull(),
-    status: text("status", { enum: ["provisioning", "running", "failed"] }).notNull(),
+    status: text("status", {
+      enum: ["provisioning", "running", "failed", "restoring"],
+    }).notNull(),
     errorMessage: text("error_message"),
     // Set when deletion is requested; the worker removes the container and its data, then the row.
     deletionRequestedAt: text("deletion_requested_at"),

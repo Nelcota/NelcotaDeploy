@@ -40,7 +40,9 @@ export async function deploy(
     projectId: project.id,
     forPreview: deployment.previewId != null,
   });
-  const repositoryToken = await cloneToken(dependencies, context);
+  const reused =
+    deployment.sourceDeploymentId == null ? null : await reuseImage(docker, deployment, logs);
+  const repositoryToken = reused == null ? await cloneToken(dependencies, context) : null;
   const sourceSecrets = await readDeploymentSecrets(
     database,
     secretBox,
@@ -54,8 +56,6 @@ export async function deploy(
   context.state.useRedactor(createRedactor([...secretValues, repositoryToken ?? ""]));
   logs.useRedactor(context.state.redact);
 
-  const reused =
-    deployment.sourceDeploymentId == null ? null : await reuseImage(docker, deployment, logs);
   if (reused != null && deployment.internalPort == null) {
     throw new Error(
       "Cannot reuse a legacy image without its recorded container port; run a new deployment first",
@@ -69,6 +69,7 @@ export async function deploy(
         })
       : { imageTag: reused, detectedPort: deployment.internalPort };
   assertNotCancelled(signal);
+  context.assertOwnership();
 
   // Routing and the health check use the port this build found in the Dockerfile.
   const running: DeployContext =
@@ -82,18 +83,19 @@ export async function deploy(
     // A reused image keeps the build variables it was built with, copied from its source.
     buildConfigHash: reused == null ? buildConfigHash : null,
   });
+  context.assertOwnership();
   await checkHealth(dependencies, running, containerName);
+  context.assertOwnership();
   await routeTrafficTo(dependencies, running, containerName);
 }
 
 /** A token saved on the project wins; otherwise the GitHub App provides one when installed. */
 async function cloneToken(
   { database, secretBox }: DeployRunnerDependencies,
-  { deployment, project, logs }: DeployContext,
+  { project, logs }: DeployContext,
 ): Promise<string | null> {
   const savedToken = await readRepositoryToken(database, secretBox, project.id);
-  // Reusing an image clones nothing.
-  if (savedToken != null || deployment.sourceDeploymentId != null) {
+  if (savedToken != null) {
     return savedToken;
   }
   return await appCloneToken(database, secretBox, project.repositoryFullName).catch(

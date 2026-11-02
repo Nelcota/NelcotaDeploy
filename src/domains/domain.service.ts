@@ -90,34 +90,37 @@ export function addDomain(
   },
 ): void {
   getProject(database, projectId);
-  database.transaction((transaction) => {
-    const existing = transaction
-      .select({ id: tables.domains.id })
-      .from(tables.domains)
-      .where(eq(tables.domains.hostname, input.hostname))
-      .get();
-    if (existing != null) {
-      throw new DomainTakenError(input.hostname);
-    }
-    transaction
-      .insert(tables.domains)
-      .values({
-        id: Bun.randomUUIDv7(),
-        projectId,
-        hostname: input.hostname,
-        httpsEnabled: input.httpsEnabled,
-        createdAt: new Date().toISOString(),
-      })
-      .run();
-    assertHostnameOwnership(transaction, getSystemSettings(transaction));
-    recordAuditEvent(transaction, {
-      actor,
-      action: "domain.add",
-      targetType: "project",
-      targetId: projectId,
-      metadata: { hostname: input.hostname, httpsEnabled: input.httpsEnabled },
-    });
-  });
+  database.transaction(
+    (transaction) => {
+      const existing = transaction
+        .select({ id: tables.domains.id })
+        .from(tables.domains)
+        .where(eq(tables.domains.hostname, input.hostname))
+        .get();
+      if (existing != null) {
+        throw new DomainTakenError(input.hostname);
+      }
+      transaction
+        .insert(tables.domains)
+        .values({
+          id: Bun.randomUUIDv7(),
+          projectId,
+          hostname: input.hostname,
+          httpsEnabled: input.httpsEnabled,
+          createdAt: new Date().toISOString(),
+        })
+        .run();
+      assertHostnameOwnership(transaction, getSystemSettings(transaction));
+      recordAuditEvent(transaction, {
+        actor,
+        action: "domain.add",
+        targetType: "project",
+        targetId: projectId,
+        metadata: { hostname: input.hostname, httpsEnabled: input.httpsEnabled },
+      });
+    },
+    { behavior: "immediate" },
+  );
 }
 
 /**
@@ -139,21 +142,24 @@ export function removeDomain(
     readonly actor: Actor;
   },
 ): void {
-  database.transaction((transaction) => {
-    const removed = transaction
-      .delete(tables.domains)
-      .where(and(eq(tables.domains.id, domainId), eq(tables.domains.projectId, projectId)))
-      .returning({ hostname: tables.domains.hostname })
-      .get();
-    if (removed == null) {
-      throw new DomainNotFoundError(domainId);
-    }
-    recordAuditEvent(transaction, {
-      actor,
-      action: "domain.remove",
-      targetType: "project",
-      targetId: projectId,
-      metadata: { hostname: removed.hostname },
-    });
-  });
+  database.transaction(
+    (transaction) => {
+      const removed = transaction
+        .delete(tables.domains)
+        .where(and(eq(tables.domains.id, domainId), eq(tables.domains.projectId, projectId)))
+        .returning({ hostname: tables.domains.hostname })
+        .get();
+      if (removed == null) {
+        throw new DomainNotFoundError(domainId);
+      }
+      recordAuditEvent(transaction, {
+        actor,
+        action: "domain.remove",
+        targetType: "project",
+        targetId: projectId,
+        metadata: { hostname: removed.hostname },
+      });
+    },
+    { behavior: "immediate" },
+  );
 }

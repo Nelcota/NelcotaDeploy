@@ -38,7 +38,9 @@ export function AppShell({
   useCommandPaletteShortcut(() => setSearchOpen(true));
   useDeploymentNotifications();
   return (
-    <div className="flex h-svh overflow-hidden bg-background">
+    // Positioned so absolutely placed descendants (sr-only text, hidden inputs) stay inside
+    // the clipped frame instead of growing the document and letting the whole page scroll.
+    <div className="relative flex h-svh overflow-hidden bg-background">
       <SkipLink />
       <aside className="hidden h-full w-[17rem] shrink-0 lg:flex">
         <SidebarContent onNavigate={() => undefined} />
@@ -53,7 +55,7 @@ export function AppShell({
           id="main"
           tabIndex={-1}
           data-scroll-restoration-id="main"
-          className="min-h-0 flex-1 overflow-y-auto bg-panel ring-1 ring-border/60 focus:outline-none lg:rounded-tl-3xl"
+          className="relative min-h-0 flex-1 overflow-y-auto bg-panel ring-1 ring-border/60 focus:outline-none lg:rounded-tl-3xl"
         >
           {children}
         </main>

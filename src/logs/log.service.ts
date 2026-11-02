@@ -209,13 +209,14 @@ export function pruneLogs(
   const cutoff = new Date(
     options.now.getTime() - options.deploymentLogRetentionDays * millisecondsPerDay,
   );
-  return database.transaction((transaction) => {
-    const runtime = transaction
-      .delete(tables.runtimeLogs)
-      .where(
-        lt(
-          tables.runtimeLogs.id,
-          sql`(
+  return database.transaction(
+    (transaction) => {
+      const runtime = transaction
+        .delete(tables.runtimeLogs)
+        .where(
+          lt(
+            tables.runtimeLogs.id,
+            sql`(
             SELECT COALESCE(MIN(id), 0) FROM (
               SELECT kept.id FROM runtime_logs AS kept
               WHERE kept.project_id = ${tables.runtimeLogs.projectId}
@@ -223,19 +224,21 @@ export function pruneLogs(
               LIMIT ${options.runtimeLinesPerProject}
             )
           )`,
-        ),
-      )
-      .returning({ id: tables.runtimeLogs.id })
-      .all().length;
-    const finishedBeforeCutoff = transaction
-      .select({ id: tables.deployments.id })
-      .from(tables.deployments)
-      .where(lt(tables.deployments.finishedAt, cutoff.toISOString()));
-    const deployment = transaction
-      .delete(tables.deploymentLogs)
-      .where(inArray(tables.deploymentLogs.deploymentId, finishedBeforeCutoff))
-      .returning({ id: tables.deploymentLogs.id })
-      .all().length;
-    return { runtime, deployment };
-  });
+          ),
+        )
+        .returning({ id: tables.runtimeLogs.id })
+        .all().length;
+      const finishedBeforeCutoff = transaction
+        .select({ id: tables.deployments.id })
+        .from(tables.deployments)
+        .where(lt(tables.deployments.finishedAt, cutoff.toISOString()));
+      const deployment = transaction
+        .delete(tables.deploymentLogs)
+        .where(inArray(tables.deploymentLogs.deploymentId, finishedBeforeCutoff))
+        .returning({ id: tables.deploymentLogs.id })
+        .all().length;
+      return { runtime, deployment };
+    },
+    { behavior: "immediate" },
+  );
 }

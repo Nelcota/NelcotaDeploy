@@ -26,8 +26,9 @@ type QueuedExecution = {
  * Runs a task execution inside the project's current container.
  *
  * @remarks
- * The command runs through `docker exec` as an argument vector: it never runs on the host
- * and never passes through a shell unless the task itself calls one inside the container.
+ * The command runs through `docker exec` as an argument vector. A POSIX shell inside the
+ * container supervises its process tree for timeout and cancellation, without evaluating
+ * the arguments as shell source. Images need `sh` and Linux procfs for task execution.
  *
  * @param dependencies - Database, Docker and encryption box (for log redaction).
  * @param executionId - Execution to run.

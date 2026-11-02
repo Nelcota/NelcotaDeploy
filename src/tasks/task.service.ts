@@ -92,29 +92,32 @@ export function createTask(
   const now = context.now ?? new Date();
   const nextRunAt = computeNextRunAt(input, now, context.timeZone);
   const taskId = Bun.randomUUIDv7();
-  database.transaction((transaction) => {
-    getProject(transaction, projectId);
-    assertNameAvailable(transaction, projectId, { name: input.name });
-    transaction
-      .insert(tables.tasks)
-      .values({
-        id: taskId,
-        projectId,
-        ...input,
-        nextRunAt,
-        createdByUserId: context.userId,
-        createdAt: now.toISOString(),
-        updatedAt: now.toISOString(),
-      })
-      .run();
-    recordAuditEvent(transaction, {
-      actor: context.actor,
-      action: "task.create",
-      targetType: "task",
-      targetId: taskId,
-      metadata: { projectId, name: input.name, command: input.command, schedule: input.schedule },
-    });
-  });
+  database.transaction(
+    (transaction) => {
+      getProject(transaction, projectId);
+      assertNameAvailable(transaction, projectId, { name: input.name });
+      transaction
+        .insert(tables.tasks)
+        .values({
+          id: taskId,
+          projectId,
+          ...input,
+          nextRunAt,
+          createdByUserId: context.userId,
+          createdAt: now.toISOString(),
+          updatedAt: now.toISOString(),
+        })
+        .run();
+      recordAuditEvent(transaction, {
+        actor: context.actor,
+        action: "task.create",
+        targetType: "task",
+        targetId: taskId,
+        metadata: { projectId, name: input.name, command: input.command, schedule: input.schedule },
+      });
+    },
+    { behavior: "immediate" },
+  );
   return taskId;
 }
 
@@ -146,28 +149,31 @@ export function updateTask(
 ): void {
   const now = context.now ?? new Date();
   const nextRunAt = computeNextRunAt(input, now, context.timeZone);
-  database.transaction((transaction) => {
-    findTaskRow(transaction, projectId, taskId);
-    assertNameAvailable(transaction, projectId, { name: input.name, exceptTaskId: taskId });
-    transaction
-      .update(tables.tasks)
-      .set({ ...input, nextRunAt, updatedAt: now.toISOString() })
-      .where(eq(tables.tasks.id, taskId))
-      .run();
-    recordAuditEvent(transaction, {
-      actor: context.actor,
-      action: "task.update",
-      targetType: "task",
-      targetId: taskId,
-      metadata: {
-        projectId,
-        name: input.name,
-        command: input.command,
-        schedule: input.schedule,
-        enabled: input.enabled,
-      },
-    });
-  });
+  database.transaction(
+    (transaction) => {
+      findTaskRow(transaction, projectId, taskId);
+      assertNameAvailable(transaction, projectId, { name: input.name, exceptTaskId: taskId });
+      transaction
+        .update(tables.tasks)
+        .set({ ...input, nextRunAt, updatedAt: now.toISOString() })
+        .where(eq(tables.tasks.id, taskId))
+        .run();
+      recordAuditEvent(transaction, {
+        actor: context.actor,
+        action: "task.update",
+        targetType: "task",
+        targetId: taskId,
+        metadata: {
+          projectId,
+          name: input.name,
+          command: input.command,
+          schedule: input.schedule,
+          enabled: input.enabled,
+        },
+      });
+    },
+    { behavior: "immediate" },
+  );
 }
 
 /**
@@ -186,26 +192,29 @@ export function deleteTask(
     actor,
   }: { readonly projectId: string; readonly taskId: string; readonly actor: Actor },
 ): void {
-  database.transaction((transaction) => {
-    const task = findTaskRow(transaction, projectId, taskId);
-    const running = transaction
-      .select({ id: tables.jobs.id })
-      .from(tables.jobs)
-      .innerJoin(tables.taskExecutions, eq(tables.taskExecutions.id, tables.jobs.taskExecutionId))
-      .where(and(eq(tables.taskExecutions.taskId, taskId), eq(tables.jobs.status, "running")))
-      .get();
-    if (running != null) {
-      throw new TaskRunningError(taskId);
-    }
-    transaction.delete(tables.tasks).where(eq(tables.tasks.id, taskId)).run();
-    recordAuditEvent(transaction, {
-      actor,
-      action: "task.delete",
-      targetType: "task",
-      targetId: taskId,
-      metadata: { projectId, name: task.name },
-    });
-  });
+  database.transaction(
+    (transaction) => {
+      const task = findTaskRow(transaction, projectId, taskId);
+      const running = transaction
+        .select({ id: tables.jobs.id })
+        .from(tables.jobs)
+        .innerJoin(tables.taskExecutions, eq(tables.taskExecutions.id, tables.jobs.taskExecutionId))
+        .where(and(eq(tables.taskExecutions.taskId, taskId), eq(tables.jobs.status, "running")))
+        .get();
+      if (running != null) {
+        throw new TaskRunningError(taskId);
+      }
+      transaction.delete(tables.tasks).where(eq(tables.tasks.id, taskId)).run();
+      recordAuditEvent(transaction, {
+        actor,
+        action: "task.delete",
+        targetType: "task",
+        targetId: taskId,
+        metadata: { projectId, name: task.name },
+      });
+    },
+    { behavior: "immediate" },
+  );
 }
 
 function findTaskRow(database: Database | Transaction, projectId: string, taskId: string): Task {
@@ -285,26 +294,29 @@ export function runTask(
     readonly userId: string | null;
   },
 ): string {
-  return database.transaction((transaction) => {
-    const task = findTaskRow(transaction, request.projectId, request.taskId);
-    getProject(transaction, request.projectId);
-    const executionId = enqueueExecution(transaction, {
-      task,
-      trigger: request.trigger,
-      scheduledFor: null,
-      userId: request.userId,
-      now: new Date(),
-    });
-    if (executionId == null) {
-      throw new Error(`Manual execution of task ${task.id} was ignored`);
-    }
-    recordAuditEvent(transaction, {
-      actor: request.actor,
-      action: "task.run",
-      targetType: "task",
-      targetId: task.id,
-      metadata: { projectId: task.projectId, executionId },
-    });
-    return executionId;
-  });
+  return database.transaction(
+    (transaction) => {
+      const task = findTaskRow(transaction, request.projectId, request.taskId);
+      getProject(transaction, request.projectId);
+      const executionId = enqueueExecution(transaction, {
+        task,
+        trigger: request.trigger,
+        scheduledFor: null,
+        userId: request.userId,
+        now: new Date(),
+      });
+      if (executionId == null) {
+        throw new Error(`Manual execution of task ${task.id} was ignored`);
+      }
+      recordAuditEvent(transaction, {
+        actor: request.actor,
+        action: "task.run",
+        targetType: "task",
+        targetId: task.id,
+        metadata: { projectId: task.projectId, executionId },
+      });
+      return executionId;
+    },
+    { behavior: "immediate" },
+  );
 }

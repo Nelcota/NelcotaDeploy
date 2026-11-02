@@ -27,4 +27,29 @@ export const postgresEngine: DatabaseEngine = {
   // Over TCP: while the image initializes, its temporary server listens only on the socket.
   readinessCommand: ["pg_isready", "--host", "127.0.0.1", "--username", POSTGRES_USER],
   isReady: (result) => result.exitCode === 0,
+  // Over the local socket, which the image trusts, so no password is needed. The custom format
+  // is compressed and lets pg_restore replace existing objects.
+  backup: {
+    dump: (path) => [
+      "pg_dump",
+      "--username",
+      POSTGRES_USER,
+      "--dbname",
+      POSTGRES_DATABASE,
+      "--format=custom",
+      "--file",
+      path,
+    ],
+    restore: (path) => [
+      "pg_restore",
+      "--username",
+      POSTGRES_USER,
+      "--dbname",
+      POSTGRES_DATABASE,
+      "--clean",
+      "--if-exists",
+      "--no-owner",
+      path,
+    ],
+  },
 };

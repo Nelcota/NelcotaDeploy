@@ -4,12 +4,51 @@ import { type Database, openMemoryDatabase, tables } from "@/db";
 
 import {
   claimNextJob,
+  assertJobOwnership,
   completeJob,
   enqueueJob,
   failJob,
   JOB_LEASE_IN_MS,
   recoverExpiredJobs,
+  renewJobLeases,
 } from "./job-queue";
+import { JobLeaseLostError } from "./job.errors";
+
+test.each(["worker-1", "worker-2"])(
+  "fences a reclaimed attempt even when the worker id is reused: %s",
+  (workerId) => {
+    const database = openMemoryDatabase();
+    const projectId = insertProject(database, "fenced");
+    enqueueJob(database, { kind: "deploy", projectId, maxAttempts: 2 }, T0);
+    enqueueJob(database, { kind: "container_action", projectId }, T0);
+    const first = claimNextJob(database, "worker-1", T0);
+    recoverExpiredJobs(database, new Date(T0.getTime() + JOB_LEASE_IN_MS + 1));
+    const now = new Date(T0.getTime() + JOB_LEASE_IN_MS + 5001);
+    const replacement = claimNextJob(database, workerId, now);
+    if (first == null || replacement == null) {
+      throw new Error("Expected both claimed attempts");
+    }
+    expect(completeJob(database, first, now)).toBe(false);
+    expect(failJob(database, first, { errorMessage: "stale", retryable: false, now })).toBe("lost");
+    expect(renewJobLeases(database, { leases: [first], now }).size).toBe(0);
+    expect(() => assertJobOwnership(database, first, now)).toThrow(JobLeaseLostError);
+    expect(claimNextJob(database, "worker-3", now)).toBeNull();
+    expect(completeJob(database, replacement, now)).toBe(true);
+    expect(claimNextJob(database, "worker-3", now)?.kind).toBe("container_action");
+  },
+);
+
+test("does not revive an expired lease before recovery", () => {
+  const database = openMemoryDatabase();
+  enqueueJob(database, { kind: "deploy", projectId: insertProject(database, "expired") }, T0);
+  const claimed = claimNextJob(database, "worker-1", T0);
+  if (claimed == null) {
+    throw new Error("Expected a claimed job");
+  }
+  const now = new Date(T0.getTime() + JOB_LEASE_IN_MS);
+  expect(completeJob(database, claimed, now)).toBe(false);
+  expect(renewJobLeases(database, { leases: [claimed], now }).size).toBe(0);
+});
 
 function insertProject(database: Database, slug: string): string {
   const id = Bun.randomUUIDv7();
@@ -106,8 +145,12 @@ describe("job queue deduplication", () => {
       { kind: "container_action", projectId, dedupeKey: "restart:api" },
       T0,
     );
-    claimNextJob(database, "worker-1", T0);
-    completeJob(database, first.id, T0);
+    const claimed = claimNextJob(database, "worker-1", T0);
+    if (claimed == null) {
+      throw new Error("Expected a claimed job");
+    }
+    expect(claimed.id).toBe(first.id);
+    completeJob(database, claimed, T0);
 
     const second = enqueueJob(
       database,
@@ -126,7 +169,10 @@ describe("job queue failures", () => {
     enqueueJob(database, { kind: "deploy", projectId, maxAttempts: 2 }, T0);
     const job = claimNextJob(database, "worker-1", T0);
 
-    const outcome = failJob(database, job?.id ?? "", {
+    if (job == null) {
+      throw new Error("Expected a claimed job");
+    }
+    const outcome = failJob(database, job, {
       errorMessage: "boom",
       retryable: true,
       now: T0,
@@ -141,7 +187,10 @@ describe("job queue failures", () => {
     enqueueJob(database, { kind: "deploy", projectId, maxAttempts: 1 }, T0);
     const job = claimNextJob(database, "worker-1", T0);
 
-    const outcome = failJob(database, job?.id ?? "", {
+    if (job == null) {
+      throw new Error("Expected a claimed job");
+    }
+    const outcome = failJob(database, job, {
       errorMessage: "boom",
       retryable: true,
       now: T0,
@@ -162,7 +211,14 @@ describe("job queue lease recovery", () => {
     const recovered = recoverExpiredJobs(database, afterLease);
 
     expect(recovered).toEqual([
-      { id, kind: "deploy", deploymentId: null, taskExecutionId: null, outcome: "requeued" },
+      {
+        id,
+        kind: "deploy",
+        deploymentId: null,
+        taskExecutionId: null,
+        payload: {},
+        outcome: "requeued",
+      },
     ]);
   });
 

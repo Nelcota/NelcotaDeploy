@@ -20,6 +20,10 @@ export type ProjectFormValues = {
   readonly autoDeploy: boolean;
   readonly autoApplyChanges: boolean;
   readonly previewsEnabled: boolean;
+  /** Blank for no limit. */
+  readonly memoryLimitInMb: string;
+  /** Thousandths of a core as text; blank for no limit. */
+  readonly cpuLimitInMillicores: string;
 };
 
 /** Input accepted by the project server functions. */
@@ -58,6 +62,8 @@ export const EMPTY_PROJECT_FORM: ProjectFormValues = {
   autoDeploy: true,
   autoApplyChanges: true,
   previewsEnabled: false,
+  memoryLimitInMb: "",
+  cpuLimitInMillicores: "",
 };
 
 /**
@@ -79,6 +85,8 @@ export function projectToFormValues(project: {
   readonly autoDeploy: boolean;
   readonly autoApplyChanges: boolean;
   readonly previewsEnabled: boolean;
+  readonly memoryLimitInMb: number | null;
+  readonly cpuLimitInMillicores: number | null;
 }): ProjectFormValues {
   return {
     name: project.name,
@@ -92,6 +100,9 @@ export function projectToFormValues(project: {
     autoDeploy: project.autoDeploy,
     autoApplyChanges: project.autoApplyChanges,
     previewsEnabled: project.previewsEnabled,
+    memoryLimitInMb: project.memoryLimitInMb == null ? "" : String(project.memoryLimitInMb),
+    cpuLimitInMillicores:
+      project.cpuLimitInMillicores == null ? "" : String(project.cpuLimitInMillicores),
   };
 }
 

@@ -176,3 +176,63 @@ describe("volumes with real Docker", () => {
     TEST_TIMEOUT_IN_MS,
   );
 });
+
+describe("task termination with real Docker", () => {
+  const cleanups: Cleanup[] = [];
+  afterAll(async () => {
+    await runCleanupsInReverse(cleanups);
+  }, CLEANUP_TIMEOUT_IN_MS);
+
+  test.each(["timeout", "abort"] as const)(
+    "stops a task and its descendants after %s without stopping the app",
+    async (reason) => {
+      const environment = await createFixtureEnvironment(`${NETWORK}-${reason}`, cleanups);
+      const deploymentId = await deploy(environment);
+      const container = getDeployment(environment.database, deploymentId).containerName;
+      if (container == null) {
+        throw new Error("Expected a deployed container");
+      }
+      const controller = new AbortController();
+      const descendants: string[] = [];
+
+      const result = await environment.docker.execInContainer(
+        container,
+        ["sh", "-c", "sleep 30 & printf '%s\\n' \"$!\"; wait"],
+        {
+          timeoutInMs: 2000,
+          signal: controller.signal,
+          onLine: (line, stream) => {
+            if (stream === "stdout" && /^\d+$/.test(line)) {
+              descendants.push(line);
+              if (reason === "abort") {
+                controller.abort();
+              }
+            }
+          },
+        },
+      );
+
+      expect(descendants.length).toBe(1);
+      expect(result.timedOut).toBe(reason === "timeout");
+      expect(result.aborted).toBe(reason === "abort");
+      const child = descendants.at(0);
+      if (child == null) {
+        throw new Error("Task did not report its child PID");
+      }
+      const stopped = await environment.docker.execInContainer(
+        container,
+        [
+          "sh",
+          "-c",
+          'if [ -r "/proc/$1/stat" ]; then read -r process_stat < "/proc/$1/stat"; process_fields=${process_stat##*) }; set -- $process_fields; [ "$1" = Z ]; fi',
+          "sh",
+          child,
+        ],
+        { timeoutInMs: 5000 },
+      );
+      expect(stopped.exitCode).toBe(0);
+      expect(await isRunning(environment, container)).toBe(true);
+    },
+    TEST_TIMEOUT_IN_MS,
+  );
+});

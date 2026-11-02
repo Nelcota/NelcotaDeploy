@@ -68,3 +68,24 @@ describe("DockerImages.ensurePulled", () => {
     expect(error).toBeInstanceOf(InvalidDockerArgumentError);
   });
 });
+
+test("reads the exposed ports of the final built image", async () => {
+  const commands: (readonly string[])[] = [];
+  const images = new DockerImages("docker", (command) => {
+    commands.push(command);
+    return Promise.resolve({ ...reply(0), stdout: '{"80/tcp":{}}' });
+  });
+
+  expect(await images.exposedPorts("nelcota/api:abc")).toEqual([80]);
+  expect(commands).toEqual([
+    ["docker", "image", "inspect", "--format", "{{json .Config.ExposedPorts}}", "nelcota/api:abc"],
+  ]);
+});
+
+test("reports a failed exposed port inspection", async () => {
+  const images = new DockerImages("docker", () => Promise.resolve(reply(1)));
+
+  const failure = await images.exposedPorts("nelcota/api:abc").catch((error: unknown) => error);
+
+  expect(failure).toBeInstanceOf(DockerCommandError);
+});

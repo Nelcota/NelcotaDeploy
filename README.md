@@ -55,6 +55,10 @@ file. No Kubernetes, no external database, no agents to install.
 
 Requires Linux with [Bun](https://bun.sh) 1.4+, git and Docker 23+.
 
+Managed tasks and database commands require `sh` and Linux procfs inside the application
+image. The supervisor uses them to stop commands and their descendants on timeout or cancellation;
+command arguments are passed literally, without shell evaluation.
+
 ```bash
 bun install
 bun run setup    # writes .env with generated secrets

@@ -47,10 +47,12 @@ async function setup(
     healthTimeout?: number;
     dockerfile?: string;
     internalPort?: number | null;
+    exposedPorts?: readonly number[];
   } = {},
 ) {
   const database = openMemoryDatabase();
   const docker = new FakeDocker();
+  docker.images.exposedPorts = () => Promise.resolve(options.exposedPorts ?? []);
   const secretBox = await createTestSecretBox();
   // null asks for an automatic port; leaving it out keeps the usual 3000.
   const internalPort = options.internalPort === undefined ? 3000 : options.internalPort;
@@ -164,10 +166,38 @@ describe("runDeployment version switch", () => {
 });
 
 describe("runDeployment port", () => {
+  test("uses the final base image's exposed port instead of a discarded builder's port", async () => {
+    const probedPorts: number[] = [];
+    const { database, project, dependencies } = await setup({
+      dockerfile: "FROM builder AS build\nEXPOSE 3000\nFROM nginx:alpine\n",
+      exposedPorts: [80],
+      internalPort: null,
+      probes: {
+        ...alwaysHealthy,
+        tcp: (_host, port) => {
+          probedPorts.push(port);
+          return alwaysHealthy.tcp();
+        },
+      },
+    });
+    using _connection = database.$client;
+
+    const status = await runDeployment(
+      dependencies,
+      deploy(database, project.id),
+      new AbortController().signal,
+    );
+
+    expect(status).toBe("succeeded");
+    expect(getProject(database, project.id).internalPort).toBe(80);
+    expect(new Set(probedPorts)).toEqual(new Set([80]));
+  });
+
   test("uses and stores the Dockerfile's EXPOSE when the port is automatic", async () => {
     const probedPorts: number[] = [];
     const { database, project, dependencies } = await setup({
       dockerfile: "FROM scratch\nEXPOSE 8080\n",
+      exposedPorts: [8080],
       internalPort: null,
       probes: {
         http: async () => await Promise.resolve(true),

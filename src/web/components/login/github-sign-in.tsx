@@ -1,5 +1,6 @@
 import { useState } from "react";
 
+import { GitHubIcon } from "@/web/components/github/github.icon";
 import { authClient } from "@/web/components/shell/auth-client";
 import { Button } from "@/web/components/ui/button";
 
@@ -49,6 +50,7 @@ export function GitHubSignIn({
         aria-describedby={error == null ? undefined : ERROR_ID}
         onClick={start}
       >
+        <GitHubIcon aria-hidden />
         Entrar com GitHub
       </Button>
       {error == null ? null : (

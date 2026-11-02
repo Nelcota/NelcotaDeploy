@@ -1,7 +1,7 @@
 import { and, count, desc, eq } from "drizzle-orm";
 
 import { type Database, tables, type Transaction } from "@/db";
-import { enqueueJob } from "@/jobs";
+import { CLEANUP_MAX_ATTEMPTS, enqueueJob } from "@/jobs";
 import { assertHostnameOwnership, getSystemSettings } from "@/settings";
 
 import { PreviewLimitError } from "./preview.errors";
@@ -78,46 +78,49 @@ export function openPreview(
     readonly headSha: string;
   },
 ): string {
-  return database.transaction((transaction) => {
-    const now = new Date().toISOString();
-    const existing = findPreview(transaction, pullRequest.projectId, pullRequest.number);
-    const wasActive = existing?.status === "active";
-    if (
-      wasActive === false &&
-      countActive(transaction, pullRequest.projectId) >= MAX_ACTIVE_PREVIEWS
-    ) {
-      throw new PreviewLimitError(pullRequest.projectId, MAX_ACTIVE_PREVIEWS);
-    }
-    const fields = {
-      branch: pullRequest.branch,
-      headSha: pullRequest.headSha,
-      status: "active" as const,
-      updatedAt: now,
-      closedAt: null,
-    };
-    if (existing != null) {
+  return database.transaction(
+    (transaction) => {
+      const now = new Date().toISOString();
+      const existing = findPreview(transaction, pullRequest.projectId, pullRequest.number);
+      const wasActive = existing?.status === "active";
+      if (
+        wasActive === false &&
+        countActive(transaction, pullRequest.projectId) >= MAX_ACTIVE_PREVIEWS
+      ) {
+        throw new PreviewLimitError(pullRequest.projectId, MAX_ACTIVE_PREVIEWS);
+      }
+      const fields = {
+        branch: pullRequest.branch,
+        headSha: pullRequest.headSha,
+        status: "active" as const,
+        updatedAt: now,
+        closedAt: null,
+      };
+      if (existing != null) {
+        transaction
+          .update(tables.previews)
+          .set(fields)
+          .where(eq(tables.previews.id, existing.id))
+          .run();
+        assertHostnameOwnership(transaction, getSystemSettings(transaction));
+        return existing.id;
+      }
+      const id = Bun.randomUUIDv7();
       transaction
-        .update(tables.previews)
-        .set(fields)
-        .where(eq(tables.previews.id, existing.id))
+        .insert(tables.previews)
+        .values({
+          id,
+          projectId: pullRequest.projectId,
+          pullRequestNumber: pullRequest.number,
+          createdAt: now,
+          ...fields,
+        })
         .run();
       assertHostnameOwnership(transaction, getSystemSettings(transaction));
-      return existing.id;
-    }
-    const id = Bun.randomUUIDv7();
-    transaction
-      .insert(tables.previews)
-      .values({
-        id,
-        projectId: pullRequest.projectId,
-        pullRequestNumber: pullRequest.number,
-        createdAt: now,
-        ...fields,
-      })
-      .run();
-    assertHostnameOwnership(transaction, getSystemSettings(transaction));
-    return id;
-  });
+      return id;
+    },
+    { behavior: "immediate" },
+  );
 }
 
 /**
@@ -132,29 +135,33 @@ export function closePreview(
   database: Database,
   pullRequest: { readonly projectId: string; readonly number: number },
 ): string | null {
-  return database.transaction((transaction) => {
-    const preview = findPreview(transaction, pullRequest.projectId, pullRequest.number);
-    if (preview?.status !== "active") {
-      return null;
-    }
-    const now = new Date();
-    transaction
-      .update(tables.previews)
-      .set({ status: "closed", closedAt: now.toISOString(), updatedAt: now.toISOString() })
-      .where(eq(tables.previews.id, preview.id))
-      .run();
-    enqueueJob(
-      transaction,
-      {
-        kind: "preview_cleanup",
-        projectId: pullRequest.projectId,
-        payload: { previewId: preview.id },
-        dedupeKey: `preview-cleanup:${preview.id}`,
-      },
-      now,
-    );
-    return preview.id;
-  });
+  return database.transaction(
+    (transaction) => {
+      const preview = findPreview(transaction, pullRequest.projectId, pullRequest.number);
+      if (preview?.status !== "active") {
+        return null;
+      }
+      const now = new Date();
+      transaction
+        .update(tables.previews)
+        .set({ status: "closed", closedAt: now.toISOString(), updatedAt: now.toISOString() })
+        .where(eq(tables.previews.id, preview.id))
+        .run();
+      enqueueJob(
+        transaction,
+        {
+          kind: "preview_cleanup",
+          maxAttempts: CLEANUP_MAX_ATTEMPTS,
+          projectId: pullRequest.projectId,
+          payload: { previewId: preview.id },
+          dedupeKey: `preview-cleanup:${preview.id}`,
+        },
+        now,
+      );
+      return preview.id;
+    },
+    { behavior: "immediate" },
+  );
 }
 
 /**
@@ -164,7 +171,7 @@ export function closePreview(
  * @param previewId - Preview id.
  * @returns The preview, or null when it does not exist.
  */
-export function getPreview(database: Database, previewId: string): Preview | null {
+export function getPreview(database: Database | Transaction, previewId: string): Preview | null {
   return (
     database
       .select(previewColumns)

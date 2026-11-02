@@ -12,7 +12,7 @@ import {
   retryDatabaseFn,
 } from "@/web/functions/databases/databases.functions";
 
-// While a database starts or is deleted the list refreshes, so its row follows on its own.
+// While a database starts, restores or is deleted the list refreshes, so its row follows on its own.
 const PENDING_REFRESH_IN_MS = 3000;
 
 /** A project's databases, the actions that change them and the redeploy that applies them. */
@@ -23,7 +23,10 @@ export function useDatabases(projectId: string) {
     queryFn: () => listDatabasesFn({ data: { projectId } }),
     refetchInterval: (query) =>
       query.state.data?.some(
-        (database) => database.status === "provisioning" || database.deletionRequestedAt != null,
+        (database) =>
+          database.status === "provisioning" ||
+          database.status === "restoring" ||
+          database.deletionRequestedAt != null,
       ) === true
         ? PENDING_REFRESH_IN_MS
         : false,

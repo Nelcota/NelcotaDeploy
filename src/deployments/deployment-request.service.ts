@@ -35,6 +35,7 @@ export type DeploymentRequest = {
 type ReusableImage = ReturnType<typeof findReusableImage>;
 
 type PendingDeployment = {
+  readonly branch: string;
   readonly id: string;
   readonly status: DeploymentStatus;
   readonly requestedCommitSha: string | null;
@@ -45,6 +46,7 @@ type PendingDeployment = {
 
 /** What makes two deployment requests identical. */
 type RequestIdentity = {
+  readonly branch: string;
   readonly repositoryUrl: string;
   readonly sourceDeploymentId: string | null;
   readonly requestedCommitSha: string | null;
@@ -93,6 +95,7 @@ function listPendingDeployments(
 ): PendingDeployment[] {
   return transaction
     .select({
+      branch: tables.deployments.branch,
       id: tables.deployments.id,
       status: tables.deployments.status,
       requestedCommitSha: tables.deployments.requestedCommitSha,
@@ -128,6 +131,7 @@ function findDuplicateRequest(
       deployment.requestedCommitSha === identity.requestedCommitSha &&
       deployment.serverId === identity.serverId &&
       deployment.repositoryUrl === identity.repositoryUrl &&
+      deployment.branch === identity.branch &&
       // A branch-head request may run again once the earlier one started: the head may have moved.
       (deployment.status === "queued" || identity.requestedCommitSha != null),
   );
@@ -278,43 +282,53 @@ export function requestDeployment(
   database: Database,
   request: DeploymentRequest,
 ): { deploymentId: string; created: boolean } {
-  return database.transaction((transaction) => {
-    const project = getProject(transaction, request.projectId);
-    if (project.deploymentsApproved === false) {
-      throw new ProjectNotApprovedError(project.id);
-    }
-    const previewId = request.previewId ?? null;
-    const branch =
-      previewId == null ? project.branch : activePreviewBranch(transaction, project.id, previewId);
-    const sourceDeploymentId = request.sourceDeploymentId ?? null;
-    const source =
-      sourceDeploymentId == null
-        ? null
-        : findReusableImage(transaction, { projectId: project.id, previewId }, sourceDeploymentId);
+  return database.transaction(
+    (transaction) => {
+      const project = getProject(transaction, request.projectId);
+      if (project.deploymentsApproved === false) {
+        throw new ProjectNotApprovedError(project.id);
+      }
+      const previewId = request.previewId ?? null;
+      const branch =
+        previewId == null
+          ? project.branch
+          : activePreviewBranch(transaction, project.id, previewId);
+      const sourceDeploymentId = request.sourceDeploymentId ?? null;
+      const source =
+        sourceDeploymentId == null
+          ? null
+          : findReusableImage(
+              transaction,
+              { projectId: project.id, previewId },
+              sourceDeploymentId,
+            );
 
-    const pending = listPendingDeployments(transaction, project.id, previewId);
-    const duplicate = findDuplicateRequest(pending, {
-      repositoryUrl: project.repositoryUrl,
-      sourceDeploymentId,
-      requestedCommitSha: request.commitSha ?? null,
-      serverId: project.serverId,
-    });
-    if (duplicate != null) {
-      return { deploymentId: duplicate.id, created: false };
-    }
+      const pending = listPendingDeployments(transaction, project.id, previewId);
+      const duplicate = findDuplicateRequest(pending, {
+        branch: source?.branch ?? branch,
+        repositoryUrl: project.repositoryUrl,
+        sourceDeploymentId,
+        requestedCommitSha: request.commitSha ?? null,
+        serverId: project.serverId,
+      });
+      if (duplicate != null) {
+        return { deploymentId: duplicate.id, created: false };
+      }
 
-    const now = new Date();
-    cancelSupersededDeployments(transaction, pending, now);
-    const deploymentId = insertQueuedDeployment(transaction, request, {
-      branch,
-      repositoryUrl: project.repositoryUrl,
-      serverId: project.serverId,
-      source,
-      now,
-    });
-    queueDeployment(transaction, request, { deploymentId, now });
-    return { deploymentId, created: true };
-  });
+      const now = new Date();
+      cancelSupersededDeployments(transaction, pending, now);
+      const deploymentId = insertQueuedDeployment(transaction, request, {
+        branch,
+        repositoryUrl: project.repositoryUrl,
+        serverId: project.serverId,
+        source,
+        now,
+      });
+      queueDeployment(transaction, request, { deploymentId, now });
+      return { deploymentId, created: true };
+    },
+    { behavior: "immediate" },
+  );
 }
 
 /**

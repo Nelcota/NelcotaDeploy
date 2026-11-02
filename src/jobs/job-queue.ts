@@ -1,13 +1,47 @@
-import { and, eq, inArray, lt, sql } from "drizzle-orm";
+import { and, eq, gt, inArray, lt, sql } from "drizzle-orm";
 
 import { type Database, tables, type Transaction } from "@/db";
 
+import { JobLeaseLostError } from "./job.errors";
+
 export type Job = typeof tables.jobs.$inferSelect;
 type JobKind = Job["kind"];
+/** Identity of one claimed attempt; worker ids alone can be reused after a restart. */
+type JobLease = Pick<Job, "id" | "workerId" | "attempts">;
+
+function ownershipCondition(lease: JobLease) {
+  if (lease.workerId == null) {
+    throw new JobLeaseLostError(lease.id);
+  }
+  return and(
+    eq(tables.jobs.id, lease.id),
+    eq(tables.jobs.workerId, lease.workerId),
+    eq(tables.jobs.attempts, lease.attempts),
+    eq(tables.jobs.status, "running"),
+  );
+}
+
+/** Refuses side effects after an attempt was reclaimed or its lease expired. */
+export function assertJobOwnership(
+  database: Database,
+  lease: JobLease,
+  now: Date = new Date(),
+): void {
+  const owned = database
+    .select({ id: tables.jobs.id })
+    .from(tables.jobs)
+    .where(and(ownershipCondition(lease), gt(tables.jobs.leaseExpiresAt, now.toISOString())))
+    .get();
+  if (owned == null) {
+    throw new JobLeaseLostError(lease.id);
+  }
+}
 
 /** How long a claimed job stays owned by a worker without a heartbeat. */
 export const JOB_LEASE_IN_MS = 60_000;
 const RETRY_DELAY_IN_MS = 5000;
+/** Cleanup is idempotent and must survive temporary server failures. */
+export const CLEANUP_MAX_ATTEMPTS = 3;
 
 export type NewJob = {
   readonly kind: JobKind;
@@ -135,79 +169,77 @@ export function claimNextJob(
  * Extends the lease of jobs a worker is still running.
  *
  * @param database - Database.
- * @param lease - `workerId` owning the jobs, the `jobIds` in progress and `now`, the current time.
+ * @param lease - Claimed attempts and the current time.
+ * @returns Ids renewed; callers abort executions missing from this set.
  */
 export function renewJobLeases(
   database: Database,
-  {
-    workerId,
-    jobIds,
-    now = new Date(),
-  }: { readonly workerId: string; readonly jobIds: readonly string[]; readonly now?: Date },
-): void {
-  if (jobIds.length === 0) {
-    return;
+  { leases, now = new Date() }: { readonly leases: readonly JobLease[]; readonly now?: Date },
+): Set<string> {
+  const renewed = new Set<string>();
+  for (const lease of leases) {
+    const rows = database
+      .update(tables.jobs)
+      .set({ leaseExpiresAt: new Date(now.getTime() + JOB_LEASE_IN_MS).toISOString() })
+      .where(and(ownershipCondition(lease), gt(tables.jobs.leaseExpiresAt, now.toISOString())))
+      .returning({ id: tables.jobs.id })
+      .all();
+    if (rows.length > 0) {
+      renewed.add(lease.id);
+    }
   }
-  database
-    .update(tables.jobs)
-    .set({ leaseExpiresAt: new Date(now.getTime() + JOB_LEASE_IN_MS).toISOString() })
-    .where(
-      and(
-        inArray(tables.jobs.id, [...jobIds]),
-        eq(tables.jobs.workerId, workerId),
-        eq(tables.jobs.status, "running"),
-      ),
-    )
-    .run();
+  return renewed;
 }
 
 /**
  * Marks a running job as succeeded.
  *
  * @param database - Database or open transaction.
- * @param jobId - Job to finish.
+ * @param lease - Claimed job and its worker and attempt number.
  * @param now - Current time.
  */
 export function completeJob(
   database: Database | Transaction,
-  jobId: string,
+  lease: JobLease,
   now: Date = new Date(),
-): void {
-  database
+): boolean {
+  const rows = database
     .update(tables.jobs)
     .set({ status: "succeeded", finishedAt: now.toISOString(), leaseExpiresAt: null })
-    .where(and(eq(tables.jobs.id, jobId), eq(tables.jobs.status, "running")))
-    .run();
+    .where(and(ownershipCondition(lease), gt(tables.jobs.leaseExpiresAt, now.toISOString())))
+    .returning({ id: tables.jobs.id })
+    .all();
+  return rows.length > 0;
 }
 
 /**
  * Marks a running job as failed, or puts it back in the queue when it may retry.
  *
  * @param database - Database or open transaction.
- * @param jobId - Job that failed.
+ * @param lease - Claimed job and its worker and attempt number.
  * @param failure - `errorMessage`, the reason without secrets; `retryable` allows another
  *   attempt while attempts remain; `now` is the current time.
- * @returns "requeued" or "failed".
+ * @returns "requeued", "failed", or "lost" when another attempt now owns the job.
  */
 export function failJob(
   database: Database | Transaction,
-  jobId: string,
+  lease: JobLease,
   {
     errorMessage,
     retryable,
     now = new Date(),
   }: { readonly errorMessage: string; readonly retryable: boolean; readonly now?: Date },
-): "requeued" | "failed" {
+): "requeued" | "failed" | "lost" {
   const job = database
     .select({ attempts: tables.jobs.attempts, maxAttempts: tables.jobs.maxAttempts })
     .from(tables.jobs)
-    .where(eq(tables.jobs.id, jobId))
+    .where(ownershipCondition(lease))
     .get();
   if (job == null) {
-    throw new Error(`Cannot fail unknown job ${jobId}`);
+    return "lost";
   }
   if (retryable && job.attempts < job.maxAttempts) {
-    database
+    const rows = database
       .update(tables.jobs)
       .set({
         status: "queued",
@@ -216,11 +248,12 @@ export function failJob(
         leaseExpiresAt: null,
         runAfter: new Date(now.getTime() + RETRY_DELAY_IN_MS).toISOString(),
       })
-      .where(eq(tables.jobs.id, jobId))
-      .run();
-    return "requeued";
+      .where(ownershipCondition(lease))
+      .returning({ id: tables.jobs.id })
+      .all();
+    return rows.length > 0 ? "requeued" : "lost";
   }
-  database
+  const rows = database
     .update(tables.jobs)
     .set({
       status: "failed",
@@ -228,9 +261,10 @@ export function failJob(
       finishedAt: now.toISOString(),
       leaseExpiresAt: null,
     })
-    .where(eq(tables.jobs.id, jobId))
-    .run();
-  return "failed";
+    .where(ownershipCondition(lease))
+    .returning({ id: tables.jobs.id })
+    .all();
+  return rows.length > 0 ? "failed" : "lost";
 }
 
 /**
@@ -257,10 +291,12 @@ export function cancelQueuedJobs(
 
 /** A job taken back from a worker that stopped renewing its lease. */
 export type RecoveredJob = {
+  readonly reason?: string;
   readonly id: string;
   readonly kind: JobKind;
   readonly deploymentId: string | null;
   readonly taskExecutionId: string | null;
+  readonly payload: Job["payload"];
   readonly outcome: "requeued" | "failed";
 };
 
@@ -272,29 +308,46 @@ export type RecoveredJob = {
  * @returns The recovered jobs, so callers can reset deployment or task state.
  */
 export function recoverExpiredJobs(database: Database, now: Date = new Date()): RecoveredJob[] {
-  return database.transaction((transaction) => {
-    const expired = transaction
-      .select({
-        id: tables.jobs.id,
-        kind: tables.jobs.kind,
-        deploymentId: tables.jobs.deploymentId,
-        taskExecutionId: tables.jobs.taskExecutionId,
-      })
-      .from(tables.jobs)
-      .where(
-        and(eq(tables.jobs.status, "running"), lt(tables.jobs.leaseExpiresAt, now.toISOString())),
-      )
-      .all();
-    return expired.map((job) =>
-      Object.assign(job, {
-        outcome: failJob(transaction, job.id, {
+  return database.transaction(
+    (transaction) => {
+      const expired = transaction
+        .select({
+          id: tables.jobs.id,
+          kind: tables.jobs.kind,
+          deploymentId: tables.jobs.deploymentId,
+          taskExecutionId: tables.jobs.taskExecutionId,
+          payload: tables.jobs.payload,
+          workerId: tables.jobs.workerId,
+          attempts: tables.jobs.attempts,
+        })
+        .from(tables.jobs)
+        .where(
+          and(eq(tables.jobs.status, "running"), lt(tables.jobs.leaseExpiresAt, now.toISOString())),
+        )
+        .all();
+      return expired.flatMap((job) => {
+        const outcome = failJob(transaction, job, {
           errorMessage: "Worker stopped while the job was running",
           retryable: true,
           now,
-        }),
-      }),
-    );
-  });
+        });
+        if (outcome === "lost") {
+          return [];
+        }
+        return [
+          {
+            id: job.id,
+            kind: job.kind,
+            deploymentId: job.deploymentId,
+            taskExecutionId: job.taskExecutionId,
+            payload: job.payload,
+            outcome,
+          },
+        ];
+      });
+    },
+    { behavior: "immediate" },
+  );
 }
 
 /**

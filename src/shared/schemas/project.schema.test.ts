@@ -1,6 +1,9 @@
 import { describe, expect, test } from "bun:test";
 
 import {
+  CPU_LIMIT_OPTIONS_IN_MILLICORES,
+  MAX_MEMORY_LIMIT_IN_MB,
+  MIN_MEMORY_LIMIT_IN_MB,
   isSafeRelativePath,
   isValidBranchName,
   parseGitHubRepository,
@@ -29,6 +32,8 @@ describe("projectInputSchema", () => {
     expect(result.name).toBe("Minha API");
     expect(result.internalPort).toBe(3000);
     expect(result.healthCheckPath).toBeNull();
+    expect(result.memoryLimitInMb).toBeNull();
+    expect(result.cpuLimitInMillicores).toBeNull();
   });
 
   test("rejects a non-GitHub repository URL", () => {
@@ -47,6 +52,30 @@ describe("projectInputSchema", () => {
     });
 
     expect(result.success).toBe(false);
+  });
+});
+
+describe("project resource limit compatibility", () => {
+  test.each([MIN_MEMORY_LIMIT_IN_MB, MAX_MEMORY_LIMIT_IN_MB])(
+    "accepts the memory boundary %s",
+    (limit) => {
+      expect(
+        projectInputSchema.parse({ ...validInput, memoryLimitInMb: limit }).memoryLimitInMb,
+      ).toBe(limit);
+    },
+  );
+  test.each([MIN_MEMORY_LIMIT_IN_MB - 1, MAX_MEMORY_LIMIT_IN_MB + 1, Number.POSITIVE_INFINITY])(
+    "rejects an invalid memory limit %s",
+    (limit) => {
+      expect(projectInputSchema.safeParse({ ...validInput, memoryLimitInMb: limit }).success).toBe(
+        false,
+      );
+    },
+  );
+  test.each(CPU_LIMIT_OPTIONS_IN_MILLICORES)("accepts a supported CPU limit %s", (limit) => {
+    expect(
+      projectInputSchema.parse({ ...validInput, cpuLimitInMillicores: limit }).cpuLimitInMillicores,
+    ).toBe(limit);
   });
 });
 

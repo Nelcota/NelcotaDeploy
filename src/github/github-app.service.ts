@@ -114,31 +114,34 @@ export async function saveGitHubApp(
     app.client_secret,
     clientSecretContext(appId),
   );
-  database.transaction((transaction) => {
-    transaction.delete(tables.githubApps).run();
-    transaction
-      .insert(tables.githubApps)
-      .values({
-        id: appId,
-        slug: app.slug,
-        name: app.name,
-        htmlUrl: app.html_url,
-        ownerLogin: app.owner.login,
-        encryptedPrivateKey,
-        encryptedWebhookSecret,
-        clientId: app.client_id,
-        encryptedClientSecret,
-        createdAt: new Date().toISOString(),
-      })
-      .run();
-    recordAuditEvent(transaction, {
-      actor,
-      action: "github_app.connect",
-      targetType: "github_app",
-      targetId: appId,
-      metadata: { name: app.name, owner: app.owner.login },
-    });
-  });
+  database.transaction(
+    (transaction) => {
+      transaction.delete(tables.githubApps).run();
+      transaction
+        .insert(tables.githubApps)
+        .values({
+          id: appId,
+          slug: app.slug,
+          name: app.name,
+          htmlUrl: app.html_url,
+          ownerLogin: app.owner.login,
+          encryptedPrivateKey,
+          encryptedWebhookSecret,
+          clientId: app.client_id,
+          encryptedClientSecret,
+          createdAt: new Date().toISOString(),
+        })
+        .run();
+      recordAuditEvent(transaction, {
+        actor,
+        action: "github_app.connect",
+        targetType: "github_app",
+        targetId: appId,
+        metadata: { name: app.name, owner: app.owner.login },
+      });
+    },
+    { behavior: "immediate" },
+  );
   return summaryOf({
     id: appId,
     name: app.name,
@@ -215,19 +218,22 @@ export async function readGitHubAppCredentials(
  * @param actor - Who disconnected it.
  */
 export function removeGitHubApp(database: Database, actor: Actor): void {
-  database.transaction((transaction) => {
-    const removed = transaction
-      .delete(tables.githubApps)
-      .returning({ id: tables.githubApps.id })
-      .all();
-    for (const app of removed) {
-      recordAuditEvent(transaction, {
-        actor,
-        action: "github_app.disconnect",
-        targetType: "github_app",
-        targetId: app.id,
-        metadata: {},
-      });
-    }
-  });
+  database.transaction(
+    (transaction) => {
+      const removed = transaction
+        .delete(tables.githubApps)
+        .returning({ id: tables.githubApps.id })
+        .all();
+      for (const app of removed) {
+        recordAuditEvent(transaction, {
+          actor,
+          action: "github_app.disconnect",
+          targetType: "github_app",
+          targetId: app.id,
+          metadata: {},
+        });
+      }
+    },
+    { behavior: "immediate" },
+  );
 }

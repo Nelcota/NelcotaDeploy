@@ -107,17 +107,39 @@ describe("deleteDatabase", () => {
     const { project, docker, created, dependencies, status } = await setup();
     await provisionDatabase(dependencies, created.id, AbortSignal.timeout(SIGNAL_TIMEOUT_IN_MS));
 
-    await deleteDatabase(dependencies, created.id);
+    await deleteDatabase({ ...dependencies, storage: null }, created.id);
 
     expect(docker.containers.size).toBe(0);
     expect(await docker.volumes.listForProject(project.id)).toEqual([]);
     expect(status()).toBeUndefined();
   });
 
+  test("deletes the stored backups of the database", async () => {
+    const { created, dependencies } = await setup();
+    const objects = new Map<string, Uint8Array<ArrayBuffer>>([
+      [`databases/${created.id}/b-1.dump.enc`, new Uint8Array([1])],
+      ["databases/another/b-2.dump.enc", new Uint8Array([2])],
+    ]);
+    const store = {
+      write: async () => await Promise.resolve(),
+      read: async () => await Promise.resolve(new Uint8Array()),
+      list: async (prefix: string) =>
+        await Promise.resolve([...objects.keys()].filter((key) => key.startsWith(prefix))),
+      delete: async (key: string) => {
+        objects.delete(key);
+        await Promise.resolve();
+      },
+    };
+
+    await deleteDatabase({ ...dependencies, storage: { store, prefix: "" } }, created.id);
+
+    expect([...objects.keys()]).toEqual(["databases/another/b-2.dump.enc"]);
+  });
+
   test("removes a database that never started", async () => {
     const { created, dependencies, status } = await setup();
 
-    await deleteDatabase(dependencies, created.id);
+    await deleteDatabase({ ...dependencies, storage: null }, created.id);
 
     expect(status()).toBeUndefined();
   });

@@ -1,5 +1,12 @@
-import { InvalidDockerArgumentError } from "./docker.errors";
 import { isValidEnvironmentVariableKey } from "@/shared/schemas/environment-variable.schema";
+import {
+  MIN_MEMORY_LIMIT_IN_MB,
+  MAX_MEMORY_LIMIT_IN_MB,
+  MIN_CPU_LIMIT_IN_MILLICORES,
+  MAX_CPU_LIMIT_IN_MILLICORES,
+} from "@/shared/schemas/project.schema";
+
+import { InvalidDockerArgumentError } from "./docker.errors";
 
 /** Labels that mark resources owned by the platform. Nothing without them is ever touched. */
 export const LABELS = {
@@ -190,6 +197,10 @@ export function buildImageArgs(options: BuildImageOptions): string[] {
 
 /** Options for {@link runContainerArgs}. */
 export type RunContainerOptions = {
+  /** Memory in MiB; null or absent leaves it unlimited. */
+  readonly memoryLimitInMb?: number | null;
+  /** Thousandths of a CPU core; null or absent leaves it unlimited. */
+  readonly cpuLimitInMillicores?: number | null;
   readonly containerName: string;
   readonly imageTag: string;
   readonly network: string;
@@ -204,6 +215,34 @@ export type RunContainerOptions = {
 
 // Plain absolute path: no comma or "=", which would add options to the --mount value.
 const MOUNT_TARGET_PATTERN = /^(?:\/[A-Za-z0-9._-]+)+$/;
+const MILLICORES_PER_CORE = 1000;
+
+function resourceLimitArgs(options: RunContainerOptions): string[] {
+  const args: string[] = [];
+  const memory = options.memoryLimitInMb;
+  if (memory != null) {
+    if (
+      Number.isInteger(memory) === false ||
+      memory < MIN_MEMORY_LIMIT_IN_MB ||
+      memory > MAX_MEMORY_LIMIT_IN_MB
+    ) {
+      throw new InvalidDockerArgumentError(`Invalid memory limit in MiB: ${memory}`);
+    }
+    args.push("--memory", `${memory}m`);
+  }
+  const cpu = options.cpuLimitInMillicores;
+  if (cpu != null) {
+    if (
+      Number.isInteger(cpu) === false ||
+      cpu < MIN_CPU_LIMIT_IN_MILLICORES ||
+      cpu > MAX_CPU_LIMIT_IN_MILLICORES
+    ) {
+      throw new InvalidDockerArgumentError(`Invalid CPU limit in millicores: ${cpu}`);
+    }
+    args.push("--cpus", String(cpu / MILLICORES_PER_CORE));
+  }
+  return args;
+}
 
 function mountArgs(volumes: RunContainerOptions["volumes"]): string[] {
   return volumes.flatMap((volume) => {
@@ -246,6 +285,7 @@ export function runContainerArgs(options: RunContainerOptions): string[] {
     ...labelArgs({ ...options.labels, "traefik.enable": "false" }),
     ...options.environmentKeys.flatMap((key) => ["--env", key]),
     ...mountArgs(options.volumes),
+    ...resourceLimitArgs(options),
     options.imageTag,
     ...(options.command ?? []),
   ];
