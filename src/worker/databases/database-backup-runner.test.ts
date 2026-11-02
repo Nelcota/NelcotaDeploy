@@ -3,6 +3,7 @@ import { describe, expect, test } from "bun:test";
 import type { ObjectStore } from "@/backups";
 import {
   createProjectDatabase,
+  DatabaseBackupInProgressError,
   listDatabaseBackups,
   listProjectDatabases,
   markBackupSucceeded,
@@ -151,6 +152,39 @@ describe("runDatabaseBackup", () => {
     expect(error).toBeInstanceOf(Error);
     expect(backups()[0]?.status).toBe("failed");
     expect(backups()[0]?.errorMessage).toContain("connection failed");
+  });
+
+  test("blocks restoration of an old backup while retention is deleting it", async () => {
+    const { database, dependencies, store, target, backups } = await setup();
+    for (const _ of Array.from({ length: 7 })) {
+      const id = requestDatabaseBackup(database, target);
+      await runDatabaseBackup(dependencies, id);
+    }
+    const oldest = backups().at(-1);
+    if (oldest == null) {
+      throw new Error("Expected an old backup to restore");
+    }
+    const restoreFailures: unknown[] = [];
+    const guardedStorage = {
+      ...dependencies.storage,
+      store: {
+        ...store,
+        delete: async (key: string) => {
+          try {
+            requestDatabaseRestore(database, { ...target, backupId: oldest.id });
+          } catch (error) {
+            restoreFailures.push(error);
+          }
+          await store.delete(key);
+        },
+      },
+    };
+    const backupId = requestDatabaseBackup(database, target);
+
+    await runDatabaseBackup({ ...dependencies, storage: guardedStorage }, backupId);
+
+    expect(restoreFailures).toHaveLength(1);
+    expect(restoreFailures.at(0)).toBeInstanceOf(DatabaseBackupInProgressError);
   });
 });
 

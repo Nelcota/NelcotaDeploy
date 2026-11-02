@@ -3,7 +3,7 @@ import { describe, expect, test } from "bun:test";
 import { openMemoryDatabase } from "@/db";
 import { createTestProject, createTestSecretBox, TEST_ACTOR } from "@/testing";
 
-import { markBackupSucceeded } from "./database-backup-outcomes";
+import { markBackupRunning, markBackupSucceeded } from "./database-backup-outcomes";
 import {
   isDatabaseBackupDue,
   listDatabaseBackups,
@@ -76,6 +76,28 @@ describe("requestDatabaseBackup", () => {
 });
 
 describe("requestDatabaseRestore", () => {
+  test.each(["queued", "running"] as const)(
+    "rejects a restore while a %s backup could prune its target",
+    async (status) => {
+      const { database, project, created, target } = await setup();
+      markDatabaseRunning(database, created.id);
+      const backupId = requestDatabaseBackup(database, target);
+      markBackupSucceeded(database, backupId, { storageKey: "oldest.dump.enc", sizeBytes: 10 });
+      const pendingId = requestDatabaseBackup(database, target);
+      if (status === "running") {
+        markBackupRunning(database, pendingId);
+      }
+
+      const restore = () => requestDatabaseRestore(database, { ...target, backupId });
+
+      expect(restore).toThrow(DatabaseBackupInProgressError);
+      expect(listProjectDatabases(database, project.id).at(0)?.status).toBe("running");
+      expect(
+        listDatabaseBackups(database, target).find((backup) => backup.id === backupId)?.status,
+      ).toBe("succeeded");
+    },
+  );
+
   test("marks the database restoring and queues the restore", async () => {
     const { database, project, created, target } = await setup();
     markDatabaseRunning(database, created.id);

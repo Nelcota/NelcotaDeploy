@@ -138,19 +138,7 @@ export function requestDatabaseBackup(database: Database, target: BackupTarget):
   const { projectId, databaseId, actor } = target;
   return database.transaction((transaction) => {
     assertBackupPossible(transaction, projectId, databaseId);
-    const pending = transaction
-      .select({ id: tables.databaseBackups.id })
-      .from(tables.databaseBackups)
-      .where(
-        and(
-          eq(tables.databaseBackups.databaseId, databaseId),
-          inArray(tables.databaseBackups.status, ["queued", "running"]),
-        ),
-      )
-      .get();
-    if (pending != null) {
-      throw new DatabaseBackupInProgressError(databaseId);
-    }
+    assertNoPendingBackup(transaction, databaseId);
     const backupId = insertBackup(transaction, {
       projectId,
       databaseId,
@@ -178,6 +166,7 @@ export function requestDatabaseBackup(database: Database, target: BackupTarget):
  * @throws {DatabaseBackupUnsupportedError} When its engine is not backed up.
  * @throws {DatabaseNotRunningError} When it is not running, such as during another restore.
  * @throws {DatabaseBackupNotFoundError} When the backup is not a successful one of the database.
+ * @throws {DatabaseBackupInProgressError} When another backup could prune the restore target.
  */
 export function requestDatabaseRestore(
   database: Database,
@@ -199,6 +188,7 @@ export function requestDatabaseRestore(
     if (backup?.status !== "succeeded") {
       throw new DatabaseBackupNotFoundError(backupId);
     }
+    assertNoPendingBackup(transaction, databaseId);
     transaction
       .update(tables.projectDatabases)
       .set({ status: "restoring", updatedAt: new Date().toISOString() })
@@ -218,6 +208,22 @@ export function requestDatabaseRestore(
       metadata: { projectId, backupId },
     });
   });
+}
+
+function assertNoPendingBackup(transaction: Transaction, databaseId: string): void {
+  const pending = transaction
+    .select({ id: tables.databaseBackups.id })
+    .from(tables.databaseBackups)
+    .where(
+      and(
+        eq(tables.databaseBackups.databaseId, databaseId),
+        inArray(tables.databaseBackups.status, ["queued", "running"]),
+      ),
+    )
+    .get();
+  if (pending != null) {
+    throw new DatabaseBackupInProgressError(databaseId);
+  }
 }
 
 /**

@@ -139,6 +139,8 @@ export async function runDatabaseBackup(
   const paths = dumpPaths(dependencies, backupId);
   try {
     const sizeBytes = await storeDump(dependencies, record, paths);
+    // Keep restores blocked until pruning can no longer remove their target.
+    await pruneBackups(dependencies, record.databaseId);
     markBackupSucceeded(database, backupId, {
       storageKey: databaseBackupKey(dependencies.storage.prefix, record),
       sizeBytes,
@@ -149,7 +151,6 @@ export async function runDatabaseBackup(
   } finally {
     await removeDumps(dependencies, containerName, paths);
   }
-  await pruneBackups(dependencies, record.databaseId);
 }
 
 async function storeDump(
@@ -179,7 +180,8 @@ async function pruneBackups(
   const expired = listExpiredDatabaseBackups(
     dependencies.database,
     databaseId,
-    BACKUPS_KEPT_PER_DATABASE,
+    // The newly stored backup is still running and is not counted among these successes.
+    BACKUPS_KEPT_PER_DATABASE - 1,
   );
   const results = await Promise.allSettled(
     expired.map(async (backup) => await dependencies.storage.store.delete(backup.storageKey)),
