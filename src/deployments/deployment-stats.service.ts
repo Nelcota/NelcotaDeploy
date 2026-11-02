@@ -1,4 +1,4 @@
-import { and, gte, isNull } from "drizzle-orm";
+import { and, gte, inArray, isNull } from "drizzle-orm";
 
 import { type Database, tables } from "@/db";
 import { dayKey, durationBetween } from "@/shared/format";
@@ -37,20 +37,30 @@ export type DeploymentStats = {
  *
  * @param database - Database.
  * @param options - `days` is the window length, between 1 and 30, ending today; `now` is
- * injectable for tests.
+ * injectable for tests; `projectIds` limits the summary to those projects, and null or
+ * omitted includes every project.
  * @returns The summary of every deploy created inside the window.
  * @throws {RangeError} When `days` is not an integer between 1 and 30.
  */
 export function summarizeDeployments(
   database: Database,
-  options: { readonly days: number; readonly now?: Date },
+  options: {
+    readonly days: number;
+    readonly now?: Date;
+    readonly projectIds?: readonly string[] | null;
+  },
 ): DeploymentStats {
   if (Number.isInteger(options.days) === false || options.days < 1 || options.days > MAX_DAYS) {
     throw new RangeError(`days must be an integer between 1 and ${MAX_DAYS}, got ${options.days}`);
   }
   const now = options.now ?? new Date();
   const dayKeys = windowDays(now, options.days);
-  const rows = listWindowDeployments(database, { now, days: options.days, firstDay: dayKeys[0] });
+  const rows = listWindowDeployments(database, {
+    now,
+    days: options.days,
+    firstDay: dayKeys[0],
+    projectIds: options.projectIds ?? null,
+  });
   const byDay = countByDay(rows, dayKeys);
   const durations = rows
     .filter((row) => row.status === "succeeded")
@@ -89,7 +99,12 @@ type DayCounts = { succeeded: number; failed: number; other: number };
 
 function listWindowDeployments(
   database: Database,
-  window: { readonly now: Date; readonly days: number; readonly firstDay: string | undefined },
+  window: {
+    readonly now: Date;
+    readonly days: number;
+    readonly firstDay: string | undefined;
+    readonly projectIds: readonly string[] | null;
+  },
 ): DeploymentRow[] {
   const { firstDay } = window;
   // A generous lower bound; rows from before the first local day are dropped below.
@@ -108,6 +123,9 @@ function listWindowDeployments(
         and(
           gte(tables.deployments.createdAt, since.toISOString()),
           isNull(tables.deployments.previewId),
+          window.projectIds == null
+            ? undefined
+            : inArray(tables.deployments.projectId, window.projectIds),
         ),
       )
       .all()

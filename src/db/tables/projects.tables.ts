@@ -2,6 +2,7 @@ import {
   type AnySQLiteColumn,
   index,
   integer,
+  primaryKey,
   sqliteTable,
   text,
   uniqueIndex,
@@ -67,6 +68,29 @@ export const projects = sqliteTable(
     uniqueIndex("projects_parent_environment_idx").on(table.parentProjectId, table.environmentName),
     index("projects_name_idx").on(table.name),
     index("projects_server_id_idx").on(table.serverId),
+  ],
+);
+
+/**
+ * Users other than admins who may open a production project. Its environments, such as
+ * staging, share the members of their production project.
+ */
+export const projectMembers = sqliteTable(
+  "project_members",
+  {
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    role: text("role", { enum: ["developer", "viewer"] }).notNull(),
+    addedByUserId: text("added_by_user_id").references(() => users.id, { onDelete: "set null" }),
+    createdAt: createdAt(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.projectId, table.userId] }),
+    index("project_members_user_id_idx").on(table.userId),
   ],
 );
 

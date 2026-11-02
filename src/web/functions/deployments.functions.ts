@@ -18,7 +18,11 @@ import {
 } from "@/deployments";
 import { getProject } from "@/projects";
 import { pageCursorSchema } from "@/shared/pagination";
-import { authorize } from "@/web/server/authorization";
+import {
+  authorizeDeployment,
+  authorizeProject,
+  authorizeProjectListing,
+} from "@/web/server/authorization";
 import { PublicError } from "@/web/server/public-error";
 
 import { idSchema, projectIdInput } from "./ids";
@@ -36,29 +40,29 @@ export const listDeploymentsFn = createServerFn({ method: "GET" })
     }),
   )
   .handler(async ({ data }) => {
-    await authorize("project:read");
-    return listDeployments(getDatabase(), data);
+    const { projectIds } = await authorizeProjectListing();
+    return listDeployments(getDatabase(), { ...data, projectIds });
   });
 
 /** Totals, success rate, average duration and per-day counts of the last `days` days. */
 export const getDeploymentStatsFn = createServerFn({ method: "GET" })
   .validator(z.object({ days: z.number().int().min(1).max(MAX_STATS_DAYS) }))
   .handler(async ({ data }) => {
-    await authorize("project:read");
-    return summarizeDeployments(getDatabase(), { days: data.days });
+    const { projectIds } = await authorizeProjectListing();
+    return summarizeDeployments(getDatabase(), { days: data.days, projectIds });
   });
 
 export const getDeploymentFn = createServerFn({ method: "GET" })
   .validator(z.object({ deploymentId: idSchema }))
   .handler(async ({ data }) => {
-    await authorize("project:read");
+    await authorizeDeployment("project:read", data.deploymentId);
     return getDeployment(getDatabase(), data.deploymentId);
   });
 
 export const deployProjectFn = createServerFn({ method: "POST" })
   .validator(projectIdInput)
   .handler(async ({ data }) => {
-    const user = await authorize("deployment:create");
+    const user = await authorizeProject("deployment:create", data.projectId);
     return requestDeployment(getDatabase(), {
       projectId: data.projectId,
       trigger: "manual",
@@ -71,7 +75,7 @@ export const deployProjectFn = createServerFn({ method: "POST" })
 export const retryDeploymentFn = createServerFn({ method: "POST" })
   .validator(z.object({ deploymentId: idSchema }))
   .handler(async ({ data }) => {
-    const user = await authorize("deployment:create");
+    const user = await authorizeDeployment("deployment:create", data.deploymentId);
     return retryDeployment(getDatabase(), data.deploymentId, {
       actor: userActor(user),
       triggeredByUserId: user.id,
@@ -82,7 +86,7 @@ export const retryDeploymentFn = createServerFn({ method: "POST" })
 export const redeployProjectFn = createServerFn({ method: "POST" })
   .validator(projectIdInput)
   .handler(async ({ data }) => {
-    const user = await authorize("deployment:create");
+    const user = await authorizeProject("deployment:create", data.projectId);
     const database = getDatabase();
     const project = getProject(database, data.projectId);
     if (project.currentDeploymentId == null) {
@@ -101,7 +105,7 @@ export const redeployProjectFn = createServerFn({ method: "POST" })
 export const applyProjectChangesFn = createServerFn({ method: "POST" })
   .validator(projectIdInput)
   .handler(async ({ data }) => {
-    const user = await authorize("deployment:create");
+    const user = await authorizeProject("deployment:create", data.projectId);
     return applyPendingChanges(getDatabase(), data.projectId, {
       actor: userActor(user),
       triggeredByUserId: user.id,
@@ -111,7 +115,7 @@ export const applyProjectChangesFn = createServerFn({ method: "POST" })
 export const rollbackDeploymentFn = createServerFn({ method: "POST" })
   .validator(z.object({ projectId: idSchema, deploymentId: idSchema }))
   .handler(async ({ data }) => {
-    const user = await authorize("deployment:create");
+    const user = await authorizeProject("deployment:create", data.projectId);
     return requestDeployment(getDatabase(), {
       projectId: data.projectId,
       trigger: "rollback",
@@ -124,20 +128,20 @@ export const rollbackDeploymentFn = createServerFn({ method: "POST" })
 export const cancelDeploymentFn = createServerFn({ method: "POST" })
   .validator(z.object({ deploymentId: idSchema }))
   .handler(async ({ data }) => {
-    const user = await authorize("deployment:create");
+    const user = await authorizeDeployment("deployment:create", data.deploymentId);
     return cancelDeployment(getDatabase(), data.deploymentId, userActor(user));
   });
 
 export const listRollbackCandidatesFn = createServerFn({ method: "GET" })
   .validator(projectIdInput)
   .handler(async ({ data }) => {
-    await authorize("project:read");
+    await authorizeProject("project:read", data.projectId);
     return listRollbackCandidates(getDatabase(), data.projectId);
   });
 
 export const containerActionFn = createServerFn({ method: "POST" })
   .validator(z.object({ projectId: idSchema, action: z.enum(CONTAINER_ACTIONS) }))
   .handler(async ({ data }) => {
-    const user = await authorize("container:control");
+    const user = await authorizeProject("container:control", data.projectId);
     return requestContainerAction(getDatabase(), { ...data, actor: userActor(user) });
   });

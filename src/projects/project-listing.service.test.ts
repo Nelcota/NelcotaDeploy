@@ -68,3 +68,22 @@ describe("listProjects search", () => {
     expect(project?.containerState).toBeNull();
   });
 });
+
+describe("listProjects with project ids", () => {
+  test("lists only the given projects", () => {
+    const database = openMemoryDatabase();
+    createTestProject(database);
+    const web = createTestProject(database, { name: "Web", slug: "web" });
+
+    const projects = listProjects(database, { projectIds: [web.id] });
+
+    expect(projects.map((project) => project.id)).toEqual([web.id]);
+  });
+
+  test("lists nothing for an empty list of ids", () => {
+    const database = openMemoryDatabase();
+    createTestProject(database);
+
+    expect(listProjects(database, { projectIds: [] })).toEqual([]);
+  });
+});

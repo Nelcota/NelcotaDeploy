@@ -1,10 +1,10 @@
 import { createFileRoute } from "@tanstack/react-router";
 
+import { assertProjectPermission } from "@/access";
 import { getCurrentUser, requireUser } from "@/auth";
 import { getDatabase } from "@/db";
 import { createLogger } from "@/logging";
 import { listRuntimeLogs } from "@/logs";
-import { getProject } from "@/projects";
 import { createEventStreamResponse, readCursor } from "@/web/server/event-stream";
 
 const BATCH_SIZE = 500;
@@ -20,7 +20,11 @@ export const Route = createFileRoute("/api/projects/$projectId/runtime-logs")({
         }
         const database = getDatabase();
         try {
-          getProject(database, params.projectId);
+          // Non-members get the same answer as for a missing project.
+          assertProjectPermission(database, user, {
+            projectId: params.projectId,
+            permission: "project:read",
+          });
         } catch {
           return new Response("Not found", { status: 404 });
         }
@@ -29,7 +33,12 @@ export const Route = createFileRoute("/api/projects/$projectId/runtime-logs")({
         return createEventStreamResponse(
           request,
           async (afterId) => {
-            await requireUser(request.headers, "project:read");
+            // Checked on every read, so removing a member ends their open stream.
+            const reader = await requireUser(request.headers, "project:read");
+            assertProjectPermission(database, reader, {
+              projectId: params.projectId,
+              permission: "project:read",
+            });
             // The first read sends recent history; later reads send only new lines.
             const items =
               firstConnection && afterId === 0

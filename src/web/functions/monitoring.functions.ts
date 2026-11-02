@@ -4,7 +4,7 @@ import { z } from "zod";
 import { getDatabase } from "@/db";
 import { listProjectSamples } from "@/monitoring";
 import { getProject } from "@/projects";
-import { authorize } from "@/web/server/authorization";
+import { authorizeProject } from "@/web/server/authorization";
 
 import { idSchema } from "./ids";
 
@@ -14,7 +14,7 @@ const MAX_HOURS = 48;
 export const getProjectMetricsFn = createServerFn({ method: "GET" })
   .validator(z.object({ projectId: idSchema, hours: z.number().int().min(1).max(MAX_HOURS) }))
   .handler(async ({ data }) => {
-    await authorize("project:read");
+    await authorizeProject("project:read", data.projectId);
     const database = getDatabase();
     getProject(database, data.projectId);
     return listProjectSamples(

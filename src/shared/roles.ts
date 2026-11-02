@@ -3,6 +3,11 @@ export const ROLES = ["admin", "developer", "viewer"] as const;
 
 export type Role = (typeof ROLES)[number];
 
+/** Roles a member can have on one project; admins reach every project without one. */
+export const PROJECT_ROLES = ["developer", "viewer"] as const;
+
+export type ProjectRole = (typeof PROJECT_ROLES)[number];
+
 /** Actions guarded by role-based authorization. */
 export type Permission =
   | "project:read"

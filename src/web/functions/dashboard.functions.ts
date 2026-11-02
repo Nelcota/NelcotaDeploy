@@ -4,7 +4,7 @@ import { z } from "zod";
 import { getDatabase } from "@/db";
 import { countActiveDeployments } from "@/deployments";
 import { getDashboardSummary, getWorkerStatus, listHostSamples } from "@/monitoring";
-import { authorize } from "@/web/server/authorization";
+import { authorize, authorizeProjectListing } from "@/web/server/authorization";
 
 import { idSchema } from "./ids";
 
@@ -12,8 +12,8 @@ const MILLISECONDS_PER_HOUR = 3_600_000;
 const MAX_HOURS = 48;
 
 export const getDashboardFn = createServerFn({ method: "GET" }).handler(async () => {
-  await authorize("project:read");
-  return getDashboardSummary(getDatabase());
+  const { projectIds } = await authorizeProjectListing();
+  return getDashboardSummary(getDatabase(), new Date(), projectIds);
 });
 
 export const getHostMetricsFn = createServerFn({ method: "GET" })
@@ -29,7 +29,10 @@ export const getHostMetricsFn = createServerFn({ method: "GET" })
 
 /** Worker liveness, Docker availability and running deployments, polled by the sidebar. */
 export const getSidebarStatusFn = createServerFn({ method: "GET" }).handler(async () => {
-  await authorize("project:read");
+  const { projectIds } = await authorizeProjectListing();
   const database = getDatabase();
-  return { worker: getWorkerStatus(database), activeDeployments: countActiveDeployments(database) };
+  return {
+    worker: getWorkerStatus(database),
+    activeDeployments: countActiveDeployments(database, projectIds),
+  };
 });

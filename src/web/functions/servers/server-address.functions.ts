@@ -5,7 +5,7 @@ import { getConfig } from "@/config";
 import { getDatabase } from "@/db";
 import { checkDomainsDns, listProjectDomains, projectServerAddress } from "@/domains";
 import { getSystemSettings } from "@/settings";
-import { authorize } from "@/web/server/authorization";
+import { authorizeProject } from "@/web/server/authorization";
 
 import { idSchema } from "../ids";
 
@@ -17,7 +17,7 @@ import { idSchema } from "../ids";
 export const getServerAddressFn = createServerFn({ method: "GET" })
   .validator(z.object({ projectId: idSchema }))
   .handler(async ({ data }) => {
-    await authorize("project:read");
+    await authorizeProject("project:read", data.projectId);
     return await projectServerAddress(getDatabase(), data.projectId, getConfig().PUBLIC_URL);
   });
 
@@ -25,7 +25,7 @@ export const getServerAddressFn = createServerFn({ method: "GET" })
 export const getDomainsDnsFn = createServerFn({ method: "GET" })
   .validator(z.object({ projectId: idSchema }))
   .handler(async ({ data }) => {
-    await authorize("project:read");
+    await authorizeProject("project:read", data.projectId);
     const database = getDatabase();
     const domains = listProjectDomains(database, data.projectId, getSystemSettings(database));
     const expected = await projectServerAddress(database, data.projectId, getConfig().PUBLIC_URL);

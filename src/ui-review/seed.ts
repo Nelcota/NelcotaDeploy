@@ -1,5 +1,6 @@
 // Fills a throwaway database with a realistic panel, so every screen has something to show.
 // Run by main.ts in a child process whose DATABASE_PATH points at a temporary file.
+import { addProjectMember } from "@/access";
 import { createUser, getAuth } from "@/auth";
 import { getDatabase, migrateDatabase, tables } from "@/db";
 import { completeDeployment, requestDeployment, transitionDeployment } from "@/deployments";
@@ -162,6 +163,23 @@ seedVolumes(database, api.id);
 await seedDatabases(database, secretBox, api.id);
 await seedStaging(database, secretBox, api.id);
 seedPreview(database, api.id);
+
+// One member on the API project and one user who could still join it, for the team section.
+const developerId = await createUser(getAuth(), database, {
+  newUser: { email: "bruno@exemplo.com", name: "Bruno Dev", role: "developer", password },
+  actor: ACTOR,
+});
+await createUser(getAuth(), database, {
+  newUser: { email: "carla@exemplo.com", name: "Carla Leitora", role: "viewer", password },
+  actor: ACTOR,
+});
+addProjectMember(database, {
+  projectId: api.id,
+  userId: developerId,
+  role: "developer",
+  addedByUserId: null,
+  actor: ACTOR,
+});
 
 const startedAt = new Date(now - CONTAINER_UPTIME_IN_MINUTES * MINUTE_IN_MS).toISOString();
 database

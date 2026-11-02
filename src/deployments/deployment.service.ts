@@ -177,6 +177,8 @@ export function listDeployments(
     readonly before?: PageCursor | undefined;
     /** Deployments of this preview; production ones when omitted. */
     readonly previewId?: string | undefined;
+    /** The only projects to include; null or omitted includes every project. */
+    readonly projectIds?: readonly string[] | null;
   },
 ): Deployment[] {
   const limit = Math.min(Math.max(Math.trunc(options.limit), 1), MAX_PAGE_SIZE);
@@ -187,6 +189,9 @@ export function listDeployments(
     .where(
       and(
         options.projectId == null ? undefined : eq(tables.deployments.projectId, options.projectId),
+        options.projectIds == null
+          ? undefined
+          : inArray(tables.deployments.projectId, options.projectIds),
         options.status == null ? undefined : eq(tables.deployments.status, options.status),
         options.before == null
           ? undefined
@@ -357,13 +362,22 @@ export function isCancellationRequested(database: Database, deploymentId: string
  * Counts deployments waiting in the queue or running right now.
  *
  * @param database - Database.
+ * @param projectIds - The only projects to count; null counts every project.
  * @returns Number of unfinished deployments.
  */
-export function countActiveDeployments(database: Database): number {
+export function countActiveDeployments(
+  database: Database,
+  projectIds: readonly string[] | null,
+): number {
   const row = database
     .select({ total: count() })
     .from(tables.deployments)
-    .where(inArray(tables.deployments.status, ACTIVE_STATUSES))
+    .where(
+      and(
+        inArray(tables.deployments.status, ACTIVE_STATUSES),
+        projectIds == null ? undefined : inArray(tables.deployments.projectId, projectIds),
+      ),
+    )
     .get();
   return row?.total ?? 0;
 }
