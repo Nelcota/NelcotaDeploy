@@ -12,6 +12,7 @@ import {
 } from "@/web/components/forms/project-form-fields";
 import {
   AutoApplyField,
+  AutoRollbackField,
   AutoDeployField,
   PreviewsField,
   SwitchGroup,
@@ -87,6 +88,7 @@ export function AutomationSection({ form }: { readonly form: ProjectFormApi }) {
       <SwitchGroup>
         <AutoDeployField form={form} />
         <AutoApplyField form={form} />
+        <AutoRollbackField form={form} />
         <PreviewsField form={form} />
       </SwitchGroup>
     </SettingsSection>

@@ -42,6 +42,7 @@ export const projectColumns = {
   healthCheckPath: tables.projects.healthCheckPath,
   autoDeploy: tables.projects.autoDeploy,
   autoApplyChanges: tables.projects.autoApplyChanges,
+  autoRollback: tables.projects.autoRollback,
   previewsEnabled: tables.projects.previewsEnabled,
   memoryLimitInMb: tables.projects.memoryLimitInMb,
   cpuLimitInMillicores: tables.projects.cpuLimitInMillicores,
@@ -78,6 +79,8 @@ export type Project = {
   readonly healthCheckPath: string | null;
   readonly autoDeploy: boolean;
   readonly autoApplyChanges: boolean;
+  /** Rolls back on its own a new version whose containers keep restarting. */
+  readonly autoRollback: boolean;
   /** Pull requests to the project's branch get a temporary deployment of their own. */
   readonly previewsEnabled: boolean;
   /** Memory limit of the application container in MiB; null for none. */

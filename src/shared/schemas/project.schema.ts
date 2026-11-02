@@ -212,6 +212,8 @@ export const projectInputSchema = z
     healthCheckPath: healthCheckPathSchema,
     autoDeploy: z.boolean(),
     autoApplyChanges: z.boolean(),
+    /** Rolls back on its own a new version whose containers keep restarting; on when absent. */
+    autoRollback: z.boolean().default(true),
     previewsEnabled: z.boolean(),
     // Blank means no limit, as Docker runs containers by default.
     memoryLimitInMb: optionalLimit({

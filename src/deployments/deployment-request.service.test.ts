@@ -115,6 +115,7 @@ describe("requestDeployment validation", () => {
         healthCheckPath: null,
         autoDeploy: false,
         autoApplyChanges: true,
+        autoRollback: true,
         previewsEnabled: false,
         memoryLimitInMb: null,
         cpuLimitInMillicores: null,

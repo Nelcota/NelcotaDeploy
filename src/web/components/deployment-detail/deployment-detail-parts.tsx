@@ -2,7 +2,7 @@ import { Link } from "@tanstack/react-router";
 import { ChevronLeftIcon, ListChecksIcon, ScrollTextIcon } from "lucide-react";
 
 import { DeploymentStages } from "@/web/components/deployments/deployment-stages";
-import { CardTitleRow } from "@/web/components/layout/layout";
+import { AutoRolledBackBadge, CardTitleRow } from "@/web/components/layout/layout";
 import { DeploymentStatusBadge } from "@/web/components/layout/status-badge";
 import { LogViewer } from "@/web/components/monitoring/log-viewer";
 import { Card } from "@/web/components/ui/card";
@@ -41,6 +41,7 @@ export function DeploymentTitle({ deployment }: { readonly deployment: Deploymen
         Deploy <span className="font-mono">{deploymentTitleId(deployment)}</span>
       </span>
       <DeploymentStatusBadge status={deployment.status} />
+      {deployment.autoRolledBackAt == null ? null : <AutoRolledBackBadge />}
     </>
   );
 }
