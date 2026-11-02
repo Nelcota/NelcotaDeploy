@@ -59,6 +59,48 @@ export const workerHeartbeats = sqliteTable("worker_heartbeats", {
 
 // Health problems already announced, so each one alerts once when it starts and once when it
 // is resolved, instead of on every check.
+// One HTTP check of a public hostname, as a visitor would make it. Only the outcome and the
+// timing are kept, never the response.
+export const uptimeChecks = sqliteTable(
+  "uptime_checks",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    hostname: text("hostname").notNull(),
+    up: integer("up", { mode: "boolean" }).notNull(),
+    statusCode: integer("status_code"),
+    responseTimeInMs: integer("response_time_in_ms"),
+    error: text("error"),
+    checkedAt: text("checked_at").notNull(),
+  },
+  (table) => [
+    index("uptime_checks_hostname_checked_idx").on(table.hostname, table.checkedAt),
+    index("uptime_checks_project_checked_idx").on(table.projectId, table.checkedAt),
+    index("uptime_checks_checked_idx").on(table.checkedAt),
+  ],
+);
+
+// Current state of each checked hostname, so a change alerts once and the certificate is
+// read once a day.
+export const uptimeStates = sqliteTable(
+  "uptime_states",
+  {
+    hostname: text("hostname").primaryKey(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    status: text("status", { enum: ["unknown", "up", "down", "private"] }).notNull(),
+    consecutiveFailures: integer("consecutive_failures").notNull().default(0),
+    changedAt: text("changed_at").notNull(),
+    certificateExpiresAt: text("certificate_expires_at"),
+    certificateCheckedAt: text("certificate_checked_at"),
+    certificateAlertedAt: text("certificate_alerted_at"),
+  },
+  (table) => [index("uptime_states_project_idx").on(table.projectId)],
+);
+
 export const healthAlerts = sqliteTable("health_alerts", {
   key: text("key").primaryKey(),
   title: text("title").notNull(),

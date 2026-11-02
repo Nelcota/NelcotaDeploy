@@ -7,13 +7,18 @@ import type { ProjectDetails } from "@/web/components/projects/project-query";
 import { AddDomainForm } from "./add-domain-form";
 import { DnsCard } from "./dns-card";
 import { DomainRows } from "./domain-rows";
+import { useDomainUptime } from "./uptime/use-domain-uptime";
 import { useDomainsDns } from "./use-domains-dns";
 import { useProjectDomains } from "./use-project-domains";
 
-/** Public addresses of one project: list, add, remove, and the DNS record to create. */
+/**
+ * Public addresses of one project: list, add, remove, how each answers visitors and the DNS
+ * record to create.
+ */
 export function DomainsPage({ projectId }: { readonly projectId: string }) {
   const { project, canEdit, remove, applyChanges } = useProjectDomains(projectId);
   const dns = useDomainsDns(projectId);
+  const uptime = useDomainUptime(projectId);
   if (project.isError) {
     return <ErrorState error={project.error} onRetry={() => void project.refetch()} />;
   }
@@ -37,6 +42,7 @@ export function DomainsPage({ projectId }: { readonly projectId: string }) {
           <DomainRows
             domains={details.domains}
             dns={dns}
+            uptime={uptime}
             canEdit={canEdit}
             onRemove={(domainId) => remove.mutate(domainId)}
           />
