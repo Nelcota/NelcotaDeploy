@@ -22,6 +22,9 @@ export const servers = sqliteTable("servers", {
   statusMessage: text("status_message"),
   dockerVersion: text("docker_version"),
   lastSeenAt: text("last_seen_at"),
+  // Outcome of the last daily cleanup of build cache and orphan images.
+  lastCleanupAt: text("last_cleanup_at"),
+  lastCleanupFreedBytes: integer("last_cleanup_freed_bytes"),
   createdAt: createdAt(),
   updatedAt: updatedAt(),
 });

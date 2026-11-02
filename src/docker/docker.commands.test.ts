@@ -3,6 +3,9 @@ import { describe, expect, test } from "bun:test";
 import {
   assertFilePath,
   buildImageArgs,
+  danglingImagePruneArgs,
+  oversizedBuildCachePruneArgs,
+  staleBuildCachePruneArgs,
   containerNameFor,
   databaseContainerNameFor,
   databaseVolumeNameFor,
@@ -322,6 +325,7 @@ describe("railpackBuildArgs", () => {
     imageTag: "nelcota/web:0a1b2c3d4e5f-railpack",
     secretKeys: ["NEXT_PUBLIC_API_URL"],
     secretsHash: "a".repeat(64),
+    cacheKey: "019a2b3c-4d5e-7f60-8a9b-0c1d2e3f4a5b",
   };
 
   test("builds the plan with the frontend of the same Railpack version", () => {
@@ -339,6 +343,18 @@ describe("railpackBuildArgs", () => {
     const args = railpackBuildArgs(options);
 
     expect(args.join(" ")).toContain("--secret id=NEXT_PUBLIC_API_URL,env=NEXT_PUBLIC_API_URL");
+  });
+
+  test("keeps the build caches of each project apart", () => {
+    const args = railpackBuildArgs(options);
+
+    expect(args.join(" ")).toContain("--build-arg cache-key=019a2b3c-4d5e-7f60-8a9b-0c1d2e3f4a5b");
+  });
+
+  test("throws InvalidDockerArgumentError for a cache key that could add options", () => {
+    expect(() => railpackBuildArgs({ ...options, cacheKey: "a,mode=0777" })).toThrow(
+      InvalidDockerArgumentError,
+    );
   });
 
   test("throws InvalidDockerArgumentError for a malformed secrets hash", () => {
@@ -365,5 +381,36 @@ describe("Railpack base tags", () => {
     expect(isRailpackBaseTag("nelcota/web:0a1b2c3d4e5f-railpack")).toBe(true);
     expect(isRailpackBaseTag("nelcota/web:0a1b2c3d4e5f")).toBe(false);
     expect(isRailpackBaseTag("postgres:18.6-railpack")).toBe(false);
+  });
+});
+
+describe("prune arguments", () => {
+  test("removes build cache unused for longer than the retention", () => {
+    expect(staleBuildCachePruneArgs(168)).toEqual([
+      "buildx",
+      "prune",
+      "--force",
+      "--filter",
+      "until=168h",
+    ]);
+  });
+
+  test("shrinks the build cache below the size limit", () => {
+    expect(oversizedBuildCachePruneArgs(10)).toEqual([
+      "buildx",
+      "prune",
+      "--force",
+      "--max-used-space",
+      "10gb",
+    ]);
+  });
+
+  test("removes only dangling images of the platform", () => {
+    expect(danglingImagePruneArgs()).toContain("label=io.nelcota.managed=true");
+  });
+
+  test.each([[0], [-5], [1.5]])("throws InvalidDockerArgumentError for the limit %p", (limit) => {
+    expect(() => staleBuildCachePruneArgs(limit)).toThrow(InvalidDockerArgumentError);
+    expect(() => oversizedBuildCachePruneArgs(limit)).toThrow(InvalidDockerArgumentError);
   });
 });

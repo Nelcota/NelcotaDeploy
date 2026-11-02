@@ -230,6 +230,7 @@ async function buildWithRailpack(
       imageTag: baseTag,
       secretKeys: Object.keys(buildValues),
       secretsHash: secretsHash(buildValues),
+      cacheKey: project.id,
     },
     buildValues,
     run,

@@ -6,6 +6,7 @@ import { scheduleDueTasks } from "@/tasks";
 import type { WorkerDependencies } from "../worker.types";
 import { backupDatabaseIfDue, runDatabaseBackup } from "./database-backup";
 import { checkHealth } from "./health-alerts";
+import { cleanUpServers } from "./server-cleanup";
 
 const MILLISECONDS_PER_HOUR = 3_600_000;
 
@@ -43,8 +44,8 @@ function applyRetention({ database, config, logger }: WorkerDependencies): void 
 /**
  * Starts the clock-based duties: scheduled tasks every minute, health checks every five
  * minutes, retention and project database
- * backups every hour, and the panel database backup every day (plus one at startup when the
- * newest backup is a day old).
+ * backups every hour, and every day the panel database backup (plus one at startup when the
+ * newest backup is a day old) and the cleanup of build cache and orphan images on each server.
  *
  * @param dependencies - Worker dependencies.
  * @param guard - The worker's duty wrapper.
@@ -72,6 +73,11 @@ export function startScheduledDuties(
     Bun.cron(
       "47 * * * *",
       guard("database-backups", () => queueDatabaseBackups(dependencies)),
+    ),
+    // Daily at 04:30 UTC, after the panel backup, to free disk on every server.
+    Bun.cron(
+      "30 4 * * *",
+      guard("server-cleanup", async () => await cleanUpServers(dependencies)),
     ),
     // Daily at 03:30 UTC, when panels are usually quiet.
     Bun.cron(

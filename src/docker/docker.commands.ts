@@ -235,19 +235,28 @@ export type RailpackBuildOptions = {
   readonly secretKeys: readonly string[];
   /** SHA-256 hex of the secret values, so a changed value rebuilds the layers that use it. */
   readonly secretsHash: string;
+  /**
+   * Prefix of the build's cache mounts, such as the package manager caches. One per project,
+   * so a project never reads or fills another project's caches on a shared server.
+   */
+  readonly cacheKey: string;
 };
+
+const CACHE_KEY_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/;
 
 /**
  * Builds `docker buildx build` arguments that build a Railpack plan with the Railpack
  * frontend, on Docker's own BuildKit. Secret values never appear in the argument list.
  *
- * @param options - Plan, context, tag, secret names and their hash.
+ * @param options - Plan, context, tag, secret names, their hash and the cache key.
  * @returns Arguments after the docker binary.
- * @throws {InvalidDockerArgumentError} When the tag, a secret name or the hash is malformed.
+ * @throws {InvalidDockerArgumentError} When the tag, a secret name, the hash or the cache key
+ *   is malformed.
  */
 export function railpackBuildArgs(options: RailpackBuildOptions): string[] {
   assertMatches(options.imageTag, IMAGE_REFERENCE_PATTERN, "image tag");
   assertMatches(options.secretsHash, SECRETS_HASH_PATTERN, "secrets hash");
+  assertMatches(options.cacheKey, CACHE_KEY_PATTERN, "cache key");
   for (const key of options.secretKeys) {
     assertMatches(key, ENVIRONMENT_KEY_PATTERN, "build secret name");
   }
@@ -260,6 +269,8 @@ export function railpackBuildArgs(options: RailpackBuildOptions): string[] {
     `BUILDKIT_SYNTAX=${RAILPACK_FRONTEND_IMAGE}`,
     "--build-arg",
     `secrets-hash=${options.secretsHash}`,
+    "--build-arg",
+    `cache-key=${options.cacheKey}`,
     "--file",
     options.planPath,
     "--tag",
@@ -268,6 +279,41 @@ export function railpackBuildArgs(options: RailpackBuildOptions): string[] {
     "--",
     options.contextPath,
   ];
+}
+
+/**
+ * Builds `docker buildx prune` arguments that remove build cache unused for longer than the
+ * retention. Build cache carries no labels, so it is the whole builder's cache.
+ *
+ * @param retentionInHours - Cache used within this many hours stays; a positive integer.
+ * @returns Arguments after the docker binary.
+ * @throws {InvalidDockerArgumentError} When the retention is not a positive integer.
+ */
+export function staleBuildCachePruneArgs(retentionInHours: number): string[] {
+  assertPositiveInteger(retentionInHours, "build cache retention");
+  return ["buildx", "prune", "--force", "--filter", `until=${retentionInHours}h`];
+}
+
+/**
+ * Builds `docker buildx prune` arguments that shrink the build cache below a size, removing
+ * the least recently used records first.
+ *
+ * @param maxUsedSpaceInGb - Most cache kept, in GB; a positive integer.
+ * @returns Arguments after the docker binary.
+ * @throws {InvalidDockerArgumentError} When the size is not a positive integer.
+ */
+export function oversizedBuildCachePruneArgs(maxUsedSpaceInGb: number): string[] {
+  assertPositiveInteger(maxUsedSpaceInGb, "build cache size");
+  return ["buildx", "prune", "--force", "--max-used-space", `${maxUsedSpaceInGb}gb`];
+}
+
+/**
+ * Builds `docker image prune` arguments that remove dangling images of the platform only.
+ *
+ * @returns Arguments after the docker binary.
+ */
+export function danglingImagePruneArgs(): string[] {
+  return ["image", "prune", "--force", "--filter", `label=${LABELS.managed}=true`];
 }
 
 /** Options for {@link runContainerArgs}. */

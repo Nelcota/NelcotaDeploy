@@ -59,6 +59,19 @@ export class FakeDocker implements DockerEngine {
     await Promise.resolve();
   }
 
+  /** Bytes each prune reports as freed. */
+  reclaimedBytes = 0;
+
+  async pruneBuildCache(limits: Parameters<DockerEngine["pruneBuildCache"]>[0]): Promise<number> {
+    this.calls.push(`prune build cache ${limits.retentionInHours}h ${limits.maxUsedSpaceInGb}gb`);
+    return await Promise.resolve(this.reclaimedBytes);
+  }
+
+  async pruneDanglingImages(): Promise<number> {
+    this.calls.push("prune dangling images");
+    return await Promise.resolve(this.reclaimedBytes);
+  }
+
   async ensureNetwork(): Promise<void> {
     await Promise.resolve();
   }

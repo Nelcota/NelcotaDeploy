@@ -7,11 +7,14 @@ import {
   assertFilePath,
   buildImageArgs,
   type BuildImageOptions,
+  danglingImagePruneArgs,
   LABELS,
+  oversizedBuildCachePruneArgs,
   railpackBuildArgs,
   type RailpackBuildOptions,
   runContainerArgs,
   type RunContainerOptions,
+  staleBuildCachePruneArgs,
   stopContainerArgs,
 } from "./docker.commands";
 import { DockerCommandError, UnmanagedResourceError } from "./docker.errors";
@@ -20,6 +23,7 @@ import {
   type ContainerStats,
   parseEnvironmentOutput,
   parseInspectOutput,
+  parseReclaimedBytes,
   parseStatsOutput,
 } from "./docker.output";
 
@@ -27,6 +31,8 @@ const QUICK_COMMAND_TIMEOUT_IN_MS = 30_000;
 const STOP_TIMEOUT_IN_MS = 60_000;
 // Database dumps can take a while to copy on slow disks.
 const COPY_TIMEOUT_IN_MS = 600_000;
+// Pruning a large build cache takes a while on slow disks.
+const PRUNE_TIMEOUT_IN_MS = 600_000;
 const MS_PER_SECOND = 1000;
 
 /** Callback for streamed command output. */
@@ -426,6 +432,46 @@ export class DockerCli {
       ],
       { timeoutInMs: Number.MAX_SAFE_INTEGER, signal, onLine: () => onEvent() },
     );
+  }
+
+  /**
+   * Removes build cache unused for longer than the retention, then shrinks what is left below
+   * the size limit, least recently used first.
+   *
+   * @param limits - `retentionInHours` and `maxUsedSpaceInGb`, both positive integers.
+   * @returns Bytes freed, as Docker reported them.
+   * @throws {InvalidDockerArgumentError} When a limit is not a positive integer.
+   * @throws {DockerCommandError} When docker cannot prune.
+   */
+  async pruneBuildCache(limits: {
+    readonly retentionInHours: number;
+    readonly maxUsedSpaceInGb: number;
+  }): Promise<number> {
+    // One after the other: the size limit applies to what the age limit left.
+    const stale = await this.#runChecked(
+      staleBuildCachePruneArgs(limits.retentionInHours),
+      "buildx prune",
+      { timeoutInMs: PRUNE_TIMEOUT_IN_MS },
+    );
+    const oversized = await this.#runChecked(
+      oversizedBuildCachePruneArgs(limits.maxUsedSpaceInGb),
+      "buildx prune",
+      { timeoutInMs: PRUNE_TIMEOUT_IN_MS },
+    );
+    return parseReclaimedBytes(stale) + parseReclaimedBytes(oversized);
+  }
+
+  /**
+   * Removes dangling images of the platform; images of anything else are never touched.
+   *
+   * @returns Bytes freed, as Docker reported them.
+   * @throws {DockerCommandError} When docker cannot prune.
+   */
+  async pruneDanglingImages(): Promise<number> {
+    const output = await this.#runChecked(danglingImagePruneArgs(), "image prune", {
+      timeoutInMs: PRUNE_TIMEOUT_IN_MS,
+    });
+    return parseReclaimedBytes(output);
   }
 
   /**

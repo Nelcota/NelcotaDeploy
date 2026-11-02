@@ -20,6 +20,8 @@ const DEPLOYMENT_LOG_RETENTION_DAYS_RANGE: IntegerRange = { min: 1, max: 365, fa
 const IMAGES_KEPT_PER_PROJECT_RANGE: IntegerRange = { min: 1, max: 50, fallback: 5 };
 const BACKUPS_KEPT_RANGE: IntegerRange = { min: 1, max: 365, fallback: 7 };
 const OFFSITE_BACKUPS_KEPT_RANGE: IntegerRange = { min: 1, max: 3650, fallback: 30 };
+const BUILD_CACHE_MAX_GB_RANGE: IntegerRange = { min: 1, max: 1000, fallback: 10 };
+const BUILD_CACHE_RETENTION_DAYS_RANGE: IntegerRange = { min: 1, max: 365, fallback: 7 };
 // Folders ending in "/"; a "." or ".." folder would make keys that read like relative paths.
 const S3_PREFIX_PATTERN = /^(?:(?!\.{1,2}\/)[A-Za-z0-9._-]+\/)*$/;
 
@@ -85,6 +87,10 @@ const configSchema = z
     RUNTIME_LOG_RETENTION_LINES: boundedInteger(RUNTIME_LOG_RETENTION_LINES_RANGE),
     DEPLOYMENT_LOG_RETENTION_DAYS: boundedInteger(DEPLOYMENT_LOG_RETENTION_DAYS_RANGE),
     IMAGES_KEPT_PER_PROJECT: boundedInteger(IMAGES_KEPT_PER_PROJECT_RANGE),
+    // The daily cleanup keeps at most this much build cache per server, in GB.
+    BUILD_CACHE_MAX_GB: boundedInteger(BUILD_CACHE_MAX_GB_RANGE),
+    // Build cache unused for longer than this is removed by the daily cleanup.
+    BUILD_CACHE_RETENTION_DAYS: boundedInteger(BUILD_CACHE_RETENTION_DAYS_RANGE),
     // Daily database copies; the directory defaults to "backups" next to the database file.
     BACKUP_DIR: z.string().trim().min(1).optional(),
     BACKUPS_KEPT: boundedInteger(BACKUPS_KEPT_RANGE),
