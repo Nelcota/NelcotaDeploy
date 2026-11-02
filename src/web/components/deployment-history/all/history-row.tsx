@@ -7,7 +7,7 @@ import {
   DeploymentOriginColumn,
   DeploymentTimingColumn,
 } from "@/web/components/deployments/deployment-row";
-import { LiveBadge } from "@/web/components/layout/layout";
+import { AutoRolledBackBadge, LiveBadge } from "@/web/components/layout/layout";
 import { DeploymentStatusBadge } from "@/web/components/layout/status-badge";
 
 import { deploymentLabel } from "../deployment-history";
@@ -32,6 +32,7 @@ export function HistoryRow({ deployment }: { readonly deployment: DeploymentItem
             {shortSha}
           </span>
           {deployment.isLive ? <LiveBadge /> : null}
+          {deployment.autoRolledBackAt == null ? null : <AutoRolledBackBadge />}
         </p>
         <p
           className="truncate text-sm text-muted-foreground"

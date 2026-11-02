@@ -27,6 +27,7 @@ export const DEPLOYMENT_TRIGGER_LABELS: Record<DeploymentTrigger, string> = {
   webhook: "Push no GitHub",
   redeploy: "Redeploy",
   rollback: "Rollback",
+  "auto-rollback": "Rollback automático",
   mcp: "MCP",
   promote: "Promoção do staging",
 };
@@ -37,6 +38,7 @@ export const DEPLOYMENT_TRIGGER_ICONS: Record<DeploymentTrigger, LucideIcon> = {
   webhook: WebhookIcon,
   redeploy: RefreshCwIcon,
   rollback: Undo2Icon,
+  "auto-rollback": Undo2Icon,
   mcp: BotIcon,
   promote: ArrowUpFromLineIcon,
 };

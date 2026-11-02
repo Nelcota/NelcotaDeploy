@@ -171,6 +171,7 @@ function createPendingStagingProject(
       healthCheckPath: production.healthCheckPath,
       autoDeploy: false,
       autoApplyChanges: production.autoApplyChanges,
+      autoRollback: production.autoRollback,
       previewsEnabled: false,
       memoryLimitInMb: production.memoryLimitInMb,
       cpuLimitInMillicores: production.cpuLimitInMillicores,

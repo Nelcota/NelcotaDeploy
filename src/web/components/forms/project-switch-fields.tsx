@@ -21,7 +21,7 @@ function SwitchRow({
   className,
 }: {
   readonly form: ProjectFormApi;
-  readonly name: "autoDeploy" | "autoApplyChanges" | "previewsEnabled";
+  readonly name: "autoDeploy" | "autoApplyChanges" | "autoRollback" | "previewsEnabled";
   readonly label: string;
   readonly hint: string;
   readonly className?: string | undefined;
@@ -65,6 +65,25 @@ export function AutoDeployField({
       name="autoDeploy"
       label="Deploy automático"
       hint="Faz deploy a cada push na branch, via webhook do GitHub."
+      className={className}
+    />
+  );
+}
+
+/** Switch that rolls a new version back on its own when its containers keep restarting. */
+export function AutoRollbackField({
+  form,
+  className,
+}: {
+  readonly form: ProjectFormApi;
+  readonly className?: string;
+}) {
+  return (
+    <SwitchRow
+      form={form}
+      name="autoRollback"
+      label="Rollback automático"
+      hint="Se a versão nova reiniciar 3 vezes nos primeiros minutos depois do deploy, o painel volta para a anterior e avisa."
       className={className}
     />
   );

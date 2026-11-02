@@ -37,6 +37,7 @@ export function createTestProject(
       healthCheckPath: null,
       autoDeploy: true,
       autoApplyChanges: true,
+      autoRollback: true,
       previewsEnabled: false,
       memoryLimitInMb: null,
       cpuLimitInMillicores: null,
