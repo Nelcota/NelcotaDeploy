@@ -28,24 +28,42 @@ export function DeploymentHistoryList({
   );
 }
 
-/** Loads the next page of the history; nothing when every deploy is already listed. */
+/** Navigates bounded history pages without retaining previously rendered deployment objects. */
 export function LoadMoreButton({
   deployments,
 }: {
   readonly deployments: DeploymentHistory["deployments"];
 }) {
-  if (deployments.hasNextPage === false) {
+  if (deployments.hasNextPage === false && deployments.canReset === false) {
     return null;
   }
   return (
-    <div className="flex justify-center">
+    <nav
+      aria-label="Paginação do histórico"
+      className="flex flex-wrap justify-center gap-3"
+      aria-busy={deployments.isFetching}
+    >
+      {deployments.canReset ? (
+        <Button variant="outline" disabled={deployments.isFetching} onClick={deployments.reset}>
+          Mais recentes
+        </Button>
+      ) : null}
+      {deployments.hasPreviousPage ? (
+        <Button
+          variant="outline"
+          disabled={deployments.isFetching}
+          onClick={deployments.fetchPreviousPage}
+        >
+          Página anterior
+        </Button>
+      ) : null}
       <Button
         variant="outline"
-        disabled={deployments.isFetchingNextPage}
-        onClick={() => void deployments.fetchNextPage()}
+        disabled={deployments.isFetchingNextPage || deployments.hasNextPage === false}
+        onClick={deployments.fetchNextPage}
       >
-        {deployments.isFetchingNextPage ? "Carregando…" : "Carregar mais"}
+        {deployments.isFetchingNextPage ? "Carregando…" : "Próxima página"}
       </Button>
-    </div>
+    </nav>
   );
 }

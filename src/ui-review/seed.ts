@@ -147,9 +147,9 @@ addDomain(database, {
   actor: ACTOR,
 });
 
-seedTasks(database, api.id);
+const taskId = seedTasks(database, api.id);
 seedVolumes(database, api.id);
-await seedDatabases(database, secretBox, api.id);
+const databaseId = await seedDatabases(database, secretBox, api.id);
 seedPreview(database, api.id);
 
 const startedAt = new Date(now - CONTAINER_UPTIME_IN_MINUTES * MINUTE_IN_MS).toISOString();
@@ -257,4 +257,6 @@ database
 await seedServers(database, secretBox);
 
 // The last line is read by main.ts to know which pages to open.
-process.stdout.write(`${JSON.stringify({ projectId: api.id, deploymentId: liveDeploymentId })}\n`);
+process.stdout.write(
+  `${JSON.stringify({ projectId: api.id, deploymentId: liveDeploymentId, taskId, databaseId })}\n`,
+);

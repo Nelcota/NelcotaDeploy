@@ -125,7 +125,8 @@ export function markBackupFailed(database: Database, backupId: string, reason: s
 
 /**
  * Records the outcome of a restore on its backup and puts the database back to running: a
- * failed restore leaves the server up, possibly with part of the data replaced.
+ * failed load preserves the original database; activation may already have committed if a
+ * later step failed.
  *
  * @param database - Database.
  * @param backup - The restored backup's id and its database's.

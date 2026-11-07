@@ -216,7 +216,7 @@ export const deployments = sqliteTable(
     index("deployments_created_idx").on(table.createdAt),
     index("deployments_status_idx").on(table.status),
     index("deployments_project_server_idx").on(table.projectId, table.serverId),
-    index("deployments_preview_idx").on(table.previewId),
+    index("deployments_preview_created_idx").on(table.previewId, table.createdAt, table.id),
   ],
 );
 
@@ -276,5 +276,6 @@ export const runtimeLogs = sqliteTable(
   (table) => [
     index("runtime_logs_project_id_idx").on(table.projectId, table.id),
     index("runtime_logs_created_idx").on(table.createdAt),
+    index("runtime_logs_deployment_id_idx").on(table.deploymentId, table.id),
   ],
 );

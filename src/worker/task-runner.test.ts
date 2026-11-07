@@ -4,7 +4,7 @@ import { openMemoryDatabase } from "@/db";
 import { completeDeployment, requestDeployment, transitionDeployment } from "@/deployments";
 import { saveDeploymentSecrets } from "@/environments";
 import { taskInputSchema } from "@/shared/schemas/task.schema";
-import { createTask, listTaskExecutions, runTask } from "@/tasks";
+import { createTask, listTaskExecutions, runTask, updateTask } from "@/tasks";
 import { createTestProject, createTestSecretBox, FakeDocker, TEST_ACTOR } from "@/testing";
 
 import { runTaskExecution } from "./task-runner";
@@ -48,6 +48,46 @@ function setup() {
   });
   return { database, project, deploymentId, taskId, executionId };
 }
+
+test("executes the queued command even when the task is edited before the worker starts", async () => {
+  const { database, project, taskId, executionId } = setup();
+  using _connection = database.$client;
+  updateTask(database, {
+    projectId: project.id,
+    taskId,
+    input: taskInputSchema.parse({
+      name: "Changed",
+      commandLine: "different-command",
+      schedule: "",
+      enabled: true,
+      timeoutInSeconds: 600,
+    }),
+    actor: TEST_ACTOR,
+    timeZone: "UTC",
+  });
+  const docker = new FakeDocker();
+  const commands: (readonly string[])[] = [];
+  const timeouts: number[] = [];
+  docker.execInContainer = async (_reference, command, run) => {
+    commands.push(command);
+    timeouts.push(run.timeoutInMs);
+    return await Promise.resolve({
+      exitCode: 0,
+      stdout: "",
+      stderr: "",
+      timedOut: false,
+      aborted: false,
+    });
+  };
+  const outcome = await runTaskExecution(
+    { database, secretBox: await createTestSecretBox(), dockerOf: () => docker },
+    executionId,
+    new AbortController().signal,
+  );
+  expect(outcome).toBe("succeeded");
+  expect(commands).toEqual([["printenv"]]);
+  expect(timeouts).toEqual([60_000]);
+});
 
 test.each([true, false])(
   "redacts old container secrets from task output and errors, snapshot=%p",

@@ -8,6 +8,7 @@ import {
 } from "@tanstack/react-router";
 import type { ReactNode } from "react";
 
+import { NotFoundPage, PageError } from "@/web/components/layout/states";
 import { ThemeProvider } from "@/web/components/shell/theme";
 import { Toaster } from "@/web/components/ui/sonner";
 import { TooltipProvider } from "@/web/components/ui/tooltip";
@@ -30,6 +31,8 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
   }),
   shellComponent: RootDocument,
   component: RootComponent,
+  notFoundComponent: NotFoundPage,
+  errorComponent: PageError,
 });
 
 function RootComponent() {
@@ -39,7 +42,7 @@ function RootComponent() {
       <ThemeProvider>
         <TooltipProvider delayDuration={300}>
           <Outlet />
-          <Toaster closeButton position="bottom-right" />
+          <Toaster closeButton position="top-right" />
         </TooltipProvider>
       </ThemeProvider>
     </QueryClientProvider>

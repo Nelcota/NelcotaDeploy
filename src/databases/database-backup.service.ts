@@ -29,6 +29,7 @@ type DatabaseBackupView = {
   readonly errorMessage: string | null;
   readonly restoredAt: string | null;
   readonly restoreError: string | null;
+  readonly restorePending: boolean;
   readonly createdAt: string;
   readonly finishedAt: string | null;
 };
@@ -79,6 +80,9 @@ export function listDatabaseBackups(
       errorMessage: tables.databaseBackups.errorMessage,
       restoredAt: tables.databaseBackups.restoredAt,
       restoreError: tables.databaseBackups.restoreError,
+      restorePending: sql<boolean>`EXISTS (SELECT 1 FROM jobs WHERE project_id = ${target.projectId}
+        AND kind = 'database_restore' AND status IN ('queued', 'running')
+        AND json_extract(payload, '$.backupId') = database_backups.id)`.mapWith(Boolean),
       createdAt: tables.databaseBackups.createdAt,
       finishedAt: tables.databaseBackups.finishedAt,
     })
@@ -179,7 +183,7 @@ export function requestDatabaseBackup(database: Database, target: BackupTarget):
  * @throws {DatabaseNotFoundError} When the database is not one of the project's.
  * @throws {DatabaseBeingDeletedError} When it is being deleted.
  * @throws {DatabaseBackupUnsupportedError} When its engine is not backed up.
- * @throws {DatabaseNotRunningError} When it is not running, such as during another restore.
+ * @throws {DatabaseNotRunningError} When it is not running or an earlier restore job is still active.
  * @throws {DatabaseBackupNotFoundError} When the backup is not a successful one of the database.
  * @throws {DatabaseBackupInProgressError} While a backup or its retention is still running.
  */
@@ -205,17 +209,20 @@ export function requestDatabaseRestore(
         throw new DatabaseBackupNotFoundError(backupId);
       }
       assertNoBackupInProgress(transaction, databaseId);
-      transaction
-        .update(tables.projectDatabases)
-        .set({ status: "restoring", updatedAt: new Date().toISOString() })
-        .where(eq(tables.projectDatabases.id, databaseId))
-        .run();
-      enqueueJob(transaction, {
+      const job = enqueueJob(transaction, {
         kind: "database_restore",
         projectId,
         payload: { backupId },
         dedupeKey: `database-restore:${databaseId}`,
       });
+      if (job.created === false) {
+        throw new DatabaseNotRunningError(databaseId, "restoring");
+      }
+      transaction
+        .update(tables.projectDatabases)
+        .set({ status: "restoring", updatedAt: new Date().toISOString() })
+        .where(eq(tables.projectDatabases.id, databaseId))
+        .run();
       recordAuditEvent(transaction, {
         actor,
         action: "database.restore",

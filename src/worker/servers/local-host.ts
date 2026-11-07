@@ -1,3 +1,4 @@
+import { readBackupFile } from "@/backups";
 import { type AppConfig, InvalidConfigError } from "@/config";
 import { DockerCli } from "@/docker";
 import { GitClient } from "@/git";
@@ -14,7 +15,7 @@ const localFiles: ServerFiles = {
     if (file.size > limits.maxBytes) {
       throw new Error(`File ${path} is larger than ${limits.maxBytes} bytes`);
     }
-    return await file.bytes();
+    return await readBackupFile(file, limits.maxBytes);
   },
   write: async (path, data) => {
     await Bun.write(path, data);

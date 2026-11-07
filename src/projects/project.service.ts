@@ -173,7 +173,7 @@ export function createProject(
  * @throws {ProjectSlugTakenError} When the new slug is used by another project.
  */
 export function updateProject(
-  database: Database,
+  database: Database | Transaction,
   {
     projectId,
     input,

@@ -52,12 +52,12 @@ function ApproveButton({ project }: { readonly project: Project }) {
       trigger={
         <Button size="sm" disabled={approve.isPending}>
           {approve.isPending ? <LoaderCircleIcon aria-hidden className="animate-spin" /> : null}
-          Aprovar
+          Autorizar deploys do projeto
         </Button>
       }
       title="Aprovar deploys deste projeto?"
       description={`O Dockerfile de ${project.repositoryFullName} (branch ${project.branch}) poderá ser executado neste servidor.`}
-      confirmLabel="Aprovar"
+      confirmLabel="Autorizar deploys do projeto"
       onConfirm={() => approve.mutate()}
     />
   );

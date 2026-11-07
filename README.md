@@ -29,20 +29,21 @@ file. No Kubernetes, no external database, no agents to install.
 
 ## Features
 
-| Area         | What it does                                                                                                           |
-| ------------ | ---------------------------------------------------------------------------------------------------------------------- |
-| **Deploys**  | Build the exact commit from GitHub, on push or by hand. Zero-downtime switch after a health check, rollback and retry. |
-| **GitHub**   | One-click GitHub App: pick repositories from a list, clone private ones and get pushes without per-repo webhooks.      |
-| **Logs**     | Live build and runtime logs with search, level filter and jump to the first error.                                     |
-| **Metrics**  | CPU and memory per container and for the host, with history.                                                           |
-| **Config**   | Variables and secrets (AES-256-GCM), applied to the running app as soon as they are saved.                             |
-| **Previews** | Each pull request to the project's branch gets its own temporary address; forks never run.                             |
-| **Volumes**  | Folders kept between deploys as Docker named volumes, with detach and an explicit delete of the data.                  |
-| **Domains**  | Automatic and custom domains, HTTPS by Let's Encrypt through Traefik, and a live check of each domain's DNS.           |
-| **Ops**      | Daily database backups, encrypted off-site copies to any S3 bucket, and Discord or Slack alerts.                       |
-| **Servers**  | Add a VPS with one pasted command; builds and apps run there over a persistent SSH connection, moves keep sites up.    |
-| **Tasks**    | Commands that run inside the app container, on demand or on a cron schedule.                                           |
-| **Team**     | Admin, developer and viewer roles, API tokens, an MCP server for AI clients and an audit log.                          |
+| Area          | What it does                                                                                                                                                                  |
+| ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Deploys**   | Build the exact commit from GitHub, on push or by hand. Zero-downtime switch after a health check, rollback and retry.                                                        |
+| **GitHub**    | Search connected repositories; detect default branches, Dockerfiles and directories from a selection or pasted URL. Private access uses the GitHub App or a saved read token. |
+| **Logs**      | Live build and runtime logs with search, level filter and jump to the first error.                                                                                            |
+| **Metrics**   | CPU and memory per container and for the host, with history.                                                                                                                  |
+| **Config**    | Detect `.env.example` variables, fill application URLs and generate local signing secrets. Preserve existing values; review atomic, encrypted imports before applying.        |
+| **Previews**  | Each pull request to the project's branch gets its own temporary address; forks never run.                                                                                    |
+| **Volumes**   | Detect final-stage Dockerfile VOLUME paths, excluding existing mounts and overlaps. Review additions and mount changes; data deletion stays explicit.                         |
+| **Domains**   | Paste a complete URL to fill its domain and HTTP scheme. HTTPS through Traefik, live DNS checks and reviewed Cloudflare DNS configuration.                                    |
+| **Ops**       | Daily database backups, encrypted off-site copies to any S3 bucket, and Discord or Slack alerts.                                                                              |
+| **Servers**   | Paste an SSH address or simple command to fill host, port, account and an available name. Applications run over SSH; moves keep sites up.                                     |
+| **Databases** | Detect missing PostgreSQL and Redis connection variables from `.env.example`, suggest unused names, then review the server before creating an encrypted connection.           |
+| **Tasks**     | Discover package.json scripts, fill names and commands, then confirm execution or scheduling. Queued runs keep their original command and timeout.                            |
+| **Team**      | Admin, developer and viewer roles, API tokens, an MCP server for AI clients and an audit log.                                                                                 |
 
 <table>
   <tr>
@@ -54,6 +55,10 @@ file. No Kubernetes, no external database, no agents to install.
 ## Quick start
 
 Requires Linux with [Bun](https://bun.sh) 1.4+, git and Docker 23+.
+
+Use a current browser with `Uint8Array.prototype.toBase64` support for avatar uploads and generated passwords.
+
+Avatar uploads accept PNG, JPEG, and WebP up to 512 KiB and 1,048,576 total pixels. The server uses `Bun.Image` to decode every pixel with an explicit allocation limit, then stores a fresh encoding in the source format. The encoded output must also fit the 512 KiB limit.
 
 Managed tasks and database commands require `sh` and Linux procfs inside the application
 image. The supervisor uses them to stop commands and their descendants on timeout or cancellation;
@@ -78,9 +83,44 @@ docker compose up -d --build   # then open PUBLIC_URL and create the admin
 
 ## Development
 
+Each page has a single purpose. Application health, deployment activity, deployment statistics
+and server metrics have separate destinations. Project status, previews, metrics, build logs,
+runtime logs, DNS, variable imports, task history, database backups and restoration are also
+separate pages with direct links. Opening a history or restoration page never starts a job.
+
+Navigation groups global pages under **Geral**, **Deploys** and **Infraestrutura**. Project and
+administration menus group destinations by subject; mobile menus expose the complete list.
+Use **Ctrl+K** inside a project to find its pages, settings and current resource histories.
+Search accepts words in any order and terms such as `Dockerfile`, `porta` and `backups`.
+Menus, page headings and browser titles use descriptive names; former labels such as
+`Build`, `Previews`, `Tasks` and `Volumes` remain available as search aliases.
+
+For DNS automation, connect a Cloudflare API token in **Administração → Integrações → Conexão com a Cloudflare** with
+zone read and DNS edit permissions for the relevant zones. The token is encrypted at rest.
+The panel detects the server origin and previews exact record changes before confirmation;
+mail and unrelated records are preserved. When the local panel uses a Cloudflare hostname,
+the token also needs access to that hostname's zone to read its origin behind the proxy.
+Existing environment variables are preserved when importing `.env.example`; external
+credentials must be provided, while supported local signing secrets are generated automatically.
+
+New projects also detect simple local HTTP GET health paths from the selected Dockerfile's
+final stage. Existing settings and manual edits are preserved; unsupported probes stay manual.
+Account creation and password resets start with a strong generated password. Pasting
+`Name <email>` fills the explicit identity, and successful submissions show a one-time
+credential receipt. Accounts, passwords and sessions change only after confirmation.
+
+The individual variable editor accepts a pasted `NAME=value` assignment and detects secrets,
+preview protection, application URLs and supported local signing secrets. Manual edits and
+saved variables are preserved. Use **Variáveis → Importar .env** for local UTF-8 files or
+**Variáveis → Importar do repositório** for `.env.example` discovery. Local file contents stay
+in the browser until the reviewed import is confirmed.
+
+Install Chromium once with `bunx playwright install chromium` before running browser checks.
+
 ```bash
-bun run check        # format, lint, types, unused code and tests
-bun run ui:review    # screenshots of every screen plus an accessibility report
+bun run check         # format, lint, types, unused code and tests
+bun run test:browser  # keyboard, accessibility and browser encoding regressions
+bun run ui:review     # screenshots of every screen plus an accessibility report
 ```
 
 Built with Bun, TanStack Start, React, Tailwind, Drizzle, Better Auth and Traefik.

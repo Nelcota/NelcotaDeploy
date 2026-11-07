@@ -1,13 +1,46 @@
 import { describe, expect, test } from "bun:test";
 
 import { ForbiddenError, UserOperationError } from "@/auth";
-import { DatabaseVariableConflictError, ProjectHasDatabasesError } from "@/databases";
+import {
+  DatabaseVariableConflictError,
+  DatabaseServerChangedError,
+  ProjectHasDatabasesError,
+} from "@/databases";
+import { CloudflareApiError, DnsConfigurationError } from "@/domains";
 import { ProjectNotFoundError } from "@/projects";
-import { ProjectHasVolumesError } from "@/volumes";
+import { TaskReviewChangedError } from "@/tasks";
+import { ProjectHasVolumesError, VolumeServerChangedError } from "@/volumes";
 
 import { PublicError, toPublicError } from "./public-error";
 
 describe("toPublicError", () => {
+  test("requests new reviews when task configuration or volume destination changes", () => {
+    expect(toPublicError(new TaskReviewChangedError("private-task-id"))?.message).toContain(
+      "A task mudou",
+    );
+    expect(toPublicError(new VolumeServerChangedError("private-project-id"))?.message).toContain(
+      "O servidor do projeto mudou",
+    );
+  });
+  test("requests a new review after the database target server changes", () => {
+    expect(toPublicError(new DatabaseServerChangedError("private-project-id"))?.message).toBe(
+      "O servidor do projeto mudou. Volte e revise a criação do banco no servidor atual.",
+    );
+  });
+  test("explains Cloudflare access failures without provider internals", () => {
+    const error = toPublicError(new CloudflareApiError(403));
+    expect(error?.message).toContain("Cloudflare");
+    expect(error?.message).not.toContain("403");
+  });
+
+  test.each(["origin-not-found", "review-changed", "invalid-review", "zone-not-found"] as const)(
+    "translates DNS review reason %s",
+    (reason) => {
+      const error = toPublicError(new DnsConfigurationError(reason));
+      expect(error).toBeInstanceOf(PublicError);
+      expect(error?.message).not.toContain(reason);
+    },
+  );
   test("translates known domain errors to Portuguese", () => {
     expect(toPublicError(new ProjectNotFoundError("x"))?.message).toBe("Projeto não encontrado.");
   });

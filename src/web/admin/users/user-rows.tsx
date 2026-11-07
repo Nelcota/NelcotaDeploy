@@ -47,7 +47,7 @@ function DisableUserDialog({
       }}
       title={`Desativar ${user?.name ?? "usuário"}?`}
       description="A pessoa perde o acesso e as sessões abertas são encerradas. Dá para reativar depois."
-      confirmLabel="Desativar"
+      confirmLabel="Desativar acesso e encerrar sessões"
       destructive
       onConfirm={() => {
         if (user != null) {
@@ -61,7 +61,7 @@ function DisableUserDialog({
 /** Rows of the users list, with the dialogs their actions open. */
 export function UserRows({ users }: { readonly users: readonly UserView[] }) {
   const { user: currentUser } = useRouteContext({ from: "/_app" });
-  const [resetUser, setResetUser] = useState<UserReference | null>(null);
+  const [resetUser, setResetUser] = useState<Pick<UserView, "id" | "name" | "email"> | null>(null);
   const [disablingUser, setDisablingUser] = useState<UserReference | null>(null);
   const { updateRole, setDisabled } = useUserMutations();
   return (
@@ -80,7 +80,9 @@ export function UserRows({ users }: { readonly users: readonly UserView[] }) {
               }
               setDisablingUser({ id: user.id, name: user.name });
             }}
-            onResetPassword={() => setResetUser({ id: user.id, name: user.name })}
+            onResetPassword={() =>
+              setResetUser({ id: user.id, name: user.name, email: user.email })
+            }
           />
         ))}
       </List>

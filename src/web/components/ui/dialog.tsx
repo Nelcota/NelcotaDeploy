@@ -148,7 +148,7 @@ function DialogFooter({
       data-slot="dialog-footer"
       className={cn(
         // Spans the card edge to edge and stays visible while the content above scrolls.
-        "sticky bottom-0 -mx-6 flex flex-col-reverse gap-2 border-t border-border/70 bg-popover/95 px-6 py-4 pb-[max(1rem,env(safe-area-inset-bottom))] backdrop-blur-sm sm:flex-row sm:justify-end sm:rounded-b-2xl",
+        "sticky bottom-0 -mx-6 flex flex-col-reverse gap-2 border-t border-border/70 bg-popover/95 px-6 py-4 pb-[max(1rem,env(safe-area-inset-bottom))] backdrop-blur-sm sm:flex-row sm:flex-wrap sm:justify-end sm:rounded-b-2xl",
         className,
       )}
       {...props}

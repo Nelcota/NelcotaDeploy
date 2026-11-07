@@ -27,7 +27,7 @@ export type RuntimeLogEntry = {
  * Prepares a line for storage: color and cursor codes are removed (apps and build tools often
  * print them, and the panel would show them as text like "[32m"), then long lines are cut.
  */
-function cleanLine(message: string): string {
+export function cleanLogMessage(message: string): string {
   const plain = Bun.stripANSI(message);
   return plain.length > MAX_LINE_LENGTH ? `${plain.slice(0, MAX_LINE_LENGTH)}…` : plain;
 }
@@ -62,7 +62,7 @@ export function appendDeploymentLogs(
         deploymentId,
         stream: entry.stream,
         level: entry.level,
-        message: cleanLine(entry.message),
+        message: cleanLogMessage(entry.message),
         createdAt,
       })),
     )
@@ -108,14 +108,43 @@ export function listDeploymentLogs(
  * @param database - Database.
  * @param entries - Lines, already redacted.
  */
-export function appendRuntimeLogs(database: Database, entries: readonly RuntimeLogEntry[]): void {
+export function appendRuntimeLogs(
+  database: Database,
+  entries: readonly RuntimeLogEntry[],
+  retainedLinesPerProject = 5000,
+): void {
   if (entries.length === 0) {
     return;
   }
-  database
-    .insert(tables.runtimeLogs)
-    .values(entries.map((entry) => ({ ...entry, message: cleanLine(entry.message) })))
-    .run();
+  if (Number.isSafeInteger(retainedLinesPerProject) === false || retainedLinesPerProject < 1) {
+    throw new RangeError(`Invalid runtime log retention: ${retainedLinesPerProject}`);
+  }
+  database.transaction(
+    (transaction) => {
+      transaction
+        .insert(tables.runtimeLogs)
+        .values(entries.map((entry) => ({ ...entry, message: cleanLogMessage(entry.message) })))
+        .run();
+      for (const projectId of new Set(entries.map((entry) => entry.projectId))) {
+        transaction
+          .delete(tables.runtimeLogs)
+          .where(
+            and(
+              eq(tables.runtimeLogs.projectId, projectId),
+              lt(
+                tables.runtimeLogs.id,
+                sql`(
+          SELECT id FROM runtime_logs WHERE project_id = ${projectId}
+          ORDER BY id DESC LIMIT 1 OFFSET ${retainedLinesPerProject - 1}
+        )`,
+              ),
+            ),
+          )
+          .run();
+      }
+    },
+    { behavior: "immediate" },
+  );
 }
 
 /**
@@ -211,32 +240,40 @@ export function pruneLogs(
   );
   return database.transaction(
     (transaction) => {
-      const runtime = transaction
+      transaction
         .delete(tables.runtimeLogs)
         .where(
-          lt(
+          inArray(
             tables.runtimeLogs.id,
             sql`(
-            SELECT COALESCE(MIN(id), 0) FROM (
-              SELECT kept.id FROM runtime_logs AS kept
-              WHERE kept.project_id = ${tables.runtimeLogs.projectId}
-              ORDER BY kept.id DESC
-              LIMIT ${options.runtimeLinesPerProject}
-            )
-          )`,
+              SELECT id FROM (
+                SELECT id, ROW_NUMBER() OVER (
+                  PARTITION BY project_id ORDER BY id DESC
+                ) AS position
+                FROM runtime_logs
+              ) WHERE position > ${options.runtimeLinesPerProject}
+            )`,
           ),
         )
-        .returning({ id: tables.runtimeLogs.id })
-        .all().length;
+        .run();
+      const runtime =
+        transaction
+          .values<[number]>(sql`SELECT changes()`)
+          .at(0)
+          ?.at(0) ?? 0;
       const finishedBeforeCutoff = transaction
         .select({ id: tables.deployments.id })
         .from(tables.deployments)
         .where(lt(tables.deployments.finishedAt, cutoff.toISOString()));
-      const deployment = transaction
+      transaction
         .delete(tables.deploymentLogs)
         .where(inArray(tables.deploymentLogs.deploymentId, finishedBeforeCutoff))
-        .returning({ id: tables.deploymentLogs.id })
-        .all().length;
+        .run();
+      const deployment =
+        transaction
+          .values<[number]>(sql`SELECT changes()`)
+          .at(0)
+          ?.at(0) ?? 0;
       return { runtime, deployment };
     },
     { behavior: "immediate" },

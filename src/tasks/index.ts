@@ -1,4 +1,5 @@
 export {
+  TaskReviewChangedError,
   InvalidScheduleError,
   TaskNameTakenError,
   TaskNotFoundError,

@@ -7,9 +7,12 @@ import {
   UserOperationError,
 } from "@/auth";
 import { InvalidConfigError } from "@/config";
+import { CloudflareApiError, DnsConfigurationError } from "@/domains";
 import { GitHubApiError } from "@/github";
 import {
   NoServerAvailableError,
+  ProjectMoveInProgressError,
+  ProjectMoveReviewChangedError,
   ServerInUseError,
   ServerNotFoundError,
   ServerNotReadyError,
@@ -17,7 +20,7 @@ import {
 } from "@/servers";
 import { HostnameConflictError } from "@/settings";
 
-import { PROJECT_ERROR_MESSAGES } from "./project-error-messages";
+import { DNS_CONFIGURATION_MESSAGES, PROJECT_ERROR_MESSAGES } from "./project-error-messages";
 
 const GENERIC_MESSAGE = "Ocorreu um erro inesperado. Tente novamente em instantes.";
 
@@ -27,12 +30,24 @@ const MESSAGES: readonly (readonly [ErrorClass, string])[] = [
   [UnauthenticatedError, "Sua sessão expirou. Entre novamente."],
   [ForbiddenError, "Você não tem permissão para esta ação."],
   [GitHubApiError, "Não foi possível falar com o GitHub. Tente novamente em instantes."],
+  [
+    CloudflareApiError,
+    "Não foi possível acessar a Cloudflare. Confira o token, as permissões de leitura de zonas e edição de DNS e tente novamente.",
+  ],
   [SetupAlreadyDoneError, "O painel já tem um administrador. Entre com a sua conta."],
   [InvalidAvatarError, "Imagem inválida. Use uma foto PNG, JPEG ou WebP de até 512 KB."],
   [AlertDeliveryError, "O webhook de alertas não aceitou a mensagem. Confira a URL."],
   [ServerNotFoundError, "Servidor não encontrado."],
   [ServerTakenError, "Já existe um servidor com este nome ou endereço."],
   [ServerNotReadyError, "Este servidor ainda não está conectado. Escolha um servidor pronto."],
+  [
+    ProjectMoveReviewChangedError,
+    "O projeto mudou durante a revisão. Confira o servidor e a versão atuais antes de confirmar novamente.",
+  ],
+  [
+    ProjectMoveInProgressError,
+    "Há um deploy em andamento. Aguarde o término antes de mudar o servidor.",
+  ],
   [
     ServerInUseError,
     "Este servidor não pode ser removido: ainda há projetos nele ou ele é o servidor do painel.",
@@ -76,6 +91,9 @@ function hasValidationIssues(error: unknown): error is { issues: { message: stri
  * @returns The public error, or null for unknown errors that must be logged.
  */
 export function toPublicError(error: unknown): PublicError | null {
+  if (error instanceof DnsConfigurationError) {
+    return new PublicError(DNS_CONFIGURATION_MESSAGES[error.reason]);
+  }
   if (error instanceof PublicError) {
     return error;
   }

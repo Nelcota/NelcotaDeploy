@@ -6,7 +6,9 @@ import {
   useCommandPaletteShortcut,
 } from "@/web/components/shell/command-palette/command-palette";
 import { useDeploymentNotifications } from "@/web/components/shell/notifications/deployment-notifications";
-import { MobileNavigation, SidebarContent } from "@/web/components/shell/sidebar/sidebar";
+import { DesktopSidebar } from "@/web/components/shell/sidebar/desktop-sidebar";
+import { MobileNavigation } from "@/web/components/shell/sidebar/sidebar";
+import { useSidebarPreferences } from "@/web/components/shell/sidebar/use-sidebar-preferences";
 import { TopBar } from "@/web/components/shell/top-bar/top-bar";
 import { cn } from "@/web/components/ui/class-names";
 import type { SessionUser } from "@/web/functions/session.functions";
@@ -35,6 +37,7 @@ export function AppShell({
   readonly children: ReactNode;
 }) {
   const [searchOpen, setSearchOpen] = useState(false);
+  const sidebar = useSidebarPreferences(user.id);
   useCommandPaletteShortcut(() => setSearchOpen(true));
   useDeploymentNotifications();
   return (
@@ -42,13 +45,11 @@ export function AppShell({
     // the clipped frame instead of growing the document and letting the whole page scroll.
     <div className="relative flex h-svh overflow-hidden bg-background">
       <SkipLink />
-      <aside className="hidden h-full w-[17rem] shrink-0 lg:flex">
-        <SidebarContent onNavigate={() => undefined} />
-      </aside>
+      <DesktopSidebar sidebar={sidebar} />
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         <TopBar
           user={user}
-          navigation={<MobileNavigation />}
+          navigation={<MobileNavigation sidebar={sidebar} />}
           onSearch={() => setSearchOpen(true)}
         />
         <main

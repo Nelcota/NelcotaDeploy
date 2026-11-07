@@ -13,13 +13,23 @@ export type DotenvProblem = {
 const EXPORT_PREFIX = /^export\s+/;
 
 function unquote(value: string): string {
+  const quoted = /^(["'`])([\s\S]*)\1[ \t]*(?:#.*)?$/.exec(value);
+  return quoted?.[2] ?? value.replace(/#.*$/, "").trimEnd();
+}
+
+/** Locates the end of a quoted assignment so diagnostics never treat its body as new variables. */
+function assignmentEnd(lines: readonly string[], start: number, value: string): number | null {
   const quote = value.at(0);
-  if ((quote === '"' || quote === "'") && value.length >= 2 && value.at(-1) === quote) {
-    const inner = value.slice(1, -1);
-    return quote === '"' ? inner.replaceAll("\\n", "\n").replaceAll('\\"', '"') : inner;
+  if (quote !== '"' && quote !== "'" && quote !== "`") {
+    return start;
   }
-  // An unquoted value ends at an inline comment preceded by whitespace.
-  return value.replace(/\s+#.*$/, "");
+  const closing = new RegExp(`(?<!\\\\)${RegExp.escape(quote)}[ \\t]*(?:#.*)?$`);
+  for (let index = start; index < lines.length; index += 1) {
+    if (closing.test(index === start ? value.slice(1) : (lines[index] ?? ""))) {
+      return index;
+    }
+  }
+  return null;
 }
 
 /**
@@ -32,24 +42,38 @@ function unquote(value: string): string {
 export function parseDotenv(text: string): { entries: DotenvEntry[]; problems: DotenvProblem[] } {
   const values = new Map<string, string>();
   const problems: DotenvProblem[] = [];
-  text.split(/\r?\n/).forEach((rawLine, index) => {
-    const line = rawLine.trim();
+  const lines = text.replaceAll(/\r\n?/g, "\n").split("\n");
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index]?.trim() ?? "";
     if (line === "" || line.startsWith("#")) {
-      return;
+      continue;
     }
     const assignment = line.replace(EXPORT_PREFIX, "");
     const separator = assignment.indexOf("=");
     if (separator <= 0) {
       problems.push({ line: index + 1, text: line, reason: "Falta o sinal de igual (NOME=valor)" });
-      return;
+      continue;
     }
     const key = assignment.slice(0, separator).trim();
-    if (environmentVariableInputSchema.shape.key.safeParse(key).success === false) {
-      problems.push({ line: index + 1, text: line, reason: `Nome inválido: ${key}` });
-      return;
+    const rawValue = assignment.slice(separator + 1).trimStart();
+    const end = assignmentEnd(lines, index, rawValue);
+    if (end == null) {
+      problems.push({ line: index + 1, text: line, reason: "Valor entre aspas não foi fechado" });
+      break;
     }
-    values.set(key, unquote(assignment.slice(separator + 1).trim()));
-  });
+    const statement = lines.slice(index, end + 1).join("\n");
+    const lineNumber = index + 1;
+    index = end;
+    if (environmentVariableInputSchema.shape.key.safeParse(key).success === false) {
+      problems.push({ line: lineNumber, text: line, reason: `Nome inválido: ${key}` });
+      continue;
+    }
+    const value = unquote(statement.slice(statement.indexOf("=") + 1).trim());
+    values.set(
+      key,
+      rawValue.startsWith('"') ? value.replaceAll("\\n", "\n").replaceAll('\\"', '"') : value,
+    );
+  }
   return { entries: [...values].map(([key, value]) => ({ key, value })), problems };
 }
 

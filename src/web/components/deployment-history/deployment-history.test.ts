@@ -34,14 +34,25 @@ describe("historyRefreshInterval", () => {
   test("polls while a deploy is still running", () => {
     const interval = historyRefreshInterval([{ status: "succeeded" }, { status: "building" }]);
 
-    expect(interval).toBeNumber();
+    expect(interval).toBe(5000);
   });
 
-  test("stops polling when every deploy has finished", () => {
+  test("keeps discovering new deploys when every loaded deploy has finished", () => {
     const interval = historyRefreshInterval([{ status: "succeeded" }, { status: "failed" }]);
 
-    expect(interval).toBe(false);
+    expect(interval).toBe(15_000);
   });
+
+  test("keeps an empty history ready for its first deployment", () => {
+    expect(historyRefreshInterval([])).toBe(15_000);
+  });
+
+  test.each(["queued", "cloning", "building", "starting", "health_checking"] as const)(
+    "uses the active cadence for %s",
+    (status) => {
+      expect(historyRefreshInterval([{ status }])).toBe(5000);
+    },
+  );
 });
 
 describe("deploymentLabel", () => {

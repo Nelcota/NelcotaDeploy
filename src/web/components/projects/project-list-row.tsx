@@ -55,13 +55,13 @@ export function ProjectListRow({
   readonly now: Date;
 }) {
   return (
-    <ListRow>
-      <div className="min-w-0 flex-1">
+    <ListRow className="flex-wrap sm:flex-nowrap">
+      <div className="min-w-0 basis-full sm:flex-1 sm:basis-auto">
         {/* The link covers the whole row, so the row opens the project and stays a real link. */}
         <Link
           to="/projects/$projectId"
           params={{ projectId: project.id }}
-          className="block truncate font-medium after:absolute after:inset-0 focus-visible:outline-none focus-visible:after:ring-2 focus-visible:after:ring-ring focus-visible:after:ring-inset"
+          className="block font-medium [overflow-wrap:anywhere] after:absolute after:inset-0 focus-visible:outline-none focus-visible:after:ring-2 focus-visible:after:ring-ring focus-visible:after:ring-inset sm:truncate"
         >
           {project.name}
         </Link>
@@ -80,7 +80,7 @@ export function ProjectListRow({
         <span className="sr-only">Deploy </span>
         {project.autoDeploy ? "Automático" : "Manual"}
       </p>
-      <div className="flex shrink-0 justify-end md:w-40">
+      <div className="flex shrink-0 sm:justify-end md:w-40">
         {project.deploymentsApproved ? (
           <ContainerStateBadge state={project.containerState} health={project.containerHealth} />
         ) : (

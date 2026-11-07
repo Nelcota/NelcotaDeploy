@@ -11,6 +11,7 @@ import {
   VolumeLimitError,
   VolumeNotFoundError,
   VolumePathOverlapError,
+  VolumeServerChangedError,
 } from "./volume.errors";
 import {
   addProjectVolume,
@@ -33,6 +34,34 @@ function setup() {
 }
 
 describe("addProjectVolume", () => {
+  test("rejects a stale reviewed server without creating a volume", () => {
+    const { database, project } = setup();
+    using _connection = database.$client;
+    expect(() =>
+      addProjectVolume(database, {
+        projectId: project.id,
+        input: { mountPath: "/data" },
+        expectedServerId: "previous-server",
+        actor: TEST_ACTOR,
+      }),
+    ).toThrow(VolumeServerChangedError);
+    expect(listProjectVolumes(database, project.id)).toEqual([]);
+    expect(claimNextJob(database, "worker-test")).toBeNull();
+  });
+
+  test("adds a volume on its explicitly reviewed server", () => {
+    const { database, project } = setup();
+    using _connection = database.$client;
+    const volume = addProjectVolume(database, {
+      projectId: project.id,
+      input: { mountPath: "/data" },
+      expectedServerId: project.serverId,
+      actor: TEST_ACTOR,
+    });
+    expect(listMountedVolumes(database, project.id)).toEqual([
+      { id: volume.id, mountPath: "/data" },
+    ]);
+  });
   test("adds an attached volume that the next deployment mounts", () => {
     const { database, project, add } = setup();
 

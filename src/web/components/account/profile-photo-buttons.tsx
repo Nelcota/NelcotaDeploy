@@ -10,7 +10,7 @@ function uploadLabel(uploading: boolean, hasPhoto: boolean): string {
   if (uploading) {
     return "Enviando…";
   }
-  return hasPhoto ? "Trocar imagem" : "Escolher imagem";
+  return hasPhoto ? "Escolher e substituir foto" : "Escolher e enviar foto";
 }
 
 type PickPhotoButtonProps = {
@@ -88,7 +88,7 @@ export function RemovePhotoButton({
       }
       title="Remover a foto de perfil?"
       description="No lugar dela aparecem as iniciais do seu nome."
-      confirmLabel="Remover"
+      confirmLabel="Remover foto de perfil"
       destructive
       onConfirm={onRemove}
     />

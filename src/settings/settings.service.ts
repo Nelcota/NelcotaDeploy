@@ -1,7 +1,8 @@
 import { eq, inArray } from "drizzle-orm";
 
-import { type Database, tables } from "@/db";
+import { type Database, tables, type Transaction } from "@/db";
 import { DEFAULT_SYSTEM_SETTINGS, type SystemSettings } from "@/shared/schemas/settings.schema";
+import type { OrganizationSettingsChange } from "@/shared/schemas/settings/organization-settings.schema";
 
 import { assertHostnameOwnership } from "./hostname-ownership";
 
@@ -45,7 +46,10 @@ export function getSystemSettings(
  * @param database - Database.
  * @param settings - Validated settings.
  */
-export function saveSystemSettings(database: Database, settings: SystemSettings): void {
+export function saveSystemSettings(
+  database: Database | Transaction,
+  settings: SystemSettings,
+): void {
   const updatedAt = new Date().toISOString();
   database.transaction(
     (transaction) => {
@@ -65,6 +69,27 @@ export function saveSystemSettings(database: Database, settings: SystemSettings)
           })
           .run();
       }
+    },
+    { behavior: "immediate" },
+  );
+}
+
+/**
+ * Saves one administration page without overwriting settings from another page.
+ * @param database - Database whose writer is reserved before reading saved settings.
+ * @param change - Validated fields owned by the selected page.
+ * @returns The effective settings after saving.
+ * @throws {HostnameConflictError} When automatic addresses would conflict.
+ */
+export function saveSystemSettingsSection(
+  database: Database,
+  change: OrganizationSettingsChange,
+): SystemSettings {
+  return database.transaction(
+    (transaction) => {
+      const settings = { ...getSystemSettings(transaction), ...change.settings };
+      saveSystemSettings(transaction, settings);
+      return settings;
     },
     { behavior: "immediate" },
   );

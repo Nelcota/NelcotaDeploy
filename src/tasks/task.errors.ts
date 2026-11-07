@@ -29,3 +29,10 @@ export class TaskRunningError extends Error {
     this.name = "TaskRunningError";
   }
 }
+/** A task changed after the user reviewed its execution or schedule. */
+export class TaskReviewChangedError extends Error {
+  constructor(taskId: string) {
+    super(`Task ${taskId} changed after review`);
+    this.name = "TaskReviewChangedError";
+  }
+}

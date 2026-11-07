@@ -1,5 +1,5 @@
 import { RadioIcon } from "lucide-react";
-import type { RefObject } from "react";
+import { memo, type RefObject } from "react";
 
 import { formatTime } from "@/shared/format";
 import type { LogLevel } from "@/shared/log-level";
@@ -18,7 +18,7 @@ export const LEVEL_CLASSES: Record<LogLevel, string> = {
 
 const LEVEL_PREFIX: Record<LogLevel, string> = { info: "", warn: "AVISO", error: "ERRO" };
 
-function LogLineRow({
+const LogLineRow = memo(function LogLineRow({
   line,
   highlighted,
 }: {
@@ -48,7 +48,7 @@ function LogLineRow({
       <span>{line.message}</span>
     </div>
   );
-}
+});
 
 function NoMatches({ onClearFilters }: { readonly onClearFilters: () => void }) {
   return (

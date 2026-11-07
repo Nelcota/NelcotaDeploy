@@ -39,30 +39,71 @@ function randomSecret(): string {
   return Buffer.from(crypto.getRandomValues(new Uint8Array(SECRET_BYTES))).toString("base64");
 }
 
-function pagesFor(projectId: string, deploymentId: string) {
+function pagesFor(
+  projectId: string,
+  deploymentId: string,
+  resources: { readonly taskId: string; readonly databaseId: string },
+): PageEntry[] {
   const project = `/projects/${projectId}`;
   return [
     { name: "login", path: "/login", signedIn: false },
     { name: "painel", path: "/", signedIn: true },
+    { name: "deployment-activity", path: "/activity", signedIn: true },
+    { name: "deployment-statistics", path: "/deployment-statistics", signedIn: true },
+    { name: "server-metrics", path: "/server-metrics", signedIn: true },
     { name: "projetos", path: "/projects", signedIn: true },
     { name: "novo-projeto", path: "/projects/new", signedIn: true },
     { name: "deploys", path: "/deployments", signedIn: true },
     { name: "projeto-visao-geral", path: project, signedIn: true },
     { name: "projeto-deploys", path: `${project}/deployments`, signedIn: true },
     { name: "projeto-deploy", path: `${project}/deployments/${deploymentId}`, signedIn: true },
+    { name: "build-logs", path: `${project}/deployments/${deploymentId}/logs`, signedIn: true },
+    { name: "project-previews", path: `${project}/previews`, signedIn: true },
     { name: "projeto-logs", path: `${project}/logs`, signedIn: true },
     { name: "projeto-metricas", path: `${project}/metrics`, signedIn: true },
     { name: "projeto-variaveis", path: `${project}/environment`, signedIn: true },
+    { name: "environment-import", path: `${project}/environment/import`, signedIn: true },
+    { name: "environment-repository", path: `${project}/environment/repository`, signedIn: true },
     { name: "projeto-dominios", path: `${project}/domains`, signedIn: true },
+    { name: "project-dns", path: `${project}/dns`, signedIn: true },
     { name: "projeto-bancos", path: `${project}/databases`, signedIn: true },
+    {
+      name: "database-backups",
+      path: `${project}/databases/${resources.databaseId}/backups`,
+      signedIn: true,
+    },
+    {
+      name: "database-restore",
+      path: `${project}/databases/${resources.databaseId}/restore`,
+      signedIn: true,
+    },
     { name: "projeto-tasks", path: `${project}/tasks`, signedIn: true },
-    { name: "projeto-ajustes", path: `${project}/settings`, signedIn: true },
-    { name: "admin-organizacao", path: "/settings?tab=organization", signedIn: true },
-    { name: "admin-usuarios", path: "/settings?tab=users", signedIn: true },
-    { name: "admin-servidores", path: "/settings?tab=servers", signedIn: true },
-    { name: "admin-sistema", path: "/settings?tab=server", signedIn: true },
-    { name: "admin-tokens", path: "/settings?tab=tokens", signedIn: true },
-    { name: "admin-auditoria", path: "/settings?tab=audit", signedIn: true },
+    { name: "task-history", path: `${project}/tasks/${resources.taskId}/history`, signedIn: true },
+    ...[
+      "identity",
+      "repository",
+      "build",
+      "runtime",
+      "automation",
+      "volumes",
+      "server",
+      "deletion",
+    ].map((section) => ({
+      name: `project-settings-${section}`,
+      path: `${project}/settings/${section}`,
+      signedIn: true,
+    })),
+    { name: "admin-organizacao", path: "/settings/organization", signedIn: true },
+    { name: "admin-domains", path: "/settings/domains", signedIn: true },
+    { name: "admin-alerts", path: "/settings/alerts", signedIn: true },
+    { name: "admin-usuarios", path: "/settings/users", signedIn: true },
+    { name: "admin-servidores", path: "/settings/servers", signedIn: true },
+    { name: "admin-sistema", path: "/settings/system", signedIn: true },
+    { name: "admin-github", path: "/settings/integrations/github", signedIn: true },
+    { name: "admin-cloudflare", path: "/settings/integrations/cloudflare", signedIn: true },
+    { name: "admin-tokens", path: "/settings/tokens", signedIn: true },
+    { name: "admin-auditoria", path: "/settings/audit", signedIn: true },
+    { name: "webhook-deliveries", path: "/settings/webhooks", signedIn: true },
     ...dialogsFor(project),
   ];
 }
@@ -70,14 +111,13 @@ function pagesFor(projectId: string, deploymentId: string) {
 /** Modals, opened by clicking the button named in `opens` on their page. */
 function dialogsFor(project: string) {
   return [
-    ["modal-adicionar-servidor", "/settings?tab=servers", "Adicionar servidor"],
-    ["modal-remover-servidor", "/settings?tab=servers", "Remover"],
-    ["modal-novo-token", "/settings?tab=tokens", "Novo token"],
-    ["modal-novo-usuario", "/settings?tab=users", "Novo usuário"],
+    ["modal-adicionar-servidor", "/settings/servers", "Adicionar servidor"],
+    ["modal-remover-servidor", "/settings/servers", "Remover"],
+    ["modal-novo-token", "/settings/tokens", "Novo token"],
+    ["modal-novo-usuario", "/settings/users", "Novo usuário"],
     ["modal-nova-variavel", `${project}/environment`, "Nova variável"],
-    ["modal-importar-env", `${project}/environment`, "Importar .env"],
+    ["modal-importar-env", `${project}/environment/import`, "Importar .env"],
     ["modal-nova-task", `${project}/tasks`, "Nova task"],
-    ["modal-backups-banco", `${project}/databases`, "Backups"],
     ["modal-busca", "/", "Buscar projetos e páginas"],
   ].map(([name = "", path = "", opens = ""]) => ({ name, path, signedIn: true, opens }));
 }
@@ -100,11 +140,20 @@ async function seed(environment: Record<string, string>) {
     "projectId" in parsed === false ||
     "deploymentId" in parsed === false ||
     typeof parsed.projectId !== "string" ||
-    typeof parsed.deploymentId !== "string"
+    typeof parsed.deploymentId !== "string" ||
+    "taskId" in parsed === false ||
+    typeof parsed.taskId !== "string" ||
+    "databaseId" in parsed === false ||
+    typeof parsed.databaseId !== "string"
   ) {
     throw new Error(`unexpected seed output: ${lastLine.slice(0, MAX_SEED_OUTPUT_IN_ERROR)}`);
   }
-  return { projectId: parsed.projectId, deploymentId: parsed.deploymentId };
+  return {
+    projectId: parsed.projectId,
+    deploymentId: parsed.deploymentId,
+    taskId: parsed.taskId,
+    databaseId: parsed.databaseId,
+  };
 }
 
 // Each attempt depends on the server having started since the last one, so attempts never overlap.
@@ -141,12 +190,17 @@ async function signIn(page: Page, email: string, password: string): Promise<void
   }
 }
 
-type PageEntry = ReturnType<typeof pagesFor>[number];
+type PageEntry = {
+  readonly name: string;
+  readonly path: string;
+  readonly signedIn: boolean;
+  readonly opens?: string;
+};
 
 async function capture(page: Page, directory: string, entry: PageEntry): Promise<void> {
   await page.goto(`${BASE_URL}${entry.path}`);
   await page.waitForTimeout(SETTLE_DELAY_IN_MS);
-  const opens = "opens" in entry ? entry.opens : null;
+  const opens = entry.opens ?? null;
   if (opens != null) {
     await page.getByRole("button", { name: opens, exact: true }).first().click();
     await page.getByRole("dialog").or(page.getByRole("alertdialog")).first().waitFor();
@@ -288,7 +342,7 @@ await waitForServer();
 const browser = await chromium.launch();
 await using _browser = { [Symbol.asyncDispose]: async () => await browser.close() };
 await rm(OUTPUT_DIRECTORY, { recursive: true, force: true });
-const pages = pagesFor(ids.projectId, ids.deploymentId);
+const pages = pagesFor(ids.projectId, ids.deploymentId, ids);
 const run: ReviewRun = { browser, pages, credentials };
 // One theme at a time keeps the dev server from compiling the same pages twice at once.
 const findingsByTheme = await mapInSequence(THEMES, async (theme) => await reviewTheme(run, theme));

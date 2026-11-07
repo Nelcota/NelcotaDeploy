@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
 
-import { openMemoryDatabase } from "@/db";
+import { eq } from "drizzle-orm";
+
+import { openMemoryDatabase, tables } from "@/db";
 import {
   listEnvironmentVariables,
   resolveEnvironment,
@@ -8,6 +10,7 @@ import {
 } from "@/environments";
 import { claimNextJob, failJob } from "@/jobs";
 import { ProjectNotFoundError } from "@/projects";
+import { addServer } from "@/servers";
 import { MAX_DATABASES_PER_PROJECT } from "@/shared/schemas/database.schema";
 import { createTestProject, createTestSecretBox, TEST_ACTOR } from "@/testing";
 
@@ -22,6 +25,7 @@ import {
   DatabaseLimitError,
   DatabaseNotFoundError,
   DatabaseVariableConflictError,
+  DatabaseServerChangedError,
   ProjectHasDatabasesError,
 } from "./database.errors";
 import {
@@ -50,6 +54,64 @@ async function setup() {
 }
 
 describe("createProjectDatabase", () => {
+  test("creates on the explicitly reviewed server", async () => {
+    const { database, secretBox, project } = await setup();
+    using _connection = database.$client;
+    const created = await createProjectDatabase(database, secretBox, {
+      projectId: project.id,
+      expectedServerId: project.serverId,
+      input: { engine: "postgres", environmentKey: "DATABASE_URL" },
+      actor: TEST_ACTOR,
+    });
+    expect(created.status).toBe("provisioning");
+    const job = claimNextJob(database, "test-worker");
+    expect(job).toMatchObject({
+      projectId: project.id,
+      kind: "database_provision",
+      payload: { databaseId: created.id },
+    });
+    expect(findDatabaseRecord(database, created.id)?.projectId).toBe(project.id);
+  });
+
+  test("does not write credentials or queue work when the reviewed server is outdated", async () => {
+    const { database, secretBox, project } = await setup();
+    using _connection = database.$client;
+    const error: unknown = await createProjectDatabase(database, secretBox, {
+      projectId: project.id,
+      expectedServerId: "outdated-server",
+      input: { engine: "postgres", environmentKey: "DATABASE_URL" },
+      actor: TEST_ACTOR,
+    }).catch((failure: unknown) => failure);
+    expect(error).toBeInstanceOf(DatabaseServerChangedError);
+    expect(listEnvironmentVariables(database, project.id)).toEqual([]);
+    expect(listProjectDatabases(database, project.id)).toEqual([]);
+    expect(claimNextJob(database, "test-worker")).toBeNull();
+  });
+
+  test("rechecks the reviewed server after asynchronous credential encryption", async () => {
+    const { database, secretBox, project } = await setup();
+    using _connection = database.$client;
+    const remote = addServer(database, {
+      input: { name: "new-server", host: "203.0.113.10", port: 22, username: "nelcota" },
+      actor: TEST_ACTOR,
+    });
+    const creating = createProjectDatabase(database, secretBox, {
+      projectId: project.id,
+      expectedServerId: project.serverId,
+      input: { engine: "postgres", environmentKey: "DATABASE_URL" },
+      actor: TEST_ACTOR,
+    });
+    database
+      .update(tables.projects)
+      .set({ serverId: remote.id })
+      .where(eq(tables.projects.id, project.id))
+      .run();
+    const error: unknown = await creating.catch((failure: unknown) => failure);
+    expect(error).toBeInstanceOf(DatabaseServerChangedError);
+    expect(listEnvironmentVariables(database, project.id)).toEqual([]);
+    expect(listProjectDatabases(database, project.id)).toEqual([]);
+    expect(claimNextJob(database, "test-worker")).toBeNull();
+  });
   test("admits only one concurrent creation for a connection key without deleting its value", async () => {
     const { database, secretBox, project, create } = await setup();
     const results = await Promise.allSettled([create(), create()]);

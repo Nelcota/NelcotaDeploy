@@ -1,13 +1,20 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Outlet } from "@tanstack/react-router";
 
-import { ProjectSettingsPage } from "@/web/components/project-settings/project-settings-page";
+import { ProjectSettingsNavigation } from "@/web/components/project-settings/project-settings-navigation";
+import { useCan } from "@/web/components/shell/use-permissions";
 
 export const Route = createFileRoute("/_app/projects/$projectId/settings")({
-  head: () => ({ meta: [{ title: "Ajustes · Nelcota Deploy" }] }),
+  head: () => ({ meta: [{ title: "Configurações do projeto · Nelcota Deploy" }] }),
   component: ProjectSettingsRoute,
 });
 
 function ProjectSettingsRoute() {
   const { projectId } = Route.useParams();
-  return <ProjectSettingsPage projectId={projectId} />;
+  const can = useCan();
+  return (
+    <>
+      <ProjectSettingsNavigation projectId={projectId} can={can} />
+      <Outlet />
+    </>
+  );
 }

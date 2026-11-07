@@ -17,6 +17,7 @@ import {
   VolumeLimitError,
   VolumeNotFoundError,
   VolumePathOverlapError,
+  VolumeServerChangedError,
 } from "./volume.errors";
 
 const MAX_DELETION_ERROR_LENGTH = 500;
@@ -111,15 +112,24 @@ function assertNoOverlap(volumes: readonly ProjectVolume[], mountPath: string): 
  * @throws {VolumeLimitError} When the project already has 10 volumes.
  * @throws {VolumePathOverlapError} When the path equals or nests inside the path of another
  *   volume of the project, attached or not.
+ * @throws {VolumeServerChangedError} When the project's server differs from the reviewed target.
  */
 export function addProjectVolume(
   database: Database,
-  request: { readonly projectId: string; readonly input: VolumeInput; readonly actor: Actor },
+  request: {
+    readonly projectId: string;
+    readonly input: VolumeInput;
+    readonly actor: Actor;
+    readonly expectedServerId?: string | undefined;
+  },
 ): ProjectVolume {
   const { projectId, input, actor } = request;
   return database.transaction(
     (transaction) => {
-      getProject(transaction, projectId);
+      const project = getProject(transaction, projectId);
+      if (request.expectedServerId != null && project.serverId !== request.expectedServerId) {
+        throw new VolumeServerChangedError(projectId);
+      }
       const volumes = listProjectVolumes(transaction, projectId);
       if (volumes.length >= MAX_VOLUMES_PER_PROJECT) {
         throw new VolumeLimitError(MAX_VOLUMES_PER_PROJECT);

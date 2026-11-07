@@ -3,7 +3,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { RuntimeLogsPage } from "@/web/components/runtime-logs/runtime-logs-page";
 
 export const Route = createFileRoute("/_app/projects/$projectId/logs")({
-  head: () => ({ meta: [{ title: "Logs · Nelcota Deploy" }] }),
+  head: () => ({ meta: [{ title: "Logs da aplicação · Nelcota Deploy" }] }),
   component: RuntimeLogsRoute,
 });
 

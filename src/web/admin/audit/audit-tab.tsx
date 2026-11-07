@@ -5,33 +5,31 @@ import { EmptyState, ErrorState, ListSkeleton } from "@/web/components/layout/st
 
 import { AuditEventList, LoadOlderEvents } from "./audit-event-list";
 import { useAuditEvents } from "./use-audit-events";
-import { WebhookDeliveriesSection } from "./webhook-deliveries-section";
 
-/** Audit events and the latest GitHub webhook deliveries. */
+/** Records who changed the platform, without mixing webhook processing into the history. */
 export function AuditTab() {
-  const { firstPage, events, loadingMore, exhausted, loadMore } = useAuditEvents();
+  const { query, events, loadMore } = useAuditEvents();
   return (
     <div className="space-y-10">
-      <Section icon={HistoryIcon} title="Eventos de auditoria">
-        {firstPage.isError ? (
-          <ErrorState error={firstPage.error} onRetry={() => void firstPage.refetch()} />
+      <Section icon={HistoryIcon} title="Histórico de ações">
+        {query.isError && query.isFetchNextPageError === false ? (
+          <ErrorState error={query.error} onRetry={() => void query.refetch()} />
         ) : null}
-        {firstPage.data == null && firstPage.isError === false ? <ListSkeleton /> : null}
-        {firstPage.data?.length === 0 ? (
+        {query.data == null && query.isError === false ? <ListSkeleton /> : null}
+        {query.data != null && events.length === 0 ? (
           <EmptyState icon={ShieldIcon} title="Nenhum evento registrado" />
         ) : null}
         {events.length > 0 ? (
           <>
             <AuditEventList events={events} />
             <LoadOlderEvents
-              loadingMore={loadingMore}
-              exhausted={exhausted}
+              loadingMore={query.isFetching}
+              exhausted={query.hasNextPage === false}
               onLoadMore={() => void loadMore()}
             />
           </>
         ) : null}
       </Section>
-      <WebhookDeliveriesSection />
     </div>
   );
 }

@@ -1,4 +1,5 @@
 export {
+  VolumeServerChangedError,
   ProjectHasVolumesError,
   VolumeAttachedError,
   VolumeBeingDeletedError,

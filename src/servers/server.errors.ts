@@ -30,6 +30,22 @@ export class ServerNotReadyError extends Error {
   }
 }
 
+/** Thrown when a project changed after its server move was reviewed. */
+export class ProjectMoveReviewChangedError extends Error {
+  constructor(projectId: string) {
+    super(`Project ${projectId} changed after its server move was reviewed`);
+    this.name = "ProjectMoveReviewChangedError";
+  }
+}
+
+/** Thrown when an active production deployment prevents a server move. */
+export class ProjectMoveInProgressError extends Error {
+  constructor(projectId: string) {
+    super(`Project ${projectId} has an active production deployment`);
+    this.name = "ProjectMoveInProgressError";
+  }
+}
+
 /** Thrown when no server can take a new project. */
 export class NoServerAvailableError extends Error {
   constructor() {

@@ -2,6 +2,7 @@ import { and, desc, eq, inArray, isNotNull, lte, sql } from "drizzle-orm";
 
 import { type Database, tables, type Transaction } from "@/db";
 import { enqueueJob } from "@/jobs";
+import { taskRunReviewSchema } from "@/shared/schemas/task.schema";
 
 import { nextScheduledRun } from "./schedule";
 
@@ -42,7 +43,7 @@ export type TaskExecution = {
 };
 
 /**
- * Records a queued execution of a task and its worker job.
+ * Records a queued execution and captures its command and timeout in the worker job.
  *
  * @param transaction - Open transaction.
  * @param input - Task, trigger, scheduled slot, requesting user and current time.
@@ -51,7 +52,12 @@ export type TaskExecution = {
 export function enqueueExecution(
   transaction: Transaction,
   input: {
-    readonly task: { readonly id: string; readonly projectId: string };
+    readonly task: {
+      readonly id: string;
+      readonly projectId: string;
+      readonly command: readonly string[];
+      readonly timeoutInSeconds: number;
+    };
     readonly trigger: TaskExecutionTrigger;
     readonly scheduledFor: string | null;
     readonly userId: string | null;
@@ -81,7 +87,14 @@ export function enqueueExecution(
   }
   enqueueJob(
     transaction,
-    { kind: "task_run", projectId: input.task.projectId, taskExecutionId: executionId },
+    {
+      kind: "task_run",
+      projectId: input.task.projectId,
+      taskExecutionId: executionId,
+      payload: {
+        task: { command: input.task.command, timeoutInSeconds: input.task.timeoutInSeconds },
+      },
+    },
     input.now,
   );
   return executionId;
@@ -109,6 +122,8 @@ export function scheduleDueTasks(database: Database, now: Date, timeZone: string
           projectId: tables.tasks.projectId,
           schedule: tables.tasks.schedule,
           nextRunAt: tables.tasks.nextRunAt,
+          command: tables.tasks.command,
+          timeoutInSeconds: tables.tasks.timeoutInSeconds,
         })
         .from(tables.tasks)
         .innerJoin(tables.projects, eq(tables.projects.id, tables.tasks.projectId))
@@ -176,10 +191,11 @@ export function listTaskExecutions(
  *
  * @param database - Database.
  * @param executionId - Execution id.
- * @returns Execution, task command and timeout, or null when it no longer exists.
+ * @returns Execution with its queued command and timeout; legacy jobs use the saved task.
+ * @throws {Error} When a recorded command snapshot is malformed.
  */
 export function getExecutionForRun(database: Database, executionId: string) {
-  return (
+  const row =
     database
       .select({
         id: tables.taskExecutions.id,
@@ -188,12 +204,32 @@ export function getExecutionForRun(database: Database, executionId: string) {
         command: tables.tasks.command,
         timeoutInSeconds: tables.tasks.timeoutInSeconds,
         taskName: tables.tasks.name,
+        payload: tables.jobs.payload,
       })
       .from(tables.taskExecutions)
       .innerJoin(tables.tasks, eq(tables.tasks.id, tables.taskExecutions.taskId))
+      .leftJoin(
+        tables.jobs,
+        and(
+          eq(tables.jobs.projectId, tables.taskExecutions.projectId),
+          eq(tables.jobs.taskExecutionId, tables.taskExecutions.id),
+          eq(tables.jobs.kind, "task_run"),
+        ),
+      )
       .where(eq(tables.taskExecutions.id, executionId))
-      .get() ?? null
-  );
+      .get() ?? null;
+  if (row == null) {
+    return null;
+  }
+  const { payload, ...execution } = row;
+  if (payload == null || Object.hasOwn(payload, "task") === false) {
+    return execution;
+  }
+  const snapshot = taskRunReviewSchema.safeParse(payload["task"]);
+  if (snapshot.success === false) {
+    throw new Error(`Invalid queued task snapshot for execution ${executionId}`);
+  }
+  return { ...execution, ...snapshot.data };
 }
 
 /**

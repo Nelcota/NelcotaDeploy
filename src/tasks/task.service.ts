@@ -7,7 +7,12 @@ import type { TaskInput } from "@/shared/schemas/task.schema";
 
 import { nextScheduledRun } from "./schedule";
 import { enqueueExecution } from "./task-execution.service";
-import { TaskNameTakenError, TaskNotFoundError, TaskRunningError } from "./task.errors";
+import {
+  TaskNameTakenError,
+  TaskNotFoundError,
+  TaskRunningError,
+  TaskReviewChangedError,
+} from "./task.errors";
 
 const taskColumns = {
   id: tables.tasks.id,
@@ -127,6 +132,7 @@ export function createTask(
  * @param database - Database.
  * @param request - Owning `projectId`, the `taskId`, the validated task `input`, the actor and
  *   the schedule time zone.
+ * @throws {TaskReviewChangedError} When an expected saved version no longer matches the task.
  * @throws {TaskNotFoundError} When the task is not in this project.
  * @throws {InvalidScheduleError} When the cron expression is invalid.
  * @throws {TaskNameTakenError} When the name is already used in the project.
@@ -145,13 +151,17 @@ export function updateTask(
     readonly actor: Actor;
     readonly timeZone: string;
     readonly now?: Date;
+    readonly expectedUpdatedAt?: string | undefined;
   },
 ): void {
   const now = context.now ?? new Date();
   const nextRunAt = computeNextRunAt(input, now, context.timeZone);
   database.transaction(
     (transaction) => {
-      findTaskRow(transaction, projectId, taskId);
+      const current = findTaskRow(transaction, projectId, taskId);
+      if (context.expectedUpdatedAt != null && context.expectedUpdatedAt !== current.updatedAt) {
+        throw new TaskReviewChangedError(taskId);
+      }
       assertNameAvailable(transaction, projectId, { name: input.name, exceptTaskId: taskId });
       transaction
         .update(tables.tasks)
@@ -281,6 +291,7 @@ export function listTasks(database: Database, projectId: string) {
  *
  * @param database - Database.
  * @param request - Task, trigger and actor.
+ * @throws {TaskReviewChangedError} When the command or timeout differs from the reviewed execution.
  * @returns The execution id.
  * @throws {TaskNotFoundError} When the task is not in this project.
  */
@@ -292,11 +303,19 @@ export function runTask(
     readonly trigger: "manual" | "mcp";
     readonly actor: Actor;
     readonly userId: string | null;
+    readonly expected?: Pick<Task, "command" | "timeoutInSeconds"> | undefined;
   },
 ): string {
   return database.transaction(
     (transaction) => {
       const task = findTaskRow(transaction, request.projectId, request.taskId);
+      if (
+        request.expected != null &&
+        (JSON.stringify(task.command) !== JSON.stringify(request.expected.command) ||
+          task.timeoutInSeconds !== request.expected.timeoutInSeconds)
+      ) {
+        throw new TaskReviewChangedError(task.id);
+      }
       getProject(transaction, request.projectId);
       const executionId = enqueueExecution(transaction, {
         task,

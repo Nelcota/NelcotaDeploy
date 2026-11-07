@@ -7,7 +7,15 @@ import type { CreateUserFormApi } from "./use-create-user-form";
 import { RoleSelect } from "./user-access-controls";
 
 /** Name and e-mail of the new account. */
-export function IdentityFields({ form }: { readonly form: CreateUserFormApi }) {
+export function IdentityFields({
+  form,
+  detectIdentity,
+  onNameEdited,
+}: {
+  readonly form: CreateUserFormApi;
+  readonly detectIdentity: (value: string) => boolean;
+  readonly onNameEdited: () => void;
+}) {
   return (
     <>
       <form.Field name="name">
@@ -18,7 +26,10 @@ export function IdentityFields({ form }: { readonly form: CreateUserFormApi }) {
                 {...props}
                 value={field.state.value}
                 onBlur={field.handleBlur}
-                onChange={(event) => field.handleChange(event.target.value)}
+                onChange={(event) => {
+                  onNameEdited();
+                  field.handleChange(event.target.value);
+                }}
               />
             )}
           </FormField>
@@ -33,7 +44,15 @@ export function IdentityFields({ form }: { readonly form: CreateUserFormApi }) {
                 type="email"
                 autoComplete="off"
                 value={field.state.value}
-                onBlur={field.handleBlur}
+                onBlur={() => {
+                  detectIdentity(field.state.value);
+                  field.handleBlur();
+                }}
+                onPaste={(event) => {
+                  if (detectIdentity(event.clipboardData.getData("text"))) {
+                    event.preventDefault();
+                  }
+                }}
                 onChange={(event) => field.handleChange(event.target.value)}
               />
             )}
@@ -66,7 +85,7 @@ export function AccessFields({ form }: { readonly form: CreateUserFormApi }) {
           <FormField
             id="user-password"
             label="Senha inicial"
-            hint={`Mínimo de ${PASSWORD_MIN_LENGTH} caracteres.`}
+            hint={`Senha forte gerada automaticamente. Você pode personalizar; mínimo de ${PASSWORD_MIN_LENGTH} caracteres.`}
             errors={visibleErrors(form, field.state.meta)}
           >
             {(props) => (

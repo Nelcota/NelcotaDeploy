@@ -121,6 +121,49 @@ describe("summarizeDeployments daily series and success rate", () => {
 });
 
 describe("summarizeDeployments duration and validation", () => {
+  test("handles São Paulo's missing midnight during the 2018 DST transition", () => {
+    const { database, projectId } = setup();
+    using _connection = database.$client;
+    insertDeployment(database, projectId, {
+      status: "failed",
+      createdAt: "2018-11-04T02:59:59.999Z",
+    });
+    insertDeployment(database, projectId, {
+      status: "succeeded",
+      createdAt: "2018-11-04T03:00:00.000Z",
+    });
+    const stats = summarizeDeployments(database, {
+      days: 1,
+      now: new Date("2018-11-04T12:00:00.000Z"),
+    });
+    expect(stats.days).toEqual([{ day: "2018-11-04", succeeded: 1, failed: 0, other: 0 }]);
+    expect(stats.total).toBe(1);
+  });
+
+  test("excludes tomorrow and ignores invalid or negative durations while preserving milliseconds", () => {
+    const { database, projectId } = setup();
+    using _connection = database.$client;
+    insertDeployment(database, projectId, {
+      status: "failed",
+      createdAt: "2026-10-29T03:00:00.000Z",
+    });
+    for (const [startedAt, finishedAt] of [
+      ["2026-10-28T12:00:00.000Z", "2026-10-28T12:00:00.001Z"],
+      ["invalid", "2026-10-28T12:00:00.000Z"],
+      ["2026-10-28T12:00:01.000Z", "2026-10-28T12:00:00.000Z"],
+    ] as const) {
+      insertDeployment(database, projectId, {
+        status: "succeeded",
+        createdAt: "2026-10-28T12:00:00.000Z",
+        startedAt,
+        finishedAt,
+      });
+    }
+    const stats = summarizeDeployments(database, { days: 1, now: NOW });
+    expect(stats.total).toBe(3);
+    expect(stats.averageDurationInMs).toBe(1);
+  });
+
   test("averages the duration of succeeded deploys", () => {
     const { database, projectId } = setup();
     insertDeployment(database, projectId, {

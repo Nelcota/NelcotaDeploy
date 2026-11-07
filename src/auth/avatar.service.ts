@@ -6,45 +6,55 @@ import { InvalidAvatarError } from "./auth.errors";
 
 /** Largest photo accepted (512 KiB); the browser sends a 256×256 WebP of a few tens of KB. */
 export const MAX_AVATAR_BYTES = 524_288;
+/** At most one 1024×1024 canvas, checked before Bun allocates the decoded pixels. */
+export const MAX_AVATAR_PIXELS = 1_048_576;
 
 type AvatarContentType = "image/png" | "image/jpeg" | "image/webp";
 
-const PNG_SIGNATURE = Uint8Array.fromHex("89504e470d0a1a0a");
-const JPEG_SIGNATURE = Uint8Array.fromHex("ffd8ff");
-const RIFF = "RIFF";
-const WEBP = "WEBP";
-const WEBP_TAG_OFFSET = 8;
-const WEBP_HEADER_LENGTH = 12;
+const AVATAR_CONTENT_TYPES: Readonly<Partial<Record<Bun.Image.Format, AvatarContentType>>> = {
+  png: "image/png",
+  jpeg: "image/jpeg",
+  webp: "image/webp",
+};
+const INVALID_IMAGE_ERROR_CODES: ReadonlySet<string> = new Set([
+  "ERR_IMAGE_UNKNOWN_FORMAT",
+  "ERR_IMAGE_FORMAT_UNSUPPORTED",
+  "ERR_IMAGE_DECODE_FAILED",
+  "ERR_IMAGE_TOO_MANY_PIXELS",
+]);
 
-function startsWith(bytes: Uint8Array, signature: Uint8Array): boolean {
-  return signature.every((byte, index) => bytes[index] === byte);
-}
-
-function asciiAt(bytes: Uint8Array, offset: number, length: number): string {
-  return String.fromCharCode(...bytes.subarray(offset, offset + length));
-}
-
-/**
- * Detects the image format from the file's first bytes, ignoring its name or declared type.
- *
- * @param bytes - File content.
- * @returns The content type, or null when it is not a PNG, JPEG or WebP image.
- */
-export function detectImageType(bytes: Uint8Array): AvatarContentType | null {
-  if (startsWith(bytes, PNG_SIGNATURE)) {
-    return "image/png";
+/** Decodes every pixel and returns a fresh encoding in the supported source format. */
+async function decodeAvatar(bytes: Uint8Array) {
+  try {
+    // Bun borrows input bytes while working off-thread; keep our own immutable snapshot.
+    const image = new Bun.Image(bytes.slice(), { maxPixels: MAX_AVATAR_PIXELS });
+    const { format } = await image.metadata();
+    const contentType = AVATAR_CONTENT_TYPES[format];
+    if (contentType == null) {
+      throw new InvalidAvatarError(`unsupported image format: ${format}`);
+    }
+    // metadata() alone does not validate the pixel data. Persist only the full decode's output.
+    const content = Buffer.from(await image.bytes());
+    if (content.length === 0) {
+      throw new Error("Avatar encoder returned empty content");
+    }
+    if (content.length > MAX_AVATAR_BYTES) {
+      throw new InvalidAvatarError(
+        `encoded image of ${content.length} bytes exceeds ${MAX_AVATAR_BYTES}`,
+      );
+    }
+    return { contentType, content };
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      "code" in error &&
+      typeof error.code === "string" &&
+      INVALID_IMAGE_ERROR_CODES.has(error.code)
+    ) {
+      throw new InvalidAvatarError(`image validation failed (${error.code})`);
+    }
+    throw error;
   }
-  if (startsWith(bytes, JPEG_SIGNATURE)) {
-    return "image/jpeg";
-  }
-  if (
-    bytes.length >= WEBP_HEADER_LENGTH &&
-    asciiAt(bytes, 0, RIFF.length) === RIFF &&
-    asciiAt(bytes, WEBP_TAG_OFFSET, WEBP.length) === WEBP
-  ) {
-    return "image/webp";
-  }
-  return null;
 }
 
 /**
@@ -56,34 +66,31 @@ function avatarUrl(userId: string, updatedAt: Date): string {
 }
 
 /**
- * Stores a user's profile photo, replacing the previous one.
+ * Fully decodes and re-encodes a user's profile photo before replacing the previous one.
  *
  * @param database - Database.
  * @param upload - `userId` whose photo changes, the image `bytes` (PNG, JPEG or WebP, up to
- *   {@link MAX_AVATAR_BYTES} bytes) and `now`, the time of the change, injectable for tests.
+ *   {@link MAX_AVATAR_BYTES} bytes and {@link MAX_AVATAR_PIXELS} pixels) and `now`, the time
+ *   of the change, injectable for tests. The stored encoding must fit the byte limit too.
  * @returns The address of the new photo, also saved as the user's `image`.
  * @throws {InvalidAvatarError} When the content is empty, too large or not a supported image.
  */
-export function saveUserAvatar(
+export async function saveUserAvatar(
   database: Database,
   {
     userId,
     bytes,
     now = new Date(),
   }: { readonly userId: string; readonly bytes: Uint8Array; readonly now?: Date },
-): string {
+): Promise<string> {
   if (bytes.length === 0) {
     throw new InvalidAvatarError("empty file");
   }
   if (bytes.length > MAX_AVATAR_BYTES) {
     throw new InvalidAvatarError(`${bytes.length} bytes exceeds ${MAX_AVATAR_BYTES}`);
   }
-  const contentType = detectImageType(bytes);
-  if (contentType == null) {
-    throw new InvalidAvatarError("not a PNG, JPEG or WebP image");
-  }
+  const { contentType, content } = await decodeAvatar(bytes);
   const url = avatarUrl(userId, now);
-  const content = Buffer.from(bytes);
   database.transaction(
     (transaction) => {
       transaction

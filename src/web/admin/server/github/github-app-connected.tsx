@@ -38,19 +38,19 @@ export function ConnectedGitHubApp({
             <Button asChild variant="outline" size="sm">
               <a href={app.installUrl} target="_blank" rel="noreferrer">
                 <ExternalLinkIcon aria-hidden />
-                Escolher repositórios
+                Escolher repositórios no GitHub
               </a>
             </Button>
             <ConfirmDialog
               trigger={
                 <Button variant="ghost" size="sm" disabled={disconnect.isPending}>
                   <UnplugIcon aria-hidden />
-                  Desconectar
+                  Desconectar GitHub
                 </Button>
               }
               title="Desconectar o GitHub?"
               description="O painel deixa de usar o app. Repositórios privados voltam a precisar de token. O app continua no GitHub até ser apagado lá."
-              confirmLabel="Desconectar"
+              confirmLabel="Desconectar GitHub"
               destructive
               onConfirm={() => disconnect.mutate()}
             />

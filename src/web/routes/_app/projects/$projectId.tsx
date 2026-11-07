@@ -26,22 +26,22 @@ function ProjectLayout() {
       </div>
     );
   }
-  if (query.data == null) {
-    return (
-      <div className="space-y-6" aria-busy="true" aria-label="Carregando projeto">
-        <Skeleton className="h-4 w-20" />
-        <Skeleton className="h-9 w-72" />
-        <Skeleton className="h-4 w-56" />
-        <Skeleton className="h-8 w-full" />
-        <Skeleton className="h-64 w-full" />
-      </div>
-    );
-  }
   return (
     <>
-      <ProjectBand details={query.data} />
-      <ProjectBanners details={query.data} />
-      <Outlet />
+      {query.data == null ? (
+        <div className="space-y-6" aria-busy="true" aria-label="Carregando projeto">
+          <Skeleton className="h-4 w-20" />
+          <Skeleton className="h-9 w-72" />
+          <Skeleton className="h-4 w-56" />
+          <Skeleton className="h-8 w-full" />
+        </div>
+      ) : (
+        <>
+          <ProjectBand details={query.data} />
+          <ProjectBanners details={query.data} />
+        </>
+      )}
+      <Outlet key={projectId} />
     </>
   );
 }

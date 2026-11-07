@@ -26,17 +26,17 @@ export function RollbackButton({ deployment }: { readonly deployment: Deployment
           variant="ghost"
           size="sm"
           disabled={rollback.isPending}
-          title="Voltar para este deploy"
+          title="Republicar a imagem deste deploy"
         >
           {rollback.isPending ? (
             <LoaderCircleIcon aria-hidden className="animate-spin" />
           ) : (
             <RotateCcwIcon aria-hidden />
           )}
-          <span className="max-sm:sr-only">Rollback</span>
+          Republicar esta versão
         </Button>
       }
-      title="Voltar para este deploy?"
+      title="Republicar a imagem deste deploy?"
       description={
         <p>
           Um novo contêiner será criado a partir da imagem{" "}
@@ -45,7 +45,7 @@ export function RollbackButton({ deployment }: { readonly deployment: Deployment
           de saúde.
         </p>
       }
-      confirmLabel="Fazer rollback"
+      confirmLabel="Republicar esta versão"
       onConfirm={() => rollback.mutate()}
     />
   );

@@ -10,10 +10,8 @@ import { getProject } from "@/projects";
 import type { RouteFiles } from "@/routing";
 import { failVolumeDeletion, finishVolumeDeletion } from "@/volumes";
 
-import {
-  type BackupStorage,
-  deleteStoredDatabaseBackups,
-} from "./databases/database-backup-runner";
+import { deleteStoredDatabaseBackups } from "./databases/database-backup-runner";
+import type { BackupStorage } from "./databases/database-backup-storage";
 import type { WorkerDependencies } from "./worker.types";
 
 /** What cleaning a project off one server needs: its Docker and its proxy's route files. */

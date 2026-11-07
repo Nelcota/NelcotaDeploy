@@ -22,7 +22,7 @@ export function buildAppManifest(publicUrl: string) {
     hook_attributes: { url: `${publicUrl}${GITHUB_WEBHOOK_PATH}`, active: true },
     redirect_url: `${publicUrl}${GITHUB_APP_CALLBACK_PATH}`,
     // After an installation changes, GitHub brings the user back to the panel's settings.
-    setup_url: `${publicUrl}/settings?tab=server`,
+    setup_url: `${publicUrl}/settings/integrations/github`,
     setup_on_update: true,
     public: false,
     // Statuses: the result of each deployment shows on its commit and pull request. E-mail

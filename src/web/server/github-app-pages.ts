@@ -43,7 +43,7 @@ export function failurePage(message: string, status: number): Response {
   return standalonePage({
     title: "GitHub",
     status,
-    bodyHtml: `<h1>Não foi possível conectar ao GitHub</h1><p>${Bun.escapeHTML(message)}</p><p><a href="/settings?tab=server">Voltar para as configurações</a></p>`,
+    bodyHtml: `<h1>Não foi possível conectar ao GitHub</h1><p>${Bun.escapeHTML(message)}</p><p><a href="/settings/integrations/github">Voltar para o GitHub</a></p>`,
   });
 }
 

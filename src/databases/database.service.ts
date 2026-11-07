@@ -24,6 +24,7 @@ import {
   DatabaseLimitError,
   DatabaseNotFoundError,
   DatabaseVariableConflictError,
+  DatabaseServerChangedError,
   ProjectHasDatabasesError,
 } from "./database.errors";
 
@@ -156,14 +157,23 @@ function removeConnectionVariable(
  * @throws {DatabaseLimitError} When the project already has 5 databases.
  * @throws {DatabaseVariableConflictError} When the project already has a variable with the
  *   chosen name.
+ * @throws {DatabaseServerChangedError} When the server differs from the reviewed target, including during encryption.
  */
 export async function createProjectDatabase(
   database: Database,
   secretBox: SecretBox,
-  request: { readonly projectId: string; readonly input: DatabaseInput; readonly actor: Actor },
+  request: {
+    readonly projectId: string;
+    readonly input: DatabaseInput;
+    readonly actor: Actor;
+    readonly expectedServerId?: string | undefined;
+  },
 ): Promise<ProjectDatabase> {
   const { projectId, input, actor } = request;
-  getProject(database, projectId);
+  const project = getProject(database, projectId);
+  if (request.expectedServerId != null && project.serverId !== request.expectedServerId) {
+    throw new DatabaseServerChangedError(projectId);
+  }
   if (listProjectDatabases(database, projectId).length >= MAX_DATABASES_PER_PROJECT) {
     throw new DatabaseLimitError(MAX_DATABASES_PER_PROJECT);
   }
@@ -198,7 +208,13 @@ export async function createProjectDatabase(
   };
   database.transaction(
     (transaction) => {
-      getProject(transaction, projectId);
+      const currentProject = getProject(transaction, projectId);
+      if (
+        request.expectedServerId != null &&
+        currentProject.serverId !== request.expectedServerId
+      ) {
+        throw new DatabaseServerChangedError(projectId);
+      }
       if (listProjectDatabases(transaction, projectId).length >= MAX_DATABASES_PER_PROJECT) {
         throw new DatabaseLimitError(MAX_DATABASES_PER_PROJECT);
       }

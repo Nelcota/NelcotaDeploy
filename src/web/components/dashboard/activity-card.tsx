@@ -24,9 +24,9 @@ export function ActivityCard({ data }: { readonly data: DashboardSummary | null 
   const [view, setView] = useState<ActivityView>("recent");
   return (
     <Card className="gap-4 p-5">
-      <CardTitleRow icon={HistoryIcon} title="Atividade">
+      <CardTitleRow icon={HistoryIcon} title="Deploys recentes">
         <Link to="/deployments" className={TEXT_LINK}>
-          Ver todos
+          Ver histórico de deploys
         </Link>
       </CardTitleRow>
       <SegmentedControl

@@ -7,16 +7,16 @@ import type { TaskActions } from "./use-tasks";
 
 /** The project's tasks (nothing when there are none), each with its run, toggle, edit and delete controls. */
 export function TaskList({
+  projectId,
   tasks,
   actions,
   permissions,
-  onOpenHistory,
   onEdit,
 }: {
+  readonly projectId: string;
   readonly tasks: readonly TaskRow[];
   readonly actions: TaskActions;
   readonly permissions: { readonly canRun: boolean; readonly canWrite: boolean };
-  readonly onOpenHistory: (taskId: string) => void;
   readonly onEdit: (task: Task) => void;
 }) {
   const now = useNow();
@@ -28,6 +28,7 @@ export function TaskList({
     <List>
       {tasks.map((task) => (
         <TaskListRow
+          projectId={projectId}
           key={task.id}
           task={task}
           now={now}
@@ -35,9 +36,8 @@ export function TaskList({
           canWrite={permissions.canWrite}
           toggling={toggle.isPending && toggle.variables.task.id === task.id}
           onToggle={(enabled) => toggle.mutate({ task, enabled })}
-          onOpenHistory={() => onOpenHistory(task.id)}
-          running={run.isPending && run.variables === task.id}
-          onRun={() => run.mutate(task.id)}
+          running={run.isPending && run.variables.id === task.id}
+          onRun={() => run.mutate(task)}
           onEdit={() => onEdit(task)}
           onDelete={() => remove.mutate(task.id)}
         />

@@ -1,7 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 
 import { getDatabase } from "@/db";
-import { hasPendingRuntimeChanges } from "@/deployments";
+import { getActiveRuntimeDeployment, hasPendingRuntimeChanges } from "@/deployments";
 import { listProjectDomains } from "@/domains";
 import { getWorkerStatus, listProjectContainers } from "@/monitoring";
 import { getProject } from "@/projects";
@@ -23,5 +23,6 @@ export const getProjectFn = createServerFn({ method: "GET" })
       worker: getWorkerStatus(database),
       /** Variables or domains changed since the live container started. */
       pendingRuntimeChanges: hasPendingRuntimeChanges(database, project.id),
+      activeDeployment: getActiveRuntimeDeployment(database, project.id),
     };
   });

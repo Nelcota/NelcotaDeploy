@@ -201,7 +201,7 @@ const TILE_TONES = {
 function TileValue({ value, detail }: { readonly value: ReactNode; readonly detail?: ReactNode }) {
   return (
     <dd className="min-w-0 space-y-1">
-      <span className="block truncate text-xl leading-none font-semibold tabular-nums sm:text-2xl">
+      <span className="block text-xl leading-tight font-semibold break-words tabular-nums sm:text-2xl">
         {value}
       </span>
       {detail == null ? null : (
@@ -261,9 +261,10 @@ export function StatusTile({
   );
 }
 
-/** Small neutral label beside a name, such as "Secret", "HTTPS" or "Pausada". */
+/** Small tinted label beside a name, such as "Secret", "HTTPS" or "Pausada". */
 const TAG_TONES = {
   neutral: "bg-well text-muted-foreground ring-border/60",
+  danger: "bg-destructive/10 text-destructive ring-destructive/25",
   warning: "bg-warning/10 text-warning ring-warning/25",
   success: "bg-success/10 text-success ring-success/25",
 } as const;
@@ -275,7 +276,7 @@ export function Tag({
 }: {
   readonly icon?: LucideIcon;
   /** Draws the eye to a state, like a secret or a broken record; the text still says it. */
-  readonly tone?: "neutral" | "warning" | "success";
+  readonly tone?: keyof typeof TAG_TONES;
   readonly children: ReactNode;
 }) {
   return (

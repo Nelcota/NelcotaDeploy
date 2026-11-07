@@ -8,6 +8,9 @@ const IV_BYTES = 12;
 const encoder = new TextEncoder();
 /** Marks binary payloads of {@link SecretBox.encryptBytes}, so other files are never mistaken for one. */
 const BYTES_MAGIC = encoder.encode("NLC1");
+const AUTHENTICATION_TAG_BYTES = 16;
+export const ENCRYPTED_FILE_OVERHEAD_BYTES =
+  BYTES_MAGIC.byteLength + IV_BYTES + AUTHENTICATION_TAG_BYTES;
 const decoder = new TextDecoder();
 
 /**

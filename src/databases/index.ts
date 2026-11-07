@@ -1,5 +1,6 @@
 export { databaseEngine } from "./database-engines";
 export {
+  DatabaseServerChangedError,
   DatabaseBackupInProgressError,
   DatabaseBackupNotFoundError,
   DatabaseBackupUnsupportedError,

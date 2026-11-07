@@ -16,19 +16,18 @@ export function ApplyVariableChanges({ projectId }: { readonly projectId: string
     project.data?.project.currentDeploymentId != null &&
     project.data.project.autoApplyChanges === false &&
     can("deployment:create");
-  const { redeploy, showBanner } = useApplyChanges(
+  const applyChanges = useApplyChanges(
     projectId,
     project.data?.pendingRuntimeChanges === true,
     canRedeploy,
   );
-  if (showBanner === false) {
+  if (applyChanges.showBanner === false) {
     return null;
   }
   return (
     <ApplyChangesBanner
       message="As variáveis mudaram. Elas chegam à aplicação quando o contêiner é recriado."
-      applying={redeploy.isPending}
-      onApply={() => redeploy.mutate()}
+      state={applyChanges}
     />
   );
 }

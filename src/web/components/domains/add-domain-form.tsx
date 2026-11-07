@@ -8,7 +8,8 @@ import { useAddDomainForm } from "./use-add-domain-form";
 
 /** Inline form at the top of the domain list: hostname, HTTPS switch and submit. */
 export function AddDomainForm({ projectId }: { readonly projectId: string }) {
-  const { form, add } = useAddDomainForm(projectId);
+  const { form, add, detectAddress, markHttpsEdited, addressDetected } =
+    useAddDomainForm(projectId);
   return (
     <form
       noValidate
@@ -28,11 +29,11 @@ export function AddDomainForm({ projectId }: { readonly projectId: string }) {
           return (
             <>
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-                <HostnameInput form={form} error={error ?? null} />
-                <HttpsSwitch form={form} />
+                <HostnameInput form={form} error={error ?? null} onDetect={detectAddress} />
+                <HttpsSwitch form={form} onEdited={markHttpsEdited} />
                 <Button type="submit" disabled={add.isPending || field.state.value.trim() === ""}>
                   <PlusIcon aria-hidden />
-                  Adicionar
+                  Adicionar domínio
                 </Button>
               </div>
               <p
@@ -46,6 +47,11 @@ export function AddDomainForm({ projectId }: { readonly projectId: string }) {
           );
         }}
       </form.Field>
+      {addressDetected ? (
+        <p role="status" className="text-xs text-muted-foreground">
+          Domínio extraído do endereço. Caminhos e parâmetros da URL não serão configurados.
+        </p>
+      ) : null}
     </form>
   );
 }

@@ -7,6 +7,7 @@ import {
   DatabaseNotFoundError,
   DatabaseNotRunningError,
   DatabaseVariableConflictError,
+  DatabaseServerChangedError,
   ProjectHasDatabasesError,
 } from "@/databases";
 import {
@@ -18,14 +19,15 @@ import {
   RetryUnavailableError,
   RollbackUnavailableError,
 } from "@/deployments";
-import { DomainNotFoundError, DomainTakenError } from "@/domains";
-import { EnvironmentVariableNotFoundError } from "@/environments";
+import { type DnsConfigurationError, DomainNotFoundError, DomainTakenError } from "@/domains";
+import { EnvironmentImportConflictError, EnvironmentVariableNotFoundError } from "@/environments";
 import { ProjectNotFoundError, ProjectSlugTakenError } from "@/projects";
 import {
   InvalidScheduleError,
   TaskNameTakenError,
   TaskNotFoundError,
   TaskRunningError,
+  TaskReviewChangedError,
 } from "@/tasks";
 import {
   ProjectHasVolumesError,
@@ -34,7 +36,25 @@ import {
   VolumeLimitError,
   VolumeNotFoundError,
   VolumePathOverlapError,
+  VolumeServerChangedError,
 } from "@/volumes";
+
+export const DNS_CONFIGURATION_MESSAGES: Record<DnsConfigurationError["reason"], string> = {
+  "origin-not-found":
+    "Não foi possível identificar uma origem única para o painel. Permita a leitura da zona do endereço do painel no token da Cloudflare ou use um servidor com IP público conhecido.",
+  "not-connected": "Conecte a Cloudflare em Organização antes de configurar DNS.",
+  "zone-not-found":
+    "Nenhuma zona ativa autorizada cobre este domínio. Confira os domínios permitidos no token da Cloudflare.",
+  "no-public-address": "Não foi possível detectar um IP público válido para o servidor do projeto.",
+  "unsupported-record":
+    "Este domínio não pertence ao projeto ou possui delegação NS que exige revisão manual.",
+  "review-changed":
+    "Os registros, a conexão ou o servidor mudaram. Verifique novamente e revise as novas alterações.",
+  "invalid-review":
+    "Esta revisão de DNS expirou ou é inválida. Prepare uma nova revisão antes de confirmar.",
+  "too-many-records":
+    "A configuração excede o limite seguro de registros ou zonas para uma única operação.",
+};
 
 /**
  * Portuguese messages for errors of projects, deployments, domains, variables, tasks, volumes
@@ -44,6 +64,18 @@ export const PROJECT_ERROR_MESSAGES: readonly (readonly [
   abstract new (...args: never[]) => Error,
   string,
 ])[] = [
+  [
+    TaskReviewChangedError,
+    "A task mudou durante a revisão. Atualize a lista e confira o comando e o agendamento antes de confirmar novamente.",
+  ],
+  [
+    VolumeServerChangedError,
+    "O servidor do projeto mudou. Volte e revise o volume no servidor atual.",
+  ],
+  [
+    DatabaseServerChangedError,
+    "O servidor do projeto mudou. Volte e revise a criação do banco no servidor atual.",
+  ],
   [ProjectNotFoundError, "Projeto não encontrado."],
   [PreviewNotActiveError, "Este preview foi encerrado com o pull request."],
   [VolumeNotFoundError, "Volume não encontrado."],
@@ -89,6 +121,10 @@ export const PROJECT_ERROR_MESSAGES: readonly (readonly [
   [DomainTakenError, "Este domínio já está em uso por outro projeto."],
   [DomainNotFoundError, "Domínio não encontrado."],
   [EnvironmentVariableNotFoundError, "Variável não encontrada."],
+  [
+    EnvironmentImportConflictError,
+    "As variáveis mudaram durante a revisão. Confira a lista atualizada e importe novamente.",
+  ],
   [TaskNotFoundError, "Task não encontrada."],
   [TaskRunningError, "Aguarde a execução da task terminar antes de excluí-la."],
   [TaskNameTakenError, "Já existe uma task com este nome neste projeto."],

@@ -3,10 +3,12 @@ import type { LucideIcon } from "lucide-react";
 /** One entry of the command palette. */
 export type Command = {
   readonly id: string;
-  readonly group: "Projetos" | "Páginas" | "Administração";
+  readonly group: "Neste projeto" | "Projetos" | "Páginas" | "Administração";
   readonly label: string;
   /** Extra detail shown at the end of the row, such as a project's repository. */
   readonly hint: string | null;
+  /** Search-only aliases keep labels concise while supporting common destination names. */
+  readonly keywords?: string;
   readonly icon: LucideIcon;
   readonly run: () => Promise<void>;
 };
@@ -16,7 +18,7 @@ function normalize(text: string): string {
 }
 
 /**
- * Keeps the commands whose label, hint or group contains the query, ignoring case and accents.
+ * Matches every query word across labels, hints, groups and aliases, ignoring case and accents.
  *
  * @param commands - Every available command, in display order.
  * @param query - Text typed by the user; blank keeps every command.
@@ -27,9 +29,13 @@ export function filterCommands(commands: readonly Command[], query: string): Com
   if (needle === "") {
     return [...commands];
   }
-  return commands.filter((command) =>
-    normalize(`${command.label} ${command.hint ?? ""} ${command.group}`).includes(needle),
-  );
+  const words = needle.split(/\s+/);
+  return commands.filter((command) => {
+    const searchable = normalize(
+      `${command.label} ${command.hint ?? ""} ${command.group} ${command.keywords ?? ""}`,
+    );
+    return words.every((word) => searchable.includes(word));
+  });
 }
 
 /**

@@ -1,4 +1,8 @@
-export { EnvironmentVariableNotFoundError } from "./environment.errors";
+export {
+  EnvironmentImportConflictError,
+  EnvironmentVariableNotFoundError,
+} from "./environment.errors";
+export { importEnvironmentVariables } from "./environment-import.service";
 export { readDeploymentSecrets, saveDeploymentSecrets } from "./deployment-secrets";
 export {
   deleteEnvironmentVariable,

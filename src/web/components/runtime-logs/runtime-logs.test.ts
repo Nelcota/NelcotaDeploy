@@ -1,6 +1,31 @@
 import { describe, expect, test } from "bun:test";
 
-import { ALL_DEPLOYMENTS, runtimeLogsUrl, shortShaOf } from "./runtime-logs";
+import {
+  ALL_DEPLOYMENTS,
+  LIVE_DEPLOYMENT,
+  resolveRuntimeDeployment,
+  runtimeLogsUrl,
+  shortShaOf,
+} from "./runtime-logs";
+
+describe("resolveRuntimeDeployment", () => {
+  test("follows the deployment currently serving production", () => {
+    expect(resolveRuntimeDeployment(LIVE_DEPLOYMENT, "live-1")).toBe("live-1");
+    expect(resolveRuntimeDeployment(LIVE_DEPLOYMENT, "live-2")).toBe("live-2");
+  });
+
+  test("keeps a pinned deployment when production changes", () => {
+    expect(resolveRuntimeDeployment("pinned-1", "live-2")).toBe("pinned-1");
+  });
+
+  test("preserves the unfiltered stream", () => {
+    expect(resolveRuntimeDeployment(ALL_DEPLOYMENTS, "live-1")).toBe(ALL_DEPLOYMENTS);
+  });
+
+  test("uses the unfiltered stream while no deployment is live", () => {
+    expect(resolveRuntimeDeployment(LIVE_DEPLOYMENT, null)).toBe(ALL_DEPLOYMENTS);
+  });
+});
 
 describe("runtimeLogsUrl", () => {
   test("streams every recent deploy when all are selected", () => {

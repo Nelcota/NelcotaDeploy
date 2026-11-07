@@ -28,8 +28,7 @@ export function DatabasesPage({ projectId }: { readonly projectId: string }) {
       {applyChanges.showBanner ? (
         <ApplyChangesBanner
           message="Os bancos mudaram. A aplicação só recebe a nova variável quando o contêiner é recriado."
-          applying={applyChanges.redeploy.isPending}
-          onApply={() => applyChanges.redeploy.mutate()}
+          state={applyChanges}
         />
       ) : null}
       {list == null ? (
@@ -37,7 +36,14 @@ export function DatabasesPage({ projectId }: { readonly projectId: string }) {
       ) : (
         <List>
           {canEdit ? (
-            <AddDatabaseForm pending={create.isPending} onAdd={(input) => create.mutate(input)} />
+            <AddDatabaseForm
+              projectId={projectId}
+              databases={list}
+              pending={create.isPending}
+              onAdd={async (input, expectedServerId) =>
+                await create.mutateAsync({ input, expectedServerId })
+              }
+            />
           ) : null}
           {list.length === 0 ? (
             <NoDatabasesRow />

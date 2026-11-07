@@ -17,11 +17,8 @@ import {
   runProjectCleanup,
   runVolumeDeleteJob,
 } from "./container-action-runner";
-import {
-  runDatabaseBackupJob,
-  runDatabaseRestoreJob,
-  backupStorage,
-} from "./databases/database-backup-runner";
+import { runDatabaseBackupJob, runDatabaseRestoreJob } from "./databases/database-backup-runner";
+import { backupStorage } from "./databases/database-backup-storage";
 import { runDatabaseDeleteJob, runDatabaseProvisionJob } from "./databases/database-runner";
 import type { DeployRunnerConfig, DeployRunnerDependencies } from "./deploy/deploy-context";
 import { runDeployment } from "./deploy/deploy-runner";
@@ -261,19 +258,19 @@ export async function dispatchJob(
       return;
     }
     case "database_provision": {
-      await runDatabaseProvisionJob(dependencies, job, run.signal);
+      await runDatabaseProvisionJob(dependencies, job, run);
       return;
     }
     case "database_delete": {
-      await runDatabaseDeleteJob(dependencies, job);
+      await runDatabaseDeleteJob(dependencies, job, run);
       return;
     }
     case "database_backup": {
-      await runDatabaseBackupJob(dependencies, job);
+      await runDatabaseBackupJob(dependencies, job, run);
       return;
     }
     case "database_restore": {
-      await runDatabaseRestoreJob(dependencies, job);
+      await runDatabaseRestoreJob(dependencies, job, run);
     }
   }
 }

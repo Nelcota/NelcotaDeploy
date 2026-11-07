@@ -38,7 +38,13 @@ export function useDatabases(projectId: string) {
     ["deployments"],
   ] as const;
   const create = useAction({
-    action: (input: DatabaseInput) => createDatabaseFn({ data: { projectId, database: input } }),
+    action: ({
+      input,
+      expectedServerId,
+    }: {
+      readonly input: DatabaseInput;
+      readonly expectedServerId: string;
+    }) => createDatabaseFn({ data: { projectId, database: input, expectedServerId } }),
     successMessage: "Banco de dados criado. Ele fica pronto em instantes",
     invalidate,
   });

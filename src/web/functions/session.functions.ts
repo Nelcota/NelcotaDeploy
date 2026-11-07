@@ -59,7 +59,7 @@ export const updateAvatarFn = createServerFn({ method: "POST" })
     if (user == null) {
       throw new UnauthenticatedError();
     }
-    return saveUserAvatar(getDatabase(), {
+    return await saveUserAvatar(getDatabase(), {
       userId: user.id,
       bytes: Buffer.from(data.imageBase64, "base64"),
     });

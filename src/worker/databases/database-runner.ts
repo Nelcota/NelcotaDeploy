@@ -20,11 +20,13 @@ import { getProject } from "@/projects";
 import type { SecretBox } from "@/secrets";
 
 import type { WorkerDependencies } from "../worker.types";
+import { deleteStoredDatabaseBackups } from "./database-backup-runner";
+import { type BackupStorage, backupStorage } from "./database-backup-storage";
 import {
-  type BackupStorage,
-  backupStorage,
-  deleteStoredDatabaseBackups,
-} from "./database-backup-runner";
+  type DatabaseOperation,
+  assertDatabaseOperationActive,
+  recordDatabaseOperationOutcome,
+} from "./database-operation";
 
 const READINESS_COMMAND_TIMEOUT_IN_MS = 10_000;
 const MS_PER_SECOND = 1000;
@@ -36,7 +38,7 @@ type Readiness = { readonly timeoutInMs: number; readonly intervalInMs: number }
 const DEFAULT_READINESS: Readiness = { timeoutInMs: 120_000, intervalInMs: 1000 };
 
 /** What running or removing a database needs on its project's server. */
-export type DatabaseRunDependencies = {
+export type DatabaseRunDependencies = DatabaseOperation & {
   readonly database: Database;
   readonly docker: DockerEngine;
   readonly secretBox: SecretBox;
@@ -64,18 +66,24 @@ export async function provisionDatabase(
   databaseId: string,
   signal: AbortSignal,
 ): Promise<void> {
+  const operation = { ...dependencies, signal };
+  assertDatabaseOperationActive(operation);
   const record = findDatabaseRecord(dependencies.database, databaseId);
   // Deleted, or about to be, while the job waited in the queue.
   if (record == null || record.deletionRequestedAt != null) {
     return;
   }
   try {
-    await startDatabase(dependencies, record, signal);
+    await startDatabase(operation, record, signal);
   } catch (error) {
-    markDatabaseFailed(dependencies.database, databaseId, errorMessage(error));
+    recordDatabaseOperationOutcome(operation, () =>
+      markDatabaseFailed(dependencies.database, databaseId, errorMessage(error)),
+    );
     throw error;
   }
-  markDatabaseRunning(dependencies.database, databaseId);
+  recordDatabaseOperationOutcome(operation, () =>
+    markDatabaseRunning(dependencies.database, databaseId),
+  );
 }
 
 async function startDatabase(
@@ -86,22 +94,28 @@ async function startDatabase(
   const { docker, network } = dependencies;
   const containerName = databaseContainerNameFor(record.id);
   const existing = await docker.inspectContainer(containerName);
+  assertDatabaseOperationActive(dependencies);
   if (existing?.running === true) {
     await waitUntilReady(dependencies, record, signal);
     return;
   }
   // A container left stopped by an earlier attempt; its data stays in the volume.
   if (existing != null) {
-    await docker.removeContainer(containerName);
+    await docker.removeContainer(existing.id);
+    assertDatabaseOperationActive(dependencies);
   }
   const engine = databaseEngine(record.engine);
   const settings = engine.containerSettings(
     await readDatabasePassword(dependencies.secretBox, record),
   );
   const volumeName = databaseVolumeNameFor(record.id);
+  assertDatabaseOperationActive(dependencies);
   await docker.images.ensurePulled(record.imageTag);
+  assertDatabaseOperationActive(dependencies);
   await docker.ensureNetwork(network);
+  assertDatabaseOperationActive(dependencies);
   await docker.volumes.ensure(volumeName, record.projectId);
+  assertDatabaseOperationActive(dependencies);
   await docker.runContainer(
     {
       containerName,
@@ -114,15 +128,26 @@ async function startDatabase(
     },
     settings.environment,
   );
+  assertDatabaseOperationActive(dependencies);
   await waitUntilReady(dependencies, record, signal);
 }
 
 async function waitUntilReady(
-  { docker, readiness = DEFAULT_READINESS }: DatabaseRunDependencies,
+  dependencies: DatabaseRunDependencies,
   record: DatabaseRecord,
   signal: AbortSignal,
 ): Promise<void> {
-  await pollUntilReady({ docker, readiness, signal, record }, Date.now() + readiness.timeoutInMs);
+  const { docker, readiness = DEFAULT_READINESS } = dependencies;
+  await pollUntilReady(
+    {
+      docker,
+      readiness,
+      signal,
+      record,
+      assertOwnership: dependencies.assertOwnership ?? (() => undefined),
+    },
+    Date.now() + readiness.timeoutInMs,
+  );
 }
 
 // Polls one step at a time: each check must finish before the next one starts.
@@ -132,6 +157,7 @@ async function pollUntilReady(
     readonly readiness: Readiness;
     readonly signal: AbortSignal;
     readonly record: DatabaseRecord;
+    readonly assertOwnership: () => void;
   },
   deadline: number,
 ): Promise<void> {
@@ -143,8 +169,9 @@ async function pollUntilReady(
       `Database container ${containerName} did not accept connections within ${timeoutInSeconds} s`,
     );
   }
-  signal.throwIfAborted();
+  assertDatabaseOperationActive(context);
   const container = await docker.inspectContainer(containerName);
+  assertDatabaseOperationActive(context);
   if (container?.running !== true) {
     throw new Error(`Database container ${containerName} stopped while starting`);
   }
@@ -153,6 +180,7 @@ async function pollUntilReady(
     timeoutInMs: READINESS_COMMAND_TIMEOUT_IN_MS,
     signal,
   });
+  assertDatabaseOperationActive(context);
   if (engine.isReady(result)) {
     return;
   }
@@ -168,35 +196,45 @@ async function pollUntilReady(
  * @throws {DockerCommandError} When Docker refuses; the reason is stored on the database first.
  */
 export async function deleteDatabase(
-  dependencies: Pick<DatabaseRunDependencies, "database" | "docker"> & {
-    /** Where its backups are stored, which go too; null when backups have nowhere to go. */
-    readonly storage: BackupStorage | null;
-  },
+  dependencies: Pick<DatabaseRunDependencies, "database" | "docker"> &
+    DatabaseOperation & {
+      /** Where its backups are stored, which go too; null when backups have nowhere to go. */
+      readonly storage: BackupStorage | null;
+    },
   databaseId: string,
 ): Promise<void> {
   const { database, docker, storage } = dependencies;
+  assertDatabaseOperationActive(dependencies);
   const record = findDatabaseRecord(database, databaseId);
   if (record == null) {
     return;
   }
   try {
     const containerName = databaseContainerNameFor(record.id);
-    if ((await docker.inspectContainer(containerName)) != null) {
-      await docker.removeContainer(containerName);
+    const container = await docker.inspectContainer(containerName);
+    assertDatabaseOperationActive(dependencies);
+    if (container != null) {
+      await docker.removeContainer(container.id);
     }
     // A database that never started has no volume yet.
     const volumeName = databaseVolumeNameFor(record.id);
-    if ((await docker.volumes.listForProject(record.projectId)).includes(volumeName)) {
+    assertDatabaseOperationActive(dependencies);
+    const volumes = await docker.volumes.listForProject(record.projectId);
+    assertDatabaseOperationActive(dependencies);
+    if (volumes.includes(volumeName)) {
       await docker.volumes.remove(volumeName);
     }
+    assertDatabaseOperationActive(dependencies);
     if (storage != null) {
       await deleteStoredDatabaseBackups(storage, record.id);
     }
   } catch (error) {
-    failDatabaseDeletion(database, databaseId, errorMessage(error));
+    recordDatabaseOperationOutcome(dependencies, () =>
+      failDatabaseDeletion(database, databaseId, errorMessage(error)),
+    );
     throw error;
   }
-  finishDatabaseDeletion(database, databaseId);
+  recordDatabaseOperationOutcome(dependencies, () => finishDatabaseDeletion(database, databaseId));
 }
 
 function databaseIdOf(job: Job): string {
@@ -210,11 +248,12 @@ function databaseIdOf(job: Job): string {
 function runDependencies(
   dependencies: Pick<WorkerDependencies, "database" | "hosts" | "secretBox" | "config">,
   job: Job,
+  run: DatabaseOperation,
 ): DatabaseRunDependencies {
   const { database, hosts, secretBox, config } = dependencies;
   // Projects with databases cannot move, so the database is on the project's current server.
   const host = hosts.hostOf(database, getProject(database, job.projectId).serverId);
-  return { database, docker: host.docker, secretBox, network: config.DOCKER_NETWORK };
+  return { ...run, database, docker: host.docker, secretBox, network: config.DOCKER_NETWORK };
 }
 
 /**
@@ -222,15 +261,15 @@ function runDependencies(
  *
  * @param dependencies - Worker dependencies.
  * @param job - The claimed job; its payload names the database.
- * @param signal - Aborts the wait when the worker shuts down.
+ * @param run - Cancellation and lease checks for this attempt.
  * @throws {Error} When the payload has no database id, or provisioning fails.
  */
 export async function runDatabaseProvisionJob(
   dependencies: Pick<WorkerDependencies, "database" | "hosts" | "secretBox" | "config">,
   job: Job,
-  signal: AbortSignal,
+  run: DatabaseOperation & { readonly signal: AbortSignal },
 ): Promise<void> {
-  await provisionDatabase(runDependencies(dependencies, job), databaseIdOf(job), signal);
+  await provisionDatabase(runDependencies(dependencies, job, run), databaseIdOf(job), run.signal);
 }
 
 /**
@@ -238,6 +277,7 @@ export async function runDatabaseProvisionJob(
  *
  * @param dependencies - Worker dependencies.
  * @param job - The claimed job; its payload names the database.
+ * @param run - Cancellation and lease checks for this attempt.
  * @throws {Error} When the payload has no database id, or the deletion fails.
  */
 export async function runDatabaseDeleteJob(
@@ -246,9 +286,10 @@ export async function runDatabaseDeleteJob(
     "database" | "hosts" | "secretBox" | "config" | "offsiteStore"
   >,
   job: Job,
+  run: DatabaseOperation,
 ): Promise<void> {
   const { config, offsiteStore } = dependencies;
   const storage =
     offsiteStore == null && config.BACKUP_DIR == null ? null : backupStorage(dependencies);
-  await deleteDatabase({ ...runDependencies(dependencies, job), storage }, databaseIdOf(job));
+  await deleteDatabase({ ...runDependencies(dependencies, job, run), storage }, databaseIdOf(job));
 }

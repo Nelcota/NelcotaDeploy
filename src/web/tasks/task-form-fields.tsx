@@ -1,22 +1,15 @@
 import { FormField } from "@/web/components/forms/form-field";
 import { describeCronSchedule } from "@/web/components/projects/cron-description";
-import { Button } from "@/web/components/ui/button";
 import { Input } from "@/web/components/ui/input";
 import { Label } from "@/web/components/ui/label";
 import { Switch } from "@/web/components/ui/switch";
 
+import { TaskScheduleEditor } from "./automation/task-schedule-editor";
 import type { TaskFormApi } from "./use-task-form";
-
-const SCHEDULE_PRESETS = [
-  { label: "Sob demanda", cron: "" },
-  { label: "A cada hora", cron: "0 * * * *" },
-  { label: "Todo dia às 03:00", cron: "0 3 * * *" },
-  { label: "Toda segunda às 08:00", cron: "0 8 * * 1" },
-] as const;
 
 function scheduleHint(schedule: string, timeZone: string): string {
   if (schedule.trim() === "") {
-    return `Sem agendamento: a task só roda quando executada. Cron de 5 campos no fuso ${timeZone}.`;
+    return "Sem agendamento: a tarefa só roda quando você pedir a execução.";
   }
   const description = describeCronSchedule(schedule);
   return description == null
@@ -25,7 +18,13 @@ function scheduleHint(schedule: string, timeZone: string): string {
 }
 
 /** Task name and the command it runs. */
-export function TaskCommandFields({ form }: { readonly form: TaskFormApi }) {
+export function TaskCommandFields({
+  form,
+  onEdited,
+}: {
+  readonly form: TaskFormApi;
+  readonly onEdited: (field: "name" | "commandLine") => void;
+}) {
   return (
     <>
       <form.Field name="name">
@@ -36,7 +35,10 @@ export function TaskCommandFields({ form }: { readonly form: TaskFormApi }) {
                 {...props}
                 value={field.state.value}
                 onBlur={field.handleBlur}
-                onChange={(event) => field.handleChange(event.target.value)}
+                onChange={(event) => {
+                  onEdited("name");
+                  field.handleChange(event.target.value);
+                }}
               />
             )}
           </FormField>
@@ -58,7 +60,10 @@ export function TaskCommandFields({ form }: { readonly form: TaskFormApi }) {
                 spellCheck={false}
                 value={field.state.value}
                 onBlur={field.handleBlur}
-                onChange={(event) => field.handleChange(event.target.value)}
+                onChange={(event) => {
+                  onEdited("commandLine");
+                  field.handleChange(event.target.value);
+                }}
               />
             )}
           </FormField>
@@ -68,31 +73,7 @@ export function TaskCommandFields({ form }: { readonly form: TaskFormApi }) {
   );
 }
 
-function SchedulePresets({
-  schedule,
-  onPick,
-}: {
-  readonly schedule: string;
-  readonly onPick: (cron: string) => void;
-}) {
-  return (
-    <div role="group" aria-label="Atalhos de agendamento" className="flex flex-wrap gap-1.5">
-      {SCHEDULE_PRESETS.map((preset) => (
-        <Button
-          key={preset.label}
-          type="button"
-          variant={schedule.trim() === preset.cron ? "secondary" : "outline"}
-          size="xs"
-          onClick={() => onPick(preset.cron)}
-        >
-          {preset.label}
-        </Button>
-      ))}
-    </div>
-  );
-}
-
-/** Cron schedule with a readable description and common presets. */
+/** Guided schedule with automatic cron generation and a readable time-zone description. */
 export function ScheduleField({
   form,
   timeZone,
@@ -111,18 +92,14 @@ export function ScheduleField({
             errors={field.state.meta.errors}
           >
             {(props) => (
-              <Input
+              <TaskScheduleEditor
                 {...props}
-                className="font-mono"
-                placeholder="0 3 * * *"
-                autoComplete="off"
                 value={field.state.value}
                 onBlur={field.handleBlur}
-                onChange={(event) => field.handleChange(event.target.value)}
+                onChange={field.handleChange}
               />
             )}
           </FormField>
-          <SchedulePresets schedule={field.state.value} onPick={field.handleChange} />
         </div>
       )}
     </form.Field>

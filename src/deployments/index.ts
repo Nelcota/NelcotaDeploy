@@ -11,7 +11,11 @@ export {
   hasPendingRuntimeChanges,
   runtimeConfigFingerprint,
 } from "./runtime-config";
-export { applyPendingChanges, applyRuntimeChanges } from "./runtime-apply.service";
+export {
+  applyPendingChanges,
+  applyRuntimeChanges,
+  getActiveRuntimeDeployment,
+} from "./runtime-apply.service";
 export {
   DeploymentNotFoundError,
   NoActiveContainerError,

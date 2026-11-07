@@ -1,99 +1,186 @@
-import { ArrowRightLeftIcon, ServerIcon } from "lucide-react";
-import { useState } from "react";
+import { Link } from "@tanstack/react-router";
+import { ArrowRightLeftIcon, LoaderCircleIcon, ServerIcon } from "lucide-react";
 
-import { type ServerView, useServers } from "@/web/admin";
+import { pluralize } from "@/shared/format";
 import { ConfirmDialog } from "@/web/components/layout/confirm-dialog";
-import { useAction } from "@/web/components/layout/use-action";
+import { toUserMessage } from "@/web/components/layout/error-message";
 import { Button } from "@/web/components/ui/button";
-import { Label } from "@/web/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/web/components/ui/select";
-import { moveProjectFn } from "@/web/functions/servers/project-move.functions";
 
+import { ServerTargetSelect } from "./server/server-target-select";
+import { useServerMove } from "./server/use-server-move";
 import { SettingsSection } from "./settings-section";
 
-function useMoveProject(projectId: string) {
-  return useAction({
-    action: (serverId: string) => moveProjectFn({ data: { projectId, serverId } }),
-    successMessage: (result) =>
-      result.deploymentId == null
-        ? "Servidor alterado. O próximo deploy roda nele."
-        : "Mudança iniciada: o deploy no novo servidor está na fila.",
-    // The DNS card must show the new server's address right away.
-    invalidate: [["project", projectId], ["servers"], ["server-address", projectId]],
-  });
-}
-
-type ServerOption = Pick<ServerView, "id" | "name" | "status">;
-
-function ServerSelect({
-  servers,
-  value,
-  onChange,
-}: {
-  readonly servers: readonly ServerOption[];
-  readonly value: string;
-  readonly onChange: (serverId: string) => void;
-}) {
-  return (
-    <div className="flex-1 space-y-2">
-      <Label htmlFor="project-server">Servidor</Label>
-      <Select value={value} onValueChange={onChange}>
-        <SelectTrigger id="project-server" className="w-full">
-          <SelectValue placeholder="Carregando servidores…" />
-        </SelectTrigger>
-        <SelectContent>
-          {servers.map((server) => (
-            <SelectItem key={server.id} value={server.id} disabled={server.status !== "ready"}>
-              {server.status === "ready" ? server.name : `${server.name} (indisponível)`}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-    </div>
-  );
-}
-
-/** Shows where the project runs and moves it to another server. */
-export function ServerSection({
-  projectId,
-  serverId,
-  deployed,
-}: {
+/** Shows the current server, discovers move blockers and reviews a fixed destination. */
+export function ServerSection(props: {
   readonly projectId: string;
   readonly serverId: string;
   readonly deployed: boolean;
 }) {
-  const servers = useServers().data?.servers ?? [];
-  const [target, setTarget] = useState(serverId);
-  const move = useMoveProject(projectId);
-  const targetName = servers.find((server) => server.id === target)?.name ?? "";
+  const state = useServerMove(props);
+  const active = state.status.data?.activeDeployment;
   return (
-    <SettingsSection icon={ServerIcon} title="Servidor">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-        <ServerSelect servers={servers} value={target} onChange={setTarget} />
-        <ConfirmDialog
-          trigger={
-            <Button disabled={target === serverId || move.isPending}>
+    <SettingsSection id="settings-server" icon={ServerIcon} title="Trocar servidor">
+      <div className="space-y-4">
+        <p className="text-sm break-all">
+          Servidor configurado: <strong>{state.sourceName}</strong>
+        </p>
+        <ServerMoveNotice state={state} projectId={props.projectId} />
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+          <ServerTargetSelect
+            servers={state.servers.data?.servers ?? []}
+            sourceId={state.sourceId}
+            value={state.target.server?.id ?? ""}
+            disabled={state.unavailable || state.blocker != null || state.move.isPending}
+            onChange={state.choose}
+          />
+          <Button disabled={state.canMove === false} onClick={state.beginReview}>
+            {state.move.isPending ? (
+              <LoaderCircleIcon aria-hidden className="animate-spin" />
+            ) : (
               <ArrowRightLeftIcon aria-hidden />
-              Mover
-            </Button>
-          }
-          title={`Mover o projeto para ${targetName}?`}
-          description={
-            deployed
-              ? "O build roda de novo no servidor escolhido. Depois, aponte o DNS dos domínios para o IP dele: o contêiner antigo segue no ar até o DNS mudar (ou por até 24 horas)."
-              : "O próximo deploy do projeto vai rodar no servidor escolhido."
-          }
-          confirmLabel="Mover"
-          onConfirm={() => move.mutate(target)}
-        />
+            )}
+            {state.move.isPending ? "Movendo projeto…" : "Revisar troca de servidor"}
+          </Button>
+        </div>
+        {state.target.automatic && state.canMove ? (
+          <p role="status" className="text-xs text-muted-foreground">
+            O único destino pronto foi preenchido automaticamente. A troca só acontece após
+            confirmar.
+          </p>
+        ) : null}
+        <div className="flex flex-wrap gap-4 text-sm">
+          <Link to="/settings/servers" className="underline underline-offset-4">
+            Gerenciar servidores
+          </Link>
+          {active == null ? null : (
+            <Link
+              to="/projects/$projectId/deployments/$deploymentId"
+              params={{ projectId: props.projectId, deploymentId: active.id }}
+              className="underline underline-offset-4"
+            >
+              Acompanhar deploy
+            </Link>
+          )}
+        </div>
+        {state.move.isError ? (
+          <p role="alert" className="text-sm text-destructive">
+            {toUserMessage(
+              state.move.error,
+              "Não foi possível mover o projeto. Confira os dados e tente novamente.",
+            )}
+          </p>
+        ) : null}
       </div>
+      {state.review == null ? null : (
+        <ConfirmDialog
+          open
+          onOpenChange={(open) => {
+            if (open === false) {
+              state.closeReview();
+            }
+          }}
+          title="Confirmar troca de servidor"
+          description={
+            <div className="space-y-2">
+              <p className="break-all">
+                De <strong>{state.review.sourceName}</strong> para{" "}
+                <strong>{state.review.targetName}</strong>.
+              </p>
+              <p>
+                {state.review.deployed
+                  ? "Um deploy da versão atual será enfileirado no destino. Depois que ele estiver pronto, confira o DNS na página de domínios; a mudança de DNS exige uma confirmação separada."
+                  : "O próximo deploy do projeto vai rodar no servidor escolhido."}
+              </p>
+            </div>
+          }
+          confirmLabel="Mover projeto para este servidor"
+          onConfirm={() => {
+            if (state.review != null) {
+              state.move.mutate(state.review.request);
+            }
+          }}
+        />
+      )}
     </SettingsSection>
   );
+}
+
+function ServerMoveNotice({
+  state,
+  projectId,
+}: {
+  readonly state: ReturnType<typeof useServerMove>;
+  readonly projectId: string;
+}) {
+  if (state.status.isError || state.servers.isError) {
+    return (
+      <div role="status" className="space-y-2 text-sm text-warning">
+        <p>Não foi possível verificar os servidores e os impedimentos da troca.</p>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          disabled={state.status.isFetching || state.servers.isFetching}
+          onClick={() => {
+            void Promise.all([state.status.refetch(), state.servers.refetch()]);
+          }}
+        >
+          Atualizar disponibilidade dos servidores
+        </Button>
+      </div>
+    );
+  }
+  if (state.status.data == null || state.servers.data == null) {
+    return (
+      <p role="status" className="text-sm text-muted-foreground">
+        Verificando destino, volumes, bancos e deploys…
+      </p>
+    );
+  }
+  if (state.blocker === "storage") {
+    return (
+      <div role="status" className="space-y-2 text-sm text-warning">
+        <p>
+          O projeto tem {pluralize(state.status.data.volumeCount, "volume", "volumes")} e{" "}
+          {pluralize(state.status.data.databaseCount, "banco de dados", "bancos de dados")}. Os
+          dados ficam no servidor atual e impedem a troca.
+        </p>
+        <div className="flex flex-wrap gap-4 text-foreground">
+          {state.status.data.volumeCount > 0 ? (
+            <Link
+              to="/projects/$projectId/settings/volumes"
+              params={{ projectId }}
+              className="underline underline-offset-4"
+            >
+              Ver volumes
+            </Link>
+          ) : null}
+          {state.status.data.databaseCount > 0 ? (
+            <Link
+              to="/projects/$projectId/databases"
+              params={{ projectId }}
+              className="underline underline-offset-4"
+            >
+              Ver bancos de dados
+            </Link>
+          ) : null}
+        </div>
+      </div>
+    );
+  }
+  if (state.blocker === "deployment") {
+    return (
+      <p role="status" className="text-sm text-muted-foreground">
+        Há um deploy em andamento. Aguarde o término antes de mudar o servidor.
+      </p>
+    );
+  }
+  if (state.blocker === "approval") {
+    return (
+      <p role="status" className="text-sm text-warning">
+        Aprove os deploys do projeto antes de mover a aplicação para outro servidor.
+      </p>
+    );
+  }
+  return null;
 }

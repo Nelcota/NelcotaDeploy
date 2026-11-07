@@ -6,7 +6,6 @@ import { TabHeader } from "@/web/components/projects/project-header";
 import {
   BackToDeploymentsLink,
   DeploymentDetailSkeleton,
-  DeploymentLogs,
   DeploymentTitle,
   FailureNotice,
   StagesCard,
@@ -15,7 +14,7 @@ import { DeploymentDetailsCard } from "./deployment-details-card";
 import { DeploymentHeaderAction } from "./deployment-header-action";
 import { type DeploymentDetailData, useDeploymentDetail } from "./use-deployment-detail";
 
-/** One deploy: stages, failure reason, details and live build logs. */
+/** Progress and outcome of one deployment; its build output has a dedicated page. */
 export function DeploymentDetailPage({
   projectId,
   deploymentId,
@@ -23,10 +22,7 @@ export function DeploymentDetailPage({
   readonly projectId: string;
   readonly deploymentId: string;
 }) {
-  const { project, deployment, active, now, onLogEnd } = useDeploymentDetail(
-    projectId,
-    deploymentId,
-  );
+  const { project, deployment, active, now } = useDeploymentDetail(projectId, deploymentId);
   if (deployment.isError) {
     return (
       <DetailSection projectId={projectId} label="Detalhes do deploy">
@@ -41,6 +37,9 @@ export function DeploymentDetailPage({
         <DeploymentDetailSkeleton />
       </DetailSection>
     );
+  }
+  if (data.projectId !== projectId) {
+    return <p role="alert">Deploy não encontrado neste projeto.</p>;
   }
   return (
     <section aria-label="Detalhes do deploy" className="space-y-6">
@@ -59,7 +58,6 @@ export function DeploymentDetailPage({
         active={active}
         now={now}
       />
-      <DeploymentLogs deployment={data} active={active} onEnd={onLogEnd} />
     </section>
   );
 }

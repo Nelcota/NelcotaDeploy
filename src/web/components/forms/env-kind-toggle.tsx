@@ -1,7 +1,5 @@
 import { EyeIcon, LockIcon } from "lucide-react";
-import type { KeyboardEvent } from "react";
-
-import { cn } from "@/web/components/ui/class-names";
+import { RadioGroup } from "radix-ui";
 
 export type VariableKind = "plain" | "secret";
 
@@ -10,36 +8,16 @@ const OPTIONS = [
   { value: "secret", label: "Secret", hint: "criptografado", icon: LockIcon },
 ] as const;
 
-const ARROW_KEYS = new Set(["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"]);
-
-function KindOption({
-  option,
-  selected,
-  onSelect,
-}: {
-  readonly option: (typeof OPTIONS)[number];
-  readonly selected: boolean;
-  readonly onSelect: (value: VariableKind) => void;
-}) {
+function KindOption({ option }: { readonly option: (typeof OPTIONS)[number] }) {
   return (
-    <button
-      type="button"
-      role="radio"
-      data-value={option.value}
-      tabIndex={selected ? 0 : -1}
+    <RadioGroup.Item
+      value={option.value}
       title={option.hint}
-      aria-checked={selected}
-      onClick={() => onSelect(option.value)}
-      className={cn(
-        "flex items-center justify-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors focus-visible:ring-3 focus-visible:ring-ring/40 focus-visible:outline-none",
-        selected
-          ? "bg-card text-foreground ring-1 ring-border"
-          : "text-muted-foreground hover:text-foreground",
-      )}
+      className="flex items-center justify-center gap-2 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/40 focus-visible:outline-none data-[state=checked]:bg-card data-[state=checked]:text-foreground data-[state=checked]:ring-1 data-[state=checked]:ring-border"
     >
       <option.icon aria-hidden className="size-4" />
       {option.label}
-    </button>
+    </RadioGroup.Item>
   );
 }
 
@@ -59,32 +37,23 @@ export function VariableKindToggle({
   /** Ids of the hint and error text, as given by a form field. */
   readonly describedBy?: string;
 }) {
-  const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
-    if (ARROW_KEYS.has(event.key) === false) {
-      return;
-    }
-    event.preventDefault();
-    const next: VariableKind = value === "plain" ? "secret" : "plain";
-    onChange(next);
-    event.currentTarget.querySelector<HTMLButtonElement>(`[data-value="${next}"]`)?.focus();
-  };
   return (
-    <div
+    <RadioGroup.Root
       id={id}
-      role="radiogroup"
+      value={value}
+      onValueChange={(next) => {
+        if (next !== "plain" && next !== "secret") {
+          throw new RangeError(`Invalid variable kind: ${next}`);
+        }
+        onChange(next);
+      }}
       aria-labelledby={`${id}-label`}
       aria-describedby={describedBy}
-      onKeyDown={onKeyDown}
       className="grid grid-cols-2 gap-1 rounded-lg bg-secondary p-1 ring-1 ring-border ring-inset"
     >
       {OPTIONS.map((option) => (
-        <KindOption
-          key={option.value}
-          option={option}
-          selected={value === option.value}
-          onSelect={onChange}
-        />
+        <KindOption key={option.value} option={option} />
       ))}
-    </div>
+    </RadioGroup.Root>
   );
 }

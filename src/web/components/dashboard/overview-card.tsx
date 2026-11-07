@@ -30,9 +30,8 @@ export function OverviewCard({ data }: { readonly data: DashboardSummary | null 
       <div className="flex min-w-0 flex-col gap-4">
         {/* The system health is the status button in the top bar, on every page. */}
         <CardTitleRow icon={ActivityIcon} title="Status das aplicações" count={data.projectCount} />
-        <dl className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
+        <dl className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           <ApplicationTiles data={data} />
-          <DeploymentTiles data={data} />
         </dl>
       </div>
     </Card>
@@ -83,5 +82,20 @@ function DeploymentTiles({ data }: { readonly data: DashboardSummary }) {
         tone={failures > 0 ? "danger" : "default"}
       />
     </>
+  );
+}
+
+/** Deployment activity belongs to its own page rather than the application status page. */
+export function DeploymentActivitySummary({ data }: { readonly data: DashboardSummary | null }) {
+  if (data == null) {
+    return <Skeleton className="h-44 rounded-2xl" />;
+  }
+  return (
+    <Card className="gap-4 p-5">
+      <CardTitleRow icon={RocketIcon} title="Atividade de deploys em 24 horas" />
+      <dl className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <DeploymentTiles data={data} />
+      </dl>
+    </Card>
   );
 }

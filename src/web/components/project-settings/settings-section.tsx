@@ -1,5 +1,5 @@
 import type { LucideIcon } from "lucide-react";
-import type { ReactNode } from "react";
+import { type ReactNode, useId } from "react";
 
 import { cn } from "@/web/components/ui/class-names";
 
@@ -18,6 +18,7 @@ export function SettingsSection({
   description,
   tone = "default",
   children,
+  id,
 }: {
   readonly icon: LucideIcon;
   readonly title: ReactNode;
@@ -25,9 +26,19 @@ export function SettingsSection({
   /** `danger` outlines the card in red, for actions that cannot be undone. */
   readonly tone?: keyof typeof SECTION_TONES;
   readonly children: ReactNode;
+  readonly id?: string;
 }) {
+  const headingId = useId();
   return (
-    <section className={cn("rounded-2xl bg-card ring-1", SECTION_TONES[tone])}>
+    <section
+      id={id}
+      tabIndex={id == null ? undefined : -1}
+      aria-labelledby={headingId}
+      className={cn(
+        "scroll-mt-4 rounded-2xl bg-card ring-1 focus-visible:outline-2 focus-visible:outline-ring",
+        SECTION_TONES[tone],
+      )}
+    >
       <header className="flex items-start gap-3 border-b border-border/60 px-5 py-4 md:px-6">
         <Icon
           aria-hidden
@@ -37,7 +48,10 @@ export function SettingsSection({
           )}
         />
         <div className="min-w-0 space-y-0.5">
-          <h3 className={cn("text-sm font-semibold", tone === "danger" && "text-destructive")}>
+          <h3
+            id={headingId}
+            className={cn("text-sm font-semibold", tone === "danger" && "text-destructive")}
+          >
             {title}
           </h3>
           {description == null ? null : (

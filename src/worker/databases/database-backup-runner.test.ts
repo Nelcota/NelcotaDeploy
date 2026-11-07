@@ -126,7 +126,7 @@ describe("runDatabaseBackup", () => {
     await runDatabaseBackup(dependencies, backupId);
 
     expect(docker.calls.some((call) => call.includes("pg_dump"))).toBe(true);
-    expect(docker.calls.some((call) => call.includes(`rm -f /tmp/nelcota-${backupId}.dump`))).toBe(
+    expect(docker.calls.some((call) => call.includes(`rm -f /tmp/nelcota-${backupId}-`))).toBe(
       true,
     );
   });

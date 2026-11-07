@@ -7,12 +7,14 @@ export function UnsavedChangesBar({
   formId,
   canEdit,
   isSubmitting,
+  saveLabel,
   onDiscard,
 }: {
   /** Id of the form the save button submits; the bar sits outside it. */
   readonly formId: string;
   readonly canEdit: boolean;
   readonly isSubmitting: boolean;
+  readonly saveLabel: string;
   readonly onDiscard: () => void;
 }) {
   return (
@@ -20,10 +22,10 @@ export function UnsavedChangesBar({
       <p className="text-sm font-medium" aria-live="polite">
         Alterações não salvas
       </p>
-      <div className="flex gap-2">
+      <div className="flex flex-wrap gap-2">
         <Button type="button" variant="outline" disabled={isSubmitting} onClick={onDiscard}>
           <Undo2Icon aria-hidden />
-          Descartar
+          Descartar alterações não salvas
         </Button>
         <Button type="submit" form={formId} disabled={canEdit === false || isSubmitting}>
           {isSubmitting ? (
@@ -31,7 +33,7 @@ export function UnsavedChangesBar({
           ) : (
             <SaveIcon aria-hidden />
           )}
-          Salvar alterações
+          {saveLabel}
         </Button>
       </div>
     </div>

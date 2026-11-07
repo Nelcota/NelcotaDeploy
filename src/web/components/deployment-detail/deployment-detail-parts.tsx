@@ -19,7 +19,7 @@ export function BackToDeploymentsLink({ projectId }: { readonly projectId: strin
       className="inline-flex items-center gap-1 rounded-sm text-sm font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
     >
       <ChevronLeftIcon aria-hidden className="size-4" />
-      Deploys
+      Histórico de deploys
     </Link>
   );
 }
@@ -38,7 +38,7 @@ export function DeploymentTitle({ deployment }: { readonly deployment: Deploymen
   return (
     <>
       <span>
-        Deploy <span className="font-mono">{deploymentTitleId(deployment)}</span>
+        Progresso do deploy <span className="font-mono">{deploymentTitleId(deployment)}</span>
       </span>
       <DeploymentStatusBadge status={deployment.status} />
     </>

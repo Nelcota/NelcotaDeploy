@@ -18,6 +18,49 @@ describe("readCursor", () => {
 });
 
 describe("createEventStreamResponse", () => {
+  test("pauses polling while a slow reader leaves a batch queued and resumes at its cursor", async () => {
+    const cursors: number[] = [];
+    const response = createEventStreamResponse(
+      new Request("http://x/logs"),
+      (cursor) => {
+        cursors.push(cursor);
+        return { items: [{ id: cursor + 1, message: "x".repeat(70_000) }], finished: false };
+      },
+      () => undefined,
+    );
+    const reader = response.body?.getReader();
+    if (reader == null) {
+      throw new Error("Expected an event stream body");
+    }
+    await using _reader = { [Symbol.asyncDispose]: async () => await reader.cancel() };
+    const pausedReaderWaitInMs = 1100;
+    await Bun.sleep(pausedReaderWaitInMs);
+    expect(cursors).toEqual([0]);
+    await reader.read();
+    const first = await reader.read();
+    expect(new TextDecoder().decode(first.value)).toContain("id: 1");
+    await reader.read();
+    expect(cursors).toEqual([0, 1]);
+  });
+
+  test("does not schedule another poll after cancellation during an in-flight read", async () => {
+    const batch = Promise.withResolvers<{ items: { id: number }[]; finished: boolean }>();
+    let polls = 0;
+    const response = createEventStreamResponse(
+      new Request("http://x/logs"),
+      async () => {
+        polls += 1;
+        return await batch.promise;
+      },
+      () => undefined,
+    );
+    await response.body?.cancel();
+    batch.resolve({ items: [{ id: 1 }], finished: false });
+    const cancelledPollWaitInMs = 600;
+    await Bun.sleep(cancelledPollWaitInMs);
+    expect(polls).toBe(1);
+  });
+
   test("stops an asynchronous authorized stream when access is revoked", async () => {
     let authorized = true;
     let error: unknown;

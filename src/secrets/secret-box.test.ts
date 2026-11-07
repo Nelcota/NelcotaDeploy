@@ -74,6 +74,59 @@ describe("SecretBox rejections", () => {
 });
 
 describe("SecretBox bytes", () => {
+  test.each([0, 1, 16, 131_073])(
+    "preserves the existing binary envelope for %p bytes",
+    async (size) => {
+      const box = await SecretBox.fromBase64Key(KEY);
+      const key = await crypto.subtle.importKey(
+        "raw",
+        Buffer.from(KEY, "base64"),
+        "AES-GCM",
+        false,
+        ["encrypt", "decrypt"],
+      );
+      const plaintext = new Uint8Array(size).fill(37);
+      const context = "compatible-backup";
+      const associatedData = new TextEncoder().encode(context);
+      const iv = new Uint8Array(12).fill(9);
+      const ciphertext = await crypto.subtle.encrypt(
+        { name: "AES-GCM", iv, additionalData: associatedData },
+        key,
+        plaintext,
+      );
+      const legacy = new Uint8Array(16 + ciphertext.byteLength);
+      legacy.set(new TextEncoder().encode("NLC1"));
+      legacy.set(iv, 4);
+      legacy.set(new Uint8Array(ciphertext), 16);
+      expect(await box.decryptBytes(legacy, context)).toEqual(plaintext);
+      const current = await box.encryptBytes(plaintext, context);
+      const restored = await crypto.subtle.decrypt(
+        { name: "AES-GCM", iv: current.subarray(4, 16), additionalData: associatedData },
+        key,
+        current.subarray(16),
+      );
+      expect(new Uint8Array(restored)).toEqual(plaintext);
+      expect(current.byteLength).toBe(plaintext.byteLength + 32);
+    },
+  );
+
+  test.each([4, 16, 32])(
+    "rejects a modified IV, ciphertext or tag at byte %p",
+    async (position) => {
+      const box = await SecretBox.fromBase64Key(KEY);
+      const encrypted = await box.encryptBytes(new Uint8Array([1, 2, 3, 4]), "authenticated");
+      const value = encrypted.at(position);
+      if (value == null) {
+        throw new Error("Missing encrypted fixture byte");
+      }
+      const changed = encrypted.with(position, value ^ 1);
+      const failure: unknown = await box
+        .decryptBytes(changed, "authenticated")
+        .catch((error: unknown) => error);
+      expect(failure).toBeInstanceOf(SecretDecryptionError);
+    },
+  );
+
   test("decrypts the bytes it encrypted with the same context", async () => {
     const box = await SecretBox.fromBase64Key(KEY);
     const original = Uint8Array.from([0, 1, 2, 250, 255]);

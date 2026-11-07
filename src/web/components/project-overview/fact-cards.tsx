@@ -1,8 +1,7 @@
-import { Link } from "@tanstack/react-router";
-import { BoxIcon, SlidersHorizontalIcon } from "lucide-react";
+import { BoxIcon } from "lucide-react";
 import type { ReactNode } from "react";
 
-import { CardTitleRow, TEXT_LINK } from "@/web/components/layout/layout";
+import { CardTitleRow } from "@/web/components/layout/layout";
 import { currentContainer } from "@/web/components/projects/project-header";
 import type { ProjectDetails } from "@/web/components/projects/project-query";
 import { Card } from "@/web/components/ui/card";
@@ -31,38 +30,6 @@ export function ContainerCard({ details }: { readonly details: ProjectDetails })
           ) : null}
         </dl>
       )}
-    </Card>
-  );
-}
-
-/** Build and deploy settings of the project; the repository and branch are in the header. */
-export function ConfigurationCard({ details }: { readonly details: ProjectDetails }) {
-  const { project } = details;
-  return (
-    <Card className="gap-3 p-5">
-      <CardTitleRow icon={SlidersHorizontalIcon} title="Configuração">
-        <Link
-          to="/projects/$projectId/settings"
-          params={{ projectId: project.id }}
-          className={TEXT_LINK}
-        >
-          Editar
-        </Link>
-      </CardTitleRow>
-      <dl className="divide-y divide-border">
-        <Fact label="Dockerfile">
-          <span className="font-mono">{project.dockerfilePath}</span>
-        </Fact>
-        <Fact label="Porta interna">
-          {project.internalPortAuto
-            ? `${project.internalPort} (automática, do Dockerfile)`
-            : project.internalPort}
-        </Fact>
-        <Fact label="Verificação de saúde">
-          {project.healthCheckPath == null ? "Conexão TCP" : `HTTP ${project.healthCheckPath}`}
-        </Fact>
-        <Fact label="Deploy">{project.autoDeploy ? "Automático a cada push" : "Manual"}</Fact>
-      </dl>
     </Card>
   );
 }

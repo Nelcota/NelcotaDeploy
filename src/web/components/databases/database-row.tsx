@@ -1,3 +1,4 @@
+import { Link } from "@tanstack/react-router";
 import { RotateCwIcon, Trash2Icon } from "lucide-react";
 
 import type { DatabaseEngineName } from "@/shared/schemas/database.schema";
@@ -5,7 +6,6 @@ import { ConfirmDialog } from "@/web/components/layout/confirm-dialog";
 import { ListRow, Tag } from "@/web/components/layout/layout";
 import { Button } from "@/web/components/ui/button";
 
-import { DatabaseBackupsButton } from "./database-backups-dialog";
 import { databaseState, ENGINE_LABELS, engineVersion } from "./database-state";
 import { EngineLogo } from "./engine-logo";
 
@@ -59,18 +59,31 @@ export function DatabaseRow({
           <p className="text-xs text-warning">{state.failureNote}</p>
         )}
       </div>
-      <div className="flex shrink-0 gap-2">
+      <div className="flex max-w-full shrink-0 flex-wrap gap-2">
         {database.backupsAvailable && database.deletionRequestedAt == null ? (
-          <DatabaseBackupsButton
-            projectId={projectId}
-            databaseId={database.id}
-            environmentKey={database.environmentKey}
-          />
+          <Button variant="outline" size="sm" asChild>
+            <Link
+              to="/projects/$projectId/databases/$databaseId/backups"
+              params={{ projectId, databaseId: database.id }}
+            >
+              Ver backups
+            </Link>
+          </Button>
+        ) : null}
+        {canDelete && database.backupsAvailable && database.deletionRequestedAt == null ? (
+          <Button variant="outline" size="sm" asChild>
+            <Link
+              to="/projects/$projectId/databases/$databaseId/restore"
+              params={{ projectId, databaseId: database.id }}
+            >
+              Escolher backup para restaurar
+            </Link>
+          </Button>
         ) : null}
         {canEdit && state.canRetry ? (
           <Button variant="outline" size="sm" disabled={busy} onClick={onRetry}>
             <RotateCwIcon aria-hidden />
-            Tentar de novo
+            Repetir criação do banco
           </Button>
         ) : null}
         {canDelete && state.canDelete ? (
@@ -128,12 +141,12 @@ function DeleteDatabaseButton({
       trigger={
         <Button variant="ghost" size="sm" disabled={busy}>
           <Trash2Icon aria-hidden />
-          Excluir
+          Excluir banco e dados
         </Button>
       }
       title="Excluir este banco de dados?"
       description={`O banco e todos os seus dados são apagados do servidor, e a variável ${environmentKey} é removida do projeto. Não há como desfazer.`}
-      confirmLabel="Excluir banco"
+      confirmLabel="Excluir banco e todos os dados"
       confirmationText={environmentKey}
       destructive
       onConfirm={onConfirm}

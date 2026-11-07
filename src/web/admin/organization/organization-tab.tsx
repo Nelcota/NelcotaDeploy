@@ -1,3 +1,4 @@
+import type { OrganizationSettingsSection } from "@/shared/schemas/settings/organization-settings.schema";
 import { ErrorState, ListSkeleton } from "@/web/components/layout/states";
 
 import { useSettings } from "../use-settings";
@@ -5,8 +6,14 @@ import { OrganizationForm } from "./organization-form";
 
 const SKELETON_ROWS = 3;
 
-/** Organization name, base domain and HTTPS default, editable by admins. */
-export function OrganizationTab({ canEdit }: { readonly canEdit: boolean }) {
+/** Loads the saved settings for one independent administration form. */
+export function OrganizationTab({
+  canEdit,
+  section,
+}: {
+  readonly canEdit: boolean;
+  readonly section: OrganizationSettingsSection;
+}) {
   const settings = useSettings();
   if (settings.isError) {
     return <ErrorState error={settings.error} onRetry={() => void settings.refetch()} />;
@@ -15,12 +22,14 @@ export function OrganizationTab({ canEdit }: { readonly canEdit: boolean }) {
     return <ListSkeleton rows={SKELETON_ROWS} />;
   }
   return (
-    <OrganizationForm
-      // A new key after saving resets the form to the saved values, so "changed" clears.
-      key={JSON.stringify(settings.data.settings)}
-      initial={settings.data.settings}
-      canEdit={canEdit}
-      traefikEnabled={settings.data.server.traefikEnabled}
-    />
+    <div className="space-y-10">
+      <OrganizationForm
+        key={section}
+        section={section}
+        initial={settings.data.settings}
+        canEdit={canEdit}
+        traefikEnabled={settings.data.server.traefikEnabled}
+      />
+    </div>
   );
 }

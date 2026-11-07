@@ -1,13 +1,16 @@
 import { useRouter } from "@tanstack/react-router";
 import { LoaderCircleIcon } from "lucide-react";
-import { type FormEvent, useState } from "react";
+import { type FormEvent, useRef, useState } from "react";
 
 import { firstAdminSchema } from "@/shared/schemas/user.schema";
+import { toUserMessage } from "@/web/components/layout/error-message";
 import { authClient } from "@/web/components/shell/auth-client";
 import { Button } from "@/web/components/ui/button";
 import { Input } from "@/web/components/ui/input";
 import { Label } from "@/web/components/ui/label";
 import { createFirstAdminFn } from "@/web/functions/session.functions";
+
+import { finishFirstAdminSetup } from "./first-admin-setup";
 
 const ERROR_ID = "first-admin-error";
 
@@ -15,28 +18,47 @@ function useCreateFirstAdmin() {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [created, setCreated] = useState(false);
+  const inFlight = useRef(false);
 
   const submit = async (fields: { name: string; email: string; password: string }) => {
+    if (inFlight.current || created) {
+      return;
+    }
     const parsed = firstAdminSchema.safeParse(fields);
     if (parsed.success === false) {
       setError(parsed.error.issues[0]?.message ?? "Confira os campos.");
       return;
     }
     setSubmitting(true);
+    inFlight.current = true;
     setError(null);
+    let accountCreated = false;
     try {
-      await createFirstAdminFn({ data: parsed.data });
-      await authClient.signIn.email({ email: parsed.data.email, password: parsed.data.password });
+      const result = await finishFirstAdminSetup(parsed.data, {
+        createAccount: (account) => createFirstAdminFn({ data: account }),
+        signIn: (account) =>
+          authClient.signIn.email({ email: account.email, password: account.password }),
+      });
+      accountCreated = true;
+      if (result === "created") {
+        setCreated(true);
+        return;
+      }
       await router.navigate({ to: "/" });
     } catch (createError: unknown) {
-      console.error("first admin creation failed", createError);
+      console.error("First admin setup failed", createError);
+      if (accountCreated) {
+        setCreated(true);
+        return;
+      }
+      setError(toUserMessage(createError, "Não foi possível criar a conta."));
+    } finally {
+      inFlight.current = false;
       setSubmitting(false);
-      setError(
-        createError instanceof Error ? createError.message : "Não foi possível criar a conta.",
-      );
     }
   };
-  return { error, submitting, submit };
+  return { error, submitting, submit, created };
 }
 
 function TextField({
@@ -63,6 +85,7 @@ function TextField({
       <Input
         id={id}
         aria-describedby={errorId}
+        aria-invalid={errorId != null}
         value={value}
         onChange={(event) => onChange(event.target.value)}
         {...inputProps}
@@ -100,7 +123,7 @@ export function FirstAdminForm() {
     value: fields[key],
     onChange: (value: string) => setFields((current) => ({ ...current, [key]: value })),
   });
-  const { error, submitting, submit } = useCreateFirstAdmin();
+  const { error, submitting, submit, created } = useCreateFirstAdmin();
   const shared = { errorId: error == null ? undefined : ERROR_ID };
 
   const onSubmit = (event: FormEvent) => {
@@ -108,32 +131,49 @@ export function FirstAdminForm() {
     void submit(fields);
   };
 
+  if (created) {
+    return (
+      <div role="status" className="space-y-4 rounded-xl bg-card p-5 ring-1 ring-border">
+        <h2 className="text-lg font-semibold">Conta de administrador criada</h2>
+        <p className="text-sm text-muted-foreground">
+          Não foi possível concluir a entrada automática. Sua conta já está pronta: entre com o
+          e-mail e a senha que você cadastrou.
+        </p>
+        <Button asChild className="w-full">
+          <a href="/login">Ir para login</a>
+        </Button>
+      </div>
+    );
+  }
+
   return (
     <form className="space-y-4" onSubmit={onSubmit} noValidate>
-      <TextField
-        id="admin-name"
-        label="Seu nome"
-        autoComplete="name"
-        {...shared}
-        {...bind("name")}
-        autoFocus
-      />
-      <TextField
-        id="admin-email"
-        label="Seu e-mail"
-        type="email"
-        autoComplete="username"
-        {...shared}
-        {...bind("email")}
-      />
-      <TextField
-        id="admin-password"
-        label="Senha (mínimo de 12 caracteres)"
-        type="password"
-        autoComplete="new-password"
-        {...shared}
-        {...bind("password")}
-      />
+      <fieldset disabled={submitting} className="space-y-4">
+        <TextField
+          id="admin-name"
+          label="Seu nome"
+          autoComplete="name"
+          {...shared}
+          {...bind("name")}
+          autoFocus
+        />
+        <TextField
+          id="admin-email"
+          label="Seu e-mail"
+          type="email"
+          autoComplete="username"
+          {...shared}
+          {...bind("email")}
+        />
+        <TextField
+          id="admin-password"
+          label="Senha (mínimo de 12 caracteres)"
+          type="password"
+          autoComplete="new-password"
+          {...shared}
+          {...bind("password")}
+        />
+      </fieldset>
       <FormFooter error={error} submitting={submitting} />
     </form>
   );

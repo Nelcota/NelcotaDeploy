@@ -35,6 +35,12 @@ describe("detectExposedPort", () => {
     expect(detectExposedPort("EXPOSE 3000\nEXPOSE $PORT\n")).toBe(3000);
   });
 
+  test("reads a continued EXPOSE without mistaking heredoc contents for instructions", () => {
+    expect(detectExposedPort("FROM alpine\nEXPOSE \\\n 8080/tcp")).toBe(8080);
+    expect(detectExposedPort("FROM alpine\nRUN <<EOF\nEXPOSE 1234\nEOF")).toBeNull();
+    expect(detectExposedPort("FROM alpine\nEXPOSE 8080 \\")).toBeNull();
+  });
+
   test.each([[""], ["FROM scratch"], ["EXPOSE 0"], ["EXPOSE 70000"], ["# EXPOSE 8080"]])(
     "returns null for %p",
     (dockerfile) => {
