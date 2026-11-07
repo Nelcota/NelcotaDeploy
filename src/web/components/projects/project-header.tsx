@@ -8,6 +8,7 @@ import { ProjectActions } from "@/web/components/projects/project-actions";
 import type { ProjectDetails } from "@/web/components/projects/project-query";
 import { PROJECT_SECTIONS } from "@/web/components/shell/navigation";
 import { PageNavigation } from "@/web/components/shell/navigation/page-navigation";
+import { EnvironmentSwitcher } from "@/web/components/staging/environment-switcher";
 
 /** The container of the project's current deployment, if the worker has seen it. */
 export function currentContainer(details: ProjectDetails) {
@@ -96,6 +97,10 @@ export function ProjectBand({ details }: { readonly details: ProjectDetails }) {
             <ContainerStateBadge
               state={container?.state ?? null}
               health={container?.health ?? null}
+            />
+            <EnvironmentSwitcher
+              currentProjectId={project.id}
+              environments={details.environments}
             />
           </div>
           <ProjectLinks url={url} project={project} />

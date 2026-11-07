@@ -28,11 +28,12 @@ type ProjectCommandOptions = {
 };
 
 const PAGE_TERMS: Readonly<Record<string, string>> = {
-  "/projects/$projectId/logs": "runtime execução saída console",
+  "/projects/$projectId/logs": "runtime execução saída",
+  "/projects/$projectId/console": "terminal comandos execução console shell",
   "/projects/$projectId/metrics": "métricas cpu memória recursos consumo",
   "/projects/$projectId/previews": "previews pull request pr temporário",
   "/projects/$projectId/databases":
-    "postgres postgresql redis backups cópias restaurar restauração",
+    "postgres postgresql mysql mongodb redis backups cópias restaurar restauração",
   "/projects/$projectId/tasks": "tasks tarefas agendamentos cron execuções histórico",
   "/projects/$projectId/dns": "cloudflare registros apontamento",
 };
@@ -45,6 +46,8 @@ const SETTINGS_TERMS: Readonly<Record<string, string>> = {
   automation: "automático webhook previews pull request",
   volumes: "volumes disco persistência pastas arquivos mount",
   server: "servidor mover transferência",
+  team: "equipe membros acesso permissões gerente",
+  staging: "ambientes produção staging promover",
   deletion: "excluir apagar remover exclusão",
 };
 

@@ -1,6 +1,8 @@
 // Fills a throwaway database with a realistic panel, so every screen has something to show.
 // Run by main.ts in a child process whose DATABASE_PATH points at a temporary file.
+import { addProjectMember } from "@/access";
 import { createUser, getAuth } from "@/auth";
+import { runConsoleCommand, updateConsoleCommand } from "@/console";
 import { getDatabase, migrateDatabase, tables } from "@/db";
 import { completeDeployment, requestDeployment, transitionDeployment } from "@/deployments";
 import { addDomain } from "@/domains";
@@ -8,8 +10,16 @@ import { saveEnvironmentVariable } from "@/environments";
 import { createProject } from "@/projects";
 import { getSecretBox } from "@/secrets";
 import { saveSystemSettings } from "@/settings";
+import { recordCertificate, recordUptimeCheck } from "@/uptime";
 
-import { seedDatabases, seedPreview, seedServers, seedTasks, seedVolumes } from "./seed-extras";
+import {
+  seedDatabases,
+  seedPreview,
+  seedServers,
+  seedStaging,
+  seedTasks,
+  seedVolumes,
+} from "./seed-extras";
 
 const ACTOR = { type: "system", label: "ui-review" } as const;
 const MINUTE_IN_MS = 60_000;
@@ -32,7 +42,7 @@ migrateDatabase(database);
 const secretBox = await getSecretBox();
 const now = Date.now();
 
-await createUser(getAuth(), database, {
+const reviewerId = await createUser(getAuth(), database, {
   newUser: { email, name: "Ana Revisora", role: "admin", password },
   actor: ACTOR,
 });
@@ -41,6 +51,7 @@ saveSystemSettings(database, {
   baseDomain: "apps.exemplo.com",
   httpsByDefault: true,
   alertWebhookUrl: null,
+  requireAdminTwoFactor: false,
 });
 
 const api = createProject(
@@ -50,15 +61,20 @@ const api = createProject(
     slug: "api-pagamentos",
     repositoryUrl: "https://github.com/nelcota/api-pagamentos",
     branch: "main",
+    builder: "dockerfile",
     dockerfilePath: "Dockerfile",
     buildContext: ".",
     internalPort: 3000,
     healthCheckPath: "/health",
     autoDeploy: true,
     autoApplyChanges: true,
+    autoRollback: true,
     previewsEnabled: true,
     memoryLimitInMb: null,
     cpuLimitInMillicores: null,
+    replicas: 1,
+    composeFilePath: "compose.yaml",
+    composeService: null,
   },
   { actor: ACTOR, userId: null, isAdmin: true },
 );
@@ -69,15 +85,20 @@ createProject(
     slug: "site-institucional",
     repositoryUrl: "https://github.com/nelcota/site-institucional",
     branch: "feature/nova-pagina-inicial-com-branch-longa",
+    builder: "dockerfile",
     dockerfilePath: "Dockerfile",
     buildContext: ".",
     internalPort: 8080,
     healthCheckPath: null,
     autoDeploy: false,
     autoApplyChanges: true,
+    autoRollback: true,
     previewsEnabled: false,
     memoryLimitInMb: null,
     cpuLimitInMillicores: null,
+    replicas: 1,
+    composeFilePath: "compose.yaml",
+    composeService: null,
   },
   { actor: ACTOR, userId: null, isAdmin: false },
 );
@@ -147,10 +168,50 @@ addDomain(database, {
   actor: ACTOR,
 });
 
+// Half an hour of uptime checks, with a short outage, and a certificate close to expiring.
+const UPTIME_CHECKS = 30;
+const OUTAGE_MINUTES = new Set([12, 13]);
+for (let minute = UPTIME_CHECKS; minute > 0; minute -= 1) {
+  const up = OUTAGE_MINUTES.has(minute) === false;
+  recordUptimeCheck(database, {
+    target: { projectId: api.id, hostname: "pagamentos.exemplo.com" },
+    result: {
+      kind: "checked",
+      up,
+      statusCode: up ? 200 : 502,
+      responseTimeInMs: up ? 140 + (minute % 5) * 10 : null,
+      reason: up ? null : "server-error",
+    },
+    checkedAt: new Date(now - minute * MINUTE_IN_MS),
+  });
+}
+recordCertificate(database, "pagamentos.exemplo.com", {
+  expiresAt: new Date(now + 9 * 24 * 60 * MINUTE_IN_MS),
+  checkedAt: new Date(now),
+});
+
 const taskId = seedTasks(database, api.id);
 seedVolumes(database, api.id);
 const databaseId = await seedDatabases(database, secretBox, api.id);
+await seedStaging(database, secretBox, api.id);
 seedPreview(database, api.id);
+
+// One member on the API project and one user who could still join it, for the team section.
+const developerId = await createUser(getAuth(), database, {
+  newUser: { email: "bruno@exemplo.com", name: "Bruno Dev", role: "developer", password },
+  actor: ACTOR,
+});
+await createUser(getAuth(), database, {
+  newUser: { email: "carla@exemplo.com", name: "Carla Leitora", role: "viewer", password },
+  actor: ACTOR,
+});
+addProjectMember(database, {
+  projectId: api.id,
+  userId: developerId,
+  role: "developer",
+  addedByUserId: null,
+  actor: ACTOR,
+});
 
 const startedAt = new Date(now - CONTAINER_UPTIME_IN_MINUTES * MINUTE_IN_MS).toISOString();
 database
@@ -255,6 +316,30 @@ database
   .run();
 
 await seedServers(database, secretBox);
+
+// Two finished console commands of the reviewer, one of them failed.
+const CONSOLE_COMMANDS = [
+  [
+    "ls -la /app",
+    "total 24\ndrwxr-xr-x 1 node node 4096 . \n-rw-r--r-- 1 node node  812 package.json\n",
+    0,
+  ],
+  ["cat /app/missing.txt", "cat: can't open '/app/missing.txt': No such file or directory\n", 1],
+] as const;
+for (const [command, output, exitCode] of CONSOLE_COMMANDS) {
+  const queued = runConsoleCommand(database, {
+    projectId: api.id,
+    command,
+    userId: reviewerId,
+    actor: ACTOR,
+  });
+  updateConsoleCommand(database, queued.id, {
+    status: exitCode === 0 ? "succeeded" : "failed",
+    output,
+    exitCode,
+    errorMessage: exitCode === 0 ? null : `Command exited with code ${exitCode}`,
+  });
+}
 
 // The last line is read by main.ts to know which pages to open.
 process.stdout.write(

@@ -12,9 +12,28 @@ import {
   formatDateTime,
   formatDuration,
   formatLongDate,
+  formatCpuCores,
   formatPercent,
   pluralize,
 } from "./format";
+
+describe("formatCpuCores", () => {
+  test("writes a fraction of a core with a decimal comma", () => {
+    expect(formatCpuCores(250)).toBe("0,25 núcleo");
+  });
+
+  test("writes one core in the singular", () => {
+    expect(formatCpuCores(1000)).toBe("1 núcleo");
+  });
+
+  test("writes several cores in the plural", () => {
+    expect(formatCpuCores(4000)).toBe("4 núcleos");
+  });
+
+  test("returns a dash for a value that is not finite", () => {
+    expect(formatCpuCores(Number.NaN)).toBe("—");
+  });
+});
 
 describe("format", () => {
   test("formats dates in São Paulo time", () => {

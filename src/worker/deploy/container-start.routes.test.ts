@@ -73,7 +73,7 @@ describe("routeTrafficTo production", () => {
     const { database, deploymentId, project, commands, dependencies, context } = setupResult;
     using logs = new DeploymentLogWriter(database, deploymentId);
 
-    await routeTrafficTo(dependencies, context(logs), CONTAINER);
+    await routeTrafficTo(dependencies, context(logs), [CONTAINER]);
 
     const routes = writtenRoutes(commands);
     expect(routes.fileName).toBe(`${project.id}.yml`);
@@ -93,7 +93,7 @@ describe("routeTrafficTo production", () => {
     });
     using logs = new DeploymentLogWriter(database, deploymentId);
 
-    await routeTrafficTo(dependencies, context(logs), CONTAINER);
+    await routeTrafficTo(dependencies, context(logs), [CONTAINER]);
 
     expect(commands).toEqual([["rm", "-f", "--", `/routes/${project.id}.yml`]]);
   });
@@ -107,7 +107,7 @@ describe("routeTrafficTo previews", () => {
     });
     using logs = new DeploymentLogWriter(database, deploymentId);
 
-    await routeTrafficTo(dependencies, context(logs), CONTAINER);
+    await routeTrafficTo(dependencies, context(logs), [CONTAINER]);
 
     const routes = writtenRoutes(commands);
     expect(routes.fileName).toBe(`${project.id}-pr-12.yml`);

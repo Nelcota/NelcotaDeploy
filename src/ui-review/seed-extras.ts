@@ -13,6 +13,7 @@ import { generateSshKeyPair } from "@/remote";
 import type { SecretBox } from "@/secrets";
 import { addServer, LOCAL_SERVER_ID, recordServerCheck, storePanelKeyPair } from "@/servers";
 import { taskInputSchema } from "@/shared/schemas/task.schema";
+import { createStagingEnvironment } from "@/staging";
 import { createTask } from "@/tasks";
 import { addProjectVolume, setVolumeAttached } from "@/volumes";
 
@@ -146,4 +147,18 @@ export async function seedDatabases(
   });
   markDatabaseFailed(database, redis.id, "Database container stopped while starting");
   return postgres.id;
+}
+
+/** Creates the staging fixture for the environment switcher. */
+export async function seedStaging(
+  database: Database,
+  secretBox: SecretBox,
+  projectId: string,
+): Promise<void> {
+  await createStagingEnvironment(database, secretBox, {
+    productionProjectId: projectId,
+    branch: "staging",
+    copyVariables: true,
+    creator: { actor: ACTOR, userId: null, isAdmin: true },
+  });
 }

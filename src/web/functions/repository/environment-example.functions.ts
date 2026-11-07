@@ -6,7 +6,7 @@ import { readRepositoryEnvironmentExample } from "@/github";
 import { getProject, readRepositoryToken } from "@/projects";
 import { getSecretBox } from "@/secrets";
 import { isSafeRelativePath } from "@/shared/schemas/project.schema";
-import { authorize } from "@/web/server/authorization";
+import { authorizeProject } from "@/web/server/authorization";
 
 import { idSchema } from "../ids";
 
@@ -18,7 +18,7 @@ export const getEnvironmentExampleFn = createServerFn({ method: "GET" })
     }),
   )
   .handler(async ({ data }) => {
-    await authorize("environment:write");
+    await authorizeProject("environment:write", data.projectId);
     const database = getDatabase();
     const project = getProject(database, data.projectId);
     const secretBox = await getSecretBox();

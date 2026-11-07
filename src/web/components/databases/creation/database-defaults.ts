@@ -1,10 +1,12 @@
-import type { DatabaseEngineName } from "@/shared/schemas/database.schema";
+import { DATABASE_ENGINES, type DatabaseEngineName } from "@/shared/schemas/database.schema";
 import { isValidEnvironmentVariableKey } from "@/shared/schemas/environment-variable.schema";
 
 import { DEFAULT_ENVIRONMENT_KEYS } from "../database-state";
 
 const ENGINE_KEY_PATTERNS: Readonly<Record<DatabaseEngineName, RegExp>> = {
   postgres: /^(?:DATABASE_URL|(?:[A-Z][A-Z0-9]*_)*(?:POSTGRES(?:QL)?|PG|DATABASE)_URL)$/,
+  mysql: /^(?:DATABASE_URL|(?:[A-Z][A-Z0-9]*_)*MYSQL_URL)$/,
+  mongodb: /^(?:DATABASE_URL|(?:[A-Z][A-Z0-9]*_)*MONGO(?:DB)?_URL)$/,
   redis: /^(?:[A-Z][A-Z0-9]*_)*REDIS_URL$/,
 };
 
@@ -47,12 +49,13 @@ export function suggestDatabaseDefaults(input: {
   };
 }
 
-/** Prefers Redis only when it is the sole unconfigured engine requested by the template. */
+/** Selects an unambiguous engine hint, otherwise preserving the PostgreSQL default. */
 export function detectDatabaseEngine(input: {
   readonly usedKeys: readonly string[];
   readonly templateKeys: readonly string[];
 }): DatabaseEngineName {
-  const postgres = suggestDatabaseDefaults({ ...input, engine: "postgres" });
-  const redis = suggestDatabaseDefaults({ ...input, engine: "redis" });
-  return postgres.candidates.length === 0 && redis.candidates.length > 0 ? "redis" : "postgres";
+  const requested = DATABASE_ENGINES.filter(
+    (engine) => suggestDatabaseDefaults({ ...input, engine }).candidates.length > 0,
+  );
+  return requested.length === 1 ? (requested.at(0) ?? "postgres") : "postgres";
 }

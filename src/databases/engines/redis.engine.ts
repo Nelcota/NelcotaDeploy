@@ -12,6 +12,7 @@ const READY_REPLIES = ["PONG", "NOAUTH"];
  * can already reach the server's Docker can read it there.
  */
 export const redisEngine: DatabaseEngine = {
+  label: "Redis",
   imageTag: "redis:8.10.3-alpine",
   port: REDIS_PORT,
   dataPath: "/data",

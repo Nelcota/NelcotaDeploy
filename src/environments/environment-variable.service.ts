@@ -29,11 +29,14 @@ export type ResolvedEnvironment = {
   readonly secretValues: readonly string[];
 };
 
-function encryptionContext(environmentId: string, key: string): string {
+export function encryptionContext(environmentId: string, key: string): string {
   return `environment:${environmentId}:${key}`;
 }
 
-function productionEnvironmentId(database: Database | Transaction, projectId: string): string {
+export function productionEnvironmentId(
+  database: Database | Transaction,
+  projectId: string,
+): string {
   getProject(database, projectId);
   const environment = database
     .select({ id: tables.environments.id })
@@ -99,6 +102,15 @@ export function listEnvironmentVariables(
  * @param database - Database.
  * @param secretBox - Encryption box.
  * @param change - Project id, validated variable and who changes it.
+ * @throws {ProjectNotFoundError} When the project does not exist.
+ */
+/**
+ * Encrypts a variable before a synchronous transaction commits it with related records.
+ *
+ * @param database - Database containing the project's environment.
+ * @param secretBox - Encryption box.
+ * @param change - Project, validated variable and actor.
+ * @returns A synchronous writer accepting the database or the caller's transaction.
  * @throws {ProjectNotFoundError} When the project does not exist.
  */
 export async function prepareEnvironmentVariable(

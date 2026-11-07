@@ -15,7 +15,7 @@ import {
   projectInputSchema,
   slugify,
 } from "@/shared/schemas/project.schema";
-import { authorize } from "@/web/server/authorization";
+import { authorize, authorizeProject } from "@/web/server/authorization";
 import { PublicError } from "@/web/server/public-error";
 
 import { idSchema, projectIdInput } from "../ids";
@@ -49,7 +49,11 @@ export const getRepositoryHealthCheckFn = createServerFn({ method: "GET" })
     }),
   )
   .handler(async ({ data }) => {
-    await authorize("project:write");
+    if (data.projectId == null) {
+      await authorize("project:write");
+    } else {
+      await authorizeProject("project:write", data.projectId);
+    }
     const { database, box, token } = await inspectionContext(data);
     return await readRepositoryHealthCheck({ database, secretBox: box }, { ...data, token });
   });
@@ -57,7 +61,11 @@ export const getRepositoryHealthCheckFn = createServerFn({ method: "GET" })
 export const inspectRepositoryFn = createServerFn({ method: "GET" })
   .validator(inspectionSchema)
   .handler(async ({ data }) => {
-    await authorize("project:write");
+    if (data.projectId == null) {
+      await authorize("project:write");
+    } else {
+      await authorizeProject("project:write", data.projectId);
+    }
     const { database, box, token } = await inspectionContext(data);
     try {
       return await inspectRepository({ database, secretBox: box }, { ...data, token });
@@ -74,7 +82,7 @@ export const inspectRepositoryFn = createServerFn({ method: "GET" })
 export const getRepositoryAccessFn = createServerFn({ method: "GET" })
   .validator(projectIdInput)
   .handler(async ({ data }) => {
-    await authorize("project:approve");
+    await authorizeProject("project:approve", data.projectId);
     const database = getDatabase();
     const project = getProject(database, data.projectId);
     const box = await getSecretBox();

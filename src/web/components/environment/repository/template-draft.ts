@@ -1,6 +1,6 @@
 import type { EnvironmentVariableView } from "@/environments";
 import type { DotenvEntry } from "@/shared/dotenv";
-import { suggestedVariableKind } from "@/shared/schemas/environment-import.schema";
+import { suggestedVariableKind } from "@/shared/schemas/environment/environment-import.schema";
 
 import {
   generateApplicationSecret,

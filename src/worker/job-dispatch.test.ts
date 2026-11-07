@@ -13,7 +13,7 @@ import {
 } from "@/deployments";
 import { claimNextJob, enqueueJob, JobLeaseLostError } from "@/jobs";
 import { createLogger } from "@/logging";
-import { createTestProject, createTestSecretBox, TEST_ACTOR } from "@/testing";
+import { createTestProject, createTestSecretBox, FakeDocker, TEST_ACTOR } from "@/testing";
 
 import { dispatchJob } from "./job-dispatch";
 import { ServerHosts } from "./servers/server-hosts";
@@ -130,6 +130,22 @@ test.each(["start", "stop", "restart"] as const)(
     }
     using hosts = new ServerHosts(config, "unused-key");
     const docker = hosts.hostOf(database, project.serverId).docker;
+    const fakeDocker = new FakeDocker();
+    await fakeDocker.runContainer(
+      {
+        containerName: "new-live-container",
+        imageTag: "nelcota/api:test",
+        network: "nelcota",
+        labels: { "io.nelcota.managed": "true", "io.nelcota.deployment-id": next },
+        environmentKeys: [],
+        volumes: [],
+      },
+      {},
+    );
+    const listing = spyOn(docker, "listManagedContainers").mockResolvedValue(
+      await fakeDocker.listManagedContainers(),
+    );
+    using _listing = { [Symbol.dispose]: () => listing.mockRestore() };
     const method = {
       start: "startContainer",
       stop: "stopContainer",
@@ -158,3 +174,32 @@ test.each(["start", "stop", "restart"] as const)(
     expect(control).toHaveBeenCalledWith("new-live-container");
   },
 );
+describe("dispatchJob console_command", () => {
+  test("fails a console job that names no command", async () => {
+    const database = openMemoryDatabase();
+    const config = getConfig();
+    const project = createTestProject(database);
+    enqueueJob(database, { kind: "console_command", projectId: project.id, payload: {} });
+    const job = claimNextJob(database, "test");
+    if (job == null) {
+      throw new Error("The console job was not queued");
+    }
+    using hosts = new ServerHosts(config, "unused-key");
+    const dependencies = {
+      workerId: "test",
+      database,
+      hosts,
+      secretBox: await createTestSecretBox(),
+      config,
+      logger: createLogger("test"),
+      offsiteStore: null,
+    };
+
+    const error = await dispatchJob(dependencies, job, {
+      signal: new AbortController().signal,
+      refreshContainers: async () => await Promise.resolve(),
+    }).catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(Error);
+  });
+});

@@ -1,6 +1,5 @@
 import { eq } from "drizzle-orm";
 
-import { listProjectDatabases } from "@/databases";
 import { type Database, tables } from "@/db";
 import { type ContainerAction, getDeployment } from "@/deployments";
 import { type DockerEngine, LABELS, volumeNameFor } from "@/docker";
@@ -10,7 +9,7 @@ import { getProject } from "@/projects";
 import type { RouteFiles } from "@/routing";
 import { failVolumeDeletion, finishVolumeDeletion } from "@/volumes";
 
-import { deleteStoredDatabaseBackups } from "./databases/database-backup-runner";
+import { deleteProjectDatabaseBackups } from "./databases/database-backup-cleanup";
 import type { BackupStorage } from "./databases/database-backup-storage";
 import type { WorkerDependencies } from "./worker.types";
 
@@ -18,12 +17,12 @@ import type { WorkerDependencies } from "./worker.types";
 type ProjectServer = { readonly docker: DockerEngine; readonly routes: RouteFiles | null };
 
 /**
- * Starts, stops or restarts the container of a deployment.
+ * Starts, stops or restarts every replica of a deployment.
  *
  * @param database - Database.
  * @param docker - Docker access; refuses containers without the platform label.
- * @param request - Deployment whose container is targeted and the operation to perform.
- * @throws {Error} When the deployment has no container name.
+ * @param request - Deployment whose containers are targeted and the operation to perform.
+ * @throws {Error} When the deployment has no container name or none of its replicas exists.
  */
 export async function runContainerAction(
   database: Database,
@@ -34,15 +33,43 @@ export async function runContainerAction(
   if (deployment.containerName == null) {
     throw new Error(`Deployment ${deploymentId} has no container`);
   }
+  const replicaNames = (await docker.listManagedContainers())
+    .filter((container) => container.labels[LABELS.deploymentId] === deploymentId)
+    .map((container) => container.name);
+  if (replicaNames.length === 0) {
+    throw new Error(`No container of deployment ${deploymentId} exists on its server`);
+  }
+  await applyInOrder(docker, replicaNames, action);
+}
+
+// One replica at a time, so a restart never takes every replica down at once.
+async function applyInOrder(
+  docker: DockerEngine,
+  containerNames: readonly string[],
+  action: ContainerAction,
+): Promise<void> {
+  const [first, ...rest] = containerNames;
+  if (first == null) {
+    return;
+  }
+  await applyContainerAction(docker, first, action);
+  await applyInOrder(docker, rest, action);
+}
+
+async function applyContainerAction(
+  docker: DockerEngine,
+  containerName: string,
+  action: ContainerAction,
+): Promise<void> {
   switch (action) {
     case "start":
-      await docker.startContainer(deployment.containerName);
+      await docker.startContainer(containerName);
       return;
     case "stop":
-      await docker.stopContainer(deployment.containerName);
+      await docker.stopContainer(containerName);
       return;
     case "restart":
-      await docker.restartContainer(deployment.containerName);
+      await docker.restartContainer(containerName);
   }
 }
 
@@ -84,6 +111,7 @@ export async function removeProjectResources(
   if (failures.length > 0) {
     throw new AggregateError(failures, `Could not remove all resources of project ${projectId}`);
   }
+  await docker.compose.removeProjectNetworks(projectId);
   return {
     containers: containers.length,
     images: imageRemovals.filter((result) => result.status === "fulfilled").length,
@@ -124,7 +152,7 @@ export async function runVolumeDeletion(
 
 /**
  * Removes every container and image of a project from every server it ever ran on, then the
- * project row and its history.
+ * project row and its history. Stored database backups are removed before their metadata.
  *
  * @remarks
  * The deletion request stays until every server was cleaned. Failed cleanup jobs retry
@@ -135,12 +163,13 @@ export async function runVolumeDeletion(
  * @param target - Project being deleted and its backup storage, when configured.
  * @returns How many containers, images and volumes were removed, and the errors of unreachable
  *   servers.
+ * @throws {Error} When database backups cannot be removed; project metadata is retained.
  */
 export async function runProjectCleanup(
   database: Database,
   servers: readonly ProjectServer[],
   target: { readonly projectId: string; readonly storage: BackupStorage | null },
-): Promise<{ containers: number; images: number; volumes: number }> {
+): Promise<{ containers: number; images: number; volumes: number; failures: unknown[] }> {
   const { projectId, storage } = target;
   const results = await Promise.allSettled(
     servers.map(async (server) => await removeProjectResources(server, projectId)),
@@ -161,15 +190,14 @@ export async function runProjectCleanup(
       `Project ${projectId} still has resources to remove`,
     );
   }
-  if (storage != null) {
-    await Promise.all(
-      listProjectDatabases(database, projectId).map(
-        async (record) => await deleteStoredDatabaseBackups(storage, record.id),
-      ),
-    );
-  }
+  await deleteProjectDatabaseBackups(database, projectId, storage);
   database.delete(tables.projects).where(eq(tables.projects.id, projectId)).run();
-  return { containers: removed.containers, images: removed.images, volumes: removed.volumes };
+  return {
+    containers: removed.containers,
+    images: removed.images,
+    volumes: removed.volumes,
+    failures: [],
+  };
 }
 
 /**

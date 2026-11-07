@@ -7,9 +7,11 @@ import { readDeploymentSecrets, resolveEnvironment, saveDeploymentSecrets } from
 import { appCloneToken } from "@/github";
 import { readRepositoryToken } from "@/projects";
 import { createRedactor } from "@/secrets";
+import type { ProjectBuilder } from "@/shared/schemas/project.schema";
 
 import { networkProbes } from "../probes";
-import { routeTrafficTo, startContainer } from "./container-start";
+import { deployCompose } from "./compose/compose-deploy";
+import { routeTrafficTo, startContainers } from "./container-start";
 import {
   assertNotCancelled,
   type DeployContext,
@@ -20,7 +22,8 @@ import { waitUntilHealthy } from "./health-check";
 import { buildFromSource, reuseImage } from "./image-source";
 
 /**
- * Builds or reuses the image, starts the new container and waits until it is healthy.
+ * Builds or reuses the image, starts the new replicas, waits until all are healthy and routes
+ * traffic to them.
  *
  * @param dependencies - Database, Docker, git, encryption and settings.
  * @param context - Deployment being run; its state records the container for cleanup.
@@ -41,7 +44,9 @@ export async function deploy(
     forPreview: deployment.previewId != null,
   });
   const reused =
-    deployment.sourceDeploymentId == null ? null : await reuseImage(docker, deployment, logs);
+    project.builder === "compose" || deployment.sourceDeploymentId == null
+      ? null
+      : await reuseImage(docker, deployment, logs);
   const repositoryToken = reused == null ? await cloneToken(dependencies, context) : null;
   const sourceSecrets = await readDeploymentSecrets(
     database,
@@ -55,6 +60,22 @@ export async function deploy(
   });
   context.state.useRedactor(createRedactor([...secretValues, repositoryToken ?? ""]));
   logs.useRedactor(context.state.redact);
+
+  if (project.builder === "compose") {
+    // Compose always builds the commit: redeploys and rollbacks have no single image to reuse.
+    const routed = await deployCompose(dependencies, context, {
+      runtimeValues: environment.runtime,
+      buildValues: environment.build,
+      repositoryToken,
+      runtimeConfigHash,
+      buildConfigHash,
+    });
+    context.assertOwnership();
+    await checkHealth(dependencies, context, routed);
+    context.assertOwnership();
+    await routeTrafficTo(dependencies, context, routed);
+    return;
+  }
 
   if (reused != null && deployment.internalPort == null) {
     throw new Error(
@@ -76,17 +97,35 @@ export async function deploy(
     built.detectedPort == null
       ? context
       : { ...context, project: { ...project, internalPort: built.detectedPort } };
-  const containerName = await startContainer(dependencies, running, {
+  const containerNames = await startContainers(dependencies, running, {
     imageTag: built.imageTag,
-    runtimeValues: environment.runtime,
+    runtimeValues: withPortVariable(environment.runtime, running.project),
     runtimeConfigHash,
     // A reused image keeps the build variables it was built with, copied from its source.
     buildConfigHash: reused == null ? buildConfigHash : null,
   });
   context.assertOwnership();
-  await checkHealth(dependencies, running, containerName);
+  await checkHealth(dependencies, running, containerNames);
   context.assertOwnership();
-  await routeTrafficTo(dependencies, running, containerName);
+  await routeTrafficTo(dependencies, running, containerNames);
+}
+
+/**
+ * Adds `PORT` with the container port for images Railpack built, which most frameworks read to
+ * know where to listen. A `PORT` the project defines itself wins.
+ *
+ * @param values - Runtime variables of the project.
+ * @param project - Its builder and container port.
+ * @returns The variables the container starts with.
+ */
+export function withPortVariable(
+  values: Readonly<Record<string, string>>,
+  project: { readonly builder: ProjectBuilder; readonly internalPort: number },
+): Readonly<Record<string, string>> {
+  if (project.builder !== "railpack" || Object.hasOwn(values, "PORT")) {
+    return values;
+  }
+  return { ...values, PORT: String(project.internalPort) };
 }
 
 /** A token saved on the project wins; otherwise the GitHub App provides one when installed. */
@@ -107,31 +146,56 @@ async function cloneToken(
   );
 }
 
+// Every replica must pass before traffic moves, so a broken one never receives requests.
 async function checkHealth(
   dependencies: DeployRunnerDependencies,
   context: DeployContext,
-  containerName: string,
+  containerNames: readonly string[],
 ): Promise<void> {
-  const { database, docker, config } = dependencies;
-  const { deployment, project, logs, signal } = context;
+  const { database } = dependencies;
+  const { deployment, project, logs } = context;
   transitionDeployment(database, deployment.id, { to: "health_checking" });
   const probe =
     project.healthCheckPath == null
       ? `TCP port ${project.internalPort}`
       : `HTTP ${project.healthCheckPath} on port ${project.internalPort}`;
-  logs.system(`Waiting for the container to become healthy (${probe})`);
+  const subject = containerNames.length === 1 ? "the container" : "the replicas";
+  logs.system(`Waiting for ${subject} to become healthy (${probe})`);
+  const checks = await Promise.allSettled(
+    containerNames.map(
+      async (containerName) =>
+        await checkReplicaHealth(dependencies, context, {
+          containerName,
+          // With several replicas, each progress line says which one it is about.
+          prefix: containerNames.length === 1 ? "" : `${containerName}: `,
+        }),
+    ),
+  );
+  const failed = checks.find((result) => result.status === "rejected");
+  if (failed?.status === "rejected") {
+    throw failed.reason;
+  }
+  logs.system("Health check passed");
+}
+
+async function checkReplicaHealth(
+  dependencies: DeployRunnerDependencies,
+  context: DeployContext,
+  replica: { readonly containerName: string; readonly prefix: string },
+): Promise<void> {
+  const { docker, config } = dependencies;
+  const { project, logs, signal } = context;
   await waitUntilHealthy(
     docker,
     {
-      containerName,
+      containerName: replica.containerName,
       network: config.network,
       internalPort: project.internalPort,
       healthCheckPath: project.healthCheckPath,
       timeoutInMs: config.healthCheckTimeoutInSeconds * MILLISECONDS_PER_SECOND,
       signal,
-      onProgress: (message) => logs.system(message),
+      onProgress: (message) => logs.system(`${replica.prefix}${message}`),
     },
     dependencies.probes ?? networkProbes,
   );
-  logs.system("Health check passed");
 }

@@ -19,6 +19,8 @@ type DatabaseBackupCommands = {
 
 /** What differs between the database servers the platform runs. */
 export type DatabaseEngine = {
+  /** Name of the engine as people know it, for messages. */
+  readonly label: string;
   /** Pinned image, so a redeploy never jumps to another major version. */
   readonly imageTag: string;
   /** Port the server listens on inside the platform network. */

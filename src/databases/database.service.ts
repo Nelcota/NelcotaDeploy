@@ -170,6 +170,7 @@ export async function createProjectDatabase(
   },
 ): Promise<ProjectDatabase> {
   const { projectId, input, actor } = request;
+  assertDatabaseCreationPossible(database, projectId, input.environmentKey);
   const project = getProject(database, projectId);
   if (request.expectedServerId != null && project.serverId !== request.expectedServerId) {
     throw new DatabaseServerChangedError(projectId);
@@ -185,7 +186,7 @@ export async function createProjectDatabase(
   const id = Bun.randomUUIDv7();
   const password = generatePassword();
   const encryptedPassword = await secretBox.encrypt(password, passwordContext(id));
-  const writeVariable = await prepareEnvironmentVariable(database, secretBox, {
+  const saveVariable = await prepareEnvironmentVariable(database, secretBox, {
     projectId,
     input: {
       key: input.environmentKey,
@@ -225,12 +226,30 @@ export async function createProjectDatabase(
       ) {
         throw new DatabaseVariableConflictError(input.environmentKey);
       }
-      writeVariable(transaction);
+      saveVariable(transaction);
       insertDatabase(transaction, { row, projectId, encryptedPassword, actor });
     },
     { behavior: "immediate" },
   );
   return toView(row);
+}
+
+function assertDatabaseCreationPossible(
+  database: Database | Transaction,
+  projectId: string,
+  environmentKey: string,
+): void {
+  getProject(database, projectId);
+  if (listProjectDatabases(database, projectId).length >= MAX_DATABASES_PER_PROJECT) {
+    throw new DatabaseLimitError(MAX_DATABASES_PER_PROJECT);
+  }
+  if (
+    listEnvironmentVariables(database, projectId).some(
+      (variable) => variable.key === environmentKey,
+    )
+  ) {
+    throw new DatabaseVariableConflictError(environmentKey);
+  }
 }
 
 function insertDatabase(
@@ -279,27 +298,24 @@ function enqueueProvision(transaction: Transaction, projectId: string, databaseI
  */
 export function retryDatabaseProvision(database: Database, target: DatabaseTarget): void {
   const { projectId, databaseId, actor } = target;
-  database.transaction(
-    (transaction) => {
-      const found = getProjectDatabase(transaction, projectId, databaseId);
-      if (found.deletionRequestedAt != null) {
-        throw new DatabaseBeingDeletedError(databaseId);
-      }
-      if (found.status !== "failed") {
-        return;
-      }
-      setStatus(transaction, databaseId, { status: "provisioning", errorMessage: null });
-      enqueueProvision(transaction, projectId, databaseId);
-      recordAuditEvent(transaction, {
-        actor,
-        action: "database.retry",
-        targetType: "database",
-        targetId: databaseId,
-        metadata: { projectId },
-      });
-    },
-    { behavior: "immediate" },
-  );
+  database.transaction((transaction) => {
+    const found = getProjectDatabase(transaction, projectId, databaseId);
+    if (found.deletionRequestedAt != null) {
+      throw new DatabaseBeingDeletedError(databaseId);
+    }
+    if (found.status !== "failed") {
+      return;
+    }
+    setStatus(transaction, databaseId, { status: "provisioning", errorMessage: null });
+    enqueueProvision(transaction, projectId, databaseId);
+    recordAuditEvent(transaction, {
+      actor,
+      action: "database.retry",
+      targetType: "database",
+      targetId: databaseId,
+      metadata: { projectId },
+    });
+  });
 }
 
 /**
@@ -313,43 +329,40 @@ export function retryDatabaseProvision(database: Database, target: DatabaseTarge
  */
 export function requestDatabaseDeletion(database: Database, target: DatabaseTarget): void {
   const { projectId, databaseId, actor } = target;
-  const found = database.transaction(
-    (transaction) => {
-      const existing = getProjectDatabase(transaction, projectId, databaseId);
-      if (existing.deletionRequestedAt != null) {
-        throw new DatabaseBeingDeletedError(databaseId);
-      }
-      const now = new Date();
-      transaction
-        .update(tables.projectDatabases)
-        .set({
-          deletionRequestedAt: now.toISOString(),
-          errorMessage: null,
-          updatedAt: now.toISOString(),
-        })
-        .where(eq(tables.projectDatabases.id, databaseId))
-        .run();
-      enqueueJob(
-        transaction,
-        {
-          kind: "database_delete",
-          projectId,
-          payload: { databaseId },
-          dedupeKey: `database-delete:${databaseId}`,
-        },
-        now,
-      );
-      recordAuditEvent(transaction, {
-        actor,
-        action: "database.delete",
-        targetType: "database",
-        targetId: databaseId,
-        metadata: { projectId, engine: existing.engine },
-      });
-      return existing;
-    },
-    { behavior: "immediate" },
-  );
+  const found = database.transaction((transaction) => {
+    const existing = getProjectDatabase(transaction, projectId, databaseId);
+    if (existing.deletionRequestedAt != null) {
+      throw new DatabaseBeingDeletedError(databaseId);
+    }
+    const now = new Date();
+    transaction
+      .update(tables.projectDatabases)
+      .set({
+        deletionRequestedAt: now.toISOString(),
+        errorMessage: null,
+        updatedAt: now.toISOString(),
+      })
+      .where(eq(tables.projectDatabases.id, databaseId))
+      .run();
+    enqueueJob(
+      transaction,
+      {
+        kind: "database_delete",
+        projectId,
+        payload: { databaseId },
+        dedupeKey: `database-delete:${databaseId}`,
+      },
+      now,
+    );
+    recordAuditEvent(transaction, {
+      actor,
+      action: "database.delete",
+      targetType: "database",
+      targetId: databaseId,
+      metadata: { projectId, engine: existing.engine },
+    });
+    return existing;
+  });
   removeConnectionVariable(database, { projectId, environmentKey: found.environmentKey, actor });
 }
 

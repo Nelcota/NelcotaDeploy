@@ -8,7 +8,7 @@ import { z } from "zod";
 import {
   environmentImportSchema,
   type EnvironmentImportInput,
-} from "@/shared/schemas/environment-import.schema";
+} from "@/shared/schemas/environment/environment-import.schema";
 
 let browser: Browser | undefined;
 let server: ReturnType<typeof Bun.serve> | undefined;

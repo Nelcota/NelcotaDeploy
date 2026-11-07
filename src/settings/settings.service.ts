@@ -37,6 +37,10 @@ export function getSystemSettings(
     ),
     alertWebhookUrl:
       options.includeSecrets === false ? null : readNullableString(stored.get("alertWebhookUrl")),
+    requireAdminTwoFactor: readBoolean(
+      stored.get("requireAdminTwoFactor"),
+      DEFAULT_SYSTEM_SETTINGS.requireAdminTwoFactor,
+    ),
   };
 }
 
@@ -87,7 +91,15 @@ export function saveSystemSettingsSection(
 ): SystemSettings {
   return database.transaction(
     (transaction) => {
-      const settings = { ...getSystemSettings(transaction), ...change.settings };
+      const current = getSystemSettings(transaction);
+      const settings = {
+        ...current,
+        ...change.settings,
+        requireAdminTwoFactor:
+          change.section === "organization"
+            ? (change.settings.requireAdminTwoFactor ?? current.requireAdminTwoFactor)
+            : current.requireAdminTwoFactor,
+      };
       saveSystemSettings(transaction, settings);
       return settings;
     },

@@ -264,9 +264,9 @@ This reduces the 50,000-row sample's elapsed time by about 47% and bounds transf
 
 ### F12 Medium — Add measured lookup indexes
 
-- **Changed:** `src/db/tables/projects.tables.ts`, `drizzle/0015_performance-indexes.sql`, its snapshot and migration journal.
+- **Changed:** `src/db/tables/projects.tables.ts`, `drizzle/0027_performance-indexes.sql`, its snapshot and migration journal. The original 0015 performance migration was regenerated as 0027 when integrating main, preserving main's existing 0015–0026 history.
 - **Applied:** Add `runtime_logs_deployment_id_idx (deployment_id, id)` and replace the preview-only index with `deployments_preview_created_idx (preview_id, created_at, id)`. The migration was generated with `bun run db:generate --name=performance-indexes` and exercised by migrated test databases.
-- **Validated:** The missing-deployment runtime-log lookup over 100,000 rows changes from `SCAN runtime_logs` to `SEARCH ... USING INDEX runtime_logs_deployment_id_idx`; the sample falls from 3.0149 ms to 0.0214 ms. Tests assert the lookup and plan. Index maintenance adds write and disk overhead; production ingestion throughput and migration lock duration were not measured. The migration has not been applied to a production database.
+- **Validated:** The missing-deployment runtime-log lookup over 100,000 rows changes from `SCAN runtime_logs` to `SEARCH ... USING INDEX runtime_logs_deployment_id_idx`; the sample falls from 3.0149 ms to 0.0214 ms. Tests assert the lookup and plan. An integration regression upgrades main's database through 0027 twice, preserving projects, memberships, console and uptime tables. Index maintenance adds write and disk overhead; production ingestion throughput and migration lock duration were not measured. The migration has not been applied to a production database.
 
 ### F13 Medium — Serve build-time compressed static assets
 
@@ -305,7 +305,7 @@ The same production-server, throwaway-database and Chromium throttling method de
 
 The root transfer is about 69% smaller and sampled cold LCP about 52% lower. Startup long tasks remain. The confirmation mobile menu opened and closed successfully; opening through animation end took 550 ms, with an isolated 100 ms frame interval. The 500 ms declared animation and the remaining delayed frame preclude a claim of immediate or uniformly smooth interaction. These samples do not establish field Web Vitals, sustained FPS or exact click-to-usable times. Session checks, server permissions and private-response cache policy were preserved.
 
-## Validation and artifacts
+## Validation and artifacts before main integration
 
 Completed against the final code changes:
 
@@ -320,3 +320,34 @@ Oxlint reports non-blocking warnings, including existing complexity/file-size wa
 Local artifacts are in the gitignored `ui-review-output/` directory. Final follow-up evidence is in `pending-check.log`, `pending-browser.log`, `pending-build-final.log`, `query-pending-{before,after}.json`, `backup-profile-final.log`, `backup-profile-{before,after}-limit-final.log`, `navigation-pending-{baseline,after,final}.json`, and `performance-{desktop,mobile}-pending-final.png`. Harnesses include `backup-memory-profile.ts`, `query-benchmark.ts` and `navigation-benchmark.ts`. Initial evidence remains in `check.log`, `browser-tests.log`, `build.log`, `retention-benchmark.json`, `log-render-{baseline,optimized}-{2,3,4}.json` and `navigation-{baseline,optimized,verification}.json`. These scratch files are available locally, rather than being a new committed benchmark suite. Intermediate backup experiments are not the reported final comparison.
 
 Not validated: real Docker/Postgres/SSH integration runs, live S3 or Cloudflare/GitHub API load, sustained multi-user production load, near-limit restore RSS, actual low-end phones, deployment proxy compression, field INP/LCP/CLS, or production FPS. The local S3-client test and CPU/network emulation do not substitute for those measurements. Migration 0015 was generated and tested in disposable databases; no production migration or deployment was performed. No new dependencies were added.
+
+## PR #31 integration with main
+
+Integrated main at `7f87499fde8ec4ce1d693a0a51df65ed9ba1065d` while retaining the review fixes and main's staging, memberships and manager role, two-factor policy, MySQL/MongoDB engines, replicas, Compose, Railpack, console, uptime and automatic rollback behavior.
+
+- Kept SQL aggregation and parallel independent project reads with project-scoped authorization and UI permissions. Repository discovery, environment imports and Cloudflare operations now use the membership checks introduced on main.
+- Retained per-attempt container names and lease checks while starting and cleaning up multiple replicas. Compose retains its own services and observes ownership checks before side effects.
+- Exposed staging and team management through the dedicated settings navigation. Build, runtime and automation pages retain their separate write boundaries while accepting the corresponding Compose, replicas and automatic rollback fields. Partial older submissions preserve the newer saved fields. Organization edits preserve a two-factor requirement when it is omitted.
+- Retained authenticated PostgreSQL restore activation, backup admission/read limits, bounded storage cleanup, pending-restore retention and main's four engine choices. MySQL/MongoDB commands use the shared restore-plan contract while preserving their existing restore behavior.
+- Kept main's migration history and dependency updates; generated `0027_performance-indexes` against main's latest snapshot. Package folders were adjusted where combining both branches exceeded the repository's ten-file limit; route grouping preserves public DNS and preview URLs.
+- Compared named regression scenarios from both parents and restored cases lost by textual merging. New integration cases cover migration upgrade/idempotence, partial settings with Railpack/replicas/rollback, Compose validation, two-factor policy preservation, new engine hints and lease loss during replica inspection.
+
+Validation on the integrated code:
+
+| Check                                  | Result                                                                                                                                                                                                             |
+| -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `bun run check`                        | 2,627 tests across 245 files; zero failures; formatting, Oxlint, types, Knip and package sizes pass                                                                                                                |
+| `bun run test:browser`                 | 48 tests across six files; zero failures                                                                                                                                                                           |
+| `bun run build`                        | Production build and gzip generation pass                                                                                                                                                                          |
+| `bun audit`                            | No vulnerabilities found across 533 packages                                                                                                                                                                       |
+| Main database upgrade                  | 0027 applies and a second migration run is a no-op; existing project and feature tables preserved                                                                                                                  |
+| Production browser authorization smoke | Three account profiles; twelve guarded operations plus private reads; outsider denied, reader writes denied, project manager with global viewer role imports and reads back a variable                             |
+| Visual/accessibility review            | 224 captures across light/dark and mobile/desktop. One dark task-dialog link contrast issue was corrected with the existing brand text color; focused post-fix axe checks pass in both themes with zero violations |
+
+The full visual run exposed outdated dialog selectors, which were updated to the current confirmations and dedicated backup/restore pages. Its original contrast finding is retained in `ui-review-output/full-review/report.md`; `pr31-contrast.json` records the successful post-fix checks after animations settle. The authorization smoke reached the expected missing-Cloudflare-connection check; repository reads reached the GitHub boundary, where the seeded nonexistent repository returned 404. This does not validate live provider operations.
+
+Real integration checks also passed: nine scenarios in a Linux Bun 1.4.4 container cover deploy/control/rollback, previews, volume persistence, task timeout/abort and PostgreSQL restore/activation safety. Twelve SSH scenarios passed, including command supervision, tunnels, host keys and full installation/deploy on Alpine, Debian and Ubuntu.
+
+The initial Windows-native `bun run test:docker` run returned 16 passes and five local-deploy failures because the Linux worker requires an executable `mkdir`, which is absent from that Windows PATH. A fixture reproduction confirmed that error. The five affected scenarios and all four PostgreSQL integration cases then passed in Linux with the same Bun version and lockfile; the twelve native SSH scenarios passed, covering all 21 distinct integration scenarios across the appropriate environments. No test was skipped or weakened to accommodate the platform difference.
+
+Integration evidence is in the ignored `ui-review-output/pr31-*` logs and JSON artifacts. No production migration or deployment was performed. The operating limits and laboratory benchmark caveats above still apply.

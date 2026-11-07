@@ -294,9 +294,9 @@ export type RecoveredJob = {
   readonly reason?: string;
   readonly id: string;
   readonly kind: JobKind;
+  readonly payload: Job["payload"];
   readonly deploymentId: string | null;
   readonly taskExecutionId: string | null;
-  readonly payload: Job["payload"];
   readonly outcome: "requeued" | "failed";
 };
 

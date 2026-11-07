@@ -34,6 +34,17 @@ const PROJECT_SETTINGS_SECTIONS = [
     permission: "settings:write",
   },
   {
+    id: "staging",
+    label: "Ambiente de staging",
+    to: "/projects/$projectId/settings/environments/staging",
+  },
+  {
+    id: "team",
+    label: "Equipe do projeto",
+    to: "/projects/$projectId/settings/access/team",
+    permission: "member:manage",
+  },
+  {
     id: "deletion",
     label: "Excluir projeto",
     to: "/projects/$projectId/settings/deletion",

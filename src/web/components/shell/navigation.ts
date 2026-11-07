@@ -9,6 +9,7 @@ import {
   ScrollTextIcon,
   ServerIcon,
   SettingsIcon,
+  TerminalIcon,
   VariableIcon,
 } from "lucide-react";
 
@@ -183,6 +184,13 @@ export const PROJECT_SECTIONS = [
     group: "Configuração",
     label: "Configurações do projeto",
     icon: SettingsIcon,
+    exact: false,
+  },
+  {
+    to: "/projects/$projectId/console",
+    group: "Dados e tarefas",
+    label: "Console da aplicação",
+    icon: TerminalIcon,
     exact: false,
   },
 ] as const;

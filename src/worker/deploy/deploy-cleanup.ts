@@ -11,20 +11,31 @@ const STOP_GRACE_IN_SECONDS = 30;
 const PREVIEW_IMAGES_KEPT = 1;
 
 /**
- * Copies the last lines of a failed container into the deployment log, then removes it.
+ * Copies the last lines of each failed container into the deployment log, then removes them,
+ * one at a time so their lines do not interleave.
  *
  * @param docker - Docker access.
- * @param containerName - Container started by this deployment, or null when none was.
+ * @param containerNames - Containers started by this deployment; empty when none was.
  * @param logs - Deployment log.
  */
-export async function discardFailedContainer(
+export async function discardFailedContainers(
   docker: DockerEngine,
-  containerName: string | null,
+  containerNames: readonly string[],
   logs: DeploymentLogWriter,
 ): Promise<void> {
-  if (containerName == null) {
+  const [first, ...rest] = containerNames;
+  if (first == null) {
     return;
   }
+  await discardFailedContainer(docker, first, logs);
+  await discardFailedContainers(docker, rest, logs);
+}
+
+async function discardFailedContainer(
+  docker: DockerEngine,
+  containerName: string,
+  logs: DeploymentLogWriter,
+): Promise<void> {
   try {
     const lines = await docker.readContainerLogs(containerName, FAILED_CONTAINER_LOG_LINES);
     if (lines.length > 0) {
@@ -86,20 +97,27 @@ async function removeContainersInOrder(
  *
  * @param dependencies - Docker access.
  * @param logs - Deployment log.
- * @param current - The `projectId` and the `currentContainerName` whose container stays.
+ * @param current - The `projectId` and the `currentDeploymentId` whose containers stay,
+ *   and whether the project's Compose services stay too.
  */
 export async function removePreviousContainers(
   dependencies: DeployRunnerDependencies,
   logs: DeploymentLogWriter,
   {
     projectId,
-    currentContainerName,
+    currentContainerNames,
     previewId,
+    keepComposeServices = false,
   }: {
     readonly projectId: string;
-    readonly currentContainerName: string;
+    readonly currentContainerNames: readonly string[];
     /** Preview of the new deployment; null for production. Other scopes are left alone. */
     readonly previewId: string | null;
+    /**
+     * Leaves the Compose services alone, which Compose itself recreates or removes. A project
+     * that no longer uses Compose retires them like any other old container.
+     */
+    readonly keepComposeServices?: boolean;
   },
 ): Promise<void> {
   const containers = await dependencies.docker.listManagedContainers();
@@ -108,7 +126,8 @@ export async function removePreviousContainers(
     (container) =>
       container.labels[LABELS.projectId] === projectId &&
       (container.labels[LABELS.previewId] ?? null) === previewId &&
-      container.name !== currentContainerName,
+      currentContainerNames.includes(container.name) === false &&
+      (keepComposeServices === false || container.labels[LABELS.composeProject] == null),
   );
   await removeContainersInOrder(dependencies, previous, logs);
 }

@@ -3,7 +3,7 @@ import { z } from "zod";
 import { isValidEnvironmentVariableKey } from "./environment-variable.schema";
 
 /** Database servers the platform can run for a project. */
-export const DATABASE_ENGINES = ["postgres", "redis"] as const;
+export const DATABASE_ENGINES = ["postgres", "mysql", "mongodb", "redis"] as const;
 
 export type DatabaseEngineName = (typeof DATABASE_ENGINES)[number];
 

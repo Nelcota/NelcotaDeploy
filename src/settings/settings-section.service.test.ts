@@ -31,6 +31,7 @@ test("saving a stale organization page preserves automatic domains and alert cre
 
   expect(saved).toEqual({
     organizationName: "Updated",
+    requireAdminTwoFactor: false,
     baseDomain: "apps.example.com",
     httpsByDefault: false,
     alertWebhookUrl: "https://hooks.example.com/token",
@@ -55,6 +56,21 @@ test("clearing alerts does not clear automatic domains", () => {
 
   expect(saved.alertWebhookUrl).toBeNull();
   expect(saved.baseDomain).toBe("apps.example.com");
+});
+
+test("organization edits preserve an existing two-factor policy when omitted", () => {
+  const database = openMemoryDatabase();
+  using _connection = database.$client;
+  saveSystemSettingsSection(database, {
+    section: "organization",
+    settings: { organizationName: "Protected", requireAdminTwoFactor: true },
+  });
+  const saved = saveSystemSettingsSection(database, {
+    section: "organization",
+    settings: { organizationName: "Renamed" },
+  });
+  expect(saved.requireAdminTwoFactor).toBe(true);
+  expect(saved.organizationName).toBe("Renamed");
 });
 
 test("throws HostnameConflictError and rolls back conflicting automatic domains", () => {

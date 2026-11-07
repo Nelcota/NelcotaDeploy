@@ -6,7 +6,7 @@ import { readRepositoryTaskScripts, readRepositoryVolumeHints } from "@/github";
 import { getProject, readRepositoryToken } from "@/projects";
 import { getSecretBox } from "@/secrets";
 import { isSafeRelativePath } from "@/shared/schemas/project.schema";
-import { authorize } from "@/web/server/authorization";
+import { authorizeProject } from "@/web/server/authorization";
 
 import { projectIdInput } from "../ids";
 
@@ -34,7 +34,7 @@ export const getRepositoryTasksFn = createServerFn({ method: "GET" })
     }),
   )
   .handler(async ({ data }) => {
-    await authorize("task:write");
+    await authorizeProject("task:write", data.projectId);
     const context = await repositoryContext(data.projectId);
     return await readRepositoryTaskScripts(context.dependencies, {
       ...context.request,
@@ -45,7 +45,7 @@ export const getRepositoryTasksFn = createServerFn({ method: "GET" })
 export const getRepositoryVolumesFn = createServerFn({ method: "GET" })
   .validator(projectIdInput)
   .handler(async ({ data }) => {
-    await authorize("project:write");
+    await authorizeProject("project:write", data.projectId);
     const context = await repositoryContext(data.projectId);
     return await readRepositoryVolumeHints(context.dependencies, context.request);
   });

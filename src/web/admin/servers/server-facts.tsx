@@ -1,9 +1,10 @@
-import { FingerprintIcon, GlobeIcon, HeartPulseIcon } from "lucide-react";
+import { BrushCleaningIcon, FingerprintIcon, GlobeIcon, HeartPulseIcon } from "lucide-react";
 import type { ReactNode } from "react";
 
 import { formatTimeAgo } from "@/shared/format";
 import { useNow } from "@/web/components/clock/use-now";
 
+import { describeLastCleanup } from "./server-status";
 import type { ServerView } from "./use-servers";
 
 function Fact({
@@ -26,20 +27,30 @@ function Fact({
   );
 }
 
-/** Address for DNS, last contact and pinned SSH host key of a remote server. */
+/**
+ * Last disk cleanup of a server and, for a remote one, its address for DNS, last contact and
+ * pinned SSH host key.
+ */
 export function ServerFacts({ server }: { readonly server: ServerView }) {
   const now = useNow();
   return (
     <dl className="grid gap-4 sm:grid-cols-3">
-      <Fact icon={GlobeIcon} label="IP para o DNS">
-        {server.publicAddress == null ? (
-          "Ainda não detectado"
-        ) : (
-          <span className="font-mono">{server.publicAddress}</span>
-        )}
-      </Fact>
-      <Fact icon={HeartPulseIcon} label="Última conexão">
-        {formatTimeAgo(server.lastSeenAt ?? undefined, now)}
+      {server.kind === "ssh" ? (
+        <>
+          <Fact icon={GlobeIcon} label="IP para o DNS">
+            {server.publicAddress == null ? (
+              "Ainda não detectado"
+            ) : (
+              <span className="font-mono">{server.publicAddress}</span>
+            )}
+          </Fact>
+          <Fact icon={HeartPulseIcon} label="Última conexão">
+            {formatTimeAgo(server.lastSeenAt ?? undefined, now)}
+          </Fact>
+        </>
+      ) : null}
+      <Fact icon={BrushCleaningIcon} label="Última limpeza de disco">
+        {describeLastCleanup(server, now)}
       </Fact>
       {server.hostKeyFingerprint == null ? null : (
         <Fact icon={FingerprintIcon} label="Impressão digital SSH">

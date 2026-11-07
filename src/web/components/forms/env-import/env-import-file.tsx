@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
 
-import { MAX_IMPORT_TEXT_LENGTH } from "@/shared/schemas/environment-import.schema";
+import { MAX_IMPORT_TEXT_LENGTH } from "@/shared/schemas/environment/environment-import.schema";
 import { Button } from "@/web/components/ui/button";
 import { Label } from "@/web/components/ui/label";
 

@@ -109,30 +109,37 @@ function domainRouters(
 }
 
 /**
- * Builds the routes that send each of a project's hostnames to exactly one container.
+ * Builds the routes that send each of a project's hostnames to the replicas of one deployment,
+ * balancing requests between them.
  *
  * @remarks
- * Pointing the routes at a single container, rather than labelling containers, lets a new
- * version take all traffic at once: the old container stops receiving requests before it is
- * asked to stop.
+ * Pointing the routes at the containers by name, rather than labelling containers, lets a new
+ * version take all traffic at once: the old containers stop receiving requests before they
+ * are asked to stop.
  *
- * @param input - Route name (unique per project or preview), hostnames, the container and its
- *   port, the server's entrypoints and whether routes compress responses.
+ * @param input - Route name (unique per project or preview), hostnames, the replica containers
+ *   and their port, the server's entrypoints and whether routes compress responses.
  * @returns The dynamic configuration; no routers when there is no hostname.
- * @throws {InvalidRouteError} When the name, a hostname, the container name, the port or an
- *   entrypoint is invalid.
+ * @throws {InvalidRouteError} When the name, a hostname, a container name, the port or an
+ *   entrypoint is invalid, or when there is no container.
  */
 export function projectRouteConfig(input: {
   /** Base of the service and router names, such as "api" or "api-pr-12". */
   readonly routeName: string;
   readonly domains: readonly RoutedDomain[];
-  readonly containerName: string;
+  /** The replicas of the deployment, at least one. */
+  readonly containerNames: readonly string[];
   readonly internalPort: number;
   readonly entrypoints: ProxyEntrypoints;
   readonly compress: boolean;
 }): DynamicConfig {
   assertMatches(input.routeName, ROUTE_NAME_PATTERN, "route name");
-  assertMatches(input.containerName, CONTAINER_NAME_PATTERN, "container name");
+  if (input.containerNames.length === 0) {
+    throw new InvalidRouteError("A route needs at least one container");
+  }
+  for (const containerName of input.containerNames) {
+    assertMatches(containerName, CONTAINER_NAME_PATTERN, "container name");
+  }
   assertEntrypoints(input.entrypoints);
   if (
     Number.isInteger(input.internalPort) === false ||
@@ -161,7 +168,9 @@ export function projectRouteConfig(input: {
         // Containers on the proxy network reach each other by name.
         [service]: {
           loadBalancer: {
-            servers: [{ url: `http://${input.containerName}:${input.internalPort}` }],
+            servers: input.containerNames.map((containerName) => ({
+              url: `http://${containerName}:${input.internalPort}`,
+            })),
           },
         },
       },

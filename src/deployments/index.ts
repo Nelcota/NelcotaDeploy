@@ -35,6 +35,10 @@ export {
   listDeployments,
   listDeploymentServerIds,
   listRollbackCandidates,
+  listWatchedDeployments,
+  recordAutoRollback,
+  recordAutoRollbackSkipped,
+  type WatchedDeployment,
   transitionDeployment,
 } from "./deployment.service";
 export {

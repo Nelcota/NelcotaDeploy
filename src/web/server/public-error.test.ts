@@ -8,6 +8,7 @@ import {
 } from "@/databases";
 import { CloudflareApiError, DnsConfigurationError } from "@/domains";
 import { ProjectNotFoundError } from "@/projects";
+import { StagingDeploymentChangedError } from "@/staging";
 import { TaskReviewChangedError } from "@/tasks";
 import { ProjectHasVolumesError, VolumeServerChangedError } from "@/volumes";
 
@@ -92,4 +93,10 @@ describe("toPublicError", () => {
   test("returns null for unknown errors so they are logged and hidden", () => {
     expect(toPublicError(new Error("SQLITE_BUSY: database is locked at /data/x.db"))).toBeNull();
   });
+});
+
+test("asks the user to review staging again when its deployment changed", () => {
+  expect(toPublicError(new StagingDeploymentChangedError("staging"))?.message).toBe(
+    "O deploy do staging mudou. Confira a nova versão e confirme a promoção novamente.",
+  );
 });

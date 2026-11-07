@@ -3,7 +3,7 @@ import { Link } from "@tanstack/react-router";
 import { LoaderCircleIcon } from "lucide-react";
 import type { z } from "zod";
 
-import { projectInputSchema } from "@/shared/schemas/project.schema";
+import { type ProjectBuilder, projectInputSchema } from "@/shared/schemas/project.schema";
 import { ProjectFormSections } from "@/web/components/forms/project-form-sections";
 import { Button } from "@/web/components/ui/button";
 
@@ -15,17 +15,24 @@ export type ProjectFormValues = {
   readonly slug: string;
   readonly repositoryUrl: string;
   readonly branch: string;
+  readonly builder: ProjectBuilder;
   readonly dockerfilePath: string;
   readonly buildContext: string;
   readonly internalPort: string;
   readonly healthCheckPath: string;
   readonly autoDeploy: boolean;
   readonly autoApplyChanges: boolean;
+  readonly autoRollback: boolean;
   readonly previewsEnabled: boolean;
   /** Blank for no limit. */
   readonly memoryLimitInMb: string;
   /** Thousandths of a core as text; blank for no limit. */
   readonly cpuLimitInMillicores: string;
+  /** Containers each deployment runs, as text. */
+  readonly replicas: string;
+  readonly composeFilePath: string;
+  /** Blank unless built with Docker Compose. */
+  readonly composeService: string;
 };
 
 /** Input accepted by the project server functions. */
@@ -56,6 +63,7 @@ export const EMPTY_PROJECT_FORM: ProjectFormValues = {
   slug: "",
   repositoryUrl: "",
   branch: "main",
+  builder: "dockerfile",
   dockerfilePath: "Dockerfile",
   buildContext: ".",
   // Blank: each build reads the port from the Dockerfile's EXPOSE.
@@ -63,9 +71,13 @@ export const EMPTY_PROJECT_FORM: ProjectFormValues = {
   healthCheckPath: "",
   autoDeploy: true,
   autoApplyChanges: true,
+  autoRollback: true,
   previewsEnabled: false,
   memoryLimitInMb: "",
   cpuLimitInMillicores: "",
+  replicas: "1",
+  composeFilePath: "compose.yaml",
+  composeService: "",
 };
 
 /**
@@ -79,6 +91,7 @@ export function projectToFormValues(project: {
   readonly slug: string;
   readonly repositoryUrl: string;
   readonly branch: string;
+  readonly builder: ProjectBuilder;
   readonly dockerfilePath: string;
   readonly buildContext: string;
   readonly internalPort: number;
@@ -86,25 +99,34 @@ export function projectToFormValues(project: {
   readonly healthCheckPath: string | null;
   readonly autoDeploy: boolean;
   readonly autoApplyChanges: boolean;
+  readonly autoRollback: boolean;
   readonly previewsEnabled: boolean;
   readonly memoryLimitInMb: number | null;
   readonly cpuLimitInMillicores: number | null;
+  readonly replicas: number;
+  readonly composeFilePath: string;
+  readonly composeService: string | null;
 }): ProjectFormValues {
   return {
     name: project.name,
     slug: project.slug,
     repositoryUrl: project.repositoryUrl,
     branch: project.branch,
+    builder: project.builder,
     dockerfilePath: project.dockerfilePath,
     buildContext: project.buildContext,
     internalPort: project.internalPortAuto ? "" : String(project.internalPort),
     healthCheckPath: project.healthCheckPath ?? "",
     autoDeploy: project.autoDeploy,
     autoApplyChanges: project.autoApplyChanges,
+    autoRollback: project.autoRollback,
     previewsEnabled: project.previewsEnabled,
     memoryLimitInMb: project.memoryLimitInMb == null ? "" : String(project.memoryLimitInMb),
     cpuLimitInMillicores:
       project.cpuLimitInMillicores == null ? "" : String(project.cpuLimitInMillicores),
+    replicas: String(project.replicas),
+    composeFilePath: project.composeFilePath,
+    composeService: project.composeService ?? "",
   };
 }
 

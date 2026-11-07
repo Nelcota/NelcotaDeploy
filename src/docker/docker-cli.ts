@@ -1,6 +1,7 @@
 import { type CommandRunner, type OutputStream, type ProcessResult, runProcess } from "@/process";
 import { isValidEnvironmentVariableKey } from "@/shared/schemas/environment-variable.schema";
 
+import { DockerCompose, type DockerComposeStore } from "./compose/docker-compose";
 import { runContainerExec } from "./docker-exec";
 import { DockerImages, type DockerImageStore } from "./docker-images";
 import { DockerVolumes, type DockerVolumeStore } from "./docker-volumes";
@@ -9,9 +10,14 @@ import {
   assertFilePath,
   buildImageArgs,
   type BuildImageOptions,
+  danglingImagePruneArgs,
   LABELS,
+  oversizedBuildCachePruneArgs,
+  railpackBuildArgs,
+  type RailpackBuildOptions,
   runContainerArgs,
   type RunContainerOptions,
+  staleBuildCachePruneArgs,
   stopContainerArgs,
 } from "./docker.commands";
 import {
@@ -24,6 +30,7 @@ import {
   type ContainerStats,
   parseEnvironmentOutput,
   parseInspectOutput,
+  parseReclaimedBytes,
   parseStatsOutput,
 } from "./docker.output";
 
@@ -31,6 +38,8 @@ const QUICK_COMMAND_TIMEOUT_IN_MS = 30_000;
 const STOP_TIMEOUT_IN_MS = 60_000;
 // Database dumps can take a while to copy on slow disks.
 const COPY_TIMEOUT_IN_MS = 600_000;
+// Pruning a large build cache takes a while on slow disks.
+const PRUNE_TIMEOUT_IN_MS = 600_000;
 const MS_PER_SECOND = 1000;
 
 function assertApplicationEnvironment(values: Readonly<Record<string, string>>): void {
@@ -70,6 +79,8 @@ export class DockerCli {
   readonly volumes: DockerVolumeStore;
   /** The platform's images on the same host. */
   readonly images: DockerImageStore;
+  /** Docker Compose projects on the same host. */
+  readonly compose: DockerComposeStore;
 
   /**
    * Reaches the Docker of one host.
@@ -82,6 +93,7 @@ export class DockerCli {
     this.#runner = runner;
     this.volumes = new DockerVolumes(binary, runner);
     this.images = new DockerImages(binary, runner);
+    this.compose = new DockerCompose(binary, runner);
   }
 
   async #run(args: readonly string[], options: CommandOptions = {}): Promise<ProcessResult> {
@@ -140,6 +152,34 @@ export class DockerCli {
     await this.#runChecked(buildImageArgs(options), "build", {
       timeoutInMs: run.timeoutInMs,
       env: { ...buildArgValues, DOCKER_BUILDKIT: "1" },
+      signal: run.signal,
+      onLine: run.onLine,
+      cwd: run.cwd,
+    });
+  }
+
+  /**
+   * Builds a Railpack plan with the Railpack frontend on Docker's BuildKit. The image it
+   * produces carries no platform labels yet.
+   *
+   * @param options - Plan, context, tag, secret names and their hash; see {@link railpackBuildArgs}.
+   * @param secretValues - Values for `options.secretKeys`, passed via the environment.
+   * @param run - Timeout, cancellation and output streaming.
+   * @throws {DockerCommandError} When the build fails, times out or is cancelled.
+   */
+  async buildWithRailpack(
+    options: RailpackBuildOptions,
+    secretValues: Readonly<Record<string, string>>,
+    run: {
+      readonly timeoutInMs: number;
+      readonly signal?: AbortSignal;
+      readonly onLine?: OutputHandler;
+      readonly cwd: string;
+    },
+  ): Promise<void> {
+    await this.#runChecked(railpackBuildArgs(options), "buildx build", {
+      timeoutInMs: run.timeoutInMs,
+      env: { ...secretValues, DOCKER_BUILDKIT: "1" },
       signal: run.signal,
       onLine: run.onLine,
       cwd: run.cwd,
@@ -414,6 +454,51 @@ export class DockerCli {
       ],
       { timeoutInMs: Number.MAX_SAFE_INTEGER, signal, onLine: () => onEvent() },
     );
+  }
+
+  /**
+   * Removes build cache unused for longer than the retention, then shrinks what is left below
+   * the size limit, least recently used first.
+   *
+   * @param limits - `retentionInHours` and `maxUsedSpaceInGb`, both positive integers.
+   * @returns Bytes freed, as Docker reported them.
+   * @throws {InvalidDockerArgumentError} When a limit is not a positive integer.
+   * @throws {DockerCommandError} When docker cannot prune.
+   */
+  async pruneBuildCache(limits: {
+    readonly retentionInHours: number;
+    readonly maxUsedSpaceInGb: number;
+  }): Promise<number> {
+    const staleArgs = staleBuildCachePruneArgs(limits.retentionInHours);
+    const oversizedArgs = oversizedBuildCachePruneArgs(limits.maxUsedSpaceInGb);
+    // One after the other: the size limit applies to what the age limit left.
+    const staleBytes = await this.#prune(staleArgs, "buildx prune");
+    const oversizedBytes = await this.#prune(oversizedArgs, "buildx prune");
+    return staleBytes + oversizedBytes;
+  }
+
+  /**
+   * Removes dangling images of the platform; images of anything else are never touched.
+   *
+   * @returns Bytes freed, as Docker reported them.
+   * @throws {DockerCommandError} When docker cannot prune.
+   */
+  async pruneDanglingImages(): Promise<number> {
+    return await this.#prune(danglingImagePruneArgs(), "image prune");
+  }
+
+  async #prune(args: readonly string[], description: string): Promise<number> {
+    let lastLine = "";
+    const output = await this.#runChecked(args, description, {
+      timeoutInMs: PRUNE_TIMEOUT_IN_MS,
+      // The total is last; a large prune can exceed the runner's captured-output limit.
+      onLine: (line, stream) => {
+        if (stream === "stdout" && line.trim() !== "") {
+          lastLine = line;
+        }
+      },
+    });
+    return parseReclaimedBytes(lastLine === "" ? output : lastLine);
   }
 
   /**

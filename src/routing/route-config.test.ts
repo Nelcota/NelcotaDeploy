@@ -6,7 +6,7 @@ import { InvalidRouteError } from "./routing.errors";
 const ENTRYPOINTS = { http: "web", https: "websecure", certResolver: "letsencrypt" };
 const BASE = {
   routeName: "api",
-  containerName: "nelcota-api-0c1d2e3f4a5b",
+  containerNames: ["nelcota-api-0c1d2e3f4a5b"],
   internalPort: 8080,
   entrypoints: ENTRYPOINTS,
   compress: false,
@@ -24,6 +24,27 @@ describe("projectRouteConfig", () => {
         loadBalancer: { servers: [{ url: "http://nelcota-api-0c1d2e3f4a5b:8080" }] },
       },
     });
+  });
+
+  test("balances requests between every replica given", () => {
+    const config = projectRouteConfig({
+      ...BASE,
+      containerNames: ["nelcota-api-0c1d2e3f4a5b", "nelcota-api-0c1d2e3f4a5b-2"],
+      domains: [{ hostname: "api.example.com", httpsEnabled: true }],
+    });
+
+    expect(config.http.services?.["nelcota-api"]?.loadBalancer.servers).toEqual([
+      { url: "http://nelcota-api-0c1d2e3f4a5b:8080" },
+      { url: "http://nelcota-api-0c1d2e3f4a5b-2:8080" },
+    ]);
+  });
+
+  test("throws InvalidRouteError without any container", () => {
+    const domains = [{ hostname: "api.example.com", httpsEnabled: true }];
+
+    expect(() => projectRouteConfig({ ...BASE, containerNames: [], domains })).toThrow(
+      InvalidRouteError,
+    );
   });
 
   test("serves an HTTPS domain with a certificate and redirects its HTTP requests", () => {
@@ -115,7 +136,7 @@ describe("projectRouteConfig validation", () => {
   });
 
   test("throws InvalidRouteError for a container name that is not a plain name", () => {
-    expect(() => projectRouteConfig({ ...BASE, containerName: "evil.com/x?", domains })).toThrow(
+    expect(() => projectRouteConfig({ ...BASE, containerNames: ["evil.com/x?"], domains })).toThrow(
       InvalidRouteError,
     );
   });

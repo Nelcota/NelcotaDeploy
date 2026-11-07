@@ -22,6 +22,7 @@ export const jobs = sqliteTable(
         "database_delete",
         "database_backup",
         "database_restore",
+        "console_command",
       ],
     }).notNull(),
     status: text("status", {
@@ -115,6 +116,34 @@ export const taskExecutions = sqliteTable(
     index("task_executions_task_created_idx").on(table.taskId, table.createdAt),
     // A scheduled slot runs at most once, even if the scheduler restarts mid-tick.
     uniqueIndex("task_executions_task_slot_idx").on(table.taskId, table.scheduledFor),
+  ],
+);
+
+// Commands typed in a project's console, run once in its live container. The text stays so
+// the person who ran it sees their history; the audit log records it too.
+export const consoleCommands = sqliteTable(
+  "console_commands",
+  {
+    id: text("id").primaryKey(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    userId: text("user_id").references(() => users.id, { onDelete: "cascade" }),
+    command: text("command").notNull(),
+    status: text("status", { enum: ["queued", "running", "succeeded", "failed"] }).notNull(),
+    exitCode: integer("exit_code"),
+    output: text("output").notNull().default(""),
+    errorMessage: text("error_message"),
+    createdAt: createdAt(),
+    startedAt: text("started_at"),
+    finishedAt: text("finished_at"),
+  },
+  (table) => [
+    index("console_commands_project_user_created_idx").on(
+      table.projectId,
+      table.userId,
+      table.createdAt,
+    ),
   ],
 );
 

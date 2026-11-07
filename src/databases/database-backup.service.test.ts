@@ -10,6 +10,7 @@ import {
   finishBackupRestore,
   listExpiredDatabaseBackups,
   markBackupSucceeded,
+  markBackupRunning,
 } from "./database-backup-outcomes";
 import {
   isDatabaseBackupDue,
@@ -164,65 +165,26 @@ describe("requestDatabaseRestore", () => {
     },
   );
   test.each(["queued", "running"] as const)(
-    "refuses a restore while another backup is %s",
+    "rejects a restore while a %s backup could prune its target",
     async (status) => {
-      const { database, created, target } = await setup();
-      using _connection = database.$client;
+      const { database, project, created, target } = await setup();
       markDatabaseRunning(database, created.id);
       const backupId = requestDatabaseBackup(database, target);
-      markBackupSucceeded(database, backupId, { storageKey: "old.dump.enc", sizeBytes: 1 });
-      const pending = requestDatabaseBackup(database, target);
-      database
-        .update(tables.databaseBackups)
-        .set({ status })
-        .where(eq(tables.databaseBackups.id, pending))
-        .run();
+      markBackupSucceeded(database, backupId, { storageKey: "oldest.dump.enc", sizeBytes: 10 });
+      const pendingId = requestDatabaseBackup(database, target);
+      if (status === "running") {
+        markBackupRunning(database, pendingId);
+      }
 
-      expect(() => requestDatabaseRestore(database, { ...target, backupId })).toThrow(
-        DatabaseBackupInProgressError,
-      );
-      expect(listProjectDatabases(database, target.projectId)[0]?.status).toBe("running");
+      const restore = () => requestDatabaseRestore(database, { ...target, backupId });
+
+      expect(restore).toThrow(DatabaseBackupInProgressError);
+      expect(listProjectDatabases(database, project.id).at(0)?.status).toBe("running");
+      expect(
+        listDatabaseBackups(database, target).find((backup) => backup.id === backupId)?.status,
+      ).toBe("succeeded");
     },
   );
-
-  test("refuses a restore while a successful backup's job is still pruning", async () => {
-    const { database, created, target } = await setup();
-    using _connection = database.$client;
-    markDatabaseRunning(database, created.id);
-    const backupId = requestDatabaseBackup(database, target);
-    markBackupSucceeded(database, backupId, { storageKey: "dump.enc", sizeBytes: 1 });
-    database
-      .update(tables.jobs)
-      .set({ status: "running" })
-      .where(eq(tables.jobs.dedupeKey, `database-backup:${backupId}`))
-      .run();
-
-    expect(() => requestDatabaseRestore(database, { ...target, backupId })).toThrow(
-      DatabaseBackupInProgressError,
-    );
-  });
-
-  test("keeps an expired dump while it is the target of a queued restore", async () => {
-    const { database, created, target } = await setup();
-    using _connection = database.$client;
-    markDatabaseRunning(database, created.id);
-    const oldest = requestDatabaseBackup(database, target);
-    markBackupSucceeded(database, oldest, { storageKey: "old.dump.enc", sizeBytes: 1 });
-    database
-      .update(tables.databaseBackups)
-      .set({ createdAt: "2026-01-01T00:00:00Z" })
-      .where(eq(tables.databaseBackups.id, oldest))
-      .run();
-    const latest = requestDatabaseBackup(database, target);
-    markBackupSucceeded(database, latest, { storageKey: "latest.dump.enc", sizeBytes: 1 });
-    expect(listExpiredDatabaseBackups(database, created.id, 1).map((backup) => backup.id)).toEqual([
-      oldest,
-    ]);
-
-    requestDatabaseRestore(database, { ...target, backupId: oldest });
-
-    expect(listExpiredDatabaseBackups(database, created.id, 1)).toEqual([]);
-  });
 
   test("marks the database restoring and queues the restore", async () => {
     const { database, project, created, target } = await setup();
@@ -259,18 +221,6 @@ describe("requestDatabaseRestore", () => {
 });
 
 describe("queueDueDatabaseBackups", () => {
-  test("does not enqueue a daily backup while the database is restoring", async () => {
-    const { database, created } = await setup();
-    using _connection = database.$client;
-    database
-      .update(tables.projectDatabases)
-      .set({ status: "restoring" })
-      .where(eq(tables.projectDatabases.id, created.id))
-      .run();
-
-    expect(queueDueDatabaseBackups(database, new Date("2026-11-02T12:00:00Z"))).toBe(0);
-  });
-
   test("queues a scheduled backup for a running database without backups", async () => {
     const { database, created, target } = await setup();
     markDatabaseRunning(database, created.id);
@@ -314,4 +264,77 @@ describe("isDatabaseBackupDue", () => {
   test("is due when the stored time cannot be read", () => {
     expect(isDatabaseBackupDue("not a date", now)).toBe(true);
   });
+});
+
+test.each(["queued", "running"] as const)(
+  "refuses a restore while another backup is %s",
+  async (status) => {
+    const { database, created, target } = await setup();
+    using _connection = database.$client;
+    markDatabaseRunning(database, created.id);
+    const backupId = requestDatabaseBackup(database, target);
+    markBackupSucceeded(database, backupId, { storageKey: "old.dump.enc", sizeBytes: 1 });
+    const pending = requestDatabaseBackup(database, target);
+    database
+      .update(tables.databaseBackups)
+      .set({ status })
+      .where(eq(tables.databaseBackups.id, pending))
+      .run();
+
+    expect(() => requestDatabaseRestore(database, { ...target, backupId })).toThrow(
+      DatabaseBackupInProgressError,
+    );
+    expect(listProjectDatabases(database, target.projectId)[0]?.status).toBe("running");
+  },
+);
+
+test("refuses a restore while a successful backup's job is still pruning", async () => {
+  const { database, created, target } = await setup();
+  using _connection = database.$client;
+  markDatabaseRunning(database, created.id);
+  const backupId = requestDatabaseBackup(database, target);
+  markBackupSucceeded(database, backupId, { storageKey: "dump.enc", sizeBytes: 1 });
+  database
+    .update(tables.jobs)
+    .set({ status: "running" })
+    .where(eq(tables.jobs.dedupeKey, `database-backup:${backupId}`))
+    .run();
+
+  expect(() => requestDatabaseRestore(database, { ...target, backupId })).toThrow(
+    DatabaseBackupInProgressError,
+  );
+});
+
+test("keeps an expired dump while it is the target of a queued restore", async () => {
+  const { database, created, target } = await setup();
+  using _connection = database.$client;
+  markDatabaseRunning(database, created.id);
+  const oldest = requestDatabaseBackup(database, target);
+  markBackupSucceeded(database, oldest, { storageKey: "old.dump.enc", sizeBytes: 1 });
+  database
+    .update(tables.databaseBackups)
+    .set({ createdAt: "2026-01-01T00:00:00Z" })
+    .where(eq(tables.databaseBackups.id, oldest))
+    .run();
+  const latest = requestDatabaseBackup(database, target);
+  markBackupSucceeded(database, latest, { storageKey: "latest.dump.enc", sizeBytes: 1 });
+  expect(listExpiredDatabaseBackups(database, created.id, 1).map((backup) => backup.id)).toEqual([
+    oldest,
+  ]);
+
+  requestDatabaseRestore(database, { ...target, backupId: oldest });
+
+  expect(listExpiredDatabaseBackups(database, created.id, 1)).toEqual([]);
+});
+
+test("does not enqueue a daily backup while the database is restoring", async () => {
+  const { database, created } = await setup();
+  using _connection = database.$client;
+  database
+    .update(tables.projectDatabases)
+    .set({ status: "restoring" })
+    .where(eq(tables.projectDatabases.id, created.id))
+    .run();
+
+  expect(queueDueDatabaseBackups(database, new Date("2026-11-02T12:00:00Z"))).toBe(0);
 });

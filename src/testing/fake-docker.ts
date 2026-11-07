@@ -1,8 +1,10 @@
 import type { ContainerInfo, DockerEngine, OutputHandler } from "@/docker";
 import type { ProcessResult } from "@/process";
 
+import { FakeCompose } from "./fake-compose";
 import { FakeImages } from "./fake-images";
 import { FakeVolumes } from "./fake-volumes";
+import { fromShellPath } from "./shell-path";
 
 /** In-memory Docker double that records calls and simulates containers. */
 export class FakeDocker implements DockerEngine {
@@ -11,6 +13,11 @@ export class FakeDocker implements DockerEngine {
   readonly environments = new Map<string, Readonly<Record<string, string>>>();
   readonly definitions = new Map<string, Parameters<DockerEngine["runContainer"]>[0]>();
   readonly images = new FakeImages(this.calls);
+  readonly compose = new FakeCompose(
+    this.calls,
+    this.containers,
+    async (path) => await Bun.file(fromShellPath(path)).text(),
+  );
   readonly volumes = new FakeVolumes(this.calls, (name) =>
     [...this.mounts.entries()].some(
       ([container, volumes]) =>
@@ -43,6 +50,34 @@ export class FakeDocker implements DockerEngine {
     }
     this.images.tags.add(options.imageTag);
     await Promise.resolve();
+  }
+
+  async buildWithRailpack(
+    options: Parameters<DockerEngine["buildWithRailpack"]>[0],
+    _values: Readonly<Record<string, string>>,
+    run: { readonly onLine?: OutputHandler },
+  ): Promise<void> {
+    this.calls.push(`railpack build ${options.imageTag} secrets=${options.secretKeys.join(",")}`);
+    run.onLine?.("#1 railpack", "stderr");
+    if (this.buildFailure != null) {
+      run.onLine?.(this.buildFailure, "stderr");
+      throw new Error(`docker buildx build failed: ${this.buildFailure}`);
+    }
+    this.images.tags.add(options.imageTag);
+    await Promise.resolve();
+  }
+
+  /** Bytes each prune reports as freed. */
+  reclaimedBytes = 0;
+
+  async pruneBuildCache(limits: Parameters<DockerEngine["pruneBuildCache"]>[0]): Promise<number> {
+    this.calls.push(`prune build cache ${limits.retentionInHours}h ${limits.maxUsedSpaceInGb}gb`);
+    return await Promise.resolve(this.reclaimedBytes);
+  }
+
+  async pruneDanglingImages(): Promise<number> {
+    this.calls.push("prune dangling images");
+    return await Promise.resolve(this.reclaimedBytes);
   }
 
   async ensureNetwork(): Promise<void> {

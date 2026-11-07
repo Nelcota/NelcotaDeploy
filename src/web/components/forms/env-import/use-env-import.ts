@@ -1,7 +1,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
-import type { EnvironmentImportInput } from "@/shared/schemas/environment-import.schema";
+import type { EnvironmentImportInput } from "@/shared/schemas/environment/environment-import.schema";
 import { toUserMessage } from "@/web/components/layout/error-message";
 import { importEnvironmentVariablesFn } from "@/web/functions/environment.functions";
 

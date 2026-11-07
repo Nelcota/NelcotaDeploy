@@ -10,6 +10,7 @@ test("keeps read-only settings visible without offering restricted destinations"
     "runtime",
     "automation",
     "volumes",
+    "staging",
   ]);
 });
 
@@ -49,7 +50,7 @@ test("includes each administrative destination only with its corresponding permi
 test("offers a unique route for each function to administrators", () => {
   const links = visibleSettingsSections(() => true);
 
-  expect(links).toHaveLength(8);
+  expect(links).toHaveLength(10);
   expect(new Set(links.map((section) => section.id)).size).toBe(links.length);
   expect(new Set(links.map((section) => section.to)).size).toBe(links.length);
 });

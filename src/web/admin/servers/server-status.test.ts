@@ -1,6 +1,11 @@
 import { describe, expect, test } from "bun:test";
 
-import { describeServerProblem, hasServerInProgress, serverStatusPill } from "./server-status";
+import {
+  describeLastCleanup,
+  describeServerProblem,
+  hasServerInProgress,
+  serverStatusPill,
+} from "./server-status";
 
 describe("describeServerProblem", () => {
   test.each([
@@ -58,6 +63,26 @@ describe("hasServerInProgress", () => {
   test("is false when every server is ready", () => {
     expect(hasServerInProgress([{ status: "ready", statusMessage: null, kind: "ssh" }])).toBe(
       false,
+    );
+  });
+});
+
+describe("describeLastCleanup", () => {
+  const now = new Date("2026-11-02T12:00:00Z");
+
+  test("says when the cleanup ran and how much it freed", () => {
+    const text = describeLastCleanup(
+      { lastCleanupAt: "2026-11-02T09:00:00Z", lastCleanupFreedBytes: 1_288_490_189 },
+      now,
+    );
+
+    expect(text).toContain("há 3 horas");
+    expect(text).toContain("liberou 1,2 GB");
+  });
+
+  test("says no cleanup ran yet", () => {
+    expect(describeLastCleanup({ lastCleanupAt: null, lastCleanupFreedBytes: null }, now)).toBe(
+      "Ainda não feita",
     );
   });
 });

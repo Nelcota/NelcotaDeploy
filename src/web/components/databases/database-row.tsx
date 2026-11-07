@@ -1,5 +1,5 @@
 import { Link } from "@tanstack/react-router";
-import { RotateCwIcon, Trash2Icon } from "lucide-react";
+import { DatabaseIcon, RotateCwIcon, Trash2Icon } from "lucide-react";
 
 import type { DatabaseEngineName } from "@/shared/schemas/database.schema";
 import { ConfirmDialog } from "@/web/components/layout/confirm-dialog";
@@ -7,7 +7,6 @@ import { ListRow, Tag } from "@/web/components/layout/layout";
 import { Button } from "@/web/components/ui/button";
 
 import { databaseState, ENGINE_LABELS, engineVersion } from "./database-state";
-import { EngineLogo } from "./engine-logo";
 
 type DatabaseItem = {
   readonly id: string;
@@ -48,7 +47,7 @@ export function DatabaseRow({
     <ListRow className="flex-col items-start sm:flex-row sm:items-center">
       <div className="min-w-0 flex-1 space-y-1.5">
         <p className="flex flex-wrap items-center gap-2">
-          <EngineLogo engine={database.engine} className="size-4 shrink-0" />
+          <DatabaseIcon aria-hidden className="size-4 shrink-0 text-muted-foreground" />
           <span className="text-sm font-medium">
             {ENGINE_LABELS[database.engine]} {engineVersion(database.imageTag)}
           </span>

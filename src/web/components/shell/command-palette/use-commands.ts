@@ -3,6 +3,7 @@ import { useNavigate, useParams } from "@tanstack/react-router";
 import { BoxesIcon, PlusIcon } from "lucide-react";
 import { useMemo } from "react";
 
+import { projectQueryOptions } from "@/web/components/projects/project-query";
 import {
   type Command,
   filterCommands,
@@ -75,6 +76,10 @@ export function useCommands({
 }): Command[] {
   const navigate = useNavigate();
   const { projectId, deploymentId, databaseId, taskId } = useParams({ strict: false });
+  const project = useQuery({
+    ...projectQueryOptions(projectId ?? ""),
+    enabled: open && projectId != null,
+  });
   const projects = useQuery({
     queryKey: ["projects", ""],
     queryFn: () => listProjectsFn({ data: { search: "" } }),
@@ -93,7 +98,7 @@ export function useCommands({
     }));
     const destinations = createProjectCommands({
       navigate,
-      permissions,
+      permissions: projectId == null ? permissions : (project.data?.permissions ?? []),
       context: { projectId, deploymentId, databaseId, taskId },
       projectName: projects.data?.find((project) => project.id === projectId)?.name,
     });
@@ -101,5 +106,15 @@ export function useCommands({
       [...destinations, ...projectCommands, ...pageCommands(navigate, permissions)],
       query,
     );
-  }, [projects.data, navigate, permissions, query, projectId, deploymentId, databaseId, taskId]);
+  }, [
+    project.data?.permissions,
+    projects.data,
+    navigate,
+    permissions,
+    query,
+    projectId,
+    deploymentId,
+    databaseId,
+    taskId,
+  ]);
 }

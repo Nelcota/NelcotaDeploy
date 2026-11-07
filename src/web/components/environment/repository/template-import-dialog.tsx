@@ -4,7 +4,7 @@ import type { EnvironmentVariableView } from "@/environments";
 import {
   environmentImportSchema,
   type EnvironmentImportInput,
-} from "@/shared/schemas/environment-import.schema";
+} from "@/shared/schemas/environment/environment-import.schema";
 import { EnvImportPreview } from "@/web/components/forms/env-import/env-import-preview";
 import { useEnvImport } from "@/web/components/forms/env-import/use-env-import";
 import { Button } from "@/web/components/ui/button";

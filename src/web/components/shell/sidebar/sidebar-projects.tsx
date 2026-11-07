@@ -84,7 +84,7 @@ type SidebarProjectsProps = {
 /** Shows up to four user-selected projects and keeps the complete list one click away. */
 export function SidebarProjects({ sidebar, collapsed, onNavigate }: SidebarProjectsProps) {
   const projects = useProjectList();
-  const list = projects.data ?? [];
+  const list = (projects.data ?? []).filter((project) => project.parentProjectId == null);
 
   const pinnedIds = visiblePinnedProjectIds(
     sidebar.preferences.pinnedProjectIds,

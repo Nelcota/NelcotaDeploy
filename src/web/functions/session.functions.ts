@@ -7,39 +7,30 @@ import {
   MAX_AVATAR_BYTES,
   isGitHubLoginEnabled,
   needsFirstAdmin,
+  needsTwoFactorSetup,
   removeUserAvatar,
   saveUserAvatar,
   UnauthenticatedError,
 } from "@/auth";
 import { getDatabase } from "@/db";
-import { hasPermission, type Permission } from "@/shared/roles";
+import { getSystemSettings } from "@/settings";
 import { firstAdminSchema } from "@/shared/schemas/user.schema";
 import { currentUser } from "@/web/server/authorization";
+import { uiPermissionsOf } from "@/web/server/ui-permissions";
 
-const UI_PERMISSIONS: Permission[] = [
-  "project:write",
-  "project:delete",
-  "project:approve",
-  "deployment:create",
-  "container:control",
-  "environment:write",
-  "domain:write",
-  "task:write",
-  "task:run",
-  "user:manage",
-  "settings:write",
-  "token:manage",
-  "audit:read",
-];
-
-/** Returns the signed-in user and what the interface should let them do, or null. */
+/**
+ * Returns the signed-in user and what the interface should let them do outside a project, or
+ * null. Inside a project, the role on that project decides instead.
+ */
 export const getSessionFn = createServerFn({ method: "GET" }).handler(async () => {
   const user = await currentUser();
   if (user == null) {
     return null;
   }
-  const permissions = UI_PERMISSIONS.filter((permission) => hasPermission(user.role, permission));
-  return { ...user, permissions };
+  const permissions = uiPermissionsOf(user.role);
+  // The panel shows only the setup screen; every server function refuses the user meanwhile.
+  const twoFactorSetupRequired = needsTwoFactorSetup(user, getSystemSettings(getDatabase()));
+  return { ...user, permissions, twoFactorSetupRequired };
 });
 
 export type SessionUser = NonNullable<Awaited<ReturnType<typeof getSessionFn>>>;

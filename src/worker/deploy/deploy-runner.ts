@@ -11,7 +11,11 @@ import { JobLeaseLostError } from "@/jobs";
 import { getProject } from "@/projects";
 
 import { DeploymentCancelledError } from "../worker.errors";
-import { discardFailedContainer, pruneOldImages, removePreviousContainers } from "./deploy-cleanup";
+import {
+  discardFailedContainers,
+  pruneOldImages,
+  removePreviousContainers,
+} from "./deploy-cleanup";
 import {
   type DeployContext,
   type DeployRunnerDependencies,
@@ -99,7 +103,7 @@ export async function runDeployment(
       throw error;
     }
     if (jobSignal.aborted && cancellation.signal.aborted === false) {
-      await discardFailedContainer(dependencies.docker, context.state.containerName, logs);
+      await discardFailedContainers(dependencies.docker, context.state.containerNames, logs);
       requeueDeployment(database, deployment.id);
       throw error;
     }
@@ -124,21 +128,26 @@ async function finishDeployment(
   context: DeployContext,
 ): Promise<void> {
   const { deployment, project, logs, state } = context;
-  if (state.containerName == null) {
+  if (state.containerNames.length === 0 && project.builder !== "compose") {
     throw new Error(`Successful deployment ${deployment.id} has no container`);
   }
   logs.system("Deployment succeeded");
   try {
     await removePreviousContainers(dependencies, logs, {
       projectId: project.id,
-      currentContainerName: state.containerName,
+      currentContainerNames: state.containerNames,
       previewId: deployment.previewId,
+      keepComposeServices: project.builder === "compose",
     });
   } catch (error) {
     if (error instanceof JobLeaseLostError) {
       throw error;
     }
     logs.system(`Could not retire previous containers: ${errorMessageOf(error)}`, "warn");
+  }
+  if (project.builder === "compose") {
+    // Compose reuses its image names; the daily cleanup removes the ones it left dangling.
+    return;
   }
   await pruneOldImages(
     dependencies,
@@ -153,7 +162,7 @@ async function recordFailure(
   { error, cancelled }: { readonly error: unknown; readonly cancelled: boolean },
 ): Promise<void> {
   const { deployment, logs, state } = context;
-  await discardFailedContainer(dependencies.docker, state.containerName, logs);
+  await discardFailedContainers(dependencies.docker, state.containerNames, logs);
   context.assertOwnership();
   const message = cancelled
     ? "Deployment cancelled by a user"

@@ -32,6 +32,8 @@ const serverColumns = {
   statusMessage: tables.servers.statusMessage,
   dockerVersion: tables.servers.dockerVersion,
   lastSeenAt: tables.servers.lastSeenAt,
+  lastCleanupAt: tables.servers.lastCleanupAt,
+  lastCleanupFreedBytes: tables.servers.lastCleanupFreedBytes,
   createdAt: tables.servers.createdAt,
 };
 
@@ -50,6 +52,10 @@ export type Server = {
   readonly statusMessage: string | null;
   readonly dockerVersion: string | null;
   readonly lastSeenAt: string | null;
+  /** When the daily cleanup last ran on the server; null before the first one. */
+  readonly lastCleanupAt: string | null;
+  /** Bytes that cleanup freed, as Docker reported them. */
+  readonly lastCleanupFreedBytes: number | null;
   readonly createdAt: string;
 };
 

@@ -3,12 +3,21 @@ import { describe, expect, test } from "bun:test";
 import {
   assertFilePath,
   buildImageArgs,
+  danglingImagePruneArgs,
+  oversizedBuildCachePruneArgs,
+  staleBuildCachePruneArgs,
   containerNameFor,
   databaseContainerNameFor,
   databaseVolumeNameFor,
   imageTagFor,
+  isRailpackBaseTag,
   managedLabels,
   proxyContainerArgs,
+  RAILPACK_VERSION,
+  railpackBaseTagFor,
+  railpackBuildArgs,
+  replicaContainerNameFor,
+  resourceArgs,
   runContainerArgs,
   stopContainerArgs,
   volumeNameFor,
@@ -26,6 +35,25 @@ describe("deterministic names", () => {
   test("throws InvalidDockerArgumentError for a slug that could inject options", () => {
     expect(() => imageTagFor("--privileged", DEPLOYMENT_ID)).toThrow(InvalidDockerArgumentError);
   });
+});
+
+describe("replicaContainerNameFor", () => {
+  test("keeps the deployment's own name for the first replica", () => {
+    expect(replicaContainerNameFor("api", DEPLOYMENT_ID, 1)).toBe("nelcota-api-0c1d2e3f4a5b");
+  });
+
+  test("adds the replica number to the other replicas", () => {
+    expect(replicaContainerNameFor("api", DEPLOYMENT_ID, 3)).toBe("nelcota-api-0c1d2e3f4a5b-3");
+  });
+
+  test.each([0, -1, 1.5, Number.NaN])(
+    "throws InvalidDockerArgumentError for replica number %p",
+    (replica) => {
+      expect(() => replicaContainerNameFor("api", DEPLOYMENT_ID, replica)).toThrow(
+        InvalidDockerArgumentError,
+      );
+    },
+  );
 });
 
 describe("buildImageArgs", () => {
@@ -372,4 +400,137 @@ describe("assertFilePath", () => {
       expect(() => assertFilePath(path)).toThrow(InvalidDockerArgumentError);
     },
   );
+});
+
+describe("resourceArgs", () => {
+  test("adds nothing without limits", () => {
+    expect(resourceArgs({ memoryLimitInMb: null, cpuLimitInMillicores: null })).toEqual([]);
+  });
+
+  test("limits memory in MiB", () => {
+    expect(resourceArgs({ memoryLimitInMb: 512, cpuLimitInMillicores: null })).toEqual([
+      "--memory",
+      "512m",
+    ]);
+  });
+
+  test("writes a fraction of a core without float rounding", () => {
+    expect(resourceArgs({ memoryLimitInMb: null, cpuLimitInMillicores: 250 })).toEqual([
+      "--cpus",
+      "0.250",
+    ]);
+  });
+
+  test("writes whole cores", () => {
+    expect(resourceArgs({ memoryLimitInMb: null, cpuLimitInMillicores: 2000 })).toEqual([
+      "--cpus",
+      "2.000",
+    ]);
+  });
+
+  test.each([[0], [-1], [1.5], [Number.NaN]])(
+    "throws InvalidDockerArgumentError for the memory limit %p",
+    (memoryLimitInMb) => {
+      expect(() => resourceArgs({ memoryLimitInMb, cpuLimitInMillicores: null })).toThrow(
+        InvalidDockerArgumentError,
+      );
+    },
+  );
+});
+
+describe("railpackBuildArgs", () => {
+  const options = {
+    planPath: "/work/railpack-plan.json",
+    contextPath: "/work/repo",
+    imageTag: "nelcota/web:0a1b2c3d4e5f-railpack",
+    secretKeys: ["NEXT_PUBLIC_API_URL"],
+    secretsHash: "a".repeat(64),
+    cacheKey: "019a2b3c-4d5e-7f60-8a9b-0c1d2e3f4a5b",
+  };
+
+  test("builds the plan with the frontend of the same Railpack version", () => {
+    const args = railpackBuildArgs(options);
+
+    expect(args.slice(0, 2)).toEqual(["buildx", "build"]);
+    expect(args).toContain(
+      `BUILDKIT_SYNTAX=ghcr.io/railwayapp/railpack-frontend:v${RAILPACK_VERSION}`,
+    );
+    expect(args.join(" ")).toContain("--file /work/railpack-plan.json");
+    expect(args.at(-1)).toBe("/work/repo");
+  });
+
+  test("passes build secrets by name only, never their values", () => {
+    const args = railpackBuildArgs(options);
+
+    expect(args.join(" ")).toContain("--secret id=NEXT_PUBLIC_API_URL,env=NEXT_PUBLIC_API_URL");
+  });
+
+  test("keeps the build caches of each project apart", () => {
+    const args = railpackBuildArgs(options);
+
+    expect(args.join(" ")).toContain("--build-arg cache-key=019a2b3c-4d5e-7f60-8a9b-0c1d2e3f4a5b");
+  });
+
+  test("throws InvalidDockerArgumentError for a cache key that could add options", () => {
+    expect(() => railpackBuildArgs({ ...options, cacheKey: "a,mode=0777" })).toThrow(
+      InvalidDockerArgumentError,
+    );
+  });
+
+  test("throws InvalidDockerArgumentError for a malformed secrets hash", () => {
+    expect(() => railpackBuildArgs({ ...options, secretsHash: "--rm" })).toThrow(
+      InvalidDockerArgumentError,
+    );
+  });
+
+  test("throws InvalidDockerArgumentError for a malformed secret name", () => {
+    expect(() => railpackBuildArgs({ ...options, secretKeys: ["A,env=B"] })).toThrow(
+      InvalidDockerArgumentError,
+    );
+  });
+});
+
+describe("Railpack base tags", () => {
+  test("derives the base tag from the final image tag", () => {
+    expect(railpackBaseTagFor("nelcota/web:0a1b2c3d4e5f")).toBe(
+      "nelcota/web:0a1b2c3d4e5f-railpack",
+    );
+  });
+
+  test("recognizes only platform Railpack base tags", () => {
+    expect(isRailpackBaseTag("nelcota/web:0a1b2c3d4e5f-railpack")).toBe(true);
+    expect(isRailpackBaseTag("nelcota/web:0a1b2c3d4e5f")).toBe(false);
+    expect(isRailpackBaseTag("postgres:18.6-railpack")).toBe(false);
+  });
+});
+
+describe("prune arguments", () => {
+  test("removes build cache unused for longer than the retention", () => {
+    expect(staleBuildCachePruneArgs(168)).toEqual([
+      "buildx",
+      "prune",
+      "--force",
+      "--filter",
+      "until=168h",
+    ]);
+  });
+
+  test("shrinks the build cache below the size limit", () => {
+    expect(oversizedBuildCachePruneArgs(10)).toEqual([
+      "buildx",
+      "prune",
+      "--force",
+      "--max-used-space",
+      "10gb",
+    ]);
+  });
+
+  test("removes only dangling images of the platform", () => {
+    expect(danglingImagePruneArgs()).toContain("label=io.nelcota.managed=true");
+  });
+
+  test.each([[0], [-5], [1.5]])("throws InvalidDockerArgumentError for the limit %p", (limit) => {
+    expect(() => staleBuildCachePruneArgs(limit)).toThrow(InvalidDockerArgumentError);
+    expect(() => oversizedBuildCachePruneArgs(limit)).toThrow(InvalidDockerArgumentError);
+  });
 });

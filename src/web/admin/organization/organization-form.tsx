@@ -18,6 +18,7 @@ import {
   AlertWebhookField,
   AutomaticDomainFields,
   OrganizationNameField,
+  RequireAdminTwoFactorField,
 } from "./organization-fields";
 import { type OrganizationFormApi, useOrganizationForm } from "./use-organization-form";
 
@@ -112,6 +113,9 @@ export function OrganizationForm({
         >
           <fieldset disabled={isPending} className="space-y-4">
             <current.fields form={form} canEdit={canEdit} />
+            {section === "organization" ? (
+              <RequireAdminTwoFactorField form={form} canEdit={canEdit} />
+            ) : null}
           </fieldset>
           {traefikEnabled || section !== "domains" ? null : (
             <p role="status" className="flex items-start gap-1.5 text-sm text-warning">

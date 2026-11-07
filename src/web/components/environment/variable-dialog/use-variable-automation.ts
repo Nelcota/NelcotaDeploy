@@ -1,7 +1,7 @@
 import { useStore } from "@tanstack/react-form";
 import { useEffect, useRef, useState } from "react";
 
-import { suggestedVariableKind } from "@/shared/schemas/environment-import.schema";
+import { suggestedVariableKind } from "@/shared/schemas/environment/environment-import.schema";
 
 import {
   generateApplicationSecret,

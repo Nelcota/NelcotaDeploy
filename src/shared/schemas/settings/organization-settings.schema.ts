@@ -6,7 +6,9 @@ import { systemSettingsSchema } from "../settings.schema";
 export const organizationSettingsChangeSchema = z.discriminatedUnion("section", [
   z.object({
     section: z.literal("organization"),
-    settings: systemSettingsSchema.pick({ organizationName: true }),
+    settings: systemSettingsSchema.pick({ organizationName: true }).extend({
+      requireAdminTwoFactor: z.boolean().optional(),
+    }),
   }),
   z.object({
     section: z.literal("domains"),

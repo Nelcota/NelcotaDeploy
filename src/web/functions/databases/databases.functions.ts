@@ -15,7 +15,7 @@ import { getDatabase } from "@/db";
 import { applyRuntimeChanges } from "@/deployments";
 import { getSecretBox } from "@/secrets";
 import { databaseInputSchema } from "@/shared/schemas/database.schema";
-import { authorize } from "@/web/server/authorization";
+import { authorizeProject } from "@/web/server/authorization";
 
 import { idSchema, projectIdInput } from "../ids";
 
@@ -24,7 +24,7 @@ const databaseTarget = z.object({ projectId: idSchema, databaseId: idSchema });
 export const listDatabasesFn = createServerFn({ method: "GET" })
   .validator(projectIdInput)
   .handler(async ({ data }) => {
-    await authorize("project:read");
+    await authorizeProject("project:read", data.projectId);
     return listProjectDatabases(getDatabase(), data.projectId);
   });
 
@@ -38,7 +38,7 @@ export const createDatabaseFn = createServerFn({ method: "POST" })
     }),
   )
   .handler(async ({ data }) => {
-    const user = await authorize("project:write");
+    const user = await authorizeProject("project:write", data.projectId);
     const database = getDatabase();
     await createProjectDatabase(database, await getSecretBox(), {
       projectId: data.projectId,
@@ -56,7 +56,7 @@ export const createDatabaseFn = createServerFn({ method: "POST" })
 export const retryDatabaseFn = createServerFn({ method: "POST" })
   .validator(databaseTarget)
   .handler(async ({ data }) => {
-    const user = await authorize("project:write");
+    const user = await authorizeProject("project:write", data.projectId);
     retryDatabaseProvision(getDatabase(), { ...data, actor: userActor(user) });
   });
 
@@ -64,7 +64,7 @@ export const retryDatabaseFn = createServerFn({ method: "POST" })
 export const deleteDatabaseFn = createServerFn({ method: "POST" })
   .validator(databaseTarget)
   .handler(async ({ data }) => {
-    const user = await authorize("project:delete");
+    const user = await authorizeProject("project:delete", data.projectId);
     const database = getDatabase();
     requestDatabaseDeletion(database, { ...data, actor: userActor(user) });
     applyRuntimeChanges(database, data.projectId, {
@@ -76,7 +76,7 @@ export const deleteDatabaseFn = createServerFn({ method: "POST" })
 export const listDatabaseBackupsFn = createServerFn({ method: "GET" })
   .validator(databaseTarget)
   .handler(async ({ data }) => {
-    await authorize("project:read");
+    await authorizeProject("project:read", data.projectId);
     return listDatabaseBackups(getDatabase(), data);
   });
 
@@ -84,7 +84,7 @@ export const listDatabaseBackupsFn = createServerFn({ method: "GET" })
 export const backupDatabaseFn = createServerFn({ method: "POST" })
   .validator(databaseTarget)
   .handler(async ({ data }) => {
-    const user = await authorize("project:write");
+    const user = await authorizeProject("project:write", data.projectId);
     requestDatabaseBackup(getDatabase(), { ...data, actor: userActor(user) });
   });
 
@@ -92,6 +92,6 @@ export const backupDatabaseFn = createServerFn({ method: "POST" })
 export const restoreDatabaseBackupFn = createServerFn({ method: "POST" })
   .validator(databaseTarget.extend({ backupId: idSchema }))
   .handler(async ({ data }) => {
-    const user = await authorize("project:delete");
+    const user = await authorizeProject("project:delete", data.projectId);
     requestDatabaseRestore(getDatabase(), { ...data, actor: userActor(user) });
   });

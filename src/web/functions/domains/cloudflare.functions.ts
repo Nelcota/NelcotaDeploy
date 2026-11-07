@@ -17,7 +17,7 @@ import {
   dnsConfirmationSchema,
 } from "@/shared/schemas/dns/cloudflare.schema";
 import { domainInputSchema } from "@/shared/schemas/domain.schema";
-import { authorize } from "@/web/server/authorization";
+import { authorize, authorizeProject } from "@/web/server/authorization";
 
 import { idSchema } from "../ids";
 
@@ -46,7 +46,7 @@ export const disconnectCloudflareFn = createServerFn({ method: "POST" }).handler
 export const previewCloudflareDnsFn = createServerFn({ method: "GET" })
   .validator(targetSchema)
   .handler(async ({ data }) => {
-    await authorize("domain:write");
+    await authorizeProject("domain:write", data.projectId);
     return await previewCloudflareDns(
       {
         database: getDatabase(),
@@ -60,7 +60,7 @@ export const previewCloudflareDnsFn = createServerFn({ method: "GET" })
 export const applyCloudflareDnsFn = createServerFn({ method: "POST" })
   .validator(targetSchema.extend({ confirmation: dnsConfirmationSchema }))
   .handler(async ({ data }) => {
-    const user = await authorize("domain:write");
+    const user = await authorizeProject("domain:write", data.projectId);
     return await applyCloudflareDns(
       {
         database: getDatabase(),

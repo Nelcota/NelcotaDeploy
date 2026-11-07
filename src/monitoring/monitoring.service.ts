@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, lt, max, ne, notExists, notInArray } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, lt, max, ne, notExists, notInArray } from "drizzle-orm";
 import { alias } from "drizzle-orm/sqlite-core";
 
 import { type Database, tables } from "@/db";
@@ -23,6 +23,31 @@ export type ContainerSample = {
   readonly memoryUsedBytes: number | null;
   readonly memoryTotalBytes: number | null;
 };
+
+/**
+ * Adds up the samples of the containers of each project, so a project with several replicas
+ * gets one point per reading, as one with a single container does.
+ *
+ * @param samples - One sample per container.
+ * @returns One sample per project; a figure no container reported stays null.
+ */
+export function combineSamplesByProject(samples: readonly ContainerSample[]): ContainerSample[] {
+  const byProject = Map.groupBy(samples, (sample) => sample.projectId);
+  return [...byProject].map(([projectId, projectSamples]) => ({
+    projectId,
+    cpuPercent: sumKnown(projectSamples.map((sample) => sample.cpuPercent)),
+    memoryUsedBytes: sumKnown(projectSamples.map((sample) => sample.memoryUsedBytes)),
+    memoryTotalBytes: sumKnown(projectSamples.map((sample) => sample.memoryTotalBytes)),
+  }));
+}
+
+function sumKnown(values: readonly (number | null)[]): number | null {
+  const known = values.filter((value): value is number => value != null);
+  if (known.length === 0) {
+    return null;
+  }
+  return known.reduce((total, value) => total + value, 0);
+}
 
 /** Container state observed by the worker. */
 export type ContainerSnapshot = typeof tables.containerSnapshots.$inferInsert;
@@ -300,6 +325,39 @@ export function listProjectSamples(database: Database, projectId: string, since:
     .limit(MAX_SERIES_POINTS)
     .all()
     .toReversed();
+}
+
+/**
+ * Finds how many times the most restarted container of each deployment restarted, as the
+ * worker last saw them, so one replica stuck in a loop stands out.
+ *
+ * @param database - Database.
+ * @param deploymentIds - Deployments to look at.
+ * @returns The highest restart count by deployment; deployments without containers are left out.
+ */
+export function highestRestartCounts(
+  database: Database,
+  deploymentIds: readonly string[],
+): Map<string, number> {
+  if (deploymentIds.length === 0) {
+    return new Map();
+  }
+  const rows = database
+    .select({
+      deploymentId: tables.containerSnapshots.deploymentId,
+      restarts: max(tables.containerSnapshots.restartCount),
+    })
+    .from(tables.containerSnapshots)
+    .where(inArray(tables.containerSnapshots.deploymentId, [...deploymentIds]))
+    .groupBy(tables.containerSnapshots.deploymentId)
+    .all();
+  const counts = new Map<string, number>();
+  for (const row of rows) {
+    if (row.deploymentId != null && row.restarts != null) {
+      counts.set(row.deploymentId, row.restarts);
+    }
+  }
+  return counts;
 }
 
 /**

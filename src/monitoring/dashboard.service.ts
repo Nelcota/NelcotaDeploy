@@ -17,11 +17,16 @@ type WorkerStatus = ReturnType<typeof getWorkerStatus>;
  *
  * @param database - Database.
  * @param now - Current time.
+ * @param projectIds - The only projects to summarize; null summarizes every project.
  * @returns Counts, recent activity and overall health.
  */
-export function getDashboardSummary(database: Database, now: Date = new Date()) {
-  const projects = countProjectStates(database);
-  const activity = listRecentActivity(database, now);
+export function getDashboardSummary(
+  database: Database,
+  now: Date = new Date(),
+  projectIds: readonly string[] | null = null,
+) {
+  const projects = countProjectStates(database, projectIds);
+  const activity = listRecentActivity(database, now, projectIds);
   const worker = getWorkerStatus(database, now);
   const offline = projects.deployed - projects.online;
   return {
@@ -61,11 +66,16 @@ export function environmentHealth(
 }
 
 /** Counts active projects, how many have a deployment, and how many of those run. */
-function countProjectStates(database: Database) {
+function countProjectStates(database: Database, projectIds: readonly string[] | null) {
   const projects = database
     .select({ id: tables.projects.id, currentDeploymentId: tables.projects.currentDeploymentId })
     .from(tables.projects)
-    .where(isNull(tables.projects.deletionRequestedAt))
+    .where(
+      and(
+        isNull(tables.projects.deletionRequestedAt),
+        projectIds == null ? undefined : inArray(tables.projects.id, projectIds),
+      ),
+    )
     .all();
   const currentDeploymentIds = projects
     .map((project) => project.currentDeploymentId)
@@ -76,7 +86,12 @@ function countProjectStates(database: Database) {
     total: projects.length,
     deployed: currentDeploymentIds.length,
     online: currentDeploymentIds.filter((id) => onlineDeployments.has(id)).length,
-    unhealthy: runningCurrent.filter((snapshot) => snapshot.health === "unhealthy").length,
+    // Counted per deployment: a project whose replicas are all unhealthy is one problem.
+    unhealthy: new Set(
+      runningCurrent
+        .filter((snapshot) => snapshot.health === "unhealthy")
+        .map((snapshot) => snapshot.deploymentId),
+    ).size,
   };
 }
 
@@ -117,13 +132,17 @@ const recentColumns = {
 const PRODUCTION = isNull(tables.deployments.previewId);
 
 /** Latest deployments, last-day counts per status and last-day failures. */
-function listRecentActivity(database: Database, now: Date) {
+function listRecentActivity(database: Database, now: Date, projectIds: readonly string[] | null) {
   const lastDayStart = new Date(now.getTime() - RECENT_FAILURE_WINDOW_IN_MS).toISOString();
+  const visible = and(
+    PRODUCTION,
+    projectIds == null ? undefined : inArray(tables.deployments.projectId, projectIds),
+  );
   const recentDeployments = database
     .select(recentColumns)
     .from(tables.deployments)
     .innerJoin(tables.projects, eq(tables.projects.id, tables.deployments.projectId))
-    .where(PRODUCTION)
+    .where(visible)
     .orderBy(desc(tables.deployments.createdAt))
     .limit(RECENT_DEPLOYMENTS)
     .all();
@@ -131,7 +150,7 @@ function listRecentActivity(database: Database, now: Date) {
   const lastDayCounts = database
     .select({ status: tables.deployments.status, total: count() })
     .from(tables.deployments)
-    .where(and(gte(tables.deployments.createdAt, lastDayStart), PRODUCTION))
+    .where(and(gte(tables.deployments.createdAt, lastDayStart), visible))
     .groupBy(tables.deployments.status)
     .all();
   const recentFailures = database
@@ -142,7 +161,7 @@ function listRecentActivity(database: Database, now: Date) {
       and(
         eq(tables.deployments.status, "failed"),
         gte(tables.deployments.createdAt, lastDayStart),
-        PRODUCTION,
+        visible,
       ),
     )
     .orderBy(desc(tables.deployments.createdAt))

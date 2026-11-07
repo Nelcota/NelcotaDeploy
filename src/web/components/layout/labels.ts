@@ -1,4 +1,5 @@
 import {
+  ArrowUpFromLineIcon,
   BotIcon,
   HandIcon,
   type LucideIcon,
@@ -8,7 +9,7 @@ import {
 } from "lucide-react";
 
 import type { DeploymentStatus, DeploymentTrigger } from "@/deployments";
-import type { Role } from "@/shared/roles";
+import type { AccessRole } from "@/shared/roles";
 
 export const DEPLOYMENT_STATUS_LABELS: Record<DeploymentStatus, string> = {
   queued: "Na fila",
@@ -26,7 +27,9 @@ export const DEPLOYMENT_TRIGGER_LABELS: Record<DeploymentTrigger, string> = {
   webhook: "Push no GitHub",
   redeploy: "Redeploy",
   rollback: "Rollback",
+  "auto-rollback": "Rollback automático",
   mcp: "MCP",
+  promote: "Promoção do staging",
 };
 
 /** Icon shown beside each deploy origin, so the origin reads at a glance. */
@@ -35,11 +38,14 @@ export const DEPLOYMENT_TRIGGER_ICONS: Record<DeploymentTrigger, LucideIcon> = {
   webhook: WebhookIcon,
   redeploy: RefreshCwIcon,
   rollback: Undo2Icon,
+  "auto-rollback": Undo2Icon,
   mcp: BotIcon,
+  promote: ArrowUpFromLineIcon,
 };
 
-export const ROLE_LABELS: Record<Role, string> = {
+export const ROLE_LABELS: Record<AccessRole, string> = {
   admin: "Administrador",
+  manager: "Gerente",
   developer: "Desenvolvedor",
   viewer: "Leitor",
 };

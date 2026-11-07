@@ -9,14 +9,17 @@ import {
 
 import type { ProjectFormApi } from "@/web/components/forms/project-form";
 import {
+  BuilderField,
   BuildFields,
   HealthCheckField,
   IdentityFields,
   PortField,
   RepositoryFields,
+  ResourceLimitFields,
 } from "@/web/components/forms/project-form-fields";
 import {
   AutoApplyField,
+  AutoRollbackField,
   AutoDeployField,
   PreviewsField,
   SwitchGroup,
@@ -63,7 +66,7 @@ export function RepositorySection({
       id="settings-repository"
       icon={GitBranchIcon}
       title="Repositório do código"
-      description="De onde vem o código. Precisa ter um Dockerfile."
+      description="De onde vem o código."
     >
       <div className="grid items-start gap-x-6 gap-y-5 sm:grid-cols-[minmax(0,1fr)_minmax(0,14rem)]">
         <RepositoryFields form={form} automation={automation} />
@@ -100,6 +103,7 @@ export function BuildSection({
       description="Como a imagem é construída no próximo deploy."
     >
       <div className={FIELD_GRID}>
+        <BuilderField form={form} />
         <BuildFields form={form} automation={automation} />
       </div>
     </SettingsSection>
@@ -123,6 +127,7 @@ export function RuntimeSection({
       <div className={FIELD_GRID}>
         <PortField form={form} />
         <HealthCheckField form={form} automation={automation} />
+        <ResourceLimitFields form={form} />
       </div>
     </SettingsSection>
   );
@@ -139,6 +144,7 @@ export function AutomationSection({ form }: { readonly form: ProjectFormApi }) {
       <SwitchGroup>
         <AutoDeployField form={form} />
         <AutoApplyField form={form} />
+        <AutoRollbackField form={form} />
         <PreviewsField form={form} />
       </SwitchGroup>
     </SettingsSection>

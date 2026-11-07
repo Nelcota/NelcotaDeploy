@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 
 import { type Database, tables, type Transaction } from "@/db";
 import type { SecretBox } from "@/secrets";
@@ -10,11 +10,11 @@ export type DatabaseStatus = "provisioning" | "running" | "failed" | "restoring"
 
 /** What the worker needs to run or remove a database. */
 export type DatabaseRecord = {
-  readonly status: DatabaseStatus;
   readonly id: string;
   readonly projectId: string;
   readonly engine: DatabaseEngineName;
   readonly imageTag: string;
+  readonly status: DatabaseStatus;
   readonly encryptedPassword: string;
   readonly deletionRequestedAt: string | null;
 };
@@ -34,11 +34,11 @@ export function findDatabaseRecord(database: Database, databaseId: string): Data
   return (
     database
       .select({
-        status: tables.projectDatabases.status,
         id: tables.projectDatabases.id,
         projectId: tables.projectDatabases.projectId,
         engine: tables.projectDatabases.engine,
         imageTag: tables.projectDatabases.imageTag,
+        status: tables.projectDatabases.status,
         encryptedPassword: tables.projectDatabases.encryptedPassword,
         deletionRequestedAt: tables.projectDatabases.deletionRequestedAt,
       })
@@ -126,4 +126,34 @@ export function failDatabaseDeletion(database: Database, databaseId: string, rea
     })
     .where(eq(tables.projectDatabases.id, databaseId))
     .run();
+}
+
+/**
+ * Lists the databases the platform considers running, with the server each one is on.
+ *
+ * @param database - Database.
+ * @returns The running databases that are not being deleted.
+ */
+export function listRunningDatabases(database: Database): {
+  readonly id: string;
+  readonly engine: DatabaseEngineName;
+  readonly projectName: string;
+  readonly serverId: string;
+}[] {
+  return database
+    .select({
+      id: tables.projectDatabases.id,
+      engine: tables.projectDatabases.engine,
+      projectName: tables.projects.name,
+      serverId: tables.projects.serverId,
+    })
+    .from(tables.projectDatabases)
+    .innerJoin(tables.projects, eq(tables.projects.id, tables.projectDatabases.projectId))
+    .where(
+      and(
+        eq(tables.projectDatabases.status, "running"),
+        isNull(tables.projectDatabases.deletionRequestedAt),
+      ),
+    )
+    .all();
 }

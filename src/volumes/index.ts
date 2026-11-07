@@ -1,6 +1,8 @@
 export {
   VolumeServerChangedError,
   ProjectHasVolumesError,
+  ComposeProjectVolumeError,
+  ReplicatedProjectVolumeError,
   VolumeAttachedError,
   VolumeBeingDeletedError,
   VolumeLimitError,

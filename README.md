@@ -8,7 +8,7 @@
 <h3>Nelcota Deploy</h3>
 
 <p>Self-hosted deploy panel for Linux VPSs with Docker: one server or many over SSH.<br />
-Push to GitHub, get a running container with logs, metrics and HTTPS.</p>
+Push to GitHub, get a running container with logs, metrics, uptime checks and HTTPS.</p>
 
 <p>
   <a href="https://github.com/Nelcota/NelcotaDeploy/actions/workflows/check.yml"><img alt="Check" src="https://github.com/Nelcota/NelcotaDeploy/actions/workflows/check.yml/badge.svg" /></a>
@@ -17,44 +17,54 @@ Push to GitHub, get a running container with logs, metrics and HTTPS.</p>
   <img alt="SQLite" src="https://img.shields.io/badge/database-SQLite-003b57?logo=sqlite&logoColor=white" />
 </p>
 
-<img src="docs/images/dashboard.png" alt="Nelcota Deploy dashboard" width="900" />
+<img src="docs/images/dashboard.png" alt="Nelcota Deploy dashboard with application status, server usage and recent activity" width="900" />
 
 </div>
 
 ## Why
 
-In the spirit of Railway, Coolify and Dokploy, but small and shaped for one
-organization. One Bun process serves the panel, another runs the builds; both share a SQLite
+Like Railway, Coolify and Dokploy, but smaller and built for a single organization. One Bun process serves the panel, another runs the builds; both share a SQLite
 file. No Kubernetes, no external database, no agents to install.
 
 ## Features
 
-| Area          | What it does                                                                                                                                                                  |
-| ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Deploys**   | Build the exact commit from GitHub, on push or by hand. Zero-downtime switch after a health check, rollback and retry.                                                        |
-| **GitHub**    | Search connected repositories; detect default branches, Dockerfiles and directories from a selection or pasted URL. Private access uses the GitHub App or a saved read token. |
-| **Logs**      | Live build and runtime logs with search, level filter and jump to the first error.                                                                                            |
-| **Metrics**   | CPU and memory per container and for the host, with history.                                                                                                                  |
-| **Config**    | Detect `.env.example` variables, fill application URLs and generate local signing secrets. Preserve existing values; review atomic, encrypted imports before applying.        |
-| **Previews**  | Each pull request to the project's branch gets its own temporary address; forks never run.                                                                                    |
-| **Volumes**   | Detect final-stage Dockerfile VOLUME paths, excluding existing mounts and overlaps. Review additions and mount changes; data deletion stays explicit.                         |
-| **Domains**   | Paste a complete URL to fill its domain and HTTP scheme. HTTPS through Traefik, live DNS checks and reviewed Cloudflare DNS configuration.                                    |
-| **Ops**       | Daily database backups, encrypted off-site copies to any S3 bucket, and Discord or Slack alerts.                                                                              |
-| **Servers**   | Paste an SSH address or simple command to fill host, port, account and an available name. Applications run over SSH; moves keep sites up.                                     |
-| **Databases** | Detect missing PostgreSQL and Redis connection variables from `.env.example`, suggest unused names, then review the server before creating an encrypted connection.           |
-| **Tasks**     | Discover package.json scripts, fill names and commands, then confirm execution or scheduling. Queued runs keep their original command and timeout.                            |
-| **Team**      | Admin, developer and viewer roles, API tokens, an MCP server for AI clients and an audit log.                                                                                 |
+| Area          | What it does                                                                                                                                                                                                                                                              |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Deploys**   | Build the exact commit from GitHub, on push or by hand, from a Dockerfile, with Railpack or from a Docker Compose file. Zero-downtime switch (Dockerfile and Railpack), rollback, retry and the deploy status on GitHub. New projects deploy once an admin approves them. |
+| **Rollback**  | When a new version passes its health check but falls into a restart loop in the minutes after the switch, the panel goes back to the previous one by itself and sends an alert.                                                                                           |
+| **Replicas**  | Up to 10 copies of an app behind Traefik's load balancer, all health checked before the switch.                                                                                                                                                                           |
+| **Staging**   | A staging environment per project, with its own address and variables, and promotion of its live commit to production.                                                                                                                                                    |
+| **Previews**  | Optional: up to 5 open pull requests to the project's branch each get a temporary address; forks never run.                                                                                                                                                               |
+| **GitHub**    | Search repositories through the GitHub App or a saved read token; detect branches, Dockerfiles and directories from a selection or URL.                                                                                                                                   |
+| **Logs**      | Live build and runtime logs with search, level filter, jump to the first error, copy and download. Start, stop and restart the app from the panel.                                                                                                                        |
+| **Metrics**   | CPU and memory per container and for the host, with history.                                                                                                                                                                                                              |
+| **Config**    | Discover and review .env imports, preserve existing values, and generate local signing secrets; changes restart or rebuild the app as needed.                                                                                                                             |
+| **Volumes**   | Folders kept between deploys as Docker named volumes, which can be detached; their data is deleted only on request.                                                                                                                                                       |
+| **Databases** | PostgreSQL, MySQL, MongoDB and Redis per project, with the URL in a secret variable, and daily encrypted backups with restore (all but Redis).                                                                                                                            |
+| **Limits**    | Optional memory and CPU limits per application container.                                                                                                                                                                                                                 |
+| **Domains**   | Automatic and custom domains, HTTPS by Let's Encrypt through Traefik, and a live check of each domain's DNS.                                                                                                                                                              |
+| **Uptime**    | Every live domain is checked from the outside each minute, with availability and response time history, an alert when it goes down and a warning two weeks before its certificate expires.                                                                                |
+| **Console**   | One-off commands in the live container from the browser, with the output as it runs. Available to anyone allowed to deploy the project, and each command goes to the audit log.                                                                                           |
+| **Tasks**     | Discover package.json scripts, review commands and schedules, and keep queued runs bound to their original command and timeout.                                                                                                                                           |
+| **Servers**   | Add a VPS with one pasted command; builds and apps run there over a persistent SSH connection, and moving a project to another server keeps its sites online. Build cache and dangling images are cleaned daily on each one.                                              |
+| **Ops**       | Daily panel backups, encrypted off-site copies to any S3-compatible bucket (S3, R2, B2), and Discord or Slack alerts for failed deploys and backups, automatic rollbacks, apps, databases, domains or servers down and disks over 85% full.                               |
+| **Team**      | Admin, developer and viewer roles; projects visible only to their members, each a manager, developer or viewer there; two-factor authentication, API tokens, an MCP server for AI clients and an audit log.                                                               |
 
 <table>
   <tr>
-    <td><img src="docs/images/deploy.png" alt="Deploy detail with stages and logs" /></td>
-    <td><img src="docs/images/logs.png" alt="Live runtime logs" /></td>
+    <td><img src="docs/images/project.png" alt="Project overview with status, resources and recent deploys" /></td>
+    <td><img src="docs/images/logs.png" alt="Live runtime logs with warnings and errors highlighted" /></td>
+  </tr>
+  <tr>
+    <td><img src="docs/images/domains.png" alt="Domains with uptime history and certificate expiry" /></td>
+    <td><img src="docs/images/console.png" alt="Console with the output of commands run in the container" /></td>
   </tr>
 </table>
 
 ## Quick start
 
-Requires Linux with [Bun](https://bun.sh) 1.4+, git and Docker 23+.
+Requires Linux with [Bun](https://bun.sh) 1.4+, git and Docker 23+ with the buildx and compose
+plugins; Railpack builds also need [Railpack](https://railpack.com) installed.
 
 Use a current browser with `Uint8Array.prototype.toBase64` support for avatar uploads and generated passwords.
 
@@ -68,17 +78,18 @@ command arguments are passed literally, without shell evaluation.
 bun install
 bun run setup    # writes .env with generated secrets
 bun run dev      # panel on http://localhost:3000; the first visit creates the admin
-bun run worker   # in another terminal: builds, tasks, metrics, backups
+bun run worker   # in another terminal: builds, tasks, metrics, uptime checks, backups
 ```
 
 ## Production
 
-Docker Compose starts Traefik, the panel and the worker. Only the worker can reach the Docker socket.
+Docker Compose starts Traefik, the panel and the worker. The panel never touches the Docker
+socket: the worker uses it, and Traefik only reads it.
 
 ```bash
-bun run setup        # then set PUBLIC_URL, PANEL_DOMAIN and ACME_EMAIL in .env
-echo "DOCKER_GID=$(stat -c %g /var/run/docker.sock)" >> .env
-docker compose up -d --build   # then open PUBLIC_URL and create the admin
+bun run setup        # then set PANEL_DOMAIN and ACME_EMAIL in .env
+sed -i "s/^DOCKER_GID=.*/DOCKER_GID=$(stat -c %g /var/run/docker.sock)/" .env
+docker compose up -d --build   # then open https://PANEL_DOMAIN and create the admin
 ```
 
 ## Development
@@ -118,7 +129,7 @@ in the browser until the reviewed import is confirmed.
 Install Chromium once with `bunx playwright install chromium` before running browser checks.
 
 ```bash
-bun run check         # format, lint, types, unused code and tests
+bun run check         # format, lint, types, unused code, package size and tests
 bun run test:browser  # keyboard, accessibility and browser encoding regressions
 bun run ui:review     # screenshots of every screen plus an accessibility report
 ```

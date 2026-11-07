@@ -6,6 +6,7 @@ import {
   parseInspectOutput,
   parseStatsOutput,
   parseExposedPorts,
+  parseReclaimedBytes,
 } from "./docker.output";
 
 describe("parseExposedPorts", () => {
@@ -125,5 +126,40 @@ describe("parseStatsOutput", () => {
       memoryUsedBytes: null,
       memoryLimitBytes: null,
     });
+  });
+});
+
+describe("parseReclaimedBytes", () => {
+  test("reads the total of a build cache prune", () => {
+    const stdout = "ID\tRECLAIMABLE\tSIZE\nabc\ttrue\t1.2GB\nTotal:\t1.5GB\n";
+
+    expect(parseReclaimedBytes(stdout)).toBe(1_500_000_000);
+  });
+
+  test("reads the total of an image prune", () => {
+    expect(
+      parseReclaimedBytes("Deleted Images:\nuntagged: x\n\nTotal reclaimed space: 512.3MB\n"),
+    ).toBe(512_300_000);
+  });
+
+  test("returns 0 when nothing was freed", () => {
+    expect(parseReclaimedBytes("Total reclaimed space: 0B\n")).toBe(0);
+  });
+
+  test("returns 0 when the output has no total", () => {
+    expect(parseReclaimedBytes("")).toBe(0);
+  });
+
+  test.each(["1.2.3GB", "-1GB", "NaNGB", "InfinityGB", `${"9".repeat(300)}TB`, "999999999TB"])(
+    "rejects invalid reclaimed space %s",
+    (size) => {
+      expect(parseReclaimedBytes(`Total: ${size}\n`)).toBe(0);
+    },
+  );
+
+  test("ignores totals embedded in resource descriptions", () => {
+    expect(parseReclaimedBytes("deleted: image Total: 99GB\nTotal reclaimed space: 1GB\n")).toBe(
+      1_000_000_000,
+    );
   });
 });

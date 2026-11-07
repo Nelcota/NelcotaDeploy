@@ -17,6 +17,7 @@ import {
   useProjectActions,
 } from "@/web/components/projects/use-project-actions";
 import { useCan } from "@/web/components/shell/use-permissions";
+import { PromoteButton } from "@/web/components/staging/promote-button";
 import { Button } from "@/web/components/ui/button";
 import {
   DropdownMenu,
@@ -224,6 +225,14 @@ export function ProjectActions({
           busy={busy}
           onAction={(action) => containerAction.mutate(action)}
           onConfirm={setConfirming}
+        />
+      ) : null}
+      {can("deployment:create") && project.parentProjectId != null ? (
+        <PromoteButton
+          stagingProjectId={project.id}
+          productionProjectId={project.parentProjectId}
+          deploymentId={project.currentDeploymentId}
+          commitSha={details.liveCommitSha}
         />
       ) : null}
       {canDeploy ? (

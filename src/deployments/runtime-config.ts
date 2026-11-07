@@ -8,7 +8,8 @@ import { getSystemSettings } from "@/settings";
 import { listMountedVolumes } from "@/volumes";
 
 /**
- * Fingerprints what a container receives besides its image: variables, domains and volumes.
+ * Fingerprints what a container receives besides its image: variables, domains, volumes and
+ * resource limits.
  *
  * @remarks
  * Values are left out on purpose, so no secret ends up hashed in the database: a variable
@@ -34,12 +35,20 @@ export function runtimeConfigFingerprint(database: Database, projectId: string):
     volume.id,
     volume.mountPath,
   ]);
+  const { memoryLimitInMb, cpuLimitInMillicores, replicas } = project;
+  const limited = memoryLimitInMb != null || cpuLimitInMillicores != null;
   const hasher = new Bun.CryptoHasher("sha256");
-  const limits = {
-    memoryLimitInMb: project.memoryLimitInMb,
-    cpuLimitInMillicores: project.cpuLimitInMillicores,
-  };
-  hasher.update(JSON.stringify({ variables, domains, volumes, limits }));
+  // Limits and replicas join the fingerprint only when set, so projects with defaults keep the
+  // hash of their live container and do not show changes to apply after an upgrade.
+  hasher.update(
+    JSON.stringify({
+      variables,
+      domains,
+      volumes,
+      ...(limited ? { resources: [memoryLimitInMb, cpuLimitInMillicores] } : {}),
+      ...(replicas > 1 ? { replicas } : {}),
+    }),
+  );
   return hasher.digest("hex");
 }
 

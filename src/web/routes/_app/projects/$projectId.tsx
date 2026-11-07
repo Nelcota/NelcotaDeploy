@@ -5,6 +5,7 @@ import { ErrorState } from "@/web/components/layout/states";
 import { ProjectBanners } from "@/web/components/projects/project-banners";
 import { ProjectBand } from "@/web/components/projects/project-header";
 import { projectQueryOptions } from "@/web/components/projects/project-query";
+import { ProjectPermissionsProvider } from "@/web/components/shell/use-permissions";
 import { Button } from "@/web/components/ui/button";
 import { Skeleton } from "@/web/components/ui/skeleton";
 
@@ -27,7 +28,7 @@ function ProjectLayout() {
     );
   }
   return (
-    <>
+    <ProjectPermissionsProvider key={projectId} value={query.data?.permissions ?? []}>
       {query.data == null ? (
         <div className="space-y-6" aria-busy="true" aria-label="Carregando projeto">
           <Skeleton className="h-4 w-20" />
@@ -42,6 +43,6 @@ function ProjectLayout() {
         </>
       )}
       <Outlet key={projectId} />
-    </>
+    </ProjectPermissionsProvider>
   );
 }

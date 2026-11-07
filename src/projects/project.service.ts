@@ -6,9 +6,18 @@ import { CLEANUP_MAX_ATTEMPTS, enqueueJob } from "@/jobs";
 import type { SecretBox } from "@/secrets";
 import { chooseServerForNewProject } from "@/servers";
 import { assertHostnameOwnership, getSystemSettings } from "@/settings";
-import { parseGitHubRepository, type ProjectInput } from "@/shared/schemas/project.schema";
+import {
+  parseGitHubRepository,
+  type ProjectBuilder,
+  type ProjectInput,
+} from "@/shared/schemas/project.schema";
 
-import { ProjectNotFoundError, ProjectSlugTakenError } from "./project.errors";
+import {
+  ComposeNeedsNoVolumesError,
+  ProjectNotFoundError,
+  ProjectSlugTakenError,
+  ReplicasNeedNoVolumesError,
+} from "./project.errors";
 
 /** Port assumed until a build finds an EXPOSE in the Dockerfile. */
 const DEFAULT_INTERNAL_PORT = 3000;
@@ -25,6 +34,7 @@ export const projectColumns = {
   repositoryUrl: tables.projects.repositoryUrl,
   repositoryFullName: tables.projects.repositoryFullName,
   branch: tables.projects.branch,
+  builder: tables.projects.builder,
   dockerfilePath: tables.projects.dockerfilePath,
   buildContext: tables.projects.buildContext,
   internalPort: tables.projects.internalPort,
@@ -32,14 +42,20 @@ export const projectColumns = {
   healthCheckPath: tables.projects.healthCheckPath,
   autoDeploy: tables.projects.autoDeploy,
   autoApplyChanges: tables.projects.autoApplyChanges,
+  autoRollback: tables.projects.autoRollback,
   previewsEnabled: tables.projects.previewsEnabled,
   memoryLimitInMb: tables.projects.memoryLimitInMb,
   cpuLimitInMillicores: tables.projects.cpuLimitInMillicores,
+  replicas: tables.projects.replicas,
+  composeFilePath: tables.projects.composeFilePath,
+  composeService: tables.projects.composeService,
   deploymentsApproved: tables.projects.deploymentsApproved,
   currentDeploymentId: tables.projects.currentDeploymentId,
   hasRepositoryToken: sql<boolean>`${tables.projects.encryptedRepositoryToken} IS NOT NULL`.mapWith(
     Boolean,
   ),
+  parentProjectId: tables.projects.parentProjectId,
+  environmentName: tables.projects.environmentName,
   createdAt: tables.projects.createdAt,
   updatedAt: tables.projects.updatedAt,
 };
@@ -53,6 +69,8 @@ export type Project = {
   readonly repositoryUrl: string;
   readonly repositoryFullName: string;
   readonly branch: string;
+  /** The repository's Dockerfile, or Railpack detecting the stack. */
+  readonly builder: ProjectBuilder;
   readonly dockerfilePath: string;
   readonly buildContext: string;
   readonly internalPort: number;
@@ -61,15 +79,27 @@ export type Project = {
   readonly healthCheckPath: string | null;
   readonly autoDeploy: boolean;
   readonly autoApplyChanges: boolean;
+  /** Rolls back on its own a new version whose containers keep restarting. */
+  readonly autoRollback: boolean;
   /** Pull requests to the project's branch get a temporary deployment of their own. */
   readonly previewsEnabled: boolean;
   /** Memory limit of the application container in MiB; null for none. */
   readonly memoryLimitInMb: number | null;
   /** CPU limit of the application container in thousandths of a core; null for none. */
   readonly cpuLimitInMillicores: number | null;
+  /** Containers each production deployment runs, between 1 and 10. */
+  readonly replicas: number;
+  /** Compose file of a Docker Compose project, relative to the repository. */
+  readonly composeFilePath: string;
+  /** Compose service that receives the domains; null unless built with Docker Compose. */
+  readonly composeService: string | null;
   readonly deploymentsApproved: boolean;
   readonly currentDeploymentId: string | null;
   readonly hasRepositoryToken: boolean;
+  /** Production project of this environment; null for a production project. */
+  readonly parentProjectId: string | null;
+  /** Name of the environment, such as "staging"; null for a production project. */
+  readonly environmentName: "staging" | null;
   readonly createdAt: string;
   readonly updatedAt: string;
 };
@@ -91,6 +121,18 @@ function isSlugTaken(
   return existing != null && existing.id !== exceptProjectId;
 }
 
+/** Read here rather than through the volumes package, which depends on this one. */
+function mountsVolumes(database: Database | Transaction, projectId: string): boolean {
+  const volume = database
+    .select({ id: tables.projectVolumes.id })
+    .from(tables.projectVolumes)
+    .where(
+      and(eq(tables.projectVolumes.projectId, projectId), eq(tables.projectVolumes.attached, true)),
+    )
+    .get();
+  return volume != null;
+}
+
 function repositoryFullNameOf(repositoryUrl: string): { fullName: string; cloneUrl: string } {
   const repository = parseGitHubRepository(repositoryUrl);
   if (repository == null) {
@@ -109,7 +151,8 @@ function repositoryFullNameOf(repositoryUrl: string): { fullName: string; cloneU
  *
  * @param database - Database.
  * @param input - Validated project fields.
- * @param creator - Creating user and whether they are an admin.
+ * @param creator - Creating user, whether they are an admin and, for an environment such as
+ *   staging, the production project it belongs to.
  * @returns The new project.
  * @throws {ProjectSlugTakenError} When the slug is already used.
  * @throws {NoServerAvailableError} When no server accepts new applications.
@@ -117,8 +160,17 @@ function repositoryFullNameOf(repositoryUrl: string): { fullName: string; cloneU
 export function createProject(
   database: Database,
   input: ProjectInput,
-  creator: { readonly actor: Actor; readonly userId: string | null; readonly isAdmin: boolean },
+  creator: {
+    readonly actor: Actor;
+    readonly userId: string | null;
+    readonly isAdmin: boolean;
+    readonly environment?: {
+      readonly parentProjectId: string;
+      readonly environmentName: "staging";
+    };
+  },
 ): Project {
+  const { environment } = creator;
   const repository = repositoryFullNameOf(input.repositoryUrl);
   const projectId = Bun.randomUUIDv7();
   const now = new Date().toISOString();
@@ -140,6 +192,8 @@ export function createProject(
           serverId,
           deploymentsApproved: creator.isAdmin,
           createdByUserId: creator.userId,
+          parentProjectId: environment?.parentProjectId ?? null,
+          environmentName: environment?.environmentName ?? null,
           createdAt: now,
           updatedAt: now,
         })
@@ -171,6 +225,10 @@ export function createProject(
  * @returns The updated project.
  * @throws {ProjectNotFoundError} When the project does not exist.
  * @throws {ProjectSlugTakenError} When the new slug is used by another project.
+ * @throws {ReplicasNeedNoVolumesError} When more than one replica is asked for a project that
+ * mounts volumes, which replicas writing at once would corrupt.
+ * @throws {ComposeNeedsNoVolumesError} When a project that mounts volumes switches to Docker
+ * Compose, whose services keep data in their own named volumes.
  */
 export function updateProject(
   database: Database | Transaction,
@@ -190,6 +248,12 @@ export function updateProject(
       const current = findActiveProjectRow(transaction, projectId);
       if (isSlugTaken(transaction, input.slug, projectId)) {
         throw new ProjectSlugTakenError(input.slug);
+      }
+      if (input.replicas > 1 && mountsVolumes(transaction, projectId)) {
+        throw new ReplicasNeedNoVolumesError(projectId);
+      }
+      if (input.builder === "compose" && mountsVolumes(transaction, projectId)) {
+        throw new ComposeNeedsNoVolumesError(projectId);
       }
       // A different repository is different code, so a non-admin change needs new approval.
       const repositoryChanged = current.repositoryFullName !== repository.fullName;
@@ -266,37 +330,60 @@ export function requestProjectDeletion(database: Database, projectId: string, ac
   database.transaction(
     (transaction) => {
       const project = findActiveProjectRow(transaction, projectId);
-      const now = new Date();
-      transaction
-        .update(tables.projects)
-        .set({ deletionRequestedAt: now.toISOString(), autoDeploy: false })
-        .where(eq(tables.projects.id, projectId))
-        .run();
-      transaction
-        .update(tables.tasks)
-        .set({ enabled: false })
-        .where(eq(tables.tasks.projectId, projectId))
-        .run();
-      enqueueJob(
-        transaction,
-        {
-          kind: "project_cleanup",
-          projectId,
-          dedupeKey: `cleanup:${projectId}`,
-          maxAttempts: CLEANUP_MAX_ATTEMPTS,
-        },
-        now,
-      );
-      recordAuditEvent(transaction, {
-        actor,
-        action: "project.delete",
-        targetType: "project",
-        targetId: projectId,
-        metadata: { slug: project.slug },
-      });
+      markForDeletion(transaction, { id: projectId, slug: project.slug }, actor);
+      // The environments of a production project, such as its staging, go with it.
+      const environments = transaction
+        .select({ id: tables.projects.id, slug: tables.projects.slug })
+        .from(tables.projects)
+        .where(
+          and(
+            eq(tables.projects.parentProjectId, projectId),
+            isNull(tables.projects.deletionRequestedAt),
+          ),
+        )
+        .all();
+      for (const environment of environments) {
+        markForDeletion(transaction, environment, actor);
+      }
     },
     { behavior: "immediate" },
   );
+}
+
+function markForDeletion(
+  transaction: Transaction,
+  project: { readonly id: string; readonly slug: string },
+  actor: Actor,
+): void {
+  const projectId = project.id;
+  const now = new Date();
+  transaction
+    .update(tables.projects)
+    .set({ deletionRequestedAt: now.toISOString(), autoDeploy: false })
+    .where(eq(tables.projects.id, projectId))
+    .run();
+  transaction
+    .update(tables.tasks)
+    .set({ enabled: false })
+    .where(eq(tables.tasks.projectId, projectId))
+    .run();
+  enqueueJob(
+    transaction,
+    {
+      kind: "project_cleanup",
+      projectId,
+      dedupeKey: `cleanup:${projectId}`,
+      maxAttempts: CLEANUP_MAX_ATTEMPTS,
+    },
+    now,
+  );
+  recordAuditEvent(transaction, {
+    actor,
+    action: "project.delete",
+    targetType: "project",
+    targetId: projectId,
+    metadata: { slug: project.slug },
+  });
 }
 
 /**

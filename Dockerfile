@@ -14,8 +14,22 @@ RUN bun run build
 FROM dependencies AS production-dependencies
 RUN rm -rf node_modules && bun install --frozen-lockfile --ignore-scripts --production
 
-# The worker shells out to the docker CLI (with BuildKit) and git; the web never uses them.
+# The worker shells out to the docker CLI (with BuildKit and Compose) and git; the web never uses them.
 FROM docker:29-cli AS docker-cli
+
+# Railpack plans the builds of projects without a Dockerfile. Keep the version and checksums in
+# sync with RAILPACK_VERSION in src/docker/docker.commands.ts and src/servers/install-script.ts.
+FROM docker-cli AS railpack
+ARG TARGETARCH
+RUN set -eu; \
+  case "$TARGETARCH" in \
+    amd64) arch=x86_64; sum=248a8f60f36854aabed6124113631078a802de3461660855fc4de9c26065c1fb ;; \
+    arm64) arch=arm64; sum=732ece14eb4f4676a43ebba19431f954edf7b130acb76159ef0f2ff86ac42ac9 ;; \
+    *) echo "Railpack has no build for $TARGETARCH" >&2; exit 1 ;; \
+  esac; \
+  wget -qO /tmp/railpack.tar.gz "https://github.com/railwayapp/railpack/releases/download/v0.43.0/railpack-v0.43.0-$arch-unknown-linux-musl.tar.gz"; \
+  echo "$sum  /tmp/railpack.tar.gz" | sha256sum -c -; \
+  tar -xzf /tmp/railpack.tar.gz -C /usr/local/bin railpack
 
 FROM oven/bun:1.4.4-slim AS runtime
 RUN apt-get update \
@@ -23,6 +37,8 @@ RUN apt-get update \
   && rm -rf /var/lib/apt/lists/*
 COPY --from=docker-cli /usr/local/bin/docker /usr/local/bin/docker
 COPY --from=docker-cli /usr/local/libexec/docker/cli-plugins/docker-buildx /usr/local/libexec/docker/cli-plugins/docker-buildx
+COPY --from=docker-cli /usr/local/libexec/docker/cli-plugins/docker-compose /usr/local/libexec/docker/cli-plugins/docker-compose
+COPY --from=railpack /usr/local/bin/railpack /usr/local/bin/railpack
 WORKDIR /app
 ENV NODE_ENV=production \
   DATABASE_PATH=/data/nelcota.db \

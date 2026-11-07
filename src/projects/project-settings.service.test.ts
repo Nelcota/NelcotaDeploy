@@ -10,6 +10,68 @@ import { getProject } from "./project.service";
 
 const EDITOR = { actor: TEST_ACTOR, isAdmin: true };
 
+test("partial pages preserve Railpack, replicas and automatic rollback settings", () => {
+  const database = openMemoryDatabase();
+  using _connection = database.$client;
+  const project = createTestProject(database, {
+    builder: "railpack",
+    replicas: 3,
+    autoRollback: false,
+  });
+  for (const change of [
+    { section: "identity", project: { name: "Renamed", slug: project.slug } },
+    { section: "build", project: { dockerfilePath: "Dockerfile", buildContext: "." } },
+    {
+      section: "automation",
+      project: { autoDeploy: false, autoApplyChanges: false, previewsEnabled: false },
+    },
+  ]) {
+    updateProjectSettings(database, {
+      projectId: project.id,
+      editor: EDITOR,
+      change: projectSettingsChangeSchema.parse(change),
+    });
+  }
+  expect(getProject(database, project.id)).toMatchObject({
+    builder: "railpack",
+    replicas: 3,
+    autoRollback: false,
+  });
+});
+
+test("build pages save Compose settings and reject incompatible previews atomically", () => {
+  const database = openMemoryDatabase();
+  using _connection = database.$client;
+  const project = createTestProject(database, { internalPort: 8080 });
+  const change = projectSettingsChangeSchema.parse({
+    section: "build",
+    project: {
+      builder: "compose",
+      dockerfilePath: "Dockerfile",
+      buildContext: ".",
+      composeFilePath: "deploy/compose.yaml",
+      composeService: "web",
+    },
+  });
+  const saved = updateProjectSettings(database, { projectId: project.id, editor: EDITOR, change });
+  expect(saved).toMatchObject({
+    builder: "compose",
+    composeFilePath: "deploy/compose.yaml",
+    composeService: "web",
+  });
+  expect(() =>
+    updateProjectSettings(database, {
+      projectId: project.id,
+      editor: EDITOR,
+      change: {
+        section: "automation",
+        project: { autoDeploy: true, autoApplyChanges: true, previewsEnabled: true },
+      },
+    }),
+  ).toThrow("Compose");
+  expect(getProject(database, project.id).previewsEnabled).toBe(false);
+});
+
 test("saving a stale identity page preserves the latest build, repository and automation", () => {
   const database = openMemoryDatabase();
   using _database = { [Symbol.dispose]: () => database.$client.close() };

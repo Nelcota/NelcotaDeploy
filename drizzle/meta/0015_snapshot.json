@@ -1,8 +1,8 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "103bc768-61e3-4f54-8cab-a9c78f6e5297",
-  "prevId": "28168b59-b691-46f2-afcd-8534f4458c77",
+  "id": "183e569f-cc57-4a5d-a4cb-619399abbce9",
+  "prevId": "9393dfcc-3d28-434a-b076-ad19b1d52341",
   "tables": {
     "account": {
       "name": "account",
@@ -704,12 +704,10 @@
           ],
           "isUnique": false
         },
-        "deployments_preview_created_idx": {
-          "name": "deployments_preview_created_idx",
+        "deployments_preview_idx": {
+          "name": "deployments_preview_idx",
           "columns": [
-            "preview_id",
-            "created_at",
-            "id"
+            "preview_id"
           ],
           "isUnique": false
         }
@@ -1610,14 +1608,6 @@
             "created_at"
           ],
           "isUnique": false
-        },
-        "runtime_logs_deployment_id_idx": {
-          "name": "runtime_logs_deployment_id_idx",
-          "columns": [
-            "deployment_id",
-            "id"
-          ],
-          "isUnique": false
         }
       },
       "foreignKeys": {
@@ -1736,6 +1726,13 @@
             "server_id"
           ],
           "isUnique": false
+        },
+        "container_snapshots_deployment_id_idx": {
+          "name": "container_snapshots_deployment_id_idx",
+          "columns": [
+            "deployment_id"
+          ],
+          "isUnique": false
         }
       },
       "foreignKeys": {
@@ -1753,6 +1750,44 @@
           "onUpdate": "no action"
         }
       },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "health_alerts": {
+      "name": "health_alerts",
+      "columns": {
+        "key": {
+          "name": "key",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "title": {
+          "name": "title",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "text": {
+          "name": "text",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "opened_at": {
+          "name": "opened_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "checkConstraints": {}

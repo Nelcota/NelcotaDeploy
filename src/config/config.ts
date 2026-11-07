@@ -20,6 +20,9 @@ const DEPLOYMENT_LOG_RETENTION_DAYS_RANGE: IntegerRange = { min: 1, max: 365, fa
 const IMAGES_KEPT_PER_PROJECT_RANGE: IntegerRange = { min: 1, max: 50, fallback: 5 };
 const BACKUPS_KEPT_RANGE: IntegerRange = { min: 1, max: 365, fallback: 7 };
 const OFFSITE_BACKUPS_KEPT_RANGE: IntegerRange = { min: 1, max: 3650, fallback: 30 };
+const BUILD_CACHE_MAX_GB_RANGE: IntegerRange = { min: 1, max: 1000, fallback: 10 };
+const BUILD_CACHE_RETENTION_DAYS_RANGE: IntegerRange = { min: 1, max: 365, fallback: 7 };
+const AUTO_ROLLBACK_WINDOW_MINUTES_RANGE: IntegerRange = { min: 0, max: 60, fallback: 5 };
 // Folders ending in "/"; a "." or ".." folder would make keys that read like relative paths.
 const S3_PREFIX_PATTERN = /^(?:(?!\.{1,2}\/)[A-Za-z0-9._-]+\/)*$/;
 
@@ -64,6 +67,7 @@ const configSchema = z
     GITHUB_WEBHOOK_SECRET: z.string().min(1).optional(),
     DOCKER_BINARY: z.string().trim().min(1).default("docker"),
     GIT_BINARY: z.string().trim().min(1).default("git"),
+    RAILPACK_BINARY: z.string().trim().min(1).default("railpack"),
     DOCKER_NETWORK: z
       .string()
       .regex(/^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,62}$/)
@@ -84,6 +88,12 @@ const configSchema = z
     RUNTIME_LOG_RETENTION_LINES: boundedInteger(RUNTIME_LOG_RETENTION_LINES_RANGE),
     DEPLOYMENT_LOG_RETENTION_DAYS: boundedInteger(DEPLOYMENT_LOG_RETENTION_DAYS_RANGE),
     IMAGES_KEPT_PER_PROJECT: boundedInteger(IMAGES_KEPT_PER_PROJECT_RANGE),
+    // The daily cleanup keeps at most this much build cache per server, in GB.
+    BUILD_CACHE_MAX_GB: boundedInteger(BUILD_CACHE_MAX_GB_RANGE),
+    // Build cache unused for longer than this is removed by the daily cleanup.
+    BUILD_CACHE_RETENTION_DAYS: boundedInteger(BUILD_CACHE_RETENTION_DAYS_RANGE),
+    // A new version whose containers keep restarting within these minutes is rolled back; 0 turns it off.
+    AUTO_ROLLBACK_WINDOW_MINUTES: boundedInteger(AUTO_ROLLBACK_WINDOW_MINUTES_RANGE),
     // Daily database copies; the directory defaults to "backups" next to the database file.
     BACKUP_DIR: z.string().trim().min(1).optional(),
     BACKUPS_KEPT: boundedInteger(BACKUPS_KEPT_RANGE),

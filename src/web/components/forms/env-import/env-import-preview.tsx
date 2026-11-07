@@ -2,7 +2,7 @@ import type { EnvironmentVariableView } from "@/environments";
 import {
   suggestedVariableKind,
   type EnvironmentImportInput,
-} from "@/shared/schemas/environment-import.schema";
+} from "@/shared/schemas/environment/environment-import.schema";
 
 /** Reviews replacements and encryption without echoing credentials into the preview. */
 export function EnvImportPreview({

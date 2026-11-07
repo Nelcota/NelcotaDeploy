@@ -54,6 +54,8 @@ const shortDayFormat = new Intl.DateTimeFormat(LOCALE, {
 });
 const CALENDAR_DAY = /^\d{4}-\d{2}-\d{2}$/;
 const numberFormat = new Intl.NumberFormat(LOCALE, { maximumFractionDigits: 1 });
+const coreFormat = new Intl.NumberFormat(LOCALE, { maximumFractionDigits: 2 });
+const MILLICORES_PER_CORE = 1000;
 const percentFormat = new Intl.NumberFormat(LOCALE, {
   style: "percent",
   maximumFractionDigits: 1,
@@ -237,6 +239,21 @@ export function formatPercent(percent: number | null | undefined): string {
  */
 export function pluralize(count: number, singular: string, plural: string): string {
   return `${count} ${count === 1 ? singular : plural}`;
+}
+
+/**
+ * Formats a CPU limit as "0,25 núcleo" or "2 núcleos".
+ *
+ * @param millicores - Limit in thousandths of a core.
+ * @returns The number of cores in Portuguese, or "—" when the value is not finite.
+ */
+export function formatCpuCores(millicores: number): string {
+  if (Number.isFinite(millicores) === false) {
+    return UNAVAILABLE;
+  }
+  const cores = millicores / MILLICORES_PER_CORE;
+  // Fractions read as singular in Portuguese ("0,5 núcleo"); 2 or more is plural.
+  return `${coreFormat.format(cores)} ${cores >= 2 ? "núcleos" : "núcleo"}`;
 }
 
 /**

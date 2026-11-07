@@ -11,7 +11,7 @@ import { mapInSequence } from "./sequence";
 
 const PORT = Number(process.env["UI_REVIEW_PORT"] ?? "3199");
 const BASE_URL = `http://localhost:${PORT}`;
-const OUTPUT_DIRECTORY = resolve("ui-review-output");
+const OUTPUT_DIRECTORY = resolve("ui-review-output/full-review");
 const SERVER_START_TIMEOUT_IN_MS = 120_000;
 const POLL_INTERVAL_IN_MS = 500;
 const REQUEST_TIMEOUT_IN_MS = 2000;
@@ -78,6 +78,7 @@ function pagesFor(
       signedIn: true,
     },
     { name: "projeto-tasks", path: `${project}/tasks`, signedIn: true },
+    { name: "projeto-console", path: `${project}/console`, signedIn: true },
     { name: "task-history", path: `${project}/tasks/${resources.taskId}/history`, signedIn: true },
     ...[
       "identity",
@@ -104,20 +105,27 @@ function pagesFor(
     { name: "admin-tokens", path: "/settings/tokens", signedIn: true },
     { name: "admin-auditoria", path: "/settings/audit", signedIn: true },
     { name: "webhook-deliveries", path: "/settings/webhooks", signedIn: true },
-    ...dialogsFor(project),
+    { name: "project-settings-team", path: `${project}/settings/access/team`, signedIn: true },
+    {
+      name: "project-settings-staging",
+      path: `${project}/settings/environments/staging`,
+      signedIn: true,
+    },
+    ...dialogsFor(project, resources.databaseId),
   ];
 }
 
 /** Modals, opened by clicking the button named in `opens` on their page. */
-function dialogsFor(project: string) {
+function dialogsFor(project: string, databaseId: string) {
   return [
     ["modal-adicionar-servidor", "/settings/servers", "Adicionar servidor"],
-    ["modal-remover-servidor", "/settings/servers", "Remover"],
-    ["modal-novo-token", "/settings/tokens", "Novo token"],
+    ["modal-remover-servidor", "/settings/servers", "Remover servidor do painel"],
+    ["modal-novo-token", "/settings/tokens", "Configurar token de API"],
     ["modal-novo-usuario", "/settings/users", "Novo usuário"],
     ["modal-nova-variavel", `${project}/environment`, "Nova variável"],
-    ["modal-importar-env", `${project}/environment/import`, "Importar .env"],
-    ["modal-nova-task", `${project}/tasks`, "Nova task"],
+    ["modal-importar-env", `${project}/environment/import`, "Selecionar ou colar arquivo .env"],
+    ["modal-nova-task", `${project}/tasks`, "Nova tarefa"],
+    ["modal-restaurar-banco", `${project}/databases/${databaseId}/restore`, "Revisar restauração"],
     ["modal-busca", "/", "Buscar projetos e páginas"],
   ].map(([name = "", path = "", opens = ""]) => ({ name, path, signedIn: true, opens }));
 }
@@ -180,6 +188,7 @@ async function signIn(page: Page, email: string, password: string): Promise<void
   await page.getByRole("button", { name: "Entrar" }).click();
   try {
     await page.waitForURL(`${BASE_URL}/`);
+    await page.waitForLoadState("networkidle");
   } catch (error) {
     await page.screenshot({ path: join(OUTPUT_DIRECTORY, "login-failed.png") });
     const shown = await page

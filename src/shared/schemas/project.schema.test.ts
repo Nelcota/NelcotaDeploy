@@ -158,3 +158,86 @@ describe("slugify", () => {
     expect(slugify("!!!")).toBe("");
   });
 });
+
+describe("projectInputSchema resource limits", () => {
+  test("leaves the container unlimited when the limits are absent", () => {
+    const result = projectInputSchema.parse(validInput);
+
+    expect(result.memoryLimitInMb).toBeNull();
+    expect(result.cpuLimitInMillicores).toBeNull();
+  });
+
+  test("reads blank limits as no limit", () => {
+    const result = projectInputSchema.parse({
+      ...validInput,
+      memoryLimitInMb: "",
+      cpuLimitInMillicores: "",
+    });
+
+    expect(result.memoryLimitInMb).toBeNull();
+  });
+
+  test("accepts limits typed as text", () => {
+    const result = projectInputSchema.parse({
+      ...validInput,
+      memoryLimitInMb: "512",
+      cpuLimitInMillicores: "500",
+    });
+
+    expect(result.memoryLimitInMb).toBe(512);
+    expect(result.cpuLimitInMillicores).toBe(500);
+  });
+
+  test.each([["32"], ["-1"], ["1.5"], ["muito"], ["2000000"]])(
+    "rejects the memory limit %p",
+    (memoryLimitInMb) => {
+      expect(projectInputSchema.safeParse({ ...validInput, memoryLimitInMb }).success).toBe(false);
+    },
+  );
+});
+
+describe("projectInputSchema Docker Compose", () => {
+  const compose = { ...validInput, builder: "compose", composeService: "web" };
+
+  function issuePaths(input: Record<string, unknown>): string[] {
+    const result = projectInputSchema.safeParse(input);
+    return result.success ? [] : result.error.issues.map((issue) => String(issue.path[0]));
+  }
+
+  test("accepts a Compose project with its service and port", () => {
+    const result = projectInputSchema.parse(compose);
+
+    expect(result.composeService).toBe("web");
+    expect(result.composeFilePath).toBe("compose.yaml");
+  });
+
+  test("leaves the Compose service empty for other builders", () => {
+    expect(projectInputSchema.parse(validInput).composeService).toBeNull();
+  });
+
+  test("requires the service that receives the domains", () => {
+    expect(issuePaths({ ...compose, composeService: "" })).toContain("composeService");
+  });
+
+  test("requires the port of that service", () => {
+    expect(issuePaths({ ...compose, internalPort: "" })).toContain("internalPort");
+  });
+
+  test("refuses more than one replica", () => {
+    expect(issuePaths({ ...compose, replicas: "2" })).toContain("replicas");
+  });
+
+  test("refuses pull request previews", () => {
+    expect(issuePaths({ ...compose, previewsEnabled: true })).toContain("previewsEnabled");
+  });
+
+  test.each([["Web"], ["-web"], ["web app"]])("refuses the service name %p", (composeService) => {
+    expect(issuePaths({ ...compose, composeService })).toContain("composeService");
+  });
+
+  test("refuses a Compose file outside the repository", () => {
+    expect(issuePaths({ ...compose, composeFilePath: "../compose.yaml" })).toContain(
+      "composeFilePath",
+    );
+  });
+});

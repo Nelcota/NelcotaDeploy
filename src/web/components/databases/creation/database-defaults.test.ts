@@ -76,6 +76,9 @@ test.each([
   [["REDIS_URL"], "redis"],
   [["REDIS_URL", "DATABASE_URL"], "postgres"],
   [["POSTGRES_URL"], "postgres"],
+  [["APP_MYSQL_URL"], "mysql"],
+  [["APP_MONGODB_URL"], "mongodb"],
+  [["MYSQL_URL", "MONGODB_URL"], "postgres"],
 ] as const)("detects the initial engine for %p", (templateKeys, expected) => {
   expect(detectDatabaseEngine({ usedKeys: [], templateKeys })).toBe(expected);
 });

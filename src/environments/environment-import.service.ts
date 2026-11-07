@@ -5,7 +5,7 @@ import {
   environmentImportSchema,
   type EnvironmentImportInput,
   suggestedVariableKind,
-} from "@/shared/schemas/environment-import.schema";
+} from "@/shared/schemas/environment/environment-import.schema";
 
 import {
   listEnvironmentVariables,

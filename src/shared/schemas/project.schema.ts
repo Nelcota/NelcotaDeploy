@@ -6,6 +6,14 @@ const MAX_RELATIVE_PATH_LENGTH = 200;
 const MAX_BRANCH_LENGTH = 200;
 const MAX_PORT = 65_535;
 const MAX_TOKEN_LENGTH = 512;
+/** How a project's image can be built. */
+export const PROJECT_BUILDERS = ["dockerfile", "railpack", "compose"] as const;
+
+export type ProjectBuilder = (typeof PROJECT_BUILDERS)[number];
+const DEFAULT_COMPOSE_FILE = "compose.yaml";
+const MAX_COMPOSE_SERVICE_LENGTH = 63;
+// Lowercase Compose service names, so the container Compose creates has a predictable name.
+const COMPOSE_SERVICE_PATTERN = /^[a-z0-9][a-z0-9_.-]*$/;
 /** Smallest memory limit Docker accepts with room for a real application, in MiB. */
 export const MIN_MEMORY_LIMIT_IN_MB = 64;
 export const MAX_MEMORY_LIMIT_IN_MB = 1_048_576;
@@ -13,6 +21,8 @@ export const MAX_MEMORY_LIMIT_IN_MB = 1_048_576;
 export const CPU_LIMIT_OPTIONS_IN_MILLICORES = [250, 500, 1000, 2000, 4000, 8000] as const;
 export const MIN_CPU_LIMIT_IN_MILLICORES = 100;
 export const MAX_CPU_LIMIT_IN_MILLICORES = 256_000;
+/** Most containers one deployment runs behind the load balancer. */
+export const MAX_REPLICAS = 10;
 
 const SLUG_PATTERN = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/;
 const GITHUB_URL_PATTERN =
@@ -150,7 +160,7 @@ const healthCheckPathSchema = z
   })
   .transform((value) => (value === "" ? null : value));
 
-/** A whole number between the bounds, or blank for none. */
+/** A whole number between the bounds, or blank or absent for none, as before limits existed. */
 function optionalLimit(bounds: {
   readonly min: number;
   readonly max: number;
@@ -172,46 +182,101 @@ function optionalLimit(bounds: {
 }
 
 /** Fields accepted when creating or editing a project. */
-export const projectInputSchema = z.object({
-  name: trimmedText(MAX_NAME_LENGTH),
-  slug: projectSlugSchema,
-  repositoryUrl: repositoryUrlSchema,
-  branch: z.string().trim().refine(isValidBranchName, { message: "Nome de branch inválido" }),
-  dockerfilePath: relativePathSchema,
-  buildContext: z
-    .string()
-    .trim()
-    .refine((value) => value === "." || isSafeRelativePath(value), {
-      message: "Use um caminho relativo dentro do repositório",
+export const projectInputSchema = z
+  .object({
+    name: trimmedText(MAX_NAME_LENGTH),
+    slug: projectSlugSchema,
+    repositoryUrl: repositoryUrlSchema,
+    branch: z.string().trim().refine(isValidBranchName, { message: "Nome de branch inválido" }),
+    /** The repository's Dockerfile, or Railpack detecting the stack; Dockerfile when absent. */
+    builder: z.enum(PROJECT_BUILDERS).default("dockerfile"),
+    dockerfilePath: relativePathSchema,
+    buildContext: z
+      .string()
+      .trim()
+      .refine((value) => value === "." || isSafeRelativePath(value), {
+        message: "Use um caminho relativo dentro do repositório",
+      }),
+    // Blank means automatic: each build reads it from the Dockerfile's EXPOSE.
+    internalPort: z.union([
+      z
+        .literal("")
+        .or(z.null())
+        .transform(() => null),
+      z.coerce
+        .number()
+        .int("Informe um número inteiro")
+        .min(1, "A porta deve ser maior que 0")
+        .max(MAX_PORT, `A porta deve ser no máximo ${MAX_PORT}`),
+    ]),
+    healthCheckPath: healthCheckPathSchema,
+    autoDeploy: z.boolean(),
+    autoApplyChanges: z.boolean(),
+    /** Rolls back on its own a new version whose containers keep restarting; on when absent. */
+    autoRollback: z.boolean().default(true),
+    previewsEnabled: z.boolean(),
+    // Blank means no limit, as Docker runs containers by default.
+    memoryLimitInMb: optionalLimit({
+      min: MIN_MEMORY_LIMIT_IN_MB,
+      max: MAX_MEMORY_LIMIT_IN_MB,
+      rangeMessage: "Use pelo menos 64 MB",
     }),
-  // Blank means automatic: each build reads it from the Dockerfile's EXPOSE.
-  internalPort: z.union([
-    z
-      .literal("")
-      .or(z.null())
-      .transform(() => null),
-    z.coerce
+    cpuLimitInMillicores: optionalLimit({
+      min: MIN_CPU_LIMIT_IN_MILLICORES,
+      max: MAX_CPU_LIMIT_IN_MILLICORES,
+      rangeMessage: "Limite de CPU inválido",
+    }),
+    /** Containers of each deployment the proxy balances requests between; one when absent. */
+    replicas: z.coerce
       .number()
       .int("Informe um número inteiro")
-      .min(1, "A porta deve ser maior que 0")
-      .max(MAX_PORT, `A porta deve ser no máximo ${MAX_PORT}`),
-  ]),
-  healthCheckPath: healthCheckPathSchema,
-  autoDeploy: z.boolean(),
-  autoApplyChanges: z.boolean(),
-  previewsEnabled: z.boolean(),
-  // Blank means no limit, as Docker runs containers by default.
-  memoryLimitInMb: optionalLimit({
-    min: MIN_MEMORY_LIMIT_IN_MB,
-    max: MAX_MEMORY_LIMIT_IN_MB,
-    rangeMessage: "Use pelo menos 64 MB",
-  }),
-  cpuLimitInMillicores: optionalLimit({
-    min: MIN_CPU_LIMIT_IN_MILLICORES,
-    max: MAX_CPU_LIMIT_IN_MILLICORES,
-    rangeMessage: "Limite de CPU inválido",
-  }),
-});
+      .min(1, `Use de 1 a ${MAX_REPLICAS} réplicas`)
+      .max(MAX_REPLICAS, `Use de 1 a ${MAX_REPLICAS} réplicas`)
+      .default(1),
+    /** Compose file of a project built with Docker Compose, relative to the repository. */
+    composeFilePath: relativePathSchema.default(DEFAULT_COMPOSE_FILE),
+    /** Compose service that receives the project's domains; only for Docker Compose. */
+    composeService: z
+      .string()
+      .trim()
+      .max(MAX_COMPOSE_SERVICE_LENGTH)
+      .refine((value) => value === "" || COMPOSE_SERVICE_PATTERN.test(value), {
+        message: "Use letras minúsculas, números, ., _ e -",
+      })
+      .or(z.null())
+      .transform((value) => (value == null || value === "" ? null : value))
+      .default(null),
+  })
+  .superRefine((project, context) => {
+    if (project.builder !== "compose") {
+      return;
+    }
+    // Compose recreates the services in place under one project name, so there is a single
+    // copy of each service and no per-pull-request stack.
+    const rules = [
+      [
+        project.composeService == null,
+        "composeService",
+        "Informe o serviço que recebe os domínios",
+      ],
+      [
+        project.internalPort == null,
+        "internalPort",
+        "Informe a porta do serviço que recebe os domínios",
+      ],
+      [project.replicas !== 1, "replicas", "Projetos Docker Compose usam 1 réplica"],
+      [
+        project.previewsEnabled,
+        "previewsEnabled",
+        "Projetos Docker Compose não têm previews de pull request",
+      ],
+    ] as const;
+    for (const [broken, path, message] of rules) {
+      if (broken) {
+        context.addIssue({ code: "custom", path: [path], message });
+      }
+    }
+  });
 
 export type ProjectInput = z.infer<typeof projectInputSchema>;
 

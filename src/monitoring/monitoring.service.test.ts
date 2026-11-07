@@ -6,6 +6,8 @@ import { type Database, openMemoryDatabase, tables } from "@/db";
 import { createTestProject } from "@/testing";
 
 import {
+  combineSamplesByProject,
+  highestRestartCounts,
   listHostSamples,
   listMoveLeftovers,
   listProjectSamples,
@@ -15,6 +17,110 @@ import {
 const OLD_SERVER = "local";
 const NEW_SERVER = "apps";
 const NOW = "2026-10-29T12:00:00.000Z";
+
+describe("highestRestartCounts", () => {
+  test("reports the most restarted container of each deployment", () => {
+    const database = openMemoryDatabase();
+    const projectId = createTestProject(database).id;
+    const [first, second] = ["d1", "d2"].map((id) => {
+      database
+        .insert(tables.deployments)
+        .values({
+          id,
+          projectId,
+          trigger: "manual",
+          triggeredByLabel: "test",
+          branch: "main",
+          status: "succeeded",
+          createdAt: NOW,
+        })
+        .run();
+      return id;
+    });
+    const snapshot = {
+      projectId,
+      image: "nelcota/api",
+      state: "running",
+      health: null,
+      startedAt: NOW,
+      observedAt: NOW,
+    };
+    replaceContainerSnapshots(database, OLD_SERVER, [
+      { ...snapshot, containerId: "a", name: "a", deploymentId: first ?? "", restartCount: 1 },
+      { ...snapshot, containerId: "b", name: "b", deploymentId: first ?? "", restartCount: 4 },
+      { ...snapshot, containerId: "c", name: "c", deploymentId: second ?? "", restartCount: 0 },
+    ]);
+
+    const counts = highestRestartCounts(database, ["d1", "d2"]);
+
+    expect(counts).toEqual(
+      new Map([
+        ["d1", 4],
+        ["d2", 0],
+      ]),
+    );
+  });
+
+  test("returns nothing for no deployments", () => {
+    expect(highestRestartCounts(openMemoryDatabase(), [])).toEqual(new Map());
+  });
+
+  test("leaves out deployments without containers", () => {
+    const database = openMemoryDatabase();
+
+    expect(highestRestartCounts(database, ["missing"]).size).toBe(0);
+  });
+});
+
+describe("combineSamplesByProject", () => {
+  test("adds up the replicas of a project into one sample", () => {
+    const replica = {
+      projectId: "api",
+      cpuPercent: 10,
+      memoryUsedBytes: 100,
+      memoryTotalBytes: 1000,
+    };
+
+    const combined = combineSamplesByProject([replica, { ...replica, cpuPercent: 30 }]);
+
+    expect(combined).toEqual([
+      { projectId: "api", cpuPercent: 40, memoryUsedBytes: 200, memoryTotalBytes: 2000 },
+    ]);
+  });
+
+  test("keeps the projects apart", () => {
+    const sample = { cpuPercent: 1, memoryUsedBytes: 1, memoryTotalBytes: 1 };
+
+    const combined = combineSamplesByProject([
+      { projectId: "api", ...sample },
+      { projectId: "web", ...sample },
+    ]);
+
+    expect(combined.map((item) => item.projectId)).toEqual(["api", "web"]);
+  });
+
+  test("leaves a figure no replica reported as null", () => {
+    const replica = {
+      projectId: "api",
+      cpuPercent: null,
+      memoryUsedBytes: 5,
+      memoryTotalBytes: null,
+    };
+
+    const [combined] = combineSamplesByProject([replica, replica]);
+
+    expect(combined).toEqual({
+      projectId: "api",
+      cpuPercent: null,
+      memoryUsedBytes: 10,
+      memoryTotalBytes: null,
+    });
+  });
+
+  test("returns nothing for no samples", () => {
+    expect(combineSamplesByProject([])).toEqual([]);
+  });
+});
 
 test.each(["host", "container"] as const)(
   "keeps the newest readings when the %s metric window exceeds its limit",

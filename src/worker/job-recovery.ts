@@ -1,7 +1,9 @@
 import { eq } from "drizzle-orm";
 import type { Logger } from "pino";
 
+import { recoverConsoleJob } from "@/console";
 import {
+  recoverDatabaseJob,
   failDatabaseDeletion,
   findDatabaseBackup,
   findDatabaseRecord,
@@ -86,7 +88,7 @@ function recoverDeployment(
 }
 
 /**
- * Brings deployments and task executions of jobs interrupted by a crash back in line with
+ * Brings deployments, databases, backups and task executions interrupted by a crash back in line with
  * what the queue decided for them.
  *
  * @param database - Database.
@@ -99,6 +101,8 @@ export function handleRecoveredJobs(
   recovered: readonly RecoveredJob[],
 ): void {
   for (const job of recovered) {
+    recoverConsoleJob(database, job);
+    recoverDatabaseJob(database, job);
     const reason = job.reason ?? "The worker stopped while the operation was running";
     recoverResource(database, job, reason);
     logger.warn(

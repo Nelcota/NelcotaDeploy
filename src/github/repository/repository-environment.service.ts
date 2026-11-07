@@ -2,7 +2,7 @@ import { parseDotenv } from "@/shared/dotenv";
 import {
   MAX_IMPORT_ENTRIES,
   suggestedVariableKind,
-} from "@/shared/schemas/environment-import.schema";
+} from "@/shared/schemas/environment/environment-import.schema";
 import { isSafeRelativePath, isValidBranchName } from "@/shared/schemas/project.schema";
 
 import { GITHUB_API } from "../github-api";

@@ -1,3 +1,4 @@
+import { DatabaseIcon } from "lucide-react";
 import type { SVGProps } from "react";
 
 import type { DatabaseEngineName } from "@/shared/schemas/database.schema";
@@ -5,7 +6,7 @@ import type { DatabaseEngineName } from "@/shared/schemas/database.schema";
 // Marks and brand colors from Simple Icons (CC0), which traces them from each project's own
 // brand page. Both colors keep at least 3:1 contrast on the light and dark surfaces.
 const ENGINE_LOGOS: Readonly<
-  Record<DatabaseEngineName, { readonly path: string; readonly color: string }>
+  Partial<Record<DatabaseEngineName, { readonly path: string; readonly color: string }>>
 > = {
   postgres: {
     color: "#4169E1",
@@ -26,6 +27,9 @@ export function EngineLogo({
   "viewBox" | "children"
 >) {
   const logo = ENGINE_LOGOS[engine];
+  if (logo == null) {
+    return <DatabaseIcon aria-hidden {...props} />;
+  }
   return (
     <svg viewBox="0 0 24 24" aria-hidden {...props}>
       <path d={logo.path} fill={logo.color} />

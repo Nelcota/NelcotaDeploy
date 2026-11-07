@@ -241,3 +241,20 @@ export function parseStatsOutput(output: string): ContainerStats[] {
       };
     });
 }
+
+const RECLAIMED_PATTERN = /^\s*Total(?: reclaimed space)?:\s*([\d.]+\s*[A-Za-z]+)\s*$/m;
+
+/**
+ * Reads how much space a `docker buildx prune` or `docker image prune` freed.
+ *
+ * @param output - Standard output of the command.
+ * @returns Bytes freed; 0 when the output reports no total or an unreadable one.
+ */
+export function parseReclaimedBytes(output: string): number {
+  const total = RECLAIMED_PATTERN.exec(output)?.[1];
+  const bytes = total == null ? null : parseDockerSize(total);
+  if (bytes == null || Number.isSafeInteger(bytes) === false || bytes < 0) {
+    return 0;
+  }
+  return bytes;
+}

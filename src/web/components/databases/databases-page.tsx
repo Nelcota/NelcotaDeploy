@@ -72,7 +72,7 @@ function NoDatabasesRow() {
     <ListRow>
       <DatabaseIcon aria-hidden className="size-4 shrink-0 text-faint" />
       <p className="text-sm text-muted-foreground">
-        Nenhum banco de dados ainda. Crie um PostgreSQL ou Redis para o projeto.
+        Nenhum banco de dados ainda. Crie um PostgreSQL, MySQL, MongoDB ou Redis para o projeto.
       </p>
     </ListRow>
   );

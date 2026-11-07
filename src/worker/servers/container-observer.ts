@@ -10,6 +10,7 @@ import {
   type RuntimeLogEntry,
 } from "@/logs";
 import {
+  combineSamplesByProject,
   type ContainerSample,
   recordContainerSamples,
   replaceContainerSnapshots,
@@ -198,7 +199,10 @@ export class ContainerObserver implements Disposable {
         });
       }
     }
-    recordContainerSamples(this.#database, { serverId: this.#serverId, samples });
+    recordContainerSamples(this.#database, {
+      serverId: this.#serverId,
+      samples: combineSamplesByProject(samples),
+    });
   }
 
   /**

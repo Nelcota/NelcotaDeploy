@@ -4,6 +4,7 @@ import { ErrorState, ListSkeleton } from "@/web/components/layout/states";
 import { TabHeader } from "@/web/components/projects/project-header";
 import { type ProjectDetails, projectQueryOptions } from "@/web/components/projects/project-query";
 import { useCan } from "@/web/components/shell/use-permissions";
+import { StagingSection } from "@/web/components/staging/staging-section";
 
 import { DangerZone } from "./danger-zone";
 import { ProjectSettingsForm } from "./project-settings-form";
@@ -13,17 +14,36 @@ import {
 } from "./project-settings-navigation";
 import { RepositoryTokenSection } from "./repository-token-section";
 import { ServerSection } from "./server-section";
+import { TeamSection } from "./team/team-section";
 import { VolumesSection } from "./volumes/volumes-section";
 
 function SettingsContent({
   project,
   section,
+  environments,
 }: {
   readonly project: ProjectDetails["project"];
   readonly section: ProjectSettingsSection;
+  readonly environments: ProjectDetails["environments"];
 }) {
   const can = useCan();
   switch (section) {
+    case "team":
+      return project.parentProjectId == null ? (
+        <TeamSection projectId={project.id} />
+      ) : (
+        <p>A equipe é gerenciada no projeto de produção.</p>
+      );
+    case "staging":
+      return project.parentProjectId == null ? (
+        <StagingSection
+          projectId={project.id}
+          stagingId={environments.stagingId}
+          canEdit={can("project:write")}
+        />
+      ) : (
+        <p>Este projeto já é um ambiente de staging.</p>
+      );
     case "volumes":
       return (
         <VolumesSection
@@ -92,7 +112,11 @@ export function ProjectSettingsPage({
           Você pode ver estes ajustes, mas só quem tem permissão de edição pode alterá-los.
         </p>
       )}
-      <SettingsContent project={details.data.project} section={section} />
+      <SettingsContent
+        project={details.data.project}
+        environments={details.data.environments}
+        section={section}
+      />
     </div>
   );
 }

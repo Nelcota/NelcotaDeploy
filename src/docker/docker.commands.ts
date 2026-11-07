@@ -21,6 +21,11 @@ export const LABELS = {
    * which marks the containers of the project's deployments.
    */
   databaseProjectId: "io.nelcota.database-project-id",
+  /**
+   * Compose project a container, volume or network belongs to. Compose recreates its own
+   * services, so deployments leave these containers to it.
+   */
+  composeProject: "io.nelcota.compose-project",
   /** The reverse proxy the platform runs on a remote server. Never an application. */
   proxy: "io.nelcota.proxy",
   /** Version of the proxy's settings; a proxy with another version is replaced. */
@@ -90,6 +95,26 @@ export function imageTagFor(projectSlug: string, deploymentId: string): string {
 export function containerNameFor(projectSlug: string, deploymentId: string): string {
   assertMatches(projectSlug, SLUG_PATTERN, "project slug");
   return `nelcota-${projectSlug}-${shortId(deploymentId)}`;
+}
+
+/**
+ * Returns the container name of one replica of a deployment. The first replica keeps the
+ * deployment's own name, so a project with one replica runs exactly as before replicas.
+ *
+ * @param projectSlug - Validated project slug.
+ * @param deploymentId - Deployment UUID.
+ * @param replica - Replica number, from 1.
+ * @returns Container name, such as "nelcota-api-0a1b2c3d4e5f" or "nelcota-api-0a1b2c3d4e5f-2".
+ * @throws {InvalidDockerArgumentError} When the slug, the id or the replica number is malformed.
+ */
+export function replicaContainerNameFor(
+  projectSlug: string,
+  deploymentId: string,
+  replica: number,
+): string {
+  assertPositiveInteger(replica, "replica number");
+  const name = containerNameFor(projectSlug, deploymentId);
+  return replica === 1 ? name : `${name}-${replica}`;
 }
 
 /**
@@ -195,6 +220,138 @@ export function buildImageArgs(options: BuildImageOptions): string[] {
   ];
 }
 
+/**
+ * Railpack release the platform builds with. The frontend image must match the version of the
+ * railpack CLI that wrote the plan; the install script and the worker image pin the same one.
+ */
+export const RAILPACK_VERSION = "0.43.0";
+const RAILPACK_FRONTEND_IMAGE = `ghcr.io/railwayapp/railpack-frontend:v${RAILPACK_VERSION}`;
+const SECRETS_HASH_PATTERN = /^[a-f0-9]{64}$/;
+
+/** Ends the tag of the image Railpack produces, which waits for the platform labels. */
+const RAILPACK_BASE_SUFFIX = "-railpack";
+
+/**
+ * Returns the tag of the unlabelled image Railpack builds for a deployment's image.
+ *
+ * @param imageTag - Final image reference, from `imageTagFor`.
+ * @returns The reference with the Railpack suffix.
+ * @throws {InvalidDockerArgumentError} When the reference is malformed.
+ */
+export function railpackBaseTagFor(imageTag: string): string {
+  assertMatches(imageTag, IMAGE_REFERENCE_PATTERN, "image tag");
+  return `${imageTag}${RAILPACK_BASE_SUFFIX}`;
+}
+
+/**
+ * Tells whether a reference is an unlabelled Railpack image of the platform, the only kind
+ * removed without the platform label.
+ *
+ * @param imageTag - Image reference.
+ * @returns True for "nelcota/<slug>:<id>-railpack".
+ */
+export function isRailpackBaseTag(imageTag: string): boolean {
+  return (
+    IMAGE_REFERENCE_PATTERN.test(imageTag) &&
+    imageTag.startsWith(`${IMAGE_REPOSITORY}/`) &&
+    imageTag.endsWith(RAILPACK_BASE_SUFFIX)
+  );
+}
+
+/** Options for {@link railpackBuildArgs}. */
+export type RailpackBuildOptions = {
+  /** Plan written by `railpack prepare`. */
+  readonly planPath: string;
+  readonly contextPath: string;
+  /** Tag of the image Railpack produces, before the platform labels are added. */
+  readonly imageTag: string;
+  /** Build secrets passed by name; docker reads each value from its own environment. */
+  readonly secretKeys: readonly string[];
+  /** SHA-256 hex of the secret values, so a changed value rebuilds the layers that use it. */
+  readonly secretsHash: string;
+  /**
+   * Prefix of the build's cache mounts, such as the package manager caches. One per project,
+   * so a project never reads or fills another project's caches on a shared server.
+   */
+  readonly cacheKey: string;
+};
+
+const CACHE_KEY_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/;
+
+/**
+ * Builds `docker buildx build` arguments that build a Railpack plan with the Railpack
+ * frontend, on Docker's own BuildKit. Secret values never appear in the argument list.
+ *
+ * @param options - Plan, context, tag, secret names, their hash and the cache key.
+ * @returns Arguments after the docker binary.
+ * @throws {InvalidDockerArgumentError} When the tag, a secret name, the hash or the cache key
+ *   is malformed.
+ */
+export function railpackBuildArgs(options: RailpackBuildOptions): string[] {
+  assertMatches(options.imageTag, IMAGE_REFERENCE_PATTERN, "image tag");
+  assertMatches(options.secretsHash, SECRETS_HASH_PATTERN, "secrets hash");
+  assertMatches(options.cacheKey, CACHE_KEY_PATTERN, "cache key");
+  for (const key of options.secretKeys) {
+    if (isValidEnvironmentVariableKey(key) === false) {
+      throw new InvalidDockerArgumentError(`Invalid build secret name: ${JSON.stringify(key)}`);
+    }
+  }
+  return [
+    "buildx",
+    "build",
+    "--progress=plain",
+    "--load",
+    "--build-arg",
+    `BUILDKIT_SYNTAX=${RAILPACK_FRONTEND_IMAGE}`,
+    "--build-arg",
+    `secrets-hash=${options.secretsHash}`,
+    "--build-arg",
+    `cache-key=${options.cacheKey}`,
+    "--file",
+    options.planPath,
+    "--tag",
+    options.imageTag,
+    ...options.secretKeys.flatMap((key) => ["--secret", `id=${key},env=${key}`]),
+    "--",
+    options.contextPath,
+  ];
+}
+
+/**
+ * Builds `docker buildx prune` arguments that remove build cache unused for longer than the
+ * retention. Build cache carries no labels, so it is the whole builder's cache.
+ *
+ * @param retentionInHours - Cache used within this many hours stays; a positive integer.
+ * @returns Arguments after the docker binary.
+ * @throws {InvalidDockerArgumentError} When the retention is not a positive integer.
+ */
+export function staleBuildCachePruneArgs(retentionInHours: number): string[] {
+  assertPositiveInteger(retentionInHours, "build cache retention");
+  return ["buildx", "prune", "--force", "--filter", `until=${retentionInHours}h`];
+}
+
+/**
+ * Builds `docker buildx prune` arguments that shrink the build cache below a size, removing
+ * the least recently used records first.
+ *
+ * @param maxUsedSpaceInGb - Most cache kept, in GB; a positive integer.
+ * @returns Arguments after the docker binary.
+ * @throws {InvalidDockerArgumentError} When the size is not a positive integer.
+ */
+export function oversizedBuildCachePruneArgs(maxUsedSpaceInGb: number): string[] {
+  assertPositiveInteger(maxUsedSpaceInGb, "build cache size");
+  return ["buildx", "prune", "--force", "--max-used-space", `${maxUsedSpaceInGb}gb`];
+}
+
+/**
+ * Builds `docker image prune` arguments that remove dangling images of the platform only.
+ *
+ * @returns Arguments after the docker binary.
+ */
+export function danglingImagePruneArgs(): string[] {
+  return ["image", "prune", "--force", "--filter", `label=${LABELS.managed}=true`];
+}
+
 /** Options for {@link runContainerArgs}. */
 export type RunContainerOptions = {
   /** Memory in MiB; null or absent leaves it unlimited. */
@@ -211,11 +368,53 @@ export type RunContainerOptions = {
   readonly volumes: readonly { readonly name: string; readonly target: string }[];
   /** Arguments after the image, replacing its default command; the image's own when absent. */
   readonly command?: readonly string[];
+  /** Memory and CPU limits; a null or absent limit leaves the container unlimited. */
+  readonly resources?: ContainerResources;
 };
+
+/** Limits of a container. */
+export type ContainerResources = {
+  /** Memory in MiB, a positive integer; null for no limit. */
+  readonly memoryLimitInMb: number | null;
+  /** CPU in thousandths of a core, a positive integer; null for no limit. */
+  readonly cpuLimitInMillicores: number | null;
+};
+
+const MILLICORES_PER_CORE = 1000;
+const MILLICORE_DIGITS = 3;
+
+function assertPositiveInteger(value: number, what: string): void {
+  if (Number.isInteger(value) === false || value <= 0) {
+    throw new InvalidDockerArgumentError(`Invalid ${what}: ${value}`);
+  }
+}
+
+/**
+ * Builds the `--memory` and `--cpus` arguments of a container.
+ *
+ * @param resources - The limits, if any.
+ * @returns The arguments; empty without limits.
+ * @throws {InvalidDockerArgumentError} When a limit is not a positive integer.
+ */
+export function resourceArgs(resources: ContainerResources | undefined): string[] {
+  const args: string[] = [];
+  if (resources?.memoryLimitInMb != null) {
+    assertPositiveInteger(resources.memoryLimitInMb, "memory limit");
+    args.push("--memory", `${resources.memoryLimitInMb}m`);
+  }
+  if (resources?.cpuLimitInMillicores != null) {
+    const millicores = resources.cpuLimitInMillicores;
+    assertPositiveInteger(millicores, "CPU limit");
+    // Written from integers, so a limit such as 0.25 cores never goes through float rounding.
+    const cores = Math.floor(millicores / MILLICORES_PER_CORE);
+    const fraction = String(millicores % MILLICORES_PER_CORE).padStart(MILLICORE_DIGITS, "0");
+    args.push("--cpus", `${cores}.${fraction}`);
+  }
+  return args;
+}
 
 // Plain absolute path: no comma or "=", which would add options to the --mount value.
 const MOUNT_TARGET_PATTERN = /^(?:\/[A-Za-z0-9._-]+)+$/;
-const MILLICORES_PER_CORE = 1000;
 
 function resourceLimitArgs(options: RunContainerOptions): string[] {
   const args: string[] = [];
@@ -285,7 +484,7 @@ export function runContainerArgs(options: RunContainerOptions): string[] {
     ...labelArgs({ ...options.labels, "traefik.enable": "false" }),
     ...options.environmentKeys.flatMap((key) => ["--env", key]),
     ...mountArgs(options.volumes),
-    ...resourceLimitArgs(options),
+    ...(options.resources == null ? resourceLimitArgs(options) : resourceArgs(options.resources)),
     options.imageTag,
     ...(options.command ?? []),
   ];

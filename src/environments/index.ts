@@ -4,6 +4,7 @@ export {
 } from "./environment.errors";
 export { importEnvironmentVariables } from "./environment-import.service";
 export { readDeploymentSecrets, saveDeploymentSecrets } from "./deployment-secrets";
+export { readVariablesForCopy } from "./environment-copy";
 export {
   deleteEnvironmentVariable,
   type EnvironmentVariableView,

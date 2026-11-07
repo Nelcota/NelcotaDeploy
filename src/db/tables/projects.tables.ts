@@ -2,6 +2,7 @@ import {
   type AnySQLiteColumn,
   index,
   integer,
+  primaryKey,
   sqliteTable,
   text,
   uniqueIndex,
@@ -22,6 +23,10 @@ export const projects = sqliteTable(
     repositoryUrl: text("repository_url").notNull(),
     repositoryFullName: text("repository_full_name").notNull(),
     branch: text("branch").notNull(),
+    // How the image is built: the repository's Dockerfile, or Railpack detecting the stack.
+    builder: text("builder", { enum: ["dockerfile", "railpack", "compose"] })
+      .notNull()
+      .default("dockerfile"),
     dockerfilePath: text("dockerfile_path").notNull(),
     buildContext: text("build_context").notNull(),
     internalPort: integer("internal_port").notNull(),
@@ -31,11 +36,18 @@ export const projects = sqliteTable(
     autoDeploy: integer("auto_deploy", { mode: "boolean" }).notNull().default(false),
     // When set, saving variables or domains recreates the live container with them.
     autoApplyChanges: integer("auto_apply_changes", { mode: "boolean" }).notNull().default(true),
+    // When set, a new version whose containers keep restarting is rolled back on its own.
+    autoRollback: integer("auto_rollback", { mode: "boolean" }).notNull().default(true),
     // When set, pull requests to the project's branch get their own temporary deployment.
     previewsEnabled: integer("previews_enabled", { mode: "boolean" }).notNull().default(false),
     // Limits of the application container; null leaves it unlimited, as Docker does.
     memoryLimitInMb: integer("memory_limit_in_mb"),
     cpuLimitInMillicores: integer("cpu_limit_in_millicores"),
+    // Containers each production deployment runs; the proxy balances requests between them.
+    replicas: integer("replicas").notNull().default(1),
+    // Docker Compose projects: the file to run and the service that receives the domains.
+    composeFilePath: text("compose_file_path").notNull().default("compose.yaml"),
+    composeService: text("compose_service"),
     deploymentsApproved: integer("deployments_approved", { mode: "boolean" })
       .notNull()
       .default(false),
@@ -49,13 +61,43 @@ export const projects = sqliteTable(
     createdByUserId: text("created_by_user_id").references(() => users.id, {
       onDelete: "set null",
     }),
+    // Set on an environment of another project, such as its staging; null for production.
+    parentProjectId: text("parent_project_id").references((): AnySQLiteColumn => projects.id, {
+      // Each environment is deleted by its own cleanup job; the link only must not block it.
+      onDelete: "set null",
+    }),
+    environmentName: text("environment_name", { enum: ["staging"] }),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
   (table) => [
     index("projects_repository_full_name_idx").on(table.repositoryFullName),
+    uniqueIndex("projects_parent_environment_idx").on(table.parentProjectId, table.environmentName),
     index("projects_name_idx").on(table.name),
     index("projects_server_id_idx").on(table.serverId),
+  ],
+);
+
+/**
+ * Users other than admins who may open a production project. Its environments, such as
+ * staging, share the members of their production project.
+ */
+export const projectMembers = sqliteTable(
+  "project_members",
+  {
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    role: text("role", { enum: ["manager", "developer", "viewer"] }).notNull(),
+    addedByUserId: text("added_by_user_id").references(() => users.id, { onDelete: "set null" }),
+    createdAt: createdAt(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.projectId, table.userId] }),
+    index("project_members_user_id_idx").on(table.userId),
   ],
 );
 
@@ -138,7 +180,7 @@ export const projectDatabases = sqliteTable(
     projectId: text("project_id")
       .notNull()
       .references(() => projects.id, { onDelete: "cascade" }),
-    engine: text("engine", { enum: ["postgres", "redis"] }).notNull(),
+    engine: text("engine", { enum: ["postgres", "mysql", "mongodb", "redis"] }).notNull(),
     imageTag: text("image_tag").notNull(),
     // Variable of the project that receives the connection URL.
     environmentKey: text("environment_key").notNull(),
@@ -177,7 +219,7 @@ export const deployments = sqliteTable(
       ],
     }).notNull(),
     trigger: text("trigger", {
-      enum: ["manual", "webhook", "redeploy", "rollback", "mcp"],
+      enum: ["manual", "webhook", "redeploy", "rollback", "auto-rollback", "mcp", "promote"],
     }).notNull(),
     triggeredByUserId: text("triggered_by_user_id").references(() => users.id, {
       onDelete: "set null",
@@ -195,6 +237,10 @@ export const deployments = sqliteTable(
     // Fingerprint of the build-time variables baked into the image; a redeploy keeps its source's.
     buildConfigHash: text("build_config_hash"),
     containerName: text("container_name"),
+    // Set on a version the worker rolled back because its containers kept restarting.
+    autoRolledBackAt: text("auto_rolled_back_at"),
+    // Set when the worker found a version restarting but had no earlier one to roll back to.
+    autoRollbackSkippedAt: text("auto_rollback_skipped_at"),
     // Effective port and encrypted log-redaction values of this particular container.
     internalPort: integer("internal_port"),
     encryptedSecretValues: text("encrypted_secret_values"),

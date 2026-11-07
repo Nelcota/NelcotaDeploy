@@ -1,5 +1,5 @@
 import { type Deployment, transitionDeployment } from "@/deployments";
-import { type DockerEngine, imageTagFor } from "@/docker";
+import { type DockerEngine, imageTagFor, railpackBaseTagFor } from "@/docker";
 import { recordDetectedPort } from "@/projects";
 
 import {
@@ -21,7 +21,15 @@ export type BuildSecrets = {
   readonly repositoryToken: string | null;
 };
 
-async function cloneRevision(
+/**
+ * Clones the revision a deployment asks for into its workspace and records the commit.
+ *
+ * @param dependencies - Database, git and settings.
+ * @param context - Deployment being run.
+ * @param checkout - Workspace to clone into and the token for a private repository.
+ * @throws {DeploymentCancelledError} When the deployment is cancelled during the clone.
+ */
+export async function cloneRevision(
   dependencies: DeployRunnerDependencies,
   context: DeployContext,
   {
@@ -113,6 +121,12 @@ async function buildImage(
 ): Promise<{ imageTag: string; detectedPort: number | null }> {
   const { docker, config, runner } = dependencies;
   const { project, logs, signal } = context;
+  if (project.builder === "railpack") {
+    return {
+      imageTag: await buildWithRailpack(dependencies, context, { workspace, buildValues }),
+      detectedPort: null,
+    };
+  }
 
   const dockerfilePath = await resolveInsideWorkspace(
     runner,
@@ -148,6 +162,134 @@ async function buildImage(
   logs.system("Image built");
   const detectedPort = await detectPort(dependencies, context, { dockerfilePath, imageTag });
   return { imageTag, detectedPort };
+}
+
+function secretsHash(values: Readonly<Record<string, string>>): string {
+  const hasher = new Bun.CryptoHasher("sha256");
+  hasher.update(
+    JSON.stringify(Object.entries(values).toSorted(([left], [right]) => left.localeCompare(right))),
+  );
+  return hasher.digest("hex");
+}
+
+async function runChecked(
+  runner: DeployRunnerDependencies["runner"],
+  command: readonly string[],
+  run: {
+    readonly what: string;
+    readonly timeoutInMs: number;
+    readonly signal: AbortSignal;
+    readonly logs: DeploymentLogWriter;
+  },
+): Promise<void> {
+  const result = await runner(command, {
+    timeoutInMs: run.timeoutInMs,
+    signal: run.signal,
+    onLine: (line, stream) => run.logs.output(line, stream),
+  });
+  if (result.exitCode !== 0) {
+    throw new Error(`${run.what} failed${result.timedOut ? " (timed out)" : ""}`);
+  }
+}
+
+/**
+ * Plans the build with Railpack, builds the plan on Docker's BuildKit and adds the platform
+ * labels in a one-line build on top, which the Railpack frontend cannot set itself.
+ *
+ * @returns The labelled image tag.
+ */
+async function buildWithRailpack(
+  dependencies: DeployRunnerDependencies,
+  context: DeployContext,
+  {
+    workspace,
+    buildValues,
+  }: {
+    readonly workspace: DeploymentWorkspace;
+    readonly buildValues: Readonly<Record<string, string>>;
+  },
+): Promise<string> {
+  const { docker, config, runner } = dependencies;
+  const { deployment, project, logs, signal } = context;
+  const timeoutInMs = config.buildTimeoutInSeconds * MILLISECONDS_PER_SECOND;
+  const contextPath = await resolveInsideWorkspace(
+    runner,
+    workspace.repositoryPath,
+    project.buildContext,
+  );
+  const planPath = `${workspace.path}/railpack-plan.json`;
+  logs.system("Detecting the stack with Railpack");
+  // Railpack reads build variables while planning; logs are redacted, so values never show.
+  await runChecked(
+    runner,
+    [
+      config.railpackBinary,
+      "prepare",
+      contextPath,
+      "--plan-out",
+      planPath,
+      "--info-out",
+      `${workspace.path}/railpack-info.json`,
+      ...Object.entries(buildValues).flatMap(([key, value]) => ["--env", `${key}=${value}`]),
+    ],
+    { what: "railpack prepare", timeoutInMs, signal, logs },
+  );
+  const imageTag = imageTagFor(project.slug, deployment.id);
+  const baseTag = railpackBaseTagFor(imageTag);
+  logs.system(`Building image ${imageTag} with Railpack`);
+  const run = {
+    timeoutInMs,
+    signal,
+    onLine: (line: string, stream: "stdout" | "stderr") => logs.output(line, stream),
+    cwd: workspace.repositoryPath,
+  };
+  await docker.buildWithRailpack(
+    {
+      planPath,
+      contextPath,
+      imageTag: baseTag,
+      secretKeys: Object.keys(buildValues),
+      secretsHash: secretsHash(buildValues),
+      cacheKey: project.id,
+    },
+    buildValues,
+    run,
+  );
+  const labelDirectory = `${workspace.path}/railpack-label`;
+  await runChecked(
+    runner,
+    [
+      "sh",
+      "-c",
+      'mkdir -p "$1" && printf "FROM %s\\n" "$2" > "$1/Dockerfile"',
+      "sh",
+      labelDirectory,
+      baseTag,
+    ],
+    { what: "Writing the label Dockerfile", timeoutInMs, signal, logs },
+  );
+  await docker.buildImage(
+    {
+      dockerfilePath: `${labelDirectory}/Dockerfile`,
+      contextPath: labelDirectory,
+      imageTag,
+      labels: deploymentLabels(context),
+      buildArgKeys: [],
+    },
+    {},
+    { ...run, cwd: labelDirectory },
+  );
+  // The labelled image keeps the layers; only the unlabelled tag goes.
+  await docker.images
+    .removeRailpackBase(baseTag)
+    .catch((error: unknown) =>
+      logs.system(
+        `Could not remove the intermediate image ${baseTag}: ${error instanceof Error ? error.message : String(error)}`,
+        "warn",
+      ),
+    );
+  logs.system("Image built");
+  return imageTag;
 }
 
 /**

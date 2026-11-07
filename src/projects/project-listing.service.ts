@@ -23,17 +23,24 @@ export type ProjectSummary = Project & {
  * Lists projects with their latest deployment and container state, without N+1 queries.
  *
  * @param database - Database.
- * @param options - Optional name, slug or repository search.
+ * @param options - Optional name, slug or repository search, and the only project ids to
+ * include; null or omitted ids include every project.
  * @returns Projects sorted by name.
  */
 export function listProjects(
   database: Database,
-  options: { readonly search?: string } = {},
+  options: { readonly search?: string; readonly projectIds?: readonly string[] | null } = {},
 ): ProjectSummary[] {
   const projects = database
     .select(projectColumns)
     .from(tables.projects)
-    .where(and(isNull(tables.projects.deletionRequestedAt), searchCondition(options.search ?? "")))
+    .where(
+      and(
+        isNull(tables.projects.deletionRequestedAt),
+        searchCondition(options.search ?? ""),
+        options.projectIds == null ? undefined : inArray(tables.projects.id, options.projectIds),
+      ),
+    )
     .orderBy(asc(tables.projects.name))
     .all();
   if (projects.length === 0) {

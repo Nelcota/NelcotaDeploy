@@ -1,4 +1,4 @@
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, inArray, isNotNull, isNull } from "drizzle-orm";
 
 import { type Actor, recordAuditEvent } from "@/audit";
 import { type Database, tables } from "@/db";
@@ -26,6 +26,67 @@ export type ProjectDomain = {
  */
 function automaticHostname(projectSlug: string, settings: SystemSettings): string | null {
   return settings.baseDomain == null ? null : `${projectSlug}.${settings.baseDomain}`;
+}
+
+/** A hostname a live deployment answers on, with the project it belongs to. */
+export type LiveDomain = {
+  readonly projectId: string;
+  readonly projectName: string;
+  readonly hostname: string;
+  readonly httpsEnabled: boolean;
+};
+
+/**
+ * Lists the hostnames of every project with a live deployment, automatic ones included, in two
+ * queries whatever the number of projects.
+ *
+ * @param database - Database.
+ * @param settings - System settings with the optional base domain.
+ * @returns The hostnames, grouped by project.
+ */
+export function listLiveDomains(database: Database, settings: SystemSettings): LiveDomain[] {
+  const projects = database
+    .select({ id: tables.projects.id, name: tables.projects.name, slug: tables.projects.slug })
+    .from(tables.projects)
+    .where(
+      and(
+        isNull(tables.projects.deletionRequestedAt),
+        isNotNull(tables.projects.currentDeploymentId),
+      ),
+    )
+    .all();
+  if (projects.length === 0) {
+    return [];
+  }
+  const custom = database
+    .select({
+      projectId: tables.domains.projectId,
+      hostname: tables.domains.hostname,
+      httpsEnabled: tables.domains.httpsEnabled,
+    })
+    .from(tables.domains)
+    .where(
+      inArray(
+        tables.domains.projectId,
+        projects.map((project) => project.id),
+      ),
+    )
+    .all();
+  const customByProject = Map.groupBy(custom, (domain) => domain.projectId);
+  return projects.flatMap((project) => {
+    const domains = customByProject.get(project.id) ?? [];
+    const automatic = automaticHostname(project.slug, settings);
+    const all =
+      automatic == null || domains.some((domain) => domain.hostname === automatic)
+        ? domains
+        : [{ hostname: automatic, httpsEnabled: settings.httpsByDefault }, ...domains];
+    return all.map((domain) => ({
+      projectId: project.id,
+      projectName: project.name,
+      hostname: domain.hostname,
+      httpsEnabled: domain.httpsEnabled,
+    }));
+  });
 }
 
 /**

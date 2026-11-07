@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 
-import { MAX_IMPORT_TEXT_LENGTH } from "@/shared/schemas/environment-import.schema";
+import { MAX_IMPORT_TEXT_LENGTH } from "@/shared/schemas/environment/environment-import.schema";
 
 import { readEnvImportFile } from "./env-import-file";
 

@@ -33,6 +33,12 @@ export class FakeImages implements ImageStore {
     await Promise.resolve();
   }
 
+  async removeRailpackBase(imageTag: string): Promise<void> {
+    this.#calls.push(`rmi ${imageTag}`);
+    this.tags.delete(imageTag);
+    await Promise.resolve();
+  }
+
   async listForProject(): Promise<string[]> {
     return await Promise.resolve([...this.tags].toReversed());
   }

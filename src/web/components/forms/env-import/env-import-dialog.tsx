@@ -7,7 +7,7 @@ import {
   environmentImportSchema,
   MAX_IMPORT_TEXT_LENGTH,
   type EnvironmentImportInput,
-} from "@/shared/schemas/environment-import.schema";
+} from "@/shared/schemas/environment/environment-import.schema";
 import { Button } from "@/web/components/ui/button";
 import {
   Dialog,

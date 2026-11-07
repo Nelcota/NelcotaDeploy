@@ -63,6 +63,7 @@ async function setup() {
     },
     config: {
       workspaceDir: "/review",
+      railpackBinary: "railpack",
       network: "review",
       buildTimeoutInSeconds: 60,
       healthCheckTimeoutInSeconds: 5,
@@ -186,8 +187,8 @@ test("sends saved CPU and memory limits to the application container", async () 
   const definition = docker.definitions.get(
     getDeployment(database, deploymentId).containerName ?? "",
   );
-  expect(definition?.memoryLimitInMb).toBe(128);
-  expect(definition?.cpuLimitInMillicores).toBe(250);
+  expect(definition?.resources?.memoryLimitInMb).toBe(128);
+  expect(definition?.resources?.cpuLimitInMillicores).toBe(250);
 }, 10_000);
 
 test("obtains a GitHub App token when a redeploy must rebuild its missing private image", async () => {

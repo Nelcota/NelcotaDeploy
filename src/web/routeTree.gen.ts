@@ -35,13 +35,12 @@ import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
 import { Route as ApiAvatarsUserIdRouteImport } from './routes/api/avatars/$userId'
 import { Route as ApiWebhooksGithubRouteImport } from './routes/api/webhooks/github'
 import { Route as AppProjectsProjectIdIndexRouteImport } from './routes/_app/projects/$projectId/index'
+import { Route as AppProjectsProjectIdConsoleRouteImport } from './routes/_app/projects/$projectId/console'
 import { Route as AppProjectsProjectIdDatabasesRouteImport } from './routes/_app/projects/$projectId/databases'
-import { Route as AppProjectsProjectIdDnsRouteImport } from './routes/_app/projects/$projectId/dns'
 import { Route as AppProjectsProjectIdDomainsRouteImport } from './routes/_app/projects/$projectId/domains'
 import { Route as AppProjectsProjectIdEnvironmentRouteImport } from './routes/_app/projects/$projectId/environment'
 import { Route as AppProjectsProjectIdLogsRouteImport } from './routes/_app/projects/$projectId/logs'
 import { Route as AppProjectsProjectIdMetricsRouteImport } from './routes/_app/projects/$projectId/metrics'
-import { Route as AppProjectsProjectIdPreviewsRouteImport } from './routes/_app/projects/$projectId/previews'
 import { Route as AppProjectsProjectIdSettingsRouteImport } from './routes/_app/projects/$projectId/settings'
 import { Route as AppProjectsProjectIdTasksRouteImport } from './routes/_app/projects/$projectId/tasks'
 import { Route as AppSettingsIntegrationsCloudflareRouteImport } from './routes/_app/settings/integrations/cloudflare'
@@ -50,6 +49,8 @@ import { Route as ApiDeploymentsDeploymentIdLogsRouteImport } from './routes/api
 import { Route as ApiGithubAppCallbackRouteImport } from './routes/api/github/app/callback'
 import { Route as ApiGithubAppNewRouteImport } from './routes/api/github/app/new'
 import { Route as ApiProjectsProjectIdRuntimeLogsRouteImport } from './routes/api/projects/$projectId/runtime-logs'
+import { Route as AppProjectsProjectIdresourcesDnsRouteImport } from './routes/_app/projects/$projectId/(resources)/dns'
+import { Route as AppProjectsProjectIdresourcesPreviewsRouteImport } from './routes/_app/projects/$projectId/(resources)/previews'
 import { Route as AppProjectsProjectIdDatabasesIndexRouteImport } from './routes/_app/projects/$projectId/databases/index'
 import { Route as AppProjectsProjectIdDeploymentsIndexRouteImport } from './routes/_app/projects/$projectId/deployments/index'
 import { Route as AppProjectsProjectIdDeploymentsDeploymentIdRouteImport } from './routes/_app/projects/$projectId/deployments/$deploymentId'
@@ -70,6 +71,8 @@ import { Route as AppProjectsProjectIdDatabasesDatabaseIdBackupsRouteImport } fr
 import { Route as AppProjectsProjectIdDatabasesDatabaseIdRestoreRouteImport } from './routes/_app/projects/$projectId/databases/$databaseId/restore'
 import { Route as AppProjectsProjectIdDeploymentsDeploymentIdIndexRouteImport } from './routes/_app/projects/$projectId/deployments/$deploymentId/index'
 import { Route as AppProjectsProjectIdDeploymentsDeploymentIdLogsRouteImport } from './routes/_app/projects/$projectId/deployments/$deploymentId/logs'
+import { Route as AppProjectsProjectIdSettingsAccessTeamRouteImport } from './routes/_app/projects/$projectId/settings/access/team'
+import { Route as AppProjectsProjectIdSettingsEnvironmentsStagingRouteImport } from './routes/_app/projects/$projectId/settings/environments/staging'
 import { Route as AppProjectsProjectIdTasksTaskIdHistoryRouteImport } from './routes/_app/projects/$projectId/tasks/$taskId/history'
 
 const AppRoute = AppRouteImport.update({
@@ -202,17 +205,18 @@ const AppProjectsProjectIdIndexRoute =
     path: '/',
     getParentRoute: () => AppProjectsProjectIdRoute,
   } as any)
+const AppProjectsProjectIdConsoleRoute =
+  AppProjectsProjectIdConsoleRouteImport.update({
+    id: '/console',
+    path: '/console',
+    getParentRoute: () => AppProjectsProjectIdRoute,
+  } as any)
 const AppProjectsProjectIdDatabasesRoute =
   AppProjectsProjectIdDatabasesRouteImport.update({
     id: '/databases',
     path: '/databases',
     getParentRoute: () => AppProjectsProjectIdRoute,
   } as any)
-const AppProjectsProjectIdDnsRoute = AppProjectsProjectIdDnsRouteImport.update({
-  id: '/dns',
-  path: '/dns',
-  getParentRoute: () => AppProjectsProjectIdRoute,
-} as any)
 const AppProjectsProjectIdDomainsRoute =
   AppProjectsProjectIdDomainsRouteImport.update({
     id: '/domains',
@@ -235,12 +239,6 @@ const AppProjectsProjectIdMetricsRoute =
   AppProjectsProjectIdMetricsRouteImport.update({
     id: '/metrics',
     path: '/metrics',
-    getParentRoute: () => AppProjectsProjectIdRoute,
-  } as any)
-const AppProjectsProjectIdPreviewsRoute =
-  AppProjectsProjectIdPreviewsRouteImport.update({
-    id: '/previews',
-    path: '/previews',
     getParentRoute: () => AppProjectsProjectIdRoute,
   } as any)
 const AppProjectsProjectIdSettingsRoute =
@@ -288,6 +286,18 @@ const ApiProjectsProjectIdRuntimeLogsRoute =
     id: '/api/projects/$projectId/runtime-logs',
     path: '/api/projects/$projectId/runtime-logs',
     getParentRoute: () => rootRouteImport,
+  } as any)
+const AppProjectsProjectIdresourcesDnsRoute =
+  AppProjectsProjectIdresourcesDnsRouteImport.update({
+    id: '/(resources)/dns',
+    path: '/dns',
+    getParentRoute: () => AppProjectsProjectIdRoute,
+  } as any)
+const AppProjectsProjectIdresourcesPreviewsRoute =
+  AppProjectsProjectIdresourcesPreviewsRouteImport.update({
+    id: '/(resources)/previews',
+    path: '/previews',
+    getParentRoute: () => AppProjectsProjectIdRoute,
   } as any)
 const AppProjectsProjectIdDatabasesIndexRoute =
   AppProjectsProjectIdDatabasesIndexRouteImport.update({
@@ -409,6 +419,18 @@ const AppProjectsProjectIdDeploymentsDeploymentIdLogsRoute =
     path: '/logs',
     getParentRoute: () => AppProjectsProjectIdDeploymentsDeploymentIdRoute,
   } as any)
+const AppProjectsProjectIdSettingsAccessTeamRoute =
+  AppProjectsProjectIdSettingsAccessTeamRouteImport.update({
+    id: '/access/team',
+    path: '/access/team',
+    getParentRoute: () => AppProjectsProjectIdSettingsRoute,
+  } as any)
+const AppProjectsProjectIdSettingsEnvironmentsStagingRoute =
+  AppProjectsProjectIdSettingsEnvironmentsStagingRouteImport.update({
+    id: '/environments/staging',
+    path: '/environments/staging',
+    getParentRoute: () => AppProjectsProjectIdSettingsRoute,
+  } as any)
 const AppProjectsProjectIdTasksTaskIdHistoryRoute =
   AppProjectsProjectIdTasksTaskIdHistoryRouteImport.update({
     id: '/$taskId/history',
@@ -441,13 +463,12 @@ export interface FileRoutesByFullPath {
   '/api/webhooks/github': typeof ApiWebhooksGithubRoute
   '/projects/': typeof AppProjectsIndexRoute
   '/settings/': typeof AppSettingsIndexRoute
+  '/projects/$projectId/console': typeof AppProjectsProjectIdConsoleRoute
   '/projects/$projectId/databases': typeof AppProjectsProjectIdDatabasesRouteWithChildren
-  '/projects/$projectId/dns': typeof AppProjectsProjectIdDnsRoute
   '/projects/$projectId/domains': typeof AppProjectsProjectIdDomainsRoute
   '/projects/$projectId/environment': typeof AppProjectsProjectIdEnvironmentRouteWithChildren
   '/projects/$projectId/logs': typeof AppProjectsProjectIdLogsRoute
   '/projects/$projectId/metrics': typeof AppProjectsProjectIdMetricsRoute
-  '/projects/$projectId/previews': typeof AppProjectsProjectIdPreviewsRoute
   '/projects/$projectId/settings': typeof AppProjectsProjectIdSettingsRouteWithChildren
   '/projects/$projectId/tasks': typeof AppProjectsProjectIdTasksRouteWithChildren
   '/settings/integrations/cloudflare': typeof AppSettingsIntegrationsCloudflareRoute
@@ -457,6 +478,8 @@ export interface FileRoutesByFullPath {
   '/api/github/app/new': typeof ApiGithubAppNewRoute
   '/api/projects/$projectId/runtime-logs': typeof ApiProjectsProjectIdRuntimeLogsRoute
   '/projects/$projectId/': typeof AppProjectsProjectIdIndexRoute
+  '/projects/$projectId/dns': typeof AppProjectsProjectIdresourcesDnsRoute
+  '/projects/$projectId/previews': typeof AppProjectsProjectIdresourcesPreviewsRoute
   '/projects/$projectId/deployments/$deploymentId': typeof AppProjectsProjectIdDeploymentsDeploymentIdRouteWithChildren
   '/projects/$projectId/environment/import': typeof AppProjectsProjectIdEnvironmentImportRoute
   '/projects/$projectId/environment/repository': typeof AppProjectsProjectIdEnvironmentRepositoryRoute
@@ -476,6 +499,8 @@ export interface FileRoutesByFullPath {
   '/projects/$projectId/databases/$databaseId/backups': typeof AppProjectsProjectIdDatabasesDatabaseIdBackupsRoute
   '/projects/$projectId/databases/$databaseId/restore': typeof AppProjectsProjectIdDatabasesDatabaseIdRestoreRoute
   '/projects/$projectId/deployments/$deploymentId/logs': typeof AppProjectsProjectIdDeploymentsDeploymentIdLogsRoute
+  '/projects/$projectId/settings/access/team': typeof AppProjectsProjectIdSettingsAccessTeamRoute
+  '/projects/$projectId/settings/environments/staging': typeof AppProjectsProjectIdSettingsEnvironmentsStagingRoute
   '/projects/$projectId/tasks/$taskId/history': typeof AppProjectsProjectIdTasksTaskIdHistoryRoute
   '/projects/$projectId/deployments/$deploymentId/': typeof AppProjectsProjectIdDeploymentsDeploymentIdIndexRoute
 }
@@ -502,11 +527,10 @@ export interface FileRoutesByTo {
   '/api/webhooks/github': typeof ApiWebhooksGithubRoute
   '/projects': typeof AppProjectsIndexRoute
   '/settings': typeof AppSettingsIndexRoute
-  '/projects/$projectId/dns': typeof AppProjectsProjectIdDnsRoute
+  '/projects/$projectId/console': typeof AppProjectsProjectIdConsoleRoute
   '/projects/$projectId/domains': typeof AppProjectsProjectIdDomainsRoute
   '/projects/$projectId/logs': typeof AppProjectsProjectIdLogsRoute
   '/projects/$projectId/metrics': typeof AppProjectsProjectIdMetricsRoute
-  '/projects/$projectId/previews': typeof AppProjectsProjectIdPreviewsRoute
   '/settings/integrations/cloudflare': typeof AppSettingsIntegrationsCloudflareRoute
   '/settings/integrations/github': typeof AppSettingsIntegrationsGithubRoute
   '/api/deployments/$deploymentId/logs': typeof ApiDeploymentsDeploymentIdLogsRoute
@@ -514,6 +538,8 @@ export interface FileRoutesByTo {
   '/api/github/app/new': typeof ApiGithubAppNewRoute
   '/api/projects/$projectId/runtime-logs': typeof ApiProjectsProjectIdRuntimeLogsRoute
   '/projects/$projectId': typeof AppProjectsProjectIdIndexRoute
+  '/projects/$projectId/dns': typeof AppProjectsProjectIdresourcesDnsRoute
+  '/projects/$projectId/previews': typeof AppProjectsProjectIdresourcesPreviewsRoute
   '/projects/$projectId/environment/import': typeof AppProjectsProjectIdEnvironmentImportRoute
   '/projects/$projectId/environment/repository': typeof AppProjectsProjectIdEnvironmentRepositoryRoute
   '/projects/$projectId/settings/automation': typeof AppProjectsProjectIdSettingsAutomationRoute
@@ -532,6 +558,8 @@ export interface FileRoutesByTo {
   '/projects/$projectId/databases/$databaseId/backups': typeof AppProjectsProjectIdDatabasesDatabaseIdBackupsRoute
   '/projects/$projectId/databases/$databaseId/restore': typeof AppProjectsProjectIdDatabasesDatabaseIdRestoreRoute
   '/projects/$projectId/deployments/$deploymentId/logs': typeof AppProjectsProjectIdDeploymentsDeploymentIdLogsRoute
+  '/projects/$projectId/settings/access/team': typeof AppProjectsProjectIdSettingsAccessTeamRoute
+  '/projects/$projectId/settings/environments/staging': typeof AppProjectsProjectIdSettingsEnvironmentsStagingRoute
   '/projects/$projectId/tasks/$taskId/history': typeof AppProjectsProjectIdTasksTaskIdHistoryRoute
   '/projects/$projectId/deployments/$deploymentId': typeof AppProjectsProjectIdDeploymentsDeploymentIdIndexRoute
 }
@@ -562,13 +590,12 @@ export interface FileRoutesById {
   '/api/webhooks/github': typeof ApiWebhooksGithubRoute
   '/_app/projects/': typeof AppProjectsIndexRoute
   '/_app/settings/': typeof AppSettingsIndexRoute
+  '/_app/projects/$projectId/console': typeof AppProjectsProjectIdConsoleRoute
   '/_app/projects/$projectId/databases': typeof AppProjectsProjectIdDatabasesRouteWithChildren
-  '/_app/projects/$projectId/dns': typeof AppProjectsProjectIdDnsRoute
   '/_app/projects/$projectId/domains': typeof AppProjectsProjectIdDomainsRoute
   '/_app/projects/$projectId/environment': typeof AppProjectsProjectIdEnvironmentRouteWithChildren
   '/_app/projects/$projectId/logs': typeof AppProjectsProjectIdLogsRoute
   '/_app/projects/$projectId/metrics': typeof AppProjectsProjectIdMetricsRoute
-  '/_app/projects/$projectId/previews': typeof AppProjectsProjectIdPreviewsRoute
   '/_app/projects/$projectId/settings': typeof AppProjectsProjectIdSettingsRouteWithChildren
   '/_app/projects/$projectId/tasks': typeof AppProjectsProjectIdTasksRouteWithChildren
   '/_app/settings/integrations/cloudflare': typeof AppSettingsIntegrationsCloudflareRoute
@@ -578,6 +605,8 @@ export interface FileRoutesById {
   '/api/github/app/new': typeof ApiGithubAppNewRoute
   '/api/projects/$projectId/runtime-logs': typeof ApiProjectsProjectIdRuntimeLogsRoute
   '/_app/projects/$projectId/': typeof AppProjectsProjectIdIndexRoute
+  '/_app/projects/$projectId/(resources)/dns': typeof AppProjectsProjectIdresourcesDnsRoute
+  '/_app/projects/$projectId/(resources)/previews': typeof AppProjectsProjectIdresourcesPreviewsRoute
   '/_app/projects/$projectId/deployments/$deploymentId': typeof AppProjectsProjectIdDeploymentsDeploymentIdRouteWithChildren
   '/_app/projects/$projectId/environment/import': typeof AppProjectsProjectIdEnvironmentImportRoute
   '/_app/projects/$projectId/environment/repository': typeof AppProjectsProjectIdEnvironmentRepositoryRoute
@@ -597,6 +626,8 @@ export interface FileRoutesById {
   '/_app/projects/$projectId/databases/$databaseId/backups': typeof AppProjectsProjectIdDatabasesDatabaseIdBackupsRoute
   '/_app/projects/$projectId/databases/$databaseId/restore': typeof AppProjectsProjectIdDatabasesDatabaseIdRestoreRoute
   '/_app/projects/$projectId/deployments/$deploymentId/logs': typeof AppProjectsProjectIdDeploymentsDeploymentIdLogsRoute
+  '/_app/projects/$projectId/settings/access/team': typeof AppProjectsProjectIdSettingsAccessTeamRoute
+  '/_app/projects/$projectId/settings/environments/staging': typeof AppProjectsProjectIdSettingsEnvironmentsStagingRoute
   '/_app/projects/$projectId/tasks/$taskId/history': typeof AppProjectsProjectIdTasksTaskIdHistoryRoute
   '/_app/projects/$projectId/deployments/$deploymentId/': typeof AppProjectsProjectIdDeploymentsDeploymentIdIndexRoute
 }
@@ -627,13 +658,12 @@ export interface FileRouteTypes {
     | '/api/webhooks/github'
     | '/projects/'
     | '/settings/'
+    | '/projects/$projectId/console'
     | '/projects/$projectId/databases'
-    | '/projects/$projectId/dns'
     | '/projects/$projectId/domains'
     | '/projects/$projectId/environment'
     | '/projects/$projectId/logs'
     | '/projects/$projectId/metrics'
-    | '/projects/$projectId/previews'
     | '/projects/$projectId/settings'
     | '/projects/$projectId/tasks'
     | '/settings/integrations/cloudflare'
@@ -643,6 +673,8 @@ export interface FileRouteTypes {
     | '/api/github/app/new'
     | '/api/projects/$projectId/runtime-logs'
     | '/projects/$projectId/'
+    | '/projects/$projectId/dns'
+    | '/projects/$projectId/previews'
     | '/projects/$projectId/deployments/$deploymentId'
     | '/projects/$projectId/environment/import'
     | '/projects/$projectId/environment/repository'
@@ -662,6 +694,8 @@ export interface FileRouteTypes {
     | '/projects/$projectId/databases/$databaseId/backups'
     | '/projects/$projectId/databases/$databaseId/restore'
     | '/projects/$projectId/deployments/$deploymentId/logs'
+    | '/projects/$projectId/settings/access/team'
+    | '/projects/$projectId/settings/environments/staging'
     | '/projects/$projectId/tasks/$taskId/history'
     | '/projects/$projectId/deployments/$deploymentId/'
   fileRoutesByTo: FileRoutesByTo
@@ -688,11 +722,10 @@ export interface FileRouteTypes {
     | '/api/webhooks/github'
     | '/projects'
     | '/settings'
-    | '/projects/$projectId/dns'
+    | '/projects/$projectId/console'
     | '/projects/$projectId/domains'
     | '/projects/$projectId/logs'
     | '/projects/$projectId/metrics'
-    | '/projects/$projectId/previews'
     | '/settings/integrations/cloudflare'
     | '/settings/integrations/github'
     | '/api/deployments/$deploymentId/logs'
@@ -700,6 +733,8 @@ export interface FileRouteTypes {
     | '/api/github/app/new'
     | '/api/projects/$projectId/runtime-logs'
     | '/projects/$projectId'
+    | '/projects/$projectId/dns'
+    | '/projects/$projectId/previews'
     | '/projects/$projectId/environment/import'
     | '/projects/$projectId/environment/repository'
     | '/projects/$projectId/settings/automation'
@@ -718,6 +753,8 @@ export interface FileRouteTypes {
     | '/projects/$projectId/databases/$databaseId/backups'
     | '/projects/$projectId/databases/$databaseId/restore'
     | '/projects/$projectId/deployments/$deploymentId/logs'
+    | '/projects/$projectId/settings/access/team'
+    | '/projects/$projectId/settings/environments/staging'
     | '/projects/$projectId/tasks/$taskId/history'
     | '/projects/$projectId/deployments/$deploymentId'
   id:
@@ -747,13 +784,12 @@ export interface FileRouteTypes {
     | '/api/webhooks/github'
     | '/_app/projects/'
     | '/_app/settings/'
+    | '/_app/projects/$projectId/console'
     | '/_app/projects/$projectId/databases'
-    | '/_app/projects/$projectId/dns'
     | '/_app/projects/$projectId/domains'
     | '/_app/projects/$projectId/environment'
     | '/_app/projects/$projectId/logs'
     | '/_app/projects/$projectId/metrics'
-    | '/_app/projects/$projectId/previews'
     | '/_app/projects/$projectId/settings'
     | '/_app/projects/$projectId/tasks'
     | '/_app/settings/integrations/cloudflare'
@@ -763,6 +799,8 @@ export interface FileRouteTypes {
     | '/api/github/app/new'
     | '/api/projects/$projectId/runtime-logs'
     | '/_app/projects/$projectId/'
+    | '/_app/projects/$projectId/(resources)/dns'
+    | '/_app/projects/$projectId/(resources)/previews'
     | '/_app/projects/$projectId/deployments/$deploymentId'
     | '/_app/projects/$projectId/environment/import'
     | '/_app/projects/$projectId/environment/repository'
@@ -782,6 +820,8 @@ export interface FileRouteTypes {
     | '/_app/projects/$projectId/databases/$databaseId/backups'
     | '/_app/projects/$projectId/databases/$databaseId/restore'
     | '/_app/projects/$projectId/deployments/$deploymentId/logs'
+    | '/_app/projects/$projectId/settings/access/team'
+    | '/_app/projects/$projectId/settings/environments/staging'
     | '/_app/projects/$projectId/tasks/$taskId/history'
     | '/_app/projects/$projectId/deployments/$deploymentId/'
   fileRoutesById: FileRoutesById
@@ -983,18 +1023,18 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppProjectsProjectIdIndexRouteImport
       parentRoute: typeof AppProjectsProjectIdRoute
     }
+    '/_app/projects/$projectId/console': {
+      id: '/_app/projects/$projectId/console'
+      path: '/console'
+      fullPath: '/projects/$projectId/console'
+      preLoaderRoute: typeof AppProjectsProjectIdConsoleRouteImport
+      parentRoute: typeof AppProjectsProjectIdRoute
+    }
     '/_app/projects/$projectId/databases': {
       id: '/_app/projects/$projectId/databases'
       path: '/databases'
       fullPath: '/projects/$projectId/databases'
       preLoaderRoute: typeof AppProjectsProjectIdDatabasesRouteImport
-      parentRoute: typeof AppProjectsProjectIdRoute
-    }
-    '/_app/projects/$projectId/dns': {
-      id: '/_app/projects/$projectId/dns'
-      path: '/dns'
-      fullPath: '/projects/$projectId/dns'
-      preLoaderRoute: typeof AppProjectsProjectIdDnsRouteImport
       parentRoute: typeof AppProjectsProjectIdRoute
     }
     '/_app/projects/$projectId/domains': {
@@ -1023,13 +1063,6 @@ declare module '@tanstack/react-router' {
       path: '/metrics'
       fullPath: '/projects/$projectId/metrics'
       preLoaderRoute: typeof AppProjectsProjectIdMetricsRouteImport
-      parentRoute: typeof AppProjectsProjectIdRoute
-    }
-    '/_app/projects/$projectId/previews': {
-      id: '/_app/projects/$projectId/previews'
-      path: '/previews'
-      fullPath: '/projects/$projectId/previews'
-      preLoaderRoute: typeof AppProjectsProjectIdPreviewsRouteImport
       parentRoute: typeof AppProjectsProjectIdRoute
     }
     '/_app/projects/$projectId/settings': {
@@ -1087,6 +1120,20 @@ declare module '@tanstack/react-router' {
       fullPath: '/api/projects/$projectId/runtime-logs'
       preLoaderRoute: typeof ApiProjectsProjectIdRuntimeLogsRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/_app/projects/$projectId/(resources)/dns': {
+      id: '/_app/projects/$projectId/(resources)/dns'
+      path: '/dns'
+      fullPath: '/projects/$projectId/dns'
+      preLoaderRoute: typeof AppProjectsProjectIdresourcesDnsRouteImport
+      parentRoute: typeof AppProjectsProjectIdRoute
+    }
+    '/_app/projects/$projectId/(resources)/previews': {
+      id: '/_app/projects/$projectId/(resources)/previews'
+      path: '/previews'
+      fullPath: '/projects/$projectId/previews'
+      preLoaderRoute: typeof AppProjectsProjectIdresourcesPreviewsRouteImport
+      parentRoute: typeof AppProjectsProjectIdRoute
     }
     '/_app/projects/$projectId/databases/': {
       id: '/_app/projects/$projectId/databases/'
@@ -1228,6 +1275,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppProjectsProjectIdDeploymentsDeploymentIdLogsRouteImport
       parentRoute: typeof AppProjectsProjectIdDeploymentsDeploymentIdRoute
     }
+    '/_app/projects/$projectId/settings/access/team': {
+      id: '/_app/projects/$projectId/settings/access/team'
+      path: '/access/team'
+      fullPath: '/projects/$projectId/settings/access/team'
+      preLoaderRoute: typeof AppProjectsProjectIdSettingsAccessTeamRouteImport
+      parentRoute: typeof AppProjectsProjectIdSettingsRoute
+    }
+    '/_app/projects/$projectId/settings/environments/staging': {
+      id: '/_app/projects/$projectId/settings/environments/staging'
+      path: '/environments/staging'
+      fullPath: '/projects/$projectId/settings/environments/staging'
+      preLoaderRoute: typeof AppProjectsProjectIdSettingsEnvironmentsStagingRouteImport
+      parentRoute: typeof AppProjectsProjectIdSettingsRoute
+    }
     '/_app/projects/$projectId/tasks/$taskId/history': {
       id: '/_app/projects/$projectId/tasks/$taskId/history'
       path: '/$taskId/history'
@@ -1325,6 +1386,8 @@ interface AppProjectsProjectIdSettingsRouteChildren {
   AppProjectsProjectIdSettingsServerRoute: typeof AppProjectsProjectIdSettingsServerRoute
   AppProjectsProjectIdSettingsVolumesRoute: typeof AppProjectsProjectIdSettingsVolumesRoute
   AppProjectsProjectIdSettingsIndexRoute: typeof AppProjectsProjectIdSettingsIndexRoute
+  AppProjectsProjectIdSettingsAccessTeamRoute: typeof AppProjectsProjectIdSettingsAccessTeamRoute
+  AppProjectsProjectIdSettingsEnvironmentsStagingRoute: typeof AppProjectsProjectIdSettingsEnvironmentsStagingRoute
 }
 
 const AppProjectsProjectIdSettingsRouteChildren: AppProjectsProjectIdSettingsRouteChildren =
@@ -1347,6 +1410,10 @@ const AppProjectsProjectIdSettingsRouteChildren: AppProjectsProjectIdSettingsRou
       AppProjectsProjectIdSettingsVolumesRoute,
     AppProjectsProjectIdSettingsIndexRoute:
       AppProjectsProjectIdSettingsIndexRoute,
+    AppProjectsProjectIdSettingsAccessTeamRoute:
+      AppProjectsProjectIdSettingsAccessTeamRoute,
+    AppProjectsProjectIdSettingsEnvironmentsStagingRoute:
+      AppProjectsProjectIdSettingsEnvironmentsStagingRoute,
   }
 
 const AppProjectsProjectIdSettingsRouteWithChildren =
@@ -1390,34 +1457,37 @@ const AppProjectsProjectIdDeploymentsDeploymentIdRouteWithChildren =
   )
 
 interface AppProjectsProjectIdRouteChildren {
+  AppProjectsProjectIdConsoleRoute: typeof AppProjectsProjectIdConsoleRoute
   AppProjectsProjectIdDatabasesRoute: typeof AppProjectsProjectIdDatabasesRouteWithChildren
-  AppProjectsProjectIdDnsRoute: typeof AppProjectsProjectIdDnsRoute
   AppProjectsProjectIdDomainsRoute: typeof AppProjectsProjectIdDomainsRoute
   AppProjectsProjectIdEnvironmentRoute: typeof AppProjectsProjectIdEnvironmentRouteWithChildren
   AppProjectsProjectIdLogsRoute: typeof AppProjectsProjectIdLogsRoute
   AppProjectsProjectIdMetricsRoute: typeof AppProjectsProjectIdMetricsRoute
-  AppProjectsProjectIdPreviewsRoute: typeof AppProjectsProjectIdPreviewsRoute
   AppProjectsProjectIdSettingsRoute: typeof AppProjectsProjectIdSettingsRouteWithChildren
   AppProjectsProjectIdTasksRoute: typeof AppProjectsProjectIdTasksRouteWithChildren
   AppProjectsProjectIdIndexRoute: typeof AppProjectsProjectIdIndexRoute
+  AppProjectsProjectIdresourcesDnsRoute: typeof AppProjectsProjectIdresourcesDnsRoute
+  AppProjectsProjectIdresourcesPreviewsRoute: typeof AppProjectsProjectIdresourcesPreviewsRoute
   AppProjectsProjectIdDeploymentsDeploymentIdRoute: typeof AppProjectsProjectIdDeploymentsDeploymentIdRouteWithChildren
   AppProjectsProjectIdDeploymentsIndexRoute: typeof AppProjectsProjectIdDeploymentsIndexRoute
 }
 
 const AppProjectsProjectIdRouteChildren: AppProjectsProjectIdRouteChildren = {
+  AppProjectsProjectIdConsoleRoute: AppProjectsProjectIdConsoleRoute,
   AppProjectsProjectIdDatabasesRoute:
     AppProjectsProjectIdDatabasesRouteWithChildren,
-  AppProjectsProjectIdDnsRoute: AppProjectsProjectIdDnsRoute,
   AppProjectsProjectIdDomainsRoute: AppProjectsProjectIdDomainsRoute,
   AppProjectsProjectIdEnvironmentRoute:
     AppProjectsProjectIdEnvironmentRouteWithChildren,
   AppProjectsProjectIdLogsRoute: AppProjectsProjectIdLogsRoute,
   AppProjectsProjectIdMetricsRoute: AppProjectsProjectIdMetricsRoute,
-  AppProjectsProjectIdPreviewsRoute: AppProjectsProjectIdPreviewsRoute,
   AppProjectsProjectIdSettingsRoute:
     AppProjectsProjectIdSettingsRouteWithChildren,
   AppProjectsProjectIdTasksRoute: AppProjectsProjectIdTasksRouteWithChildren,
   AppProjectsProjectIdIndexRoute: AppProjectsProjectIdIndexRoute,
+  AppProjectsProjectIdresourcesDnsRoute: AppProjectsProjectIdresourcesDnsRoute,
+  AppProjectsProjectIdresourcesPreviewsRoute:
+    AppProjectsProjectIdresourcesPreviewsRoute,
   AppProjectsProjectIdDeploymentsDeploymentIdRoute:
     AppProjectsProjectIdDeploymentsDeploymentIdRouteWithChildren,
   AppProjectsProjectIdDeploymentsIndexRoute:

@@ -103,15 +103,99 @@
     {
       "idx": 14,
       "version": "6",
-      "when": 1793575880177,
+      "when": 1793576436715,
       "tag": "0014_resource_limits",
       "breakpoints": true
     },
     {
       "idx": 15,
       "version": "6",
-      "when": 1794012325951,
-      "tag": "0015_performance-indexes",
+      "when": 1793577110366,
+      "tag": "0015_health_alerts",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "6",
+      "when": 1793577444585,
+      "tag": "0016_two_factor",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "6",
+      "when": 1793578037332,
+      "tag": "0017_project_builder",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "6",
+      "when": 1793620276656,
+      "tag": "0018_project_environments",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "6",
+      "when": 1793625312973,
+      "tag": "0019_server_cleanup",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "6",
+      "when": 1793630944367,
+      "tag": "0020_project_members",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "6",
+      "when": 1793645620291,
+      "tag": "0021_project_replicas",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "6",
+      "when": 1793645887485,
+      "tag": "0022_compose_projects",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "6",
+      "when": 1793646125536,
+      "tag": "0023_auto_rollback",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "6",
+      "when": 1793646355082,
+      "tag": "0024_domain_uptime",
+      "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "6",
+      "when": 1793646548902,
+      "tag": "0025_uptime_query_indexes",
+      "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "6",
+      "when": 1793646712833,
+      "tag": "0026_project_console",
+      "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "6",
+      "when": 1794015614026,
+      "tag": "0027_performance-indexes",
       "breakpoints": true
     }
   ]

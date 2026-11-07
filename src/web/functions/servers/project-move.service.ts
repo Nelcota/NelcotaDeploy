@@ -15,6 +15,7 @@ import {
   ProjectMoveReviewChangedError,
 } from "@/servers";
 import { assertProjectHasNoVolumes } from "@/volumes";
+import { PublicError } from "@/web/server/public-error";
 
 type ProjectMoveRequest = {
   readonly projectId: string;
@@ -85,6 +86,9 @@ export function moveProject(
       const project = getProject(database, request.projectId);
       if (project.serverId === request.serverId) {
         return { serverId: project.serverId, deploymentId: null, changed: false };
+      }
+      if (project.builder === "compose") {
+        throw new PublicError("Projetos Docker Compose não podem mudar de servidor.");
       }
       if (
         project.serverId !== request.expectedServerId ||

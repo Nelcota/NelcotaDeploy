@@ -17,6 +17,7 @@ export function useOrganizationForm(initial: SystemSettings, section: Organizati
     invalidate: [["settings"], ["project"]],
     onSuccess: (saved) =>
       form.reset({
+        requireAdminTwoFactor: saved.requireAdminTwoFactor,
         organizationName: saved.organizationName,
         baseDomain: saved.baseDomain ?? "",
         httpsByDefault: saved.httpsByDefault,
@@ -29,6 +30,7 @@ export function useOrganizationForm(initial: SystemSettings, section: Organizati
       baseDomain: initial.baseDomain ?? "",
       httpsByDefault: initial.httpsByDefault,
       alertWebhookUrl: initial.alertWebhookUrl ?? "",
+      requireAdminTwoFactor: initial.requireAdminTwoFactor,
     },
     validators: { onChange: systemSettingsSchema },
     onSubmit: ({ value }) => save.mutate(value),

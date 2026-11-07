@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { environmentVariableInputSchema } from "./environment-variable.schema";
+import { environmentVariableInputSchema } from "../environment-variable.schema";
 
 export const MAX_IMPORT_ENTRIES = 100;
 export const MAX_IMPORT_TEXT_LENGTH = 262_144;

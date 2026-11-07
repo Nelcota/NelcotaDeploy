@@ -1,4 +1,9 @@
-export { ProjectNotFoundError, ProjectSlugTakenError } from "./project.errors";
+export {
+  ComposeNeedsNoVolumesError,
+  ProjectNotFoundError,
+  ProjectSlugTakenError,
+  ReplicasNeedNoVolumesError,
+} from "./project.errors";
 export {
   approveProject,
   createProject,

@@ -11,9 +11,9 @@ import {
   saveEnvironmentVariable,
 } from "@/environments";
 import { getSecretBox } from "@/secrets";
-import { environmentImportSchema } from "@/shared/schemas/environment-import.schema";
 import { environmentVariableInputSchema } from "@/shared/schemas/environment-variable.schema";
-import { authorize } from "@/web/server/authorization";
+import { environmentImportSchema } from "@/shared/schemas/environment/environment-import.schema";
+import { authorizeProject } from "@/web/server/authorization";
 
 import { idSchema, projectIdInput } from "./ids";
 
@@ -21,7 +21,7 @@ import { idSchema, projectIdInput } from "./ids";
 export const importEnvironmentVariablesFn = createServerFn({ method: "POST" })
   .validator(z.object({ projectId: idSchema, input: environmentImportSchema }))
   .handler(async ({ data }) => {
-    const user = await authorize("environment:write");
+    const user = await authorizeProject("environment:write", data.projectId);
     const database = getDatabase();
     const savedCount = await importEnvironmentVariables(database, await getSecretBox(), {
       projectId: data.projectId,
@@ -38,14 +38,14 @@ export const importEnvironmentVariablesFn = createServerFn({ method: "POST" })
 export const listEnvironmentVariablesFn = createServerFn({ method: "GET" })
   .validator(projectIdInput)
   .handler(async ({ data }) => {
-    await authorize("project:read");
+    await authorizeProject("project:read", data.projectId);
     return listEnvironmentVariables(getDatabase(), data.projectId);
   });
 
 export const saveEnvironmentVariableFn = createServerFn({ method: "POST" })
   .validator(z.object({ projectId: idSchema, variable: environmentVariableInputSchema }))
   .handler(async ({ data }) => {
-    const user = await authorize("environment:write");
+    const user = await authorizeProject("environment:write", data.projectId);
     const database = getDatabase();
     await saveEnvironmentVariable(database, await getSecretBox(), {
       projectId: data.projectId,
@@ -61,7 +61,7 @@ export const saveEnvironmentVariableFn = createServerFn({ method: "POST" })
 export const deleteEnvironmentVariableFn = createServerFn({ method: "POST" })
   .validator(z.object({ projectId: idSchema, variableId: idSchema }))
   .handler(async ({ data }) => {
-    const user = await authorize("environment:write");
+    const user = await authorizeProject("environment:write", data.projectId);
     const database = getDatabase();
     deleteEnvironmentVariable(database, {
       projectId: data.projectId,

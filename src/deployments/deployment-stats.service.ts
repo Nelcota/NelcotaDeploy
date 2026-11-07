@@ -1,4 +1,4 @@
-import { and, count, gte, isNull, lt, sql } from "drizzle-orm";
+import { and, count, gte, inArray, isNull, lt, sql } from "drizzle-orm";
 
 import { type Database, tables } from "@/db";
 import { dayKey } from "@/shared/format";
@@ -74,7 +74,11 @@ function windowDays(now: Date, days: number) {
 
 type DayWindow = ReturnType<typeof windowDays>[number];
 
-function aggregateDays(database: Database, windows: readonly DayWindow[]) {
+function aggregateDays(
+  database: Database,
+  windows: readonly DayWindow[],
+  projectIds: readonly string[] | null,
+) {
   const first = windows.at(0);
   const last = windows.at(-1);
   if (first == null || last == null) {
@@ -107,6 +111,7 @@ function aggregateDays(database: Database, windows: readonly DayWindow[]) {
         gte(tables.deployments.createdAt, first.start),
         lt(tables.deployments.createdAt, last.end),
         isNull(tables.deployments.previewId),
+        projectIds == null ? undefined : inArray(tables.deployments.projectId, projectIds),
       ),
     )
     .groupBy(day)
@@ -116,13 +121,17 @@ function aggregateDays(database: Database, windows: readonly DayWindow[]) {
 /** Aggregates in SQLite, transferring at most one row per requested calendar day. */
 export function summarizeDeployments(
   database: Database,
-  options: { readonly days: number; readonly now?: Date },
+  options: {
+    readonly days: number;
+    readonly now?: Date;
+    readonly projectIds?: readonly string[] | null;
+  },
 ): DeploymentStats {
   if (Number.isInteger(options.days) === false || options.days < 1 || options.days > MAX_DAYS) {
     throw new RangeError(`days must be an integer between 1 and ${MAX_DAYS}, got ${options.days}`);
   }
   const windows = windowDays(options.now ?? new Date(), options.days);
-  const rows = aggregateDays(database, windows);
+  const rows = aggregateDays(database, windows, options.projectIds ?? null);
   const byDay = new Map(rows.map((row) => [row.day, row]));
   const totals = {
     total: 0,

@@ -2,7 +2,12 @@ import { describe, expect, test } from "bun:test";
 
 import { systemSettingsSchema } from "./settings.schema";
 
-const BASE = { organizationName: "Nelcota", baseDomain: "", httpsByDefault: true };
+const BASE = {
+  organizationName: "Nelcota",
+  baseDomain: "",
+  httpsByDefault: true,
+  requireAdminTwoFactor: false,
+};
 
 describe("alertWebhookUrl", () => {
   test("accepts an https webhook", () => {

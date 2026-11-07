@@ -13,14 +13,19 @@ import { ListRow, Tag } from "@/web/components/layout/layout";
 import { Button } from "@/web/components/ui/button";
 
 import { type DomainItem, domainUrl } from "./domains";
+import { UptimeLine } from "./uptime/uptime-line";
+import type { DomainUptime } from "./uptime/uptime-state";
 
 /** The project's domains, the first one marked as principal; a hint row when there are none. */
 export function DomainRows({
   domains,
+  uptime,
   canEdit,
   onRemove,
 }: {
   readonly domains: readonly DomainItem[];
+  /** Availability of each hostname. */
+  readonly uptime: ReadonlyMap<string, DomainUptime>;
   readonly canEdit: boolean;
   readonly onRemove: (domainId: string) => void;
 }) {
@@ -42,12 +47,17 @@ export function DomainRows({
       <div className="min-w-0 flex-1 space-y-1.5">
         <DomainLink domain={domain} />
         <DomainTags domain={domain} principal={index === 0} />
+        {renderUptime(uptime.get(domain.hostname))}
       </div>
       {canEdit && domain.id != null ? (
         <RemoveDomainButton domainId={domain.id} hostname={domain.hostname} onRemove={onRemove} />
       ) : null}
     </ListRow>
   ));
+}
+
+function renderUptime(domainUptime: DomainUptime | undefined) {
+  return domainUptime == null ? null : <UptimeLine uptime={domainUptime} />;
 }
 
 function DomainLink({ domain }: { readonly domain: DomainItem }) {

@@ -1,6 +1,6 @@
 import { type CommandRunner, failureReason, type ProcessResult } from "@/process";
 
-import { assertImageReference, LABELS } from "./docker.commands";
+import { assertImageReference, isRailpackBaseTag, LABELS } from "./docker.commands";
 import { DockerCommandError, UnmanagedResourceError } from "./docker.errors";
 import { parseExposedPorts } from "./docker.output";
 
@@ -118,6 +118,21 @@ export class DockerImages {
       "pull",
       PULL_TIMEOUT_IN_MS,
     );
+  }
+
+  /**
+   * Removes the tag of an unlabelled Railpack image once the labelled image exists; the layers
+   * stay, shared with the labelled image.
+   *
+   * @param imageTag - Reference such as "nelcota/api:0a1b2c3d4e5f-railpack".
+   * @throws {UnmanagedResourceError} When the reference is not a Railpack image of the platform.
+   * @throws {DockerCommandError} When docker cannot remove the tag.
+   */
+  async removeRailpackBase(imageTag: string): Promise<void> {
+    if (isRailpackBaseTag(imageTag) === false) {
+      throw new UnmanagedResourceError(`image ${imageTag}`);
+    }
+    await this.#runChecked(["rm", "--no-prune", "--", imageTag], "rm");
   }
 
   /**

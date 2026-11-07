@@ -1,11 +1,15 @@
 import { describe, expect, test } from "bun:test";
 
-import { openMemoryDatabase } from "@/db";
+import { eq } from "drizzle-orm";
+
+import { openMemoryDatabase, tables } from "@/db";
 import { claimNextJob } from "@/jobs";
 import { createTestProject, TEST_ACTOR } from "@/testing";
 
 import {
+  ComposeProjectVolumeError,
   ProjectHasVolumesError,
+  ReplicatedProjectVolumeError,
   VolumeAttachedError,
   VolumeBeingDeletedError,
   VolumeLimitError,
@@ -32,6 +36,55 @@ function setup() {
   const change = (volumeId: string) => ({ projectId: project.id, volumeId, actor: TEST_ACTOR });
   return { database, project, add, change };
 }
+
+describe("volumes of a Docker Compose project", () => {
+  test("throws ComposeProjectVolumeError when adding one", () => {
+    const database = openMemoryDatabase();
+    const project = createTestProject(database, {
+      builder: "compose",
+      composeService: "web",
+      internalPort: 8080,
+    });
+
+    expect(() =>
+      addProjectVolume(database, {
+        projectId: project.id,
+        input: { mountPath: "/app/data" },
+        actor: TEST_ACTOR,
+      }),
+    ).toThrow(ComposeProjectVolumeError);
+  });
+});
+
+describe("volumes of a replicated project", () => {
+  test("throws ReplicatedProjectVolumeError when adding one", () => {
+    const database = openMemoryDatabase();
+    const project = createTestProject(database, { replicas: 2 });
+
+    expect(() =>
+      addProjectVolume(database, {
+        projectId: project.id,
+        input: { mountPath: "/app/data" },
+        actor: TEST_ACTOR,
+      }),
+    ).toThrow(ReplicatedProjectVolumeError);
+  });
+
+  test("throws ReplicatedProjectVolumeError when attaching one", () => {
+    const { database, project, add, change } = setup();
+    const volume = add("/app/data");
+    setVolumeAttached(database, { ...change(volume.id), attached: false });
+    database
+      .update(tables.projects)
+      .set({ replicas: 2 })
+      .where(eq(tables.projects.id, project.id))
+      .run();
+
+    expect(() => setVolumeAttached(database, { ...change(volume.id), attached: true })).toThrow(
+      ReplicatedProjectVolumeError,
+    );
+  });
+});
 
 describe("addProjectVolume", () => {
   test("rejects a stale reviewed server without creating a volume", () => {

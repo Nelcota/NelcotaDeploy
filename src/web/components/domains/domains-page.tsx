@@ -9,11 +9,13 @@ import { Button } from "@/web/components/ui/button";
 
 import { AddDomainForm } from "./add-domain-form";
 import { DomainRows } from "./domain-rows";
+import { useDomainUptime } from "./uptime/use-domain-uptime";
 import { useProjectDomains } from "./use-project-domains";
 
 /** Associates public addresses with the application; DNS is configured on its own page. */
 export function DomainsPage({ projectId }: { readonly projectId: string }) {
   const { project, canEdit, remove, applyChanges } = useProjectDomains(projectId);
+  const uptime = useDomainUptime(projectId);
   if (project.isError) {
     return <ErrorState error={project.error} onRetry={() => void project.refetch()} />;
   }
@@ -35,6 +37,7 @@ export function DomainsPage({ projectId }: { readonly projectId: string }) {
           {canEdit ? <AddDomainForm projectId={projectId} /> : null}
           <DomainRows
             domains={details.domains}
+            uptime={uptime}
             canEdit={canEdit}
             onRemove={(domainId) => remove.mutate(domainId)}
           />

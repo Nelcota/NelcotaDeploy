@@ -11,7 +11,7 @@ import {
   requestVolumeDeletion,
   setVolumeAttached,
 } from "@/volumes";
-import { authorize } from "@/web/server/authorization";
+import { authorizeProject } from "@/web/server/authorization";
 
 import { idSchema, projectIdInput } from "../ids";
 
@@ -20,7 +20,7 @@ const volumeTarget = { projectId: idSchema, volumeId: idSchema };
 export const listVolumesFn = createServerFn({ method: "GET" })
   .validator(projectIdInput)
   .handler(async ({ data }) => {
-    await authorize("project:read");
+    await authorizeProject("project:read", data.projectId);
     return listProjectVolumes(getDatabase(), data.projectId);
   });
 
@@ -34,7 +34,7 @@ export const addVolumeFn = createServerFn({ method: "POST" })
     }),
   )
   .handler(async ({ data }) => {
-    const user = await authorize("project:write");
+    const user = await authorizeProject("project:write", data.projectId);
     const database = getDatabase();
     addProjectVolume(database, {
       projectId: data.projectId,
@@ -52,7 +52,7 @@ export const addVolumeFn = createServerFn({ method: "POST" })
 export const setVolumeAttachedFn = createServerFn({ method: "POST" })
   .validator(z.object({ ...volumeTarget, attached: z.boolean() }))
   .handler(async ({ data }) => {
-    const user = await authorize("project:write");
+    const user = await authorizeProject("project:write", data.projectId);
     const database = getDatabase();
     setVolumeAttached(database, { ...data, actor: userActor(user) });
     applyRuntimeChanges(database, data.projectId, {
@@ -65,6 +65,6 @@ export const setVolumeAttachedFn = createServerFn({ method: "POST" })
 export const deleteVolumeDataFn = createServerFn({ method: "POST" })
   .validator(z.object(volumeTarget))
   .handler(async ({ data }) => {
-    const user = await authorize("project:delete");
+    const user = await authorizeProject("project:delete", data.projectId);
     requestVolumeDeletion(getDatabase(), { ...data, actor: userActor(user) });
   });

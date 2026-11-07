@@ -1,5 +1,6 @@
 import type { Actor } from "@/audit";
 import type { Database } from "@/db";
+import { projectInputSchema } from "@/shared/schemas/project.schema";
 import type { ProjectSettingsChange } from "@/shared/schemas/settings/project-settings.schema";
 
 import { getProject, type Project, updateProject } from "./project.service";
@@ -25,11 +26,12 @@ export function updateProjectSettings(
       const current = getProject(transaction, update.projectId);
       return updateProject(transaction, {
         projectId: update.projectId,
-        input: {
+        input: projectInputSchema.parse({
           ...current,
           internalPort: current.internalPortAuto ? null : current.internalPort,
+          healthCheckPath: current.healthCheckPath ?? "",
           ...update.change.project,
-        },
+        }),
         editor: update.editor,
       });
     },

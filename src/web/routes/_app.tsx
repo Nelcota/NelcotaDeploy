@@ -1,5 +1,6 @@
 import { createFileRoute, Outlet, redirect } from "@tanstack/react-router";
 
+import { TwoFactorRequired } from "@/web/components/account/two-factor-required";
 import { AppShell, PageBody } from "@/web/components/shell/app-shell";
 import { getSessionFn } from "@/web/functions/session.functions";
 
@@ -19,6 +20,9 @@ export const Route = createFileRoute("/_app")({
 
 function AppLayout() {
   const { user } = Route.useRouteContext();
+  if (user.twoFactorSetupRequired) {
+    return <TwoFactorRequired />;
+  }
   return (
     <AppShell user={user}>
       <PageBody>
