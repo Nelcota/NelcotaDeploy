@@ -3,6 +3,6 @@ import { createFileRoute } from "@tanstack/react-router";
 import { DashboardPage } from "@/web/components/dashboard/dashboard-page";
 
 export const Route = createFileRoute("/_app/")({
-  head: () => ({ meta: [{ title: "Painel · Nelcota Deploy" }] }),
+  head: () => ({ meta: [{ title: "Status das aplicações · Nelcota Deploy" }] }),
   component: DashboardPage,
 });

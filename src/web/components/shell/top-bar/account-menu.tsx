@@ -39,7 +39,7 @@ export function AccountMenu({ user }: { readonly user: SessionUser }) {
           <DropdownMenuSeparator />
           <DropdownMenuItem onSelect={() => setPhotoOpen(true)}>
             <ImageUpIcon aria-hidden />
-            Foto de perfil
+            Alterar foto de perfil
           </DropdownMenuItem>
           <DropdownMenuItem onSelect={() => setTwoFactorOpen(true)}>
             <ShieldCheckIcon aria-hidden />
@@ -49,11 +49,11 @@ export function AccountMenu({ user }: { readonly user: SessionUser }) {
           </DropdownMenuItem>
           <DropdownMenuItem onSelect={toggleTheme}>
             {theme === "dark" ? <SunIcon aria-hidden /> : <MoonIcon aria-hidden />}
-            {theme === "dark" ? "Tema claro" : "Tema escuro"}
+            {theme === "dark" ? "Ativar tema claro" : "Ativar tema escuro"}
           </DropdownMenuItem>
           <DropdownMenuItem onSelect={() => void signOut()}>
             <LogOutIcon aria-hidden />
-            Sair
+            Sair da conta
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>

@@ -14,14 +14,21 @@ import type { VariableFormApi } from "./use-variable-form";
 export function KeyField({
   form,
   locked,
+  onPasteAssignment,
 }: {
   readonly form: VariableFormApi;
   readonly locked: boolean;
+  readonly onPasteAssignment: (text: string) => boolean;
 }) {
   return (
     <form.Field name="key">
       {(field) => (
-        <FormField id="variable-key" label="Nome" errors={visibleErrors(form, field.state.meta)}>
+        <FormField
+          id="variable-key"
+          label="Nome"
+          hint={locked ? undefined : "Você pode colar NOME=valor aqui."}
+          errors={visibleErrors(form, field.state.meta)}
+        >
           {(props) => (
             <Input
               {...props}
@@ -32,6 +39,11 @@ export function KeyField({
               disabled={locked}
               value={field.state.value}
               onBlur={field.handleBlur}
+              onPaste={(event) => {
+                if (locked === false && onPasteAssignment(event.clipboardData.getData("text"))) {
+                  event.preventDefault();
+                }
+              }}
               onChange={(event) => field.handleChange(normalizeVariableKey(event.target.value))}
             />
           )}
@@ -45,9 +57,11 @@ export function KeyField({
 export function ValueField({
   form,
   savedSecret,
+  onValueEdited,
 }: {
   readonly form: VariableFormApi;
   readonly savedSecret: boolean;
+  readonly onValueEdited: () => void;
 }) {
   return (
     <form.Subscribe selector={(state) => savedSecret && state.values.kind === "secret"}>
@@ -71,7 +85,10 @@ export function ValueField({
                   placeholder={editingSecret ? MASKED_VALUE : "postgres://…"}
                   value={field.state.value}
                   onBlur={field.handleBlur}
-                  onChange={(event) => field.handleChange(event.target.value)}
+                  onChange={(event) => {
+                    onValueEdited();
+                    field.handleChange(event.target.value);
+                  }}
                 />
               )}
             </FormField>
@@ -114,12 +131,14 @@ function BooleanOption({
   id,
   label,
   hint,
+  onEdited,
 }: {
   readonly form: VariableFormApi;
   readonly name: "availableAtBuild" | "excludeFromPreviews";
   readonly id: string;
   readonly label: string;
   readonly hint: string;
+  readonly onEdited?: () => void;
 }) {
   return (
     <OptionRow id={id} label={label} hint={hint}>
@@ -129,7 +148,10 @@ function BooleanOption({
             id={id}
             aria-describedby={`${id}-hint`}
             checked={field.state.value}
-            onCheckedChange={field.handleChange}
+            onCheckedChange={(checked) => {
+              onEdited?.();
+              field.handleChange(checked);
+            }}
           />
         )}
       </form.Field>
@@ -138,7 +160,13 @@ function BooleanOption({
 }
 
 /** Whether the value is a secret, whether the build receives it, and whether previews do. */
-export function VariableOptions({ form }: { readonly form: VariableFormApi }) {
+export function VariableOptions({
+  form,
+  onEdited,
+}: {
+  readonly form: VariableFormApi;
+  readonly onEdited: (field: "kind" | "excludeFromPreviews") => void;
+}) {
   return (
     <div className="divide-y divide-border/70 rounded-xl ring-1 ring-border/70 ring-inset">
       <OptionRow
@@ -152,7 +180,10 @@ export function VariableOptions({ form }: { readonly form: VariableFormApi }) {
               id="variable-secret"
               aria-describedby="variable-secret-hint"
               checked={field.state.value === "secret"}
-              onCheckedChange={(checked) => field.handleChange(checked ? "secret" : "plain")}
+              onCheckedChange={(checked) => {
+                onEdited("kind");
+                field.handleChange(checked ? "secret" : "plain");
+              }}
             />
           )}
         </form.Field>
@@ -170,6 +201,7 @@ export function VariableOptions({ form }: { readonly form: VariableFormApi }) {
         id="variable-previews"
         label="Não enviar para previews"
         hint="Previews de pull request recebem as variáveis de produção, menos esta."
+        onEdited={() => onEdited("excludeFromPreviews")}
       />
     </div>
   );

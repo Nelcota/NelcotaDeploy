@@ -89,7 +89,7 @@ function DnsRecordValue({
     return (
       <>
         <span className="min-w-0 font-mono text-sm break-all">{automaticHostname}</span>
-        <CopyButton text={automaticHostname} label="Copiar" />
+        <CopyButton text={automaticHostname} label="Copiar destino DNS" />
       </>
     );
   }
@@ -99,7 +99,7 @@ function DnsRecordValue({
   return (
     <>
       <span className="font-mono text-sm">{serverAddress}</span>
-      <CopyButton text={serverAddress} label="Copiar" />
+      <CopyButton text={serverAddress} label="Copiar IP do servidor" />
     </>
   );
 }

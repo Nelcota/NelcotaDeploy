@@ -28,10 +28,23 @@ export const networkProbes: Probes = {
   },
   async tcp(host, port) {
     try {
-      const socket = await Promise.race([
-        Bun.connect({ hostname: host, port, socket: { data() {} } }),
-        Bun.sleep(PROBE_TIMEOUT_IN_MS).then(() => null),
-      ]);
+      let expired = false;
+      const { promise: timeout, resolve } = Promise.withResolvers<null>();
+      const timer = setTimeout(() => {
+        expired = true;
+        resolve(null);
+      }, PROBE_TIMEOUT_IN_MS);
+      using _timer = { [Symbol.dispose]: () => clearTimeout(timer) };
+      const opening = Bun.connect({ hostname: host, port, socket: { data() {} } }).then(
+        (socket) => {
+          if (expired) {
+            socket.end();
+            return null;
+          }
+          return socket;
+        },
+      );
+      const socket = await Promise.race([opening, timeout]);
       if (socket == null) {
         return false;
       }

@@ -13,6 +13,7 @@ import {
 
 import {
   removeProjectResources,
+  runProjectCleanup,
   runContainerAction,
   runVolumeDeletion,
 } from "./container-action-runner";
@@ -33,7 +34,14 @@ async function startReplicas(replicas: number) {
   using logs = new DeploymentLogWriter(database, deploymentId);
   await startContainers(
     { database, docker, config: { network: "nelcota" } },
-    { deployment: getDeployment(database, deploymentId), project, logs, state: new DeployState() },
+    {
+      deployment: getDeployment(database, deploymentId),
+      project,
+      logs,
+      state: new DeployState(),
+      assertOwnership: () => undefined,
+      signal: new AbortController().signal,
+    },
     {
       imageTag: "nelcota/api:abc",
       runtimeValues: {},
@@ -136,6 +144,30 @@ describe("runVolumeDeletion while the volume is in use", () => {
 });
 
 describe("removeProjectResources", () => {
+  test("keeps the project and reports a failed volume deletion for a later retry", async () => {
+    const { database, project, docker, name } = setup();
+    await docker.volumes.ensure(name, project.id);
+    const remove = docker.volumes.remove.bind(docker.volumes);
+    docker.volumes.remove = () => Promise.reject(new Error("volume is busy"));
+    const failure = await runProjectCleanup(database, [{ docker, routes: null }], {
+      projectId: project.id,
+      storage: null,
+    }).catch((error: unknown) => error);
+    expect(failure).toBeInstanceOf(AggregateError);
+    expect(
+      database.$client.query("SELECT id FROM projects WHERE id = ?").get(project.id),
+    ).not.toBeNull();
+    expect(docker.volumes.owners.has(name)).toBe(true);
+    docker.volumes.remove = remove;
+    await runProjectCleanup(database, [{ docker, routes: null }], {
+      projectId: project.id,
+      storage: null,
+    });
+    expect(docker.volumes.owners.has(name)).toBe(false);
+    expect(
+      database.$client.query("SELECT id FROM projects WHERE id = ?").get(project.id),
+    ).toBeNull();
+  });
   test("removes the project's volumes with its containers", async () => {
     const { project, docker, name } = setup();
     await docker.volumes.ensure(name, project.id);

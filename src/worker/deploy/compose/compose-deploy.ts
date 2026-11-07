@@ -85,10 +85,14 @@ async function checkedComposeFile(
   const { runner, docker, config } = dependencies;
   const { deployment, project, logs } = context;
   const repositoryPath = input.workspace.repositoryPath;
+  context.assertOwnership();
+  assertNotCancelled(context.signal);
   const composePath = await resolveInsideWorkspace(runner, repositoryPath, project.composeFilePath);
   logs.system(`Checking ${project.composeFilePath}`);
   checkComposeSource(await readFile(runner, composePath));
   const projectName = composeProjectNameFor(project.id);
+  context.assertOwnership();
+  assertNotCancelled(context.signal);
   const rendered = await docker.compose.renderConfig(
     { projectName, files: [composePath], directory: repositoryPath },
     { ...input.release.buildValues, ...input.release.runtimeValues },
@@ -142,6 +146,8 @@ async function startCompose(
   const projectName = composeProjectNameFor(project.id);
   const filePath = posix.join(input.workspace.path, GENERATED_FILE);
   await writePrivateFile(runner, filePath, JSON.stringify(input.file));
+  context.assertOwnership();
+  assertNotCancelled(signal);
   transitionDeployment(database, deployment.id, {
     to: "starting",
     // Compose names its own images; rollbacks rebuild the commit instead of reusing one.
@@ -153,6 +159,8 @@ async function startCompose(
   });
   logs.system(`Starting the Compose services of ${project.composeFilePath}`);
   await docker.ensureNetwork(config.network);
+  context.assertOwnership();
+  assertNotCancelled(signal);
   await docker.compose.up(
     { projectName, files: [filePath], directory: input.workspace.repositoryPath },
     {
@@ -162,6 +170,8 @@ async function startCompose(
       onLine: (line, stream) => logs.output(line, stream),
     },
   );
+  context.assertOwnership();
+  assertNotCancelled(signal);
   const routed = (await docker.listManagedContainers()).filter(
     (container) =>
       container.labels[LABELS.composeProject] === projectName &&

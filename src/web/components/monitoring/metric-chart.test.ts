@@ -18,7 +18,7 @@ describe("niceUpperBound", () => {
         { createdAt: "a", value: null },
         { createdAt: "b", value: 8 },
       ]),
-    ).toBe(10);
+    ).toBe(12);
   });
 
   test("rounds the bound so every tick is a round number", () => {
@@ -33,13 +33,23 @@ describe("niceUpperBound", () => {
       { createdAt: "b", value: 8 },
     ]);
 
-    expect(bound).toBe(10);
+    expect(bound).toBe(12);
   });
 
   test("returns a positive bound for an all-zero or empty series", () => {
     expect(niceUpperBound([{ createdAt: "a", value: 0 }])).toBe(1);
     expect(niceUpperBound([])).toBe(1);
   });
+
+  test.each([Number.MIN_VALUE, Number.MAX_VALUE])(
+    "keeps an extreme sample %p within a finite axis",
+    (value) => {
+      const bound = niceUpperBound([{ createdAt: "a", value }]);
+      expect(Number.isFinite(bound)).toBe(true);
+      expect(bound).toBeGreaterThanOrEqual(value);
+      expect(bound).toBeGreaterThan(0);
+    },
+  );
 });
 
 describe("summarizeMetricPoints", () => {

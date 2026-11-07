@@ -1,41 +1,34 @@
-import { useQuery } from "@tanstack/react-query";
-import { useState } from "react";
+import { useInfiniteQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 
+import type { PageCursor } from "@/shared/pagination";
 import { toUserMessage } from "@/web/components/layout/error-message";
 import { listAuditEventsFn } from "@/web/functions/admin/audit.functions";
 
-import type { AuditEvent } from "./audit-row";
-
 /** Audit events, newest first, with on-demand loading of older pages. */
 export function useAuditEvents() {
-  const firstPage = useQuery({
+  const query = useInfiniteQuery({
     queryKey: ["audit"],
-    queryFn: () => listAuditEventsFn({ data: {} }),
+    initialPageParam: undefined,
+    queryFn: ({ pageParam }: { readonly pageParam: PageCursor | undefined }) =>
+      listAuditEventsFn({ data: { before: pageParam } }),
+    getNextPageParam: (lastPage) => {
+      const last = lastPage.at(-1);
+      return last == null ? undefined : { createdAt: last.createdAt, id: last.id };
+    },
   });
-  const [olderPages, setOlderPages] = useState<AuditEvent[]>([]);
-  const [loadingMore, setLoadingMore] = useState(false);
-  const [exhausted, setExhausted] = useState(false);
-  const events = [...(firstPage.data ?? []), ...olderPages];
+  const events = query.data?.pages.flat() ?? [];
 
   const loadMore = async () => {
-    const last = events.at(-1);
-    if (last == null) {
+    if (query.hasNextPage === false || query.isFetching) {
       return;
     }
-    setLoadingMore(true);
     try {
-      const page = await listAuditEventsFn({
-        data: { before: { createdAt: last.createdAt, id: last.id } },
-      });
-      setOlderPages((current) => [...current, ...page]);
-      setExhausted(page.length === 0);
+      await query.fetchNextPage({ cancelRefetch: false, throwOnError: true });
     } catch (error) {
       toast.error(toUserMessage(error, "Não foi possível carregar mais eventos."));
-    } finally {
-      setLoadingMore(false);
     }
   };
 
-  return { firstPage, events, loadingMore, exhausted, loadMore };
+  return { query, events, loadMore };
 }

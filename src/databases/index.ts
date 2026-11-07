@@ -1,6 +1,7 @@
 export { databaseEngine } from "./database-engines";
 export { recoverDatabaseJob } from "./database-job-recovery";
 export {
+  DatabaseServerChangedError,
   DatabaseBackupInProgressError,
   DatabaseBackupNotFoundError,
   DatabaseBackupUnsupportedError,

@@ -47,6 +47,8 @@ describe("standalonePage", () => {
     const response = failurePage("<script>x</script>", 400);
 
     expect(response.status).toBe(400);
-    expect(await response.text()).toContain("&lt;script&gt;x&lt;/script&gt;");
+    const html = await response.text();
+    expect(html).toContain("&lt;script&gt;x&lt;/script&gt;");
+    expect(html).toContain('href="/settings/integrations/github"');
   });
 });

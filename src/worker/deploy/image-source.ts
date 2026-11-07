@@ -40,6 +40,8 @@ export async function cloneRevision(
   const { database, git, config } = dependencies;
   const { deployment, project, logs, signal } = context;
 
+  context.assertOwnership();
+  assertNotCancelled(signal);
   transitionDeployment(database, deployment.id, { to: "cloning" });
   // A redeploy or rollback that has to rebuild uses the exact commit of its source.
   const commitSha = deployment.requestedCommitSha ?? deployment.commitSha;
@@ -56,6 +58,7 @@ export async function cloneRevision(
     onLine: (line, stream) => logs.output(line, stream),
   });
   logs.system(`Checked out ${commit.sha.slice(0, DISPLAYED_SHA_LENGTH)}: ${commit.message}`);
+  context.assertOwnership();
   assertNotCancelled(signal);
   transitionDeployment(database, deployment.id, {
     to: "building",
@@ -67,7 +70,7 @@ export async function cloneRevision(
 const READ_DOCKERFILE_TIMEOUT_IN_MS = 10_000;
 
 /**
- * For a project whose port is automatic, reads it from the Dockerfile's EXPOSE and stores it.
+ * For an automatic port, prefers the final stage's literal EXPOSE, then final image metadata.
  * A preview only uses it: the pull request must not change production's port.
  *
  * @returns The detected port, or null when the port is not automatic or no EXPOSE names one.
@@ -75,19 +78,25 @@ const READ_DOCKERFILE_TIMEOUT_IN_MS = 10_000;
 async function detectPort(
   dependencies: DeployRunnerDependencies,
   context: DeployContext,
-  dockerfilePath: string,
+  source: { readonly dockerfilePath: string; readonly imageTag: string },
 ): Promise<number | null> {
   const { project, logs, deployment } = context;
   if (project.internalPortAuto === false) {
     return null;
   }
-  const result = await dependencies.runner(["cat", dockerfilePath], {
-    timeoutInMs: READ_DOCKERFILE_TIMEOUT_IN_MS,
-  });
-  const port = result.exitCode === 0 ? detectExposedPort(result.stdout) : null;
+  const [result, exposed] = await Promise.all([
+    dependencies.runner(["cat", source.dockerfilePath], {
+      timeoutInMs: READ_DOCKERFILE_TIMEOUT_IN_MS,
+    }),
+    dependencies.docker.images.exposedPorts(source.imageTag),
+  ]);
+  context.assertOwnership();
+  assertNotCancelled(context.signal);
+  const declared = result.exitCode === 0 ? detectExposedPort(result.stdout) : null;
+  const port = declared != null && exposed.includes(declared) ? declared : (exposed.at(0) ?? null);
   if (port == null) {
     logs.system(
-      `No EXPOSE with a port in the Dockerfile; using port ${project.internalPort}`,
+      `No exposed TCP port in the final image; using port ${project.internalPort}`,
       "warn",
     );
     return null;
@@ -95,7 +104,7 @@ async function detectPort(
   if (port !== project.internalPort && deployment.previewId == null) {
     recordDetectedPort(dependencies.database, project.id, port);
   }
-  logs.system(`Using port ${port} from the Dockerfile's EXPOSE`);
+  logs.system(`Using exposed port ${port} of the final image`);
   return port;
 }
 
@@ -111,7 +120,7 @@ async function buildImage(
   },
 ): Promise<{ imageTag: string; detectedPort: number | null }> {
   const { docker, config, runner } = dependencies;
-  const { deployment, project, logs, signal } = context;
+  const { project, logs, signal } = context;
   if (project.builder === "railpack") {
     return {
       imageTag: await buildWithRailpack(dependencies, context, { workspace, buildValues }),
@@ -129,8 +138,10 @@ async function buildImage(
     workspace.repositoryPath,
     project.buildContext,
   );
-  const detectedPort = await detectPort(dependencies, context, dockerfilePath);
-  const imageTag = imageTagFor(project.slug, deployment.id);
+  context.assertOwnership();
+  assertNotCancelled(signal);
+  // A build that outlives its lease must not overwrite the next attempt's image tag.
+  const imageTag = imageTagFor(project.slug, Bun.randomUUIDv7());
   logs.system(`Building image ${imageTag} from ${project.dockerfilePath}`);
   await docker.buildImage(
     {
@@ -149,6 +160,7 @@ async function buildImage(
     },
   );
   logs.system("Image built");
+  const detectedPort = await detectPort(dependencies, context, { dockerfilePath, imageTag });
   return { imageTag, detectedPort };
 }
 

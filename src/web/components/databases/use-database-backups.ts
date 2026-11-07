@@ -8,8 +8,7 @@ import {
   restoreDatabaseBackupFn,
 } from "@/web/functions/databases/databases.functions";
 
-// While a backup runs the list refreshes, so its row follows on its own.
-const PENDING_REFRESH_IN_MS = 3000;
+import { backupRefreshInterval, isBackupPending } from "./backup-state";
 
 /** The backups of one database and the actions on them; loads only while `open`. */
 export function useDatabaseBackups(target: {
@@ -23,12 +22,7 @@ export function useDatabaseBackups(target: {
     queryKey: ["database-backups", databaseId],
     queryFn: () => listDatabaseBackupsFn({ data: { projectId, databaseId } }),
     enabled: open,
-    refetchInterval: (query) =>
-      query.state.data?.some(
-        (backup) => backup.status === "queued" || backup.status === "running",
-      ) === true
-        ? PENDING_REFRESH_IN_MS
-        : false,
+    refetchInterval: (query) => backupRefreshInterval(query.state.data ?? []),
   });
   const invalidate = [
     ["database-backups", databaseId],
@@ -45,10 +39,14 @@ export function useDatabaseBackups(target: {
     successMessage: "Restauração colocada na fila",
     invalidate,
   });
+  const operationPending =
+    backupNow.isPending || restore.isPending || backups.data?.some(isBackupPending) === true;
   return {
     backups,
     backupNow,
     restore,
+    operationPending,
+    busy: operationPending || backups.data == null || backups.isError,
     canBackup: can("project:write"),
     canRestore: can("project:delete"),
   };

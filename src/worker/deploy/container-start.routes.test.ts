@@ -52,6 +52,8 @@ function setup(options: { readonly baseDomain: string | null; readonly preview: 
   }, "/routes");
   const dependencies = { database, routes, config: { routingSettleInMs: 0, traefik: TRAEFIK } };
   const context = (logs: DeploymentLogWriter) => ({
+    assertOwnership: () => undefined,
+    signal: new AbortController().signal,
     deployment: getDeployment(database, deploymentId),
     project,
     logs,

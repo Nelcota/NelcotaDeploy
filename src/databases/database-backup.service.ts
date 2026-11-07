@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, max } from "drizzle-orm";
+import { and, desc, eq, inArray, max, or, sql } from "drizzle-orm";
 
 import { type Actor, recordAuditEvent } from "@/audit";
 import { type Database, tables, type Transaction } from "@/db";
@@ -29,6 +29,7 @@ type DatabaseBackupView = {
   readonly errorMessage: string | null;
   readonly restoredAt: string | null;
   readonly restoreError: string | null;
+  readonly restorePending: boolean;
   readonly createdAt: string;
   readonly finishedAt: string | null;
 };
@@ -79,6 +80,9 @@ export function listDatabaseBackups(
       errorMessage: tables.databaseBackups.errorMessage,
       restoredAt: tables.databaseBackups.restoredAt,
       restoreError: tables.databaseBackups.restoreError,
+      restorePending: sql<boolean>`EXISTS (SELECT 1 FROM jobs WHERE project_id = ${target.projectId}
+        AND kind = 'database_restore' AND status IN ('queued', 'running')
+        AND json_extract(payload, '$.backupId') = database_backups.id)`.mapWith(Boolean),
       createdAt: tables.databaseBackups.createdAt,
       finishedAt: tables.databaseBackups.finishedAt,
     })
@@ -136,24 +140,39 @@ function insertBackup(
  */
 export function requestDatabaseBackup(database: Database, target: BackupTarget): string {
   const { projectId, databaseId, actor } = target;
-  return database.transaction((transaction) => {
-    assertBackupPossible(transaction, projectId, databaseId);
-    assertNoPendingBackup(transaction, databaseId);
-    const backupId = insertBackup(transaction, {
-      projectId,
-      databaseId,
-      trigger: "manual",
-      now: new Date(),
-    });
-    recordAuditEvent(transaction, {
-      actor,
-      action: "database.backup",
-      targetType: "database",
-      targetId: databaseId,
-      metadata: { projectId, backupId },
-    });
-    return backupId;
-  });
+  return database.transaction(
+    (transaction) => {
+      assertBackupPossible(transaction, projectId, databaseId);
+      const pending = transaction
+        .select({ id: tables.databaseBackups.id })
+        .from(tables.databaseBackups)
+        .where(
+          and(
+            eq(tables.databaseBackups.databaseId, databaseId),
+            inArray(tables.databaseBackups.status, ["queued", "running"]),
+          ),
+        )
+        .get();
+      if (pending != null) {
+        throw new DatabaseBackupInProgressError(databaseId);
+      }
+      const backupId = insertBackup(transaction, {
+        projectId,
+        databaseId,
+        trigger: "manual",
+        now: new Date(),
+      });
+      recordAuditEvent(transaction, {
+        actor,
+        action: "database.backup",
+        targetType: "database",
+        targetId: databaseId,
+        metadata: { projectId, backupId },
+      });
+      return backupId;
+    },
+    { behavior: "immediate" },
+  );
 }
 
 /**
@@ -164,60 +183,72 @@ export function requestDatabaseBackup(database: Database, target: BackupTarget):
  * @throws {DatabaseNotFoundError} When the database is not one of the project's.
  * @throws {DatabaseBeingDeletedError} When it is being deleted.
  * @throws {DatabaseBackupUnsupportedError} When its engine is not backed up.
- * @throws {DatabaseNotRunningError} When it is not running, such as during another restore.
+ * @throws {DatabaseNotRunningError} When it is not running or an earlier restore job is still active.
  * @throws {DatabaseBackupNotFoundError} When the backup is not a successful one of the database.
- * @throws {DatabaseBackupInProgressError} When another backup could prune the restore target.
+ * @throws {DatabaseBackupInProgressError} While a backup or its retention is still running.
  */
 export function requestDatabaseRestore(
   database: Database,
   target: BackupTarget & { readonly backupId: string },
 ): void {
   const { projectId, databaseId, backupId, actor } = target;
-  database.transaction((transaction) => {
-    assertBackupPossible(transaction, projectId, databaseId);
-    const backup = transaction
-      .select({ status: tables.databaseBackups.status })
-      .from(tables.databaseBackups)
-      .where(
-        and(
-          eq(tables.databaseBackups.id, backupId),
-          eq(tables.databaseBackups.databaseId, databaseId),
-        ),
-      )
-      .get();
-    if (backup?.status !== "succeeded") {
-      throw new DatabaseBackupNotFoundError(backupId);
-    }
-    assertNoPendingBackup(transaction, databaseId);
-    transaction
-      .update(tables.projectDatabases)
-      .set({ status: "restoring", updatedAt: new Date().toISOString() })
-      .where(eq(tables.projectDatabases.id, databaseId))
-      .run();
-    enqueueJob(transaction, {
-      kind: "database_restore",
-      projectId,
-      payload: { backupId },
-      dedupeKey: `database-restore:${databaseId}`,
-    });
-    recordAuditEvent(transaction, {
-      actor,
-      action: "database.restore",
-      targetType: "database",
-      targetId: databaseId,
-      metadata: { projectId, backupId },
-    });
-  });
+  database.transaction(
+    (transaction) => {
+      assertBackupPossible(transaction, projectId, databaseId);
+      const backup = transaction
+        .select({ status: tables.databaseBackups.status })
+        .from(tables.databaseBackups)
+        .where(
+          and(
+            eq(tables.databaseBackups.id, backupId),
+            eq(tables.databaseBackups.databaseId, databaseId),
+          ),
+        )
+        .get();
+      if (backup?.status !== "succeeded") {
+        throw new DatabaseBackupNotFoundError(backupId);
+      }
+      assertNoBackupInProgress(transaction, databaseId);
+      const job = enqueueJob(transaction, {
+        kind: "database_restore",
+        projectId,
+        payload: { backupId },
+        dedupeKey: `database-restore:${databaseId}`,
+      });
+      if (job.created === false) {
+        throw new DatabaseNotRunningError(databaseId, "restoring");
+      }
+      transaction
+        .update(tables.projectDatabases)
+        .set({ status: "restoring", updatedAt: new Date().toISOString() })
+        .where(eq(tables.projectDatabases.id, databaseId))
+        .run();
+      recordAuditEvent(transaction, {
+        actor,
+        action: "database.restore",
+        targetType: "database",
+        targetId: databaseId,
+        metadata: { projectId, backupId },
+      });
+    },
+    { behavior: "immediate" },
+  );
 }
 
-function assertNoPendingBackup(transaction: Transaction, databaseId: string): void {
+// The queue serializes backup jobs with restores, but retention also needs this admission
+// check: a restore must not be accepted while its dump could already be getting deleted.
+function assertNoBackupInProgress(transaction: Transaction, databaseId: string): void {
   const pending = transaction
     .select({ id: tables.databaseBackups.id })
     .from(tables.databaseBackups)
     .where(
       and(
         eq(tables.databaseBackups.databaseId, databaseId),
-        inArray(tables.databaseBackups.status, ["queued", "running"]),
+        or(
+          inArray(tables.databaseBackups.status, ["queued", "running"]),
+          sql`EXISTS (SELECT 1 FROM jobs WHERE kind = 'database_backup' AND status = 'running'
+        AND json_extract(payload, '$.backupId') = ${tables.databaseBackups.id})`,
+        ),
       ),
     )
     .get();
@@ -235,50 +266,53 @@ function assertNoPendingBackup(transaction: Transaction, databaseId: string): vo
  * @returns How many backups were queued.
  */
 export function queueDueDatabaseBackups(database: Database, now: Date): number {
-  const candidates = database
-    .select({
-      id: tables.projectDatabases.id,
-      projectId: tables.projectDatabases.projectId,
-      engine: tables.projectDatabases.engine,
-    })
-    .from(tables.projectDatabases)
-    .where(eq(tables.projectDatabases.status, "running"))
-    .all()
-    .filter((candidate) => databaseEngine(candidate.engine).backup != null);
-  if (candidates.length === 0) {
-    return 0;
-  }
-  const newest = new Map(
-    database
-      .select({
-        databaseId: tables.databaseBackups.databaseId,
-        createdAt: max(tables.databaseBackups.createdAt),
-      })
-      .from(tables.databaseBackups)
-      .where(
-        inArray(
-          tables.databaseBackups.databaseId,
-          candidates.map((candidate) => candidate.id),
-        ),
-      )
-      .groupBy(tables.databaseBackups.databaseId)
-      .all()
-      .map((row) => [row.databaseId, row.createdAt]),
+  return database.transaction(
+    (transaction) => {
+      const candidates = transaction
+        .select({
+          id: tables.projectDatabases.id,
+          projectId: tables.projectDatabases.projectId,
+          engine: tables.projectDatabases.engine,
+        })
+        .from(tables.projectDatabases)
+        .where(eq(tables.projectDatabases.status, "running"))
+        .all()
+        .filter((candidate) => databaseEngine(candidate.engine).backup != null);
+      if (candidates.length === 0) {
+        return 0;
+      }
+      const newest = new Map(
+        transaction
+          .select({
+            databaseId: tables.databaseBackups.databaseId,
+            createdAt: max(tables.databaseBackups.createdAt),
+          })
+          .from(tables.databaseBackups)
+          .where(
+            inArray(
+              tables.databaseBackups.databaseId,
+              candidates.map((candidate) => candidate.id),
+            ),
+          )
+          .groupBy(tables.databaseBackups.databaseId)
+          .all()
+          .map((row) => [row.databaseId, row.createdAt]),
+      );
+      const due = candidates.filter((candidate) =>
+        isDatabaseBackupDue(newest.get(candidate.id) ?? null, now),
+      );
+      for (const candidate of due) {
+        insertBackup(transaction, {
+          projectId: candidate.projectId,
+          databaseId: candidate.id,
+          trigger: "scheduled",
+          now,
+        });
+      }
+      return due.length;
+    },
+    { behavior: "immediate" },
   );
-  const due = candidates.filter((candidate) =>
-    isDatabaseBackupDue(newest.get(candidate.id) ?? null, now),
-  );
-  database.transaction((transaction) => {
-    for (const candidate of due) {
-      insertBackup(transaction, {
-        projectId: candidate.projectId,
-        databaseId: candidate.id,
-        trigger: "scheduled",
-        now,
-      });
-    }
-  });
-  return due.length;
 }
 
 /**

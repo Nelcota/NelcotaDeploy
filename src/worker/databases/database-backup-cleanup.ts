@@ -1,9 +1,10 @@
 import { and, inArray, isNotNull } from "drizzle-orm";
 
-import { databaseBackupsPrefix, listProjectDatabases } from "@/databases";
+import { listProjectDatabases } from "@/databases";
 import { type Database, tables } from "@/db";
 
-import type { BackupStorage } from "./database-backup-runner";
+import { deleteStoredDatabaseBackups } from "./database-backup-runner";
+import type { BackupStorage } from "./database-backup-storage";
 
 /**
  * Removes a project's stored database dumps before their metadata can be cascaded away.
@@ -31,8 +32,7 @@ export async function deleteProjectDatabaseBackups(
   }
   await Promise.all(
     databases.map(async (item) => {
-      const keys = await storage.store.list(databaseBackupsPrefix(storage.prefix, item.id));
-      await Promise.all(keys.map(async (key) => await storage.store.delete(key)));
+      await deleteStoredDatabaseBackups(storage, item.id);
     }),
   );
 }

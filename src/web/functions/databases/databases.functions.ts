@@ -30,13 +30,20 @@ export const listDatabasesFn = createServerFn({ method: "GET" })
 
 /** Adds a database; projects that apply changes on their own are recreated with its URL. */
 export const createDatabaseFn = createServerFn({ method: "POST" })
-  .validator(z.object({ projectId: idSchema, database: databaseInputSchema }))
+  .validator(
+    z.object({
+      projectId: idSchema,
+      database: databaseInputSchema,
+      expectedServerId: idSchema.optional(),
+    }),
+  )
   .handler(async ({ data }) => {
     const user = await authorizeProject("project:write", data.projectId);
     const database = getDatabase();
     await createProjectDatabase(database, await getSecretBox(), {
       projectId: data.projectId,
       input: data.database,
+      expectedServerId: data.expectedServerId,
       actor: userActor(user),
     });
     applyRuntimeChanges(database, data.projectId, {

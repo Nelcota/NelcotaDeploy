@@ -1,9 +1,54 @@
-import { type LucideIcon, RefreshCwIcon } from "lucide-react";
+import { Link } from "@tanstack/react-router";
+import { type LucideIcon, RefreshCwIcon, CircleHelpIcon } from "lucide-react";
 import type { ReactNode } from "react";
 
 import { toUserMessage } from "@/web/components/layout/error-message";
 import { Button } from "@/web/components/ui/button";
 import { Skeleton } from "@/web/components/ui/skeleton";
+
+/** Gives unmatched addresses a clear destination without exposing internal route details. */
+export function NotFoundPage() {
+  return (
+    <main id="main" className="flex min-h-svh items-center justify-center bg-panel p-6">
+      <div className="w-full max-w-lg space-y-5 rounded-2xl bg-card p-6 ring-1 ring-border">
+        <CircleHelpIcon aria-hidden className="size-8 text-brand" />
+        <p className="text-sm font-medium text-muted-foreground">Erro 404</p>
+        <h1 className="text-2xl font-semibold">Página não encontrada</h1>
+        <p className="text-sm text-muted-foreground">
+          O endereço pode ter mudado ou a página foi removida. Volte ao painel para continuar.
+        </p>
+        <Button asChild>
+          <Link to="/">Voltar ao painel</Link>
+        </Button>
+      </div>
+    </main>
+  );
+}
+
+/** Lets a failed route retry while keeping internal exception details out of the interface. */
+export function PageError() {
+  return (
+    <main id="main" className="flex min-h-svh items-center justify-center bg-panel p-6">
+      <div
+        role="alert"
+        className="w-full max-w-lg space-y-5 rounded-2xl bg-card p-6 ring-1 ring-border"
+      >
+        <h1 className="text-2xl font-semibold">Não foi possível abrir esta página</h1>
+        <p className="text-sm text-muted-foreground">
+          Tente novamente ou volte ao painel para continuar.
+        </p>
+        <div className="flex flex-wrap gap-2">
+          <Button type="button" onClick={() => window.location.reload()}>
+            Recarregar página
+          </Button>
+          <Button asChild variant="outline">
+            <Link to="/">Voltar ao painel</Link>
+          </Button>
+        </div>
+      </div>
+    </main>
+  );
+}
 
 /**
  * Calm empty state: a small muted icon, one line and an optional action. Renders on the
@@ -56,7 +101,7 @@ export function ErrorState({
       {onRetry == null ? null : (
         <Button variant="ghost" size="sm" onClick={onRetry}>
           <RefreshCwIcon aria-hidden />
-          Tentar novamente
+          Atualizar dados novamente
         </Button>
       )}
     </div>

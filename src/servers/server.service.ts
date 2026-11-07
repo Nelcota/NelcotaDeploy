@@ -119,46 +119,49 @@ export function addServer(
 ): Server {
   const serverId = Bun.randomUUIDv7();
   const now = new Date().toISOString();
-  database.transaction((transaction) => {
-    const sameName = transaction
-      .select({ id: tables.servers.id })
-      .from(tables.servers)
-      .where(eq(tables.servers.name, input.name))
-      .get();
-    if (sameName != null) {
-      throw new ServerTakenError("name");
-    }
-    const sameAddress = transaction
-      .select({ id: tables.servers.id })
-      .from(tables.servers)
-      .where(and(eq(tables.servers.host, input.host), eq(tables.servers.port, input.port)))
-      .get();
-    if (sameAddress != null) {
-      throw new ServerTakenError("address");
-    }
-    transaction
-      .insert(tables.servers)
-      .values({
-        id: serverId,
-        name: input.name,
-        kind: "ssh",
-        host: input.host,
-        port: input.port,
-        username: input.username,
-        acceptsApplications: true,
-        status: "pending",
-        createdAt: now,
-        updatedAt: now,
-      })
-      .run();
-    recordAuditEvent(transaction, {
-      actor,
-      action: "server.add",
-      targetType: "server",
-      targetId: serverId,
-      metadata: { name: input.name, host: input.host, port: input.port },
-    });
-  });
+  database.transaction(
+    (transaction) => {
+      const sameName = transaction
+        .select({ id: tables.servers.id })
+        .from(tables.servers)
+        .where(eq(tables.servers.name, input.name))
+        .get();
+      if (sameName != null) {
+        throw new ServerTakenError("name");
+      }
+      const sameAddress = transaction
+        .select({ id: tables.servers.id })
+        .from(tables.servers)
+        .where(and(eq(tables.servers.host, input.host), eq(tables.servers.port, input.port)))
+        .get();
+      if (sameAddress != null) {
+        throw new ServerTakenError("address");
+      }
+      transaction
+        .insert(tables.servers)
+        .values({
+          id: serverId,
+          name: input.name,
+          kind: "ssh",
+          host: input.host,
+          port: input.port,
+          username: input.username,
+          acceptsApplications: true,
+          status: "pending",
+          createdAt: now,
+          updatedAt: now,
+        })
+        .run();
+      recordAuditEvent(transaction, {
+        actor,
+        action: "server.add",
+        targetType: "server",
+        targetId: serverId,
+        metadata: { name: input.name, host: input.host, port: input.port },
+      });
+    },
+    { behavior: "immediate" },
+  );
   return getServer(database, serverId);
 }
 
@@ -178,20 +181,23 @@ export function setServerAcceptsApplications(
   }: { readonly serverId: string; readonly acceptsApplications: boolean; readonly actor: Actor },
 ): void {
   getServer(database, serverId);
-  database.transaction((transaction) => {
-    transaction
-      .update(tables.servers)
-      .set({ acceptsApplications, updatedAt: new Date().toISOString() })
-      .where(eq(tables.servers.id, serverId))
-      .run();
-    recordAuditEvent(transaction, {
-      actor,
-      action: "server.update",
-      targetType: "server",
-      targetId: serverId,
-      metadata: { acceptsApplications },
-    });
-  });
+  database.transaction(
+    (transaction) => {
+      transaction
+        .update(tables.servers)
+        .set({ acceptsApplications, updatedAt: new Date().toISOString() })
+        .where(eq(tables.servers.id, serverId))
+        .run();
+      recordAuditEvent(transaction, {
+        actor,
+        action: "server.update",
+        targetType: "server",
+        targetId: serverId,
+        metadata: { acceptsApplications },
+      });
+    },
+    { behavior: "immediate" },
+  );
 }
 
 /**
@@ -257,20 +263,23 @@ export function removeServer(
   if (leftover != null && server.status === "ready") {
     throw new ServerInUseError(serverId, "containers of moved projects still run on it");
   }
-  database.transaction((transaction) => {
-    transaction
-      .delete(tables.containerSnapshots)
-      .where(eq(tables.containerSnapshots.serverId, serverId))
-      .run();
-    transaction.delete(tables.servers).where(eq(tables.servers.id, serverId)).run();
-    recordAuditEvent(transaction, {
-      actor,
-      action: "server.remove",
-      targetType: "server",
-      targetId: serverId,
-      metadata: { name: server.name, host: server.host },
-    });
-  });
+  database.transaction(
+    (transaction) => {
+      transaction
+        .delete(tables.containerSnapshots)
+        .where(eq(tables.containerSnapshots.serverId, serverId))
+        .run();
+      transaction.delete(tables.servers).where(eq(tables.servers.id, serverId)).run();
+      recordAuditEvent(transaction, {
+        actor,
+        action: "server.remove",
+        targetType: "server",
+        targetId: serverId,
+        metadata: { name: server.name, host: server.host },
+      });
+    },
+    { behavior: "immediate" },
+  );
 }
 
 /**

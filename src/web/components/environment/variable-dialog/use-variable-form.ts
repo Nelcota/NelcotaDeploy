@@ -2,11 +2,12 @@ import { useForm } from "@tanstack/react-form";
 import type { z } from "zod";
 
 import type { EnvironmentVariableView } from "@/environments";
-import { environmentVariableInputSchema } from "@/shared/schemas/environment-variable.schema";
+import type { environmentVariableInputSchema } from "@/shared/schemas/environment-variable.schema";
 import { useAction } from "@/web/components/layout/use-action";
 import { saveEnvironmentVariableFn } from "@/web/functions/environment.functions";
 
 import { draftFromVariable } from "../variable-draft";
+import { variableFormSchema } from "./variable-form.schema";
 
 /**
  * Form state and save action of the variable dialog.
@@ -17,18 +18,15 @@ import { draftFromVariable } from "../variable-draft";
 export function useVariableForm({
   projectId,
   variable,
+  existingKeys,
   onSaved,
 }: {
   readonly projectId: string;
   readonly variable: EnvironmentVariableView | null;
+  readonly existingKeys: readonly string[];
   readonly onSaved: () => void;
 }) {
-  const savedSecret = variable?.kind === "secret";
-  // A saved secret keeps its value when left blank; a new one needs a value.
-  const schema = environmentVariableInputSchema.refine(
-    (input) => input.kind !== "secret" || input.value !== "" || savedSecret,
-    { path: ["value"], message: "Informe o valor do secret" },
-  );
+  const schema = variableFormSchema(variable, existingKeys);
   const save = useAction({
     action: (input: z.output<typeof environmentVariableInputSchema>) =>
       saveEnvironmentVariableFn({ data: { projectId, variable: input } }),

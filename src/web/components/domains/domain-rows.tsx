@@ -12,22 +12,19 @@ import { ConfirmDialog } from "@/web/components/layout/confirm-dialog";
 import { ListRow, Tag } from "@/web/components/layout/layout";
 import { Button } from "@/web/components/ui/button";
 
-import { type DomainDns, type DomainItem, dnsTag, domainUrl } from "./domains";
+import { type DomainItem, domainUrl } from "./domains";
 import { UptimeLine } from "./uptime/uptime-line";
 import type { DomainUptime } from "./uptime/uptime-state";
 
 /** The project's domains, the first one marked as principal; a hint row when there are none. */
 export function DomainRows({
   domains,
-  dns,
   uptime,
   canEdit,
   onRemove,
 }: {
   readonly domains: readonly DomainItem[];
-  /** DNS check of each hostname; a domain not checked yet shows no DNS tag. */
-  readonly dns: ReadonlyMap<string, DomainDns>;
-  /** Availability of each hostname; a domain the worker has not checked yet shows none. */
+  /** Availability of each hostname. */
   readonly uptime: ReadonlyMap<string, DomainUptime>;
   readonly canEdit: boolean;
   readonly onRemove: (domainId: string) => void;
@@ -46,10 +43,10 @@ export function DomainRows({
     );
   }
   return domains.map((domain, index) => (
-    <ListRow key={domain.hostname}>
+    <ListRow key={domain.hostname} className="flex-wrap">
       <div className="min-w-0 flex-1 space-y-1.5">
         <DomainLink domain={domain} />
-        <DomainTags domain={domain} dns={dns.get(domain.hostname)} principal={index === 0} />
+        <DomainTags domain={domain} principal={index === 0} />
         {renderUptime(uptime.get(domain.hostname))}
       </div>
       {canEdit && domain.id != null ? (
@@ -83,22 +80,13 @@ function DomainLink({ domain }: { readonly domain: DomainItem }) {
 
 function DomainTags({
   domain,
-  dns,
   principal,
 }: {
   readonly domain: DomainItem;
-  readonly dns: DomainDns | undefined;
   readonly principal: boolean;
 }) {
-  const dnsState = dnsTag(dns);
   return (
     <div className="flex flex-wrap gap-1.5">
-      {dnsState == null ? null : (
-        <span title={dnsState.detail}>
-          <Tag tone={dnsState.tone}>{dnsState.label}</Tag>
-          <span className="sr-only">{dnsState.detail}</span>
-        </span>
-      )}
       {principal ? <Tag icon={StarIcon}>Principal</Tag> : null}
       <Tag icon={domain.httpsEnabled ? LockIcon : LockOpenIcon}>
         {domain.httpsEnabled ? "HTTPS" : "Somente HTTP"}
@@ -120,13 +108,14 @@ function RemoveDomainButton({
   return (
     <ConfirmDialog
       trigger={
-        <Button variant="ghost" size="icon-sm" aria-label={`Remover ${hostname}`}>
+        <Button variant="ghost" size="sm" aria-label={`Remover domínio ${hostname}`}>
           <Trash2Icon aria-hidden />
+          Remover domínio
         </Button>
       }
       title={`Remover ${hostname}?`}
-      description="O domínio deixa de ser roteado quando o contêiner for recriado."
-      confirmLabel="Remover"
+      description="O endereço deixa de ser roteado para a aplicação quando o contêiner for recriado. Registros DNS externos não são apagados."
+      confirmLabel="Remover domínio do projeto"
       destructive
       onConfirm={() => onRemove(domainId)}
     />

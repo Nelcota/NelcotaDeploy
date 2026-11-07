@@ -21,3 +21,19 @@ test("redacts short credentials instead of silently excluding them", () => {
 test("keeps ordinary output unchanged when no nonempty secrets exist", () => {
   expect(createRedactor([""])("application ready")).toBe("application ready");
 });
+
+test("normalizes terminal escapes before hiding secrets", () => {
+  const redact = createRedactor(["private-password"]);
+  expect(redact("private-\u001b[31mpassword\u001b[0m")).toBe("[REDACTED]");
+});
+
+test("hides encoded and decoded credentials from a secret connection URL", () => {
+  const redact = createRedactor(["postgresql://app:p%40ssword@database:5432/app"]);
+  expect(redact("password=p@ssword encoded=p%40ssword")).toBe(
+    "password=[REDACTED] encoded=[REDACTED]",
+  );
+});
+
+test("accepts a URL password with an invalid percent escape", () => {
+  expect(createRedactor(["redis://default:p%xx@database"])("p%xx")).toBe("[REDACTED]");
+});

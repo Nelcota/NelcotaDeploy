@@ -32,7 +32,7 @@ const STOP_DESCRIPTION =
 const REDEPLOY_DESCRIPTION =
   "Um novo contêiner será criado com a imagem atual, aplicando as variáveis e domínios salvos, sem novo build. Pode haver uma breve troca de versão durante a substituição.";
 
-type Confirmation = "stop" | "redeploy";
+type Confirmation = "stop" | "redeploy" | "deploy";
 
 function ContainerMenuItems({
   containerState,
@@ -53,15 +53,15 @@ function ContainerMenuItems({
     <>
       <DropdownMenuItem disabled={busy || running} onSelect={() => onAction("start")}>
         <PlayIcon aria-hidden />
-        Iniciar
+        Iniciar aplicação
       </DropdownMenuItem>
       <DropdownMenuItem disabled={busy || running === false} onSelect={() => onAction("restart")}>
         <RotateCwIcon aria-hidden />
-        Reiniciar
+        Reiniciar aplicação
       </DropdownMenuItem>
       <DropdownMenuItem disabled={busy || running === false} onSelect={onStop}>
         <SquareIcon aria-hidden />
-        Parar
+        Parar aplicação
       </DropdownMenuItem>
     </>
   );
@@ -85,11 +85,12 @@ function MoreActionsMenu({
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="outline" size="icon-sm" aria-label="Mais ações">
+        <Button variant="outline" size="sm" aria-label="Mais ações da aplicação">
           <EllipsisIcon aria-hidden />
+          Ações da aplicação
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-52">
+      <DropdownMenuContent align="end" className="w-72 max-w-[calc(100vw-2rem)]">
         {canControl ? (
           <ContainerMenuItems
             containerState={containerState}
@@ -102,7 +103,7 @@ function MoreActionsMenu({
         {canRedeploy ? (
           <DropdownMenuItem disabled={busy} onSelect={() => onConfirm("redeploy")}>
             <RefreshCwIcon aria-hidden />
-            Redeploy sem build
+            Recriar contêiner sem build
           </DropdownMenuItem>
         ) : null}
       </DropdownMenuContent>
@@ -115,8 +116,8 @@ function OpenAppButton({ url }: { readonly url: string }) {
     <Button variant="outline" size="sm" asChild>
       <a href={url} target="_blank" rel="noreferrer noopener">
         <ExternalLinkIcon aria-hidden />
-        Abrir
-        <span className="sr-only"> a aplicação em nova aba</span>
+        Abrir aplicação
+        <span className="sr-only"> em nova aba</span>
       </a>
     </Button>
   );
@@ -138,7 +139,7 @@ function DeployButton({
       ) : (
         <RocketIcon aria-hidden />
       )}
-      Deploy
+      Publicar nova versão
     </Button>
   );
 }
@@ -148,20 +149,32 @@ function ActionConfirmations({
   onConfirmingChange,
   onStop,
   onRedeploy,
+  onDeploy,
+  project,
 }: {
   readonly confirming: Confirmation | null;
   readonly onConfirmingChange: (confirming: Confirmation | null) => void;
   readonly onStop: () => void;
   readonly onRedeploy: () => void;
+  readonly onDeploy: () => void;
+  readonly project: Pick<ProjectDetails["project"], "repositoryFullName" | "branch">;
 }) {
   return (
     <>
+      <ConfirmDialog
+        open={confirming === "deploy"}
+        onOpenChange={(open) => onConfirmingChange(open ? "deploy" : null)}
+        title="Iniciar o primeiro deploy?"
+        description={`O painel vai construir e executar ${project.repositoryFullName}, na branch ${project.branch}, usando a configuração revisada do projeto.`}
+        confirmLabel="Publicar primeira versão"
+        onConfirm={onDeploy}
+      />
       <ConfirmDialog
         open={confirming === "stop"}
         onOpenChange={(open) => onConfirmingChange(open ? "stop" : null)}
         title="Parar a aplicação?"
         description={STOP_DESCRIPTION}
-        confirmLabel="Parar"
+        confirmLabel="Parar aplicação"
         destructive
         onConfirm={onStop}
       />
@@ -170,7 +183,7 @@ function ActionConfirmations({
         onOpenChange={(open) => onConfirmingChange(open ? "redeploy" : null)}
         title="Recriar o contêiner?"
         description={REDEPLOY_DESCRIPTION}
-        confirmLabel="Fazer redeploy"
+        confirmLabel="Recriar contêiner sem build"
         onConfirm={onRedeploy}
       />
     </>
@@ -202,7 +215,7 @@ export function ProjectActions({
   const canRedeploy = canDeploy && hasDeployment;
 
   return (
-    <div className="flex items-center gap-2 max-lg:border-b max-lg:border-border/70 max-lg:pb-4">
+    <div className="flex flex-wrap items-center gap-2 max-lg:border-b max-lg:border-border/70 max-lg:pb-4">
       {url == null ? null : <OpenAppButton url={url} />}
       {canControl || canRedeploy ? (
         <MoreActionsMenu
@@ -223,13 +236,19 @@ export function ProjectActions({
         />
       ) : null}
       {canDeploy ? (
-        <DeployButton busy={busy} deploying={deploy.isPending} onDeploy={() => deploy.mutate()} />
+        <DeployButton
+          busy={busy}
+          deploying={deploy.isPending}
+          onDeploy={() => (hasDeployment ? deploy.mutate() : setConfirming("deploy"))}
+        />
       ) : null}
       <ActionConfirmations
         confirming={confirming}
         onConfirmingChange={setConfirming}
         onStop={() => containerAction.mutate("stop")}
         onRedeploy={() => redeploy.mutate()}
+        onDeploy={() => deploy.mutate()}
+        project={project}
       />
     </div>
   );

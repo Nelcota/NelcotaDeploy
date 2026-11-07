@@ -8,6 +8,7 @@ const HEARTBEAT_INTERVAL_IN_MS = 15_000;
 /** Delay the browser waits before reconnecting a dropped stream. */
 const CLIENT_RETRY_IN_MS = 3000;
 const MAX_CURSOR = Number.MAX_SAFE_INTEGER;
+const STREAM_HIGH_WATER_MARK_BYTES = 65_536;
 const encoder = new TextEncoder();
 
 /** One batch read by an event stream. */
@@ -113,6 +114,7 @@ export function createEventStreamResponse<T extends { readonly id: number }>(
   let pollTimer: ReturnType<typeof setTimeout> | undefined;
   let heartbeatTimer: ReturnType<typeof setInterval> | undefined;
   let closed = false;
+  const isClosed = () => closed;
   let onAbort: (() => void) | undefined;
   const stop = () => {
     clearTimeout(pollTimer);
@@ -122,47 +124,57 @@ export function createEventStreamResponse<T extends { readonly id: number }>(
     }
   };
 
-  const stream = new ReadableStream<Uint8Array>({
-    start(controller) {
-      const send = (text: string) => {
-        if (closed === false) {
-          controller.enqueue(encoder.encode(text));
-        }
-      };
-      const close = () => {
-        if (closed) {
-          return;
-        }
+  const stream = new ReadableStream<Uint8Array>(
+    {
+      start(controller) {
+        const send = (text: string) => {
+          if (closed === false) {
+            controller.enqueue(encoder.encode(text));
+          }
+        };
+        const close = () => {
+          if (isClosed()) {
+            return;
+          }
+          closed = true;
+          stop();
+          controller.close();
+        };
+        const pollOnce = createPoller({ cursor: readCursor(request), poll, send, close, onError });
+        const tick = async () => {
+          if (closed) {
+            return;
+          }
+          if (request.signal.aborted) {
+            close();
+            return;
+          }
+          // A slow reader may leave one batch queued; do not fetch another until it drains.
+          const hasCapacity = (controller.desiredSize ?? 0) > 0;
+          const outcome = hasCapacity ? await pollOnce() : "continue";
+          if (isClosed() === false && outcome === "continue") {
+            pollTimer = setTimeout(() => {
+              void tick();
+            }, POLL_INTERVAL_IN_MS);
+          }
+        };
+        send(`retry: ${CLIENT_RETRY_IN_MS}\n\n`);
+        heartbeatTimer = setInterval(() => {
+          if ((controller.desiredSize ?? 0) > 0) {
+            send(": keep-alive\n\n");
+          }
+        }, HEARTBEAT_INTERVAL_IN_MS);
+        onAbort = close;
+        request.signal.addEventListener("abort", close, { once: true });
+        void tick();
+      },
+      cancel() {
         closed = true;
         stop();
-        controller.close();
-      };
-      const pollOnce = createPoller({ cursor: readCursor(request), poll, send, close, onError });
-      const tick = async () => {
-        if (closed) {
-          return;
-        }
-        if (request.signal.aborted) {
-          close();
-          return;
-        }
-        if ((await pollOnce()) === "continue") {
-          pollTimer = setTimeout(() => {
-            void tick();
-          }, POLL_INTERVAL_IN_MS);
-        }
-      };
-      send(`retry: ${CLIENT_RETRY_IN_MS}\n\n`);
-      heartbeatTimer = setInterval(() => send(": keep-alive\n\n"), HEARTBEAT_INTERVAL_IN_MS);
-      onAbort = close;
-      request.signal.addEventListener("abort", close, { once: true });
-      void tick();
+      },
     },
-    cancel() {
-      closed = true;
-      stop();
-    },
-  });
+    { highWaterMark: STREAM_HIGH_WATER_MARK_BYTES, size: (chunk) => chunk?.byteLength ?? 0 },
+  );
 
   return new Response(stream, { headers: EVENT_STREAM_HEADERS });
 }

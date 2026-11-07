@@ -1,9 +1,9 @@
 /**
- * Tells whether to offer applying saved variables or domains with a redeploy.
+ * Tells whether applying saved variables or domains can be requested now.
  *
  * @param state - `pending` comes from the server; `canRedeploy` means the user may redeploy and
- * there is a live deployment; `requested` means a redeploy was already queued from this page.
- * @returns True when the banner should be shown.
+ * there is a live deployment; `requested` means a production deployment or apply request is active.
+ * @returns True when the apply button can be enabled.
  */
 export function shouldOfferApply(state: {
   readonly pending: boolean;

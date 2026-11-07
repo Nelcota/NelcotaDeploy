@@ -1,5 +1,3 @@
-import { useState } from "react";
-
 import { formatCpuCores } from "@/shared/format";
 import {
   CPU_LIMIT_OPTIONS_IN_MILLICORES,
@@ -11,7 +9,6 @@ import {
 import { ComposeFields } from "@/web/components/forms/compose-fields";
 import { FormField, visibleErrors } from "@/web/components/forms/form-field";
 import type { ProjectFormApi } from "@/web/components/forms/project-form";
-import { identityFromRepository } from "@/web/components/forms/repository-identity";
 import { Input } from "@/web/components/ui/input";
 import {
   Select,
@@ -24,9 +21,18 @@ import {
 // Radix reserves the empty value, so "no limit" travels as this word inside the select.
 const NO_CPU_LIMIT = "none";
 
+import { DetectedProjectField } from "./repository/detected-project-field";
+import { HealthCheckDiscovery } from "./repository/health-check-discovery";
+import type { ProjectAutomation } from "./repository/use-project-automation";
+
 /** Name and slug; a new project derives its slug from the name until the slug is edited. */
-export function IdentityFields({ form }: { readonly form: ProjectFormApi }) {
-  const [slugEdited, setSlugEdited] = useState(() => form.getFieldValue("slug") !== "");
+export function IdentityFields({
+  form,
+  automation,
+}: {
+  readonly form: ProjectFormApi;
+  readonly automation: ProjectAutomation;
+}) {
   return (
     <>
       <form.Field name="name">
@@ -39,7 +45,8 @@ export function IdentityFields({ form }: { readonly form: ProjectFormApi }) {
                 onBlur={field.handleBlur}
                 onChange={(event) => {
                   field.handleChange(event.target.value);
-                  if (slugEdited === false) {
+                  automation.markEdited("name");
+                  if (automation.manualFields.has("slug") === false) {
                     form.setFieldValue("slug", slugify(event.target.value));
                   }
                 }}
@@ -63,7 +70,7 @@ export function IdentityFields({ form }: { readonly form: ProjectFormApi }) {
                 value={field.state.value}
                 onBlur={field.handleBlur}
                 onChange={(event) => {
-                  setSlugEdited(true);
+                  automation.markEdited("slug");
                   field.handleChange(event.target.value);
                 }}
               />
@@ -75,28 +82,17 @@ export function IdentityFields({ form }: { readonly form: ProjectFormApi }) {
   );
 }
 
-/** Fills an empty name and identifier from the repository a user just pasted or picked. */
-export function fillIdentityFromRepository(form: ProjectFormApi, url: string): void {
-  const identity = identityFromRepository(url, {
-    name: form.getFieldValue("name"),
-    slug: form.getFieldValue("slug"),
-  });
-  if (identity.name != null) {
-    form.setFieldValue("name", identity.name);
-  }
-  if (identity.slug != null) {
-    form.setFieldValue("slug", identity.slug);
-  }
-}
-
 /** GitHub repository URL and branch. */
-export function RepositoryFields({ form }: { readonly form: ProjectFormApi }) {
+export function RepositoryFields({
+  form,
+  automation,
+}: {
+  readonly form: ProjectFormApi;
+  readonly automation: ProjectAutomation;
+}) {
   return (
     <>
-      <form.Field
-        name="repositoryUrl"
-        listeners={{ onChange: ({ value }) => fillIdentityFromRepository(form, value) }}
-      >
+      <form.Field name="repositoryUrl">
         {(field) => (
           <FormField
             id="project-repository"
@@ -118,25 +114,14 @@ export function RepositoryFields({ form }: { readonly form: ProjectFormApi }) {
           </FormField>
         )}
       </form.Field>
-      <form.Field name="branch">
-        {(field) => (
-          <FormField
-            id="project-branch"
-            label="Branch"
-            errors={visibleErrors(form, field.state.meta)}
-          >
-            {(props) => (
-              <Input
-                {...props}
-                className="font-mono"
-                value={field.state.value}
-                onBlur={field.handleBlur}
-                onChange={(event) => field.handleChange(event.target.value)}
-              />
-            )}
-          </FormField>
-        )}
-      </form.Field>
+      <DetectedProjectField
+        form={form}
+        automation={automation}
+        name="branch"
+        label="Branch"
+        hint="Detectada pelo GitHub. Escolha uma sugestão ou personalize."
+        suggestions={automation.inspection.data?.branches ?? []}
+      />
     </>
   );
 }
@@ -170,25 +155,37 @@ export function PortField({ form }: { readonly form: ProjectFormApi }) {
 }
 
 /** Optional HTTP path checked before a new container takes traffic. */
-export function HealthCheckField({ form }: { readonly form: ProjectFormApi }) {
+export function HealthCheckField({
+  form,
+  automation,
+}: {
+  readonly form: ProjectFormApi;
+  readonly automation: ProjectAutomation;
+}) {
   return (
     <form.Field name="healthCheckPath">
       {(field) => (
         <FormField
           id="project-health"
           label="Caminho do health check (opcional)"
-          hint="Ex.: /health. Sem caminho, basta a porta aceitar conexões."
+          hint="Detectado a partir de um HEALTHCHECK HTTP local no Dockerfile. Sem caminho, basta a porta aceitar conexões."
           errors={visibleErrors(form, field.state.meta)}
         >
           {(props) => (
-            <Input
-              {...props}
-              className="font-mono"
-              placeholder="/health"
-              value={field.state.value}
-              onBlur={field.handleBlur}
-              onChange={(event) => field.handleChange(event.target.value)}
-            />
+            <div className="space-y-2">
+              <Input
+                {...props}
+                className="font-mono"
+                placeholder="/health"
+                value={field.state.value}
+                onBlur={field.handleBlur}
+                onChange={(event) => {
+                  automation.markEdited("healthCheckPath");
+                  field.handleChange(event.target.value);
+                }}
+              />
+              <HealthCheckDiscovery automation={automation} />
+            </div>
           )}
         </FormField>
       )}
@@ -197,58 +194,51 @@ export function HealthCheckField({ form }: { readonly form: ProjectFormApi }) {
 }
 
 /** Dockerfile path and build context inside the repository. */
-export function BuildFields({ form }: { readonly form: ProjectFormApi }) {
+export function BuildFields({
+  form,
+  automation,
+}: {
+  readonly form: ProjectFormApi;
+  readonly automation: ProjectAutomation;
+}) {
   return (
     <form.Subscribe selector={(state) => state.values.builder}>
       {(builder) =>
-        builder === "compose" ? <ComposeFields form={form} /> : <DockerfileFields form={form} />
+        builder === "compose" ? (
+          <ComposeFields form={form} />
+        ) : (
+          <DockerfileFields form={form} automation={automation} />
+        )
       }
     </form.Subscribe>
   );
 }
 
-function DockerfileFields({ form }: { readonly form: ProjectFormApi }) {
+function DockerfileFields({
+  form,
+  automation,
+}: {
+  readonly form: ProjectFormApi;
+  readonly automation: ProjectAutomation;
+}) {
   return (
     <>
-      <form.Field name="dockerfilePath">
-        {(field) => (
-          <FormField
-            id="project-dockerfile"
-            label="Caminho do Dockerfile"
-            errors={visibleErrors(form, field.state.meta)}
-          >
-            {(props) => (
-              <Input
-                {...props}
-                className="font-mono"
-                value={field.state.value}
-                onBlur={field.handleBlur}
-                onChange={(event) => field.handleChange(event.target.value)}
-              />
-            )}
-          </FormField>
-        )}
-      </form.Field>
-      <form.Field name="buildContext">
-        {(field) => (
-          <FormField
-            id="project-context"
-            label="Diretório de build"
-            hint="Relativo à raiz do repositório."
-            errors={visibleErrors(form, field.state.meta)}
-          >
-            {(props) => (
-              <Input
-                {...props}
-                className="font-mono"
-                value={field.state.value}
-                onBlur={field.handleBlur}
-                onChange={(event) => field.handleChange(event.target.value)}
-              />
-            )}
-          </FormField>
-        )}
-      </form.Field>
+      <DetectedProjectField
+        form={form}
+        automation={automation}
+        name="dockerfilePath"
+        label="Caminho do Dockerfile"
+        hint="Escolha um arquivo encontrado ou personalize o caminho."
+        suggestions={automation.inspection.data?.dockerfiles ?? []}
+      />
+      <DetectedProjectField
+        form={form}
+        automation={automation}
+        name="buildContext"
+        label="Diretório de build"
+        hint="Relativo à raiz. A raiz é mantida até você escolher outro diretório."
+        suggestions={automation.inspection.data?.directories ?? []}
+      />
     </>
   );
 }

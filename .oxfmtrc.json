@@ -5,6 +5,7 @@
   "singleQuote": false,
   "trailingComma": "all",
   "ignorePatterns": [
+    ".claude/worktrees/**",
     "node_modules",
     "dist",
     "coverage",

@@ -2,9 +2,28 @@ import type { listDeploymentsFn } from "@/web/functions/deployments.functions";
 
 /** Picker value that streams every recent deploy instead of a single one. */
 export const ALL_DEPLOYMENTS = "all";
+/** Stable picker value that follows production when another deployment goes live. */
+export const LIVE_DEPLOYMENT = "live";
 const SHORT_SHA_LENGTH = 7;
 
 export type DeploymentItem = Awaited<ReturnType<typeof listDeploymentsFn>>[number];
+
+/**
+ * Resolves automatic following without turning an explicit history selection into live mode.
+ *
+ * @param selected - Automatic mode, all deployments, or a fixed deployment id.
+ * @param currentDeploymentId - Deployment currently serving production, when available.
+ * @returns The deployment filter to send to the log stream.
+ */
+export function resolveRuntimeDeployment(
+  selected: string,
+  currentDeploymentId: string | null,
+): string {
+  if (selected === LIVE_DEPLOYMENT) {
+    return currentDeploymentId ?? ALL_DEPLOYMENTS;
+  }
+  return selected;
+}
 
 /**
  * Builds the runtime-logs stream URL for one deploy, or for all recent ones.

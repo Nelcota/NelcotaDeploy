@@ -1,7 +1,9 @@
-import { resolve, sep } from "node:path";
+import { resolve } from "node:path";
 
 import { getConfig } from "@/config";
 import { createLogger } from "@/logging";
+
+import { serveStaticAsset } from "./server/assets/static-response";
 
 /**
  * Production HTTP server: serves the built client assets and hands every other request to
@@ -15,33 +17,10 @@ const SERVER_ENTRY = resolve("dist/server/server.js");
 const MAX_REQUEST_BODY_BYTES = 2_097_152;
 /** SSE streams send a heartbeat every 15 s, well within this idle limit. */
 const IDLE_TIMEOUT_IN_SECONDS = 60;
-const IMMUTABLE_CACHE = "public, max-age=31536000, immutable";
 
 const logger = createLogger("web");
 const config = getConfig();
 const entry = (await import(SERVER_ENTRY)) as { default: ServerEntry };
-
-async function serveStaticFile(pathname: string): Promise<Response | null> {
-  let decoded: string;
-  try {
-    decoded = decodeURIComponent(pathname);
-  } catch {
-    return null;
-  }
-  const path = resolve(CLIENT_DIRECTORY, `.${decoded}`);
-  // Refuses ../ tricks: the resolved file must stay inside the client directory.
-  if (path.startsWith(`${CLIENT_DIRECTORY}${sep}`) === false) {
-    return null;
-  }
-  const file = Bun.file(path);
-  if ((await file.exists()) === false) {
-    return null;
-  }
-  const cacheControl = decoded.startsWith("/assets/") ? IMMUTABLE_CACHE : "public, max-age=300";
-  return new Response(file, {
-    headers: { "Cache-Control": cacheControl, "X-Content-Type-Options": "nosniff" },
-  });
-}
 
 const server = Bun.serve({
   port: config.PORT,
@@ -51,7 +30,7 @@ const server = Bun.serve({
   async fetch(request) {
     const url = new URL(request.url);
     if ((request.method === "GET" || request.method === "HEAD") && url.pathname !== "/") {
-      const file = await serveStaticFile(url.pathname);
+      const file = await serveStaticAsset(request, CLIENT_DIRECTORY);
       if (file != null) {
         return file;
       }

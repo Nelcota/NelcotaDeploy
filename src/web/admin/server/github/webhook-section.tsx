@@ -39,7 +39,7 @@ export function ManualWebhook({
       <div className="mt-4 space-y-4">
         <div className="flex gap-2">
           <Input readOnly aria-label="URL do webhook" className="font-mono" value={webhookUrl} />
-          <CopyButton text={webhookUrl} label="Copiar" />
+          <CopyButton text={webhookUrl} label="Copiar URL do webhook" />
         </div>
         <div>
           <ToggleStatusPill

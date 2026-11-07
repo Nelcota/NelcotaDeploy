@@ -34,11 +34,10 @@ export function ToolbarButton({
       disabled={disabled}
       onClick={onClick}
       title={title ?? label}
-      className="inline-flex h-9 items-center sm:h-8 gap-1.5 rounded-md px-2.5 text-xs font-medium text-console-foreground/70 transition-colors hover:bg-white/8 hover:text-console-foreground focus-visible:ring-2 focus-visible:ring-console-ring focus-visible:outline-none disabled:pointer-events-none disabled:opacity-40 [&_svg]:size-3.5"
+      className="inline-flex min-h-9 max-w-full items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium text-console-foreground/70 transition-colors hover:bg-white/8 hover:text-console-foreground focus-visible:ring-2 focus-visible:ring-console-ring focus-visible:outline-none disabled:pointer-events-none disabled:opacity-40 sm:min-h-8 [&_svg]:size-3.5 [&_svg]:shrink-0"
     >
       {children}
-      <span className="hidden xl:inline">{label}</span>
-      <span className="sr-only xl:hidden">{label}</span>
+      <span>{label}</span>
     </button>
   );
 }
@@ -120,20 +119,24 @@ function LineActions({
 }) {
   const empty = visible.length === 0;
   return (
-    <div className="flex items-center gap-1">
+    <div className="flex flex-wrap items-center gap-1">
       <ToolbarButton
-        label="Ir para o erro"
+        label="Ir para o primeiro erro"
         disabled={hasError === false}
         onClick={onJumpToError}
         title={hasError ? undefined : "Nenhum erro nas linhas exibidas"}
       >
         <OctagonAlertIcon aria-hidden />
       </ToolbarButton>
-      <ToolbarButton label="Copiar" disabled={empty} onClick={() => void copyLines(visible)}>
+      <ToolbarButton
+        label="Copiar linhas exibidas"
+        disabled={empty}
+        onClick={() => void copyLines(visible)}
+      >
         <CopyIcon aria-hidden />
       </ToolbarButton>
       <ToolbarButton
-        label="Baixar"
+        label="Baixar linhas exibidas"
         disabled={empty}
         onClick={() => downloadLines(visible, downloadName)}
       >
@@ -165,7 +168,7 @@ export function LogToolbar({
         <div className="min-w-0 lg:w-72 lg:shrink-0">{toolbarStart}</div>
       )}
       <SearchField value={filters.search} onChange={filters.setSearch} />
-      <div className="flex items-center justify-between gap-2 lg:ml-auto lg:justify-end">
+      <div className="flex flex-wrap items-center justify-between gap-2 lg:ml-auto lg:justify-end">
         <LevelFilterGroup
           value={filters.levelFilter}
           counts={filters.counts}

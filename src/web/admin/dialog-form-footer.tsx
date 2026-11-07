@@ -19,7 +19,7 @@ export function DialogFormFooter({
 }) {
   return (
     <DialogFooter>
-      <Button type="button" variant="outline" onClick={onCancel}>
+      <Button type="button" variant="outline" disabled={isPending} onClick={onCancel}>
         Cancelar
       </Button>
       <Button type="submit" disabled={isPending}>

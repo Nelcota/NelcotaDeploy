@@ -1,9 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
-import { Link } from "@tanstack/react-router";
 import { ActivityIcon } from "lucide-react";
 import { useState } from "react";
 
-import { CardTitleRow, TEXT_LINK } from "@/web/components/layout/layout";
+import { CardTitleRow } from "@/web/components/layout/layout";
 import { SegmentedControl } from "@/web/components/layout/overview";
 import { Card } from "@/web/components/ui/card";
 import { getProjectMetricsFn } from "@/web/functions/monitoring.functions";
@@ -51,10 +50,6 @@ export function ResourcesCard({ projectId }: { readonly projectId: string }) {
           <span className="font-medium text-foreground tabular-nums">
             {formatCurrentResource(series, latest)}
           </span>
-          {" · "}
-          <Link to="/projects/$projectId/metrics" params={{ projectId }} className={TEXT_LINK}>
-            Ver métricas
-          </Link>
         </p>
       </div>
       <ResourceChart series={series} samples={metrics.data ?? null} />

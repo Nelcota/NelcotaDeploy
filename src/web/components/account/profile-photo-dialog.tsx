@@ -52,8 +52,15 @@ export function ProfilePhotoDialog({
   const busy = upload.isPending || remove.isPending;
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
+    <Dialog
+      open={open}
+      onOpenChange={(next) => {
+        if (busy === false) {
+          onOpenChange(next);
+        }
+      }}
+    >
+      <DialogContent className="sm:max-w-md" showCloseButton={busy === false}>
         <DialogHeader>
           <DialogTitle>Foto de perfil</DialogTitle>
           <DialogDescription>

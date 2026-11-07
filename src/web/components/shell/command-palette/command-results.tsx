@@ -3,7 +3,7 @@ import { SearchXIcon } from "lucide-react";
 import type { Command } from "@/web/components/shell/command-palette/command-search";
 import { cn } from "@/web/components/ui/class-names";
 
-const GROUP_ORDER = ["Projetos", "Páginas", "Administração"] as const;
+const GROUP_ORDER = ["Neste projeto", "Projetos", "Páginas", "Administração"] as const;
 
 function CommandOption({
   command,
@@ -38,7 +38,7 @@ function CommandOption({
       >
         <command.icon aria-hidden className="size-4" />
       </span>
-      <span className="min-w-0 flex-1 truncate text-sm font-medium">{command.label}</span>
+      <span className="min-w-0 flex-1 break-words text-sm font-medium">{command.label}</span>
       {command.hint == null ? null : (
         <span className="hidden max-w-[45%] truncate font-mono text-xs text-faint sm:block">
           {command.hint}

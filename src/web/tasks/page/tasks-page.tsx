@@ -5,19 +5,17 @@ import { useCan } from "@/web/components/shell/use-permissions";
 
 import { TaskDialog } from "../task-dialog";
 import type { TaskRow } from "../task-row";
-import { TaskHistorySheet } from "./task-history-sheet";
 import { TaskList } from "./task-list";
 import { NewTaskButton, TasksHeader, TasksQueryState } from "./tasks-page-states";
 import { useTaskActions, useTasksQuery } from "./use-tasks";
 
-/** Tasks of one project: list, run, schedule, edit, delete and run history. */
+/** Manages task definitions and requests runs; execution histories use dedicated routes. */
 export function TasksPage({ projectId }: { readonly projectId: string }) {
   const can = useCan();
   const permissions = { canRun: can("task:run"), canWrite: can("task:write") };
   const tasksQuery = useTasksQuery(projectId);
   const actions = useTaskActions(projectId);
   const { dialogTask, dialogOpen, setDialogOpen, openDialog } = useTaskDialog();
-  const [historyTaskId, setHistoryTaskId] = useState<string | null>(null);
   const timeZone = tasksQuery.data?.timeZone ?? "UTC";
   const tasks: readonly TaskRow[] = tasksQuery.data?.tasks ?? [];
   const createButton = (size: "default" | "sm") =>
@@ -35,28 +33,22 @@ export function TasksPage({ projectId }: { readonly projectId: string }) {
         emptyAction={createButton("sm")}
       />
       <TaskList
+        projectId={projectId}
         tasks={tasks}
         actions={actions}
         permissions={permissions}
-        onOpenHistory={setHistoryTaskId}
         onEdit={openDialog}
       />
-      <TaskHistorySheet
-        projectId={projectId}
-        task={tasks.find((task) => task.id === historyTaskId) ?? null}
-        canRun={permissions.canRun}
-        running={actions.run.isPending}
-        onRun={(taskId) => actions.run.mutate(taskId)}
-        onClose={() => setHistoryTaskId(null)}
-      />
-      <TaskDialog
-        key={dialogTask?.id ?? "new"}
-        projectId={projectId}
-        task={dialogTask}
-        timeZone={timeZone}
-        open={dialogOpen}
-        onOpenChange={setDialogOpen}
-      />
+      {dialogOpen ? (
+        <TaskDialog
+          key={dialogTask?.id ?? "new"}
+          projectId={projectId}
+          task={dialogTask}
+          timeZone={timeZone}
+          open={dialogOpen}
+          onOpenChange={setDialogOpen}
+        />
+      ) : null}
     </>
   );
 }

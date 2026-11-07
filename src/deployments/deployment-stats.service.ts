@@ -1,47 +1,124 @@
-import { and, gte, inArray, isNull } from "drizzle-orm";
+import { and, count, gte, inArray, isNull, lt, sql } from "drizzle-orm";
 
 import { type Database, tables } from "@/db";
-import { dayKey, durationBetween } from "@/shared/format";
+import { dayKey } from "@/shared/format";
 
 const MILLISECONDS_PER_DAY = 86_400_000;
 const MAX_DAYS = 30;
 const PERCENT = 100;
 
-/** Deploys of one calendar day (São Paulo time), split by outcome. */
 type DeploymentDay = {
-  /** The day as "YYYY-MM-DD". */
   readonly day: string;
   readonly succeeded: number;
   readonly failed: number;
-  /** Cancelled, queued or still running. */
   readonly other: number;
 };
 
-/** Summary of the deploys requested in a recent window. */
+/** Production deployments grouped by São Paulo calendar day, including empty days. */
 export type DeploymentStats = {
   readonly total: number;
   readonly succeeded: number;
   readonly failed: number;
   readonly cancelled: number;
-  /** Share of finished deploys (succeeded or failed) that succeeded, 0–100; null without any. */
   readonly successRatePercent: number | null;
-  /** Mean time from start to finish of the succeeded deploys, in ms; null without any. */
   readonly averageDurationInMs: number | null;
-  /** One entry per day of the window, oldest first, including days without deploys. */
   readonly days: readonly DeploymentDay[];
 };
 
-/**
- * Summarizes the deploys of the last days: totals by outcome, success rate, average
- * duration and a per-day breakdown for a chart.
- *
- * @param database - Database.
- * @param options - `days` is the window length, between 1 and 30, ending today; `now` is
- * injectable for tests; `projectIds` limits the summary to those projects, and null or
- * omitted includes every project.
- * @returns The summary of every deploy created inside the window.
- * @throws {RangeError} When `days` is not an integer between 1 and 30.
- */
+/** Finds the first UTC millisecond of a local day, including midnight DST transitions. */
+function startOfDay(day: string): string {
+  const date = new Date(`${day}T00:00:00.000Z`);
+  if (Number.isNaN(date.getTime())) {
+    throw new RangeError(`Invalid statistics day: ${day}`);
+  }
+  let lower = date.getTime() - MILLISECONDS_PER_DAY;
+  let upper = date.getTime() + MILLISECONDS_PER_DAY;
+  while (lower < upper) {
+    const middle = Math.floor(lower + (upper - lower) / 2);
+    const localDay = dayKey(new Date(middle).toISOString());
+    if (localDay == null) {
+      throw new RangeError(`Cannot determine statistics day: ${day}`);
+    }
+    if (localDay < day) {
+      lower = middle + 1;
+    } else {
+      upper = middle;
+    }
+  }
+  return new Date(lower).toISOString();
+}
+
+function windowDays(now: Date, days: number) {
+  if (Number.isNaN(now.getTime())) {
+    throw new RangeError("Invalid statistics reference date");
+  }
+  const today = dayKey(now.toISOString());
+  if (today == null) {
+    throw new RangeError("Cannot determine statistics reference day");
+  }
+  const reference = new Date(`${today}T12:00:00.000Z`).getTime();
+  const boundaries = Array.from({ length: days + 1 }, (_, index) => {
+    const day = new Date(reference - (days - index - 1) * MILLISECONDS_PER_DAY)
+      .toISOString()
+      .slice(0, 10);
+    return { day, start: startOfDay(day) };
+  });
+  return boundaries.slice(0, -1).map((boundary, index) => {
+    const next = boundaries.at(index + 1);
+    if (next == null) {
+      throw new Error(`Missing statistics boundary after ${boundary.day}`);
+    }
+    return { day: boundary.day, start: boundary.start, end: next.start };
+  });
+}
+
+type DayWindow = ReturnType<typeof windowDays>[number];
+
+function aggregateDays(
+  database: Database,
+  windows: readonly DayWindow[],
+  projectIds: readonly string[] | null,
+) {
+  const first = windows.at(0);
+  const last = windows.at(-1);
+  if (first == null || last == null) {
+    throw new Error("Statistics window has no calendar days");
+  }
+  const day = sql<string>`CASE ${sql.join(
+    windows.map(
+      (window) => sql`
+    WHEN ${tables.deployments.createdAt} >= ${window.start}
+      AND ${tables.deployments.createdAt} < ${window.end} THEN ${window.day}
+  `,
+    ),
+    sql` `,
+  )} END`;
+  const duration = sql`ROUND((julianday(${tables.deployments.finishedAt}) - julianday(${tables.deployments.startedAt})) * ${MILLISECONDS_PER_DAY})`;
+  const validDuration = sql`CASE WHEN ${tables.deployments.status} = 'succeeded' AND ${duration} >= 0 THEN ${duration} END`;
+  return database
+    .select({
+      day,
+      total: count(),
+      succeeded: sql<number>`SUM(${tables.deployments.status} = 'succeeded')`.mapWith(Number),
+      failed: sql<number>`SUM(${tables.deployments.status} = 'failed')`.mapWith(Number),
+      cancelled: sql<number>`SUM(${tables.deployments.status} = 'cancelled')`.mapWith(Number),
+      durationSum: sql<number>`COALESCE(SUM(${validDuration}), 0)`.mapWith(Number),
+      durationCount: sql<number>`COUNT(${validDuration})`.mapWith(Number),
+    })
+    .from(tables.deployments)
+    .where(
+      and(
+        gte(tables.deployments.createdAt, first.start),
+        lt(tables.deployments.createdAt, last.end),
+        isNull(tables.deployments.previewId),
+        projectIds == null ? undefined : inArray(tables.deployments.projectId, projectIds),
+      ),
+    )
+    .groupBy(day)
+    .all();
+}
+
+/** Aggregates in SQLite, transferring at most one row per requested calendar day. */
 export function summarizeDeployments(
   database: Database,
   options: {
@@ -53,118 +130,50 @@ export function summarizeDeployments(
   if (Number.isInteger(options.days) === false || options.days < 1 || options.days > MAX_DAYS) {
     throw new RangeError(`days must be an integer between 1 and ${MAX_DAYS}, got ${options.days}`);
   }
-  const now = options.now ?? new Date();
-  const dayKeys = windowDays(now, options.days);
-  const rows = listWindowDeployments(database, {
-    now,
-    days: options.days,
-    firstDay: dayKeys[0],
-    projectIds: options.projectIds ?? null,
-  });
-  const byDay = countByDay(rows, dayKeys);
-  const durations = rows
-    .filter((row) => row.status === "succeeded")
-    .map((row) => durationBetween(row.startedAt, row.finishedAt))
-    .filter((duration): duration is number => duration != null && duration >= 0);
-
-  const days = dayKeys.map((day) => {
-    const counts = byDay.get(day) ?? { succeeded: 0, failed: 0, other: 0 };
-    return { day, succeeded: counts.succeeded, failed: counts.failed, other: counts.other };
-  });
-  const succeeded = days.reduce((sum, day) => sum + day.succeeded, 0);
-  const failed = days.reduce((sum, day) => sum + day.failed, 0);
-  const finished = succeeded + failed;
-  return {
-    total: rows.length,
-    succeeded,
-    failed,
-    cancelled: rows.filter((row) => row.status === "cancelled").length,
-    successRatePercent: finished === 0 ? null : (succeeded / finished) * PERCENT,
-    averageDurationInMs:
-      durations.length === 0
-        ? null
-        : durations.reduce((sum, duration) => sum + duration, 0) / durations.length,
-    days,
+  const windows = windowDays(options.now ?? new Date(), options.days);
+  const rows = aggregateDays(database, windows, options.projectIds ?? null);
+  const byDay = new Map(rows.map((row) => [row.day, row]));
+  const totals = {
+    total: 0,
+    succeeded: 0,
+    failed: 0,
+    cancelled: 0,
+    durationSum: 0,
+    durationCount: 0,
   };
-}
-
-type DeploymentRow = {
-  readonly status: string;
-  readonly createdAt: string;
-  readonly startedAt: string | null;
-  readonly finishedAt: string | null;
-};
-
-type DayCounts = { succeeded: number; failed: number; other: number };
-
-function listWindowDeployments(
-  database: Database,
-  window: {
-    readonly now: Date;
-    readonly days: number;
-    readonly firstDay: string | undefined;
-    readonly projectIds: readonly string[] | null;
-  },
-): DeploymentRow[] {
-  const { firstDay } = window;
-  // A generous lower bound; rows from before the first local day are dropped below.
-  const since = new Date(window.now.getTime() - (window.days + 1) * MILLISECONDS_PER_DAY);
-  return (
-    database
-      .select({
-        status: tables.deployments.status,
-        createdAt: tables.deployments.createdAt,
-        startedAt: tables.deployments.startedAt,
-        finishedAt: tables.deployments.finishedAt,
-      })
-      .from(tables.deployments)
-      // Production only: previews come and go with pull requests and would skew the figures.
-      .where(
-        and(
-          gte(tables.deployments.createdAt, since.toISOString()),
-          isNull(tables.deployments.previewId),
-          window.projectIds == null
-            ? undefined
-            : inArray(tables.deployments.projectId, window.projectIds),
-        ),
-      )
-      .all()
-      .filter((row) => {
-        const day = dayKey(row.createdAt);
-        return day != null && firstDay != null && day >= firstDay;
-      })
-  );
-}
-
-function countByDay(
-  rows: readonly DeploymentRow[],
-  dayKeys: readonly string[],
-): Map<string, DayCounts> {
-  const byDay = new Map(dayKeys.map((day) => [day, { succeeded: 0, failed: 0, other: 0 }]));
   for (const row of rows) {
-    const bucket = byDay.get(dayKey(row.createdAt) ?? "");
-    if (bucket != null) {
-      bucket[outcomeOf(row.status)] += 1;
-    }
+    totals.total += row.total;
+    totals.succeeded += row.succeeded;
+    totals.failed += row.failed;
+    totals.cancelled += row.cancelled;
+    totals.durationSum += row.durationSum;
+    totals.durationCount += row.durationCount;
   }
-  return byDay;
-}
-
-function outcomeOf(status: string): "succeeded" | "failed" | "other" {
-  if (status === "succeeded" || status === "failed") {
-    return status;
+  const finished = totals.succeeded + totals.failed;
+  const successRatePercent = finished === 0 ? null : (totals.succeeded / finished) * PERCENT;
+  const averageDurationInMs =
+    totals.durationCount === 0 ? null : totals.durationSum / totals.durationCount;
+  if (
+    Number.isFinite(successRatePercent ?? 0) === false ||
+    Number.isFinite(averageDurationInMs ?? 0) === false
+  ) {
+    throw new Error("Deployment statistics produced non-finite aggregates");
   }
-  return "other";
-}
-
-/** The local calendar days of the window, oldest first, ending on the day of `now`. */
-function windowDays(now: Date, count: number): string[] {
-  const keys: string[] = [];
-  for (let offset = count - 1; offset >= 0; offset -= 1) {
-    const key = dayKey(new Date(now.getTime() - offset * MILLISECONDS_PER_DAY).toISOString());
-    if (key != null) {
-      keys.push(key);
-    }
-  }
-  return keys;
+  return {
+    total: totals.total,
+    succeeded: totals.succeeded,
+    failed: totals.failed,
+    cancelled: totals.cancelled,
+    successRatePercent,
+    averageDurationInMs,
+    days: windows.map((window) => {
+      const row = byDay.get(window.day);
+      return {
+        day: window.day,
+        succeeded: row?.succeeded ?? 0,
+        failed: row?.failed ?? 0,
+        other: (row?.total ?? 0) - (row?.succeeded ?? 0) - (row?.failed ?? 0),
+      };
+    }),
+  };
 }

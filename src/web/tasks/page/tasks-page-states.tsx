@@ -16,7 +16,7 @@ export function NewTaskButton({
   return (
     <Button size={size} onClick={onClick}>
       <PlusIcon aria-hidden />
-      Nova task
+      Nova tarefa
     </Button>
   );
 }
@@ -43,8 +43,8 @@ export function TasksQueryState({
   return (
     <EmptyState
       icon={ListChecksIcon}
-      title="Nenhuma task ainda"
-      description="Use tasks para migrações, limpezas de cache ou rotinas agendadas."
+      title="Nenhuma tarefa ainda"
+      description="Use tarefas para migrações, limpezas de cache ou rotinas agendadas."
       action={emptyAction ?? undefined}
     />
   );
@@ -58,5 +58,5 @@ export function TasksHeader({
   readonly count: number | null;
   readonly action: ReactNode;
 }) {
-  return <TabHeader title="Tasks" count={count} actions={action} />;
+  return <TabHeader title="Tarefas da aplicação" count={count} actions={action} />;
 }

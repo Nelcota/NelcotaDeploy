@@ -45,7 +45,7 @@ export function LoadOlderEvents({
     <div className="flex justify-center">
       <Button variant="outline" disabled={loadingMore} onClick={onLoadMore}>
         {loadingMore ? <LoaderCircleIcon aria-hidden className="animate-spin" /> : null}
-        {loadingMore ? "Carregando…" : "Carregar mais"}
+        {loadingMore ? "Carregando…" : "Carregar ações anteriores"}
       </Button>
     </div>
   );

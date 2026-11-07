@@ -50,7 +50,7 @@ export function LogStatusBar({
         <StatusPill tone={pill.tone} label={pill.label} className="text-xs" />
       </span>
       {state === "error" ? (
-        <ToolbarButton label="Reconectar" disabled={false} onClick={onReconnect}>
+        <ToolbarButton label="Reconectar aos logs" disabled={false} onClick={onReconnect}>
           <RotateCwIcon aria-hidden />
         </ToolbarButton>
       ) : null}

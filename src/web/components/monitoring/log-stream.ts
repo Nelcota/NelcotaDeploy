@@ -1,15 +1,45 @@
 import { useEffect, useState } from "react";
+import { z } from "zod";
 
-import type { LogLevel } from "@/shared/log-level";
+const MAX_EVENT_LENGTH = 65_536;
+// Stored lines have at most 8192 characters plus the truncation ellipsis.
+const MAX_MESSAGE_LENGTH = 8193;
 
-/** One line received from a log stream. */
-export type LogLine = {
-  readonly id: number;
-  readonly message: string;
-  readonly createdAt: string;
-  readonly stream: string;
-  readonly level?: LogLevel;
-};
+const jsonEventSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(MAX_EVENT_LENGTH)
+  .transform((text, context): unknown => {
+    try {
+      return JSON.parse(text) as unknown;
+    } catch (error) {
+      if (error instanceof SyntaxError === false) {
+        throw error;
+      }
+      context.issues.push({ code: "custom", message: "Invalid log event JSON", input: undefined });
+      return z.NEVER;
+    }
+  });
+
+const logLineSchema = z.object({
+  id: z.int().positive(),
+  // Blank lines are valid log output and must be preserved.
+  message: z.string().max(MAX_MESSAGE_LENGTH),
+  createdAt: z.iso.datetime(),
+  stream: z.enum(["system", "stdout", "stderr"]),
+  level: z.enum(["info", "warn", "error"]).exactOptional(),
+});
+
+/** One validated line received from a log stream. */
+export type LogLine = Readonly<z.output<typeof logLineSchema>>;
+
+export const logLineEventSchema = jsonEventSchema.pipe(logLineSchema);
+export const logEndEventSchema = jsonEventSchema.pipe(
+  z.object({
+    status: z.enum(["succeeded", "failed", "cancelled"]).exactOptional(),
+  }),
+);
 
 /** Where the connection to the log stream stands. */
 export type ConnectionState = "connecting" | "live" | "reconnecting" | "ended" | "error";
@@ -59,13 +89,32 @@ export function useLogStream(url: string, attempt: number) {
 
   useEffect(() => {
     const source = new EventSource(url, { withCredentials: true });
+    const invalidEvent = () => {
+      source.close();
+      setState("error");
+    };
     source.addEventListener("open", () => setState("live"));
     source.addEventListener("log", (event) => {
-      const line = JSON.parse(event.data as string) as LogLine;
-      setLines((current) => appendLogLine(current, line, MAX_LINES));
+      if (source.readyState === EventSource.CLOSED) {
+        return;
+      }
+      const line = logLineEventSchema.safeParse(event.data);
+      if (line.success === false) {
+        invalidEvent();
+        return;
+      }
+      setLines((current) => appendLogLine(current, line.data, MAX_LINES));
     });
     source.addEventListener("end", (event) => {
-      setEndSummary(JSON.parse(event.data as string));
+      if (source.readyState === EventSource.CLOSED) {
+        return;
+      }
+      const summary = logEndEventSchema.safeParse(event.data);
+      if (summary.success === false) {
+        invalidEvent();
+        return;
+      }
+      setEndSummary(summary.data);
       setState("ended");
       source.close();
     });

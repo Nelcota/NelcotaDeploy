@@ -1,5 +1,7 @@
 export {
   NoServerAvailableError,
+  ProjectMoveInProgressError,
+  ProjectMoveReviewChangedError,
   ServerInUseError,
   ServerNotFoundError,
   ServerNotReadyError,

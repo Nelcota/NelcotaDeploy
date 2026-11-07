@@ -28,17 +28,17 @@ export function ScheduleCell({ task, now }: { readonly task: TaskRow; readonly n
     <div className="min-w-0 space-y-0.5 text-xs lg:w-44 lg:shrink-0">
       <p className="flex min-w-0 items-center gap-1.5 text-muted-foreground" title={task.schedule}>
         <CalendarClockIcon aria-hidden className="size-3.5 shrink-0" />
-        <span className="truncate">
+        <span className="break-words">
           {description ?? <span className="font-mono">{task.schedule}</span>}
         </span>
       </p>
       {note?.kind === "next" ? (
-        <p className="truncate pl-5 text-muted-foreground" title={formatDateTime(note.at)}>
+        <p className="pl-5 text-muted-foreground" title={formatDateTime(note.at)}>
           próxima {formatRelativeTime(note.at, now)}
         </p>
       ) : null}
       {note?.kind === "paused" ? (
-        <p className="truncate pl-5 text-muted-foreground">sem próxima execução</p>
+        <p className="pl-5 text-muted-foreground">sem próxima execução</p>
       ) : null}
     </div>
   );

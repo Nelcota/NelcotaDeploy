@@ -11,30 +11,40 @@ import {
   DialogTitle,
 } from "@/web/components/ui/dialog";
 
+import { RepositoryTaskScripts } from "./automation/repository-task-scripts";
+import { requiresScheduleReview } from "./automation/task-defaults";
+import { TaskScheduleReview } from "./automation/task-schedule-review";
+import { useTaskAutomation } from "./automation/use-task-automation";
 import { ScheduleField, TaskCommandFields, TaskLimitFields } from "./task-form-fields";
 import { type TaskFormApi, useTaskForm } from "./use-task-form";
 
 function TaskDialogFooter({
   form,
+  task,
   onCancel,
 }: {
   readonly form: TaskFormApi;
+  readonly task: Task | null;
   readonly onCancel: () => void;
 }) {
   return (
-    <DialogFooter>
-      <Button type="button" variant="outline" onClick={onCancel}>
-        Cancelar
-      </Button>
-      <form.Subscribe selector={(state) => state.isSubmitting}>
-        {(isSubmitting) => (
+    <form.Subscribe
+      selector={(state) =>
+        [state.isSubmitting, requiresScheduleReview(task, state.values)] as const
+      }
+    >
+      {([isSubmitting, needsReview]) => (
+        <DialogFooter>
+          <Button type="button" variant="outline" disabled={isSubmitting} onClick={onCancel}>
+            Cancelar
+          </Button>
           <Button type="submit" disabled={isSubmitting}>
             {isSubmitting ? <LoaderCircleIcon aria-hidden className="animate-spin" /> : null}
-            Salvar
+            {needsReview ? "Revisar agendamento da tarefa" : "Salvar tarefa"}
           </Button>
-        )}
-      </form.Subscribe>
-    </DialogFooter>
+        </DialogFooter>
+      )}
+    </form.Subscribe>
   );
 }
 
@@ -52,29 +62,61 @@ export function TaskDialog({
   readonly open: boolean;
   readonly onOpenChange: (open: boolean) => void;
 }) {
-  const form = useTaskForm({ projectId, task, onSaved: () => onOpenChange(false) });
+  const editing = useTaskForm({ projectId, task, onSaved: () => onOpenChange(false) });
+  const { form } = editing;
+  const automation = useTaskAutomation(form, { projectId, enabled: open && task == null });
+  const draftTitle = task == null ? "Nova tarefa" : `Editar ${task.name}`;
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
+    <Dialog
+      open={open}
+      onOpenChange={(next) => {
+        if (editing.pending === false) {
+          onOpenChange(next);
+        }
+      }}
+    >
+      <DialogContent className="sm:max-w-2xl">
         <DialogHeader icon={<ClockIcon />}>
-          <DialogTitle>{task == null ? "Nova task" : `Editar ${task.name}`}</DialogTitle>
+          <DialogTitle>
+            {editing.reviewed == null ? draftTitle : "Confirmar agendamento da tarefa"}
+          </DialogTitle>
           <DialogDescription>
-            O comando é dividido em argumentos como num shell, sem expansão de variáveis ou pipes.
+            A tarefa usa o contêiner atual da aplicação. Salvar sem agendamento não executa o
+            comando.
           </DialogDescription>
         </DialogHeader>
-        <form
-          className="space-y-4"
-          onSubmit={(event) => {
-            event.preventDefault();
-            void form.handleSubmit();
-          }}
-        >
-          <TaskCommandFields form={form} />
-          <ScheduleField form={form} timeZone={timeZone} />
-          <TaskLimitFields form={form} />
-          <TaskDialogFooter form={form} onCancel={() => onOpenChange(false)} />
-        </form>
+        {editing.reviewed != null ? (
+          <TaskScheduleReview
+            values={editing.reviewed}
+            timeZone={timeZone}
+            pending={editing.pending}
+            error={editing.reviewError}
+            onBack={editing.cancelReview}
+            onConfirm={() => void editing.confirm()}
+          />
+        ) : (
+          <form
+            className="space-y-4"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void form.handleSubmit();
+            }}
+          >
+            <fieldset disabled={editing.pending} className="space-y-4">
+              {task == null ? <RepositoryTaskScripts automation={automation} /> : null}
+              <TaskCommandFields form={form} onEdited={automation.markEdited} />
+              <ScheduleField form={form} timeZone={timeZone} />
+              <TaskLimitFields form={form} />
+            </fieldset>
+            {editing.reviewError == null ? null : (
+              <p role="alert" className="text-sm text-destructive">
+                {editing.reviewError}
+              </p>
+            )}
+            <TaskDialogFooter form={form} task={task} onCancel={() => onOpenChange(false)} />
+          </form>
+        )}
       </DialogContent>
     </Dialog>
   );

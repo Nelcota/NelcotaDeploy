@@ -5,6 +5,7 @@ data
 .env.*
 !.env.example
 .git
+.claude/worktrees
 .tanstack
 coverage
 *.log

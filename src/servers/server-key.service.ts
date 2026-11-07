@@ -59,21 +59,24 @@ export async function storePanelKeyPair(
 ): Promise<void> {
   const encrypted = await secretBox.encrypt(pair.privateKey, PRIVATE_KEY_CONTEXT);
   const updatedAt = new Date().toISOString();
-  database.transaction((transaction) => {
-    const existing = transaction
-      .select({ key: tables.systemSettings.key })
-      .from(tables.systemSettings)
-      .where(inArray(tables.systemSettings.key, [PUBLIC_KEY_SETTING, PRIVATE_KEY_SETTING]))
-      .all();
-    if (existing.length > 0) {
-      return;
-    }
-    transaction
-      .insert(tables.systemSettings)
-      .values([
-        { key: PUBLIC_KEY_SETTING, value: pair.publicKey, updatedAt },
-        { key: PRIVATE_KEY_SETTING, value: encrypted, updatedAt },
-      ])
-      .run();
-  });
+  database.transaction(
+    (transaction) => {
+      const existing = transaction
+        .select({ key: tables.systemSettings.key })
+        .from(tables.systemSettings)
+        .where(inArray(tables.systemSettings.key, [PUBLIC_KEY_SETTING, PRIVATE_KEY_SETTING]))
+        .all();
+      if (existing.length > 0) {
+        return;
+      }
+      transaction
+        .insert(tables.systemSettings)
+        .values([
+          { key: PUBLIC_KEY_SETTING, value: pair.publicKey, updatedAt },
+          { key: PRIVATE_KEY_SETTING, value: encrypted, updatedAt },
+        ])
+        .run();
+    },
+    { behavior: "immediate" },
+  );
 }

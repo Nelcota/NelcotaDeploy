@@ -23,7 +23,13 @@ export function useVolumes(projectId: string) {
   });
   const invalidate = [["volumes", projectId], ["project", projectId], ["deployments"]] as const;
   const add = useAction({
-    action: (mountPath: string) => addVolumeFn({ data: { projectId, volume: { mountPath } } }),
+    action: ({
+      mountPath,
+      expectedServerId,
+    }: {
+      readonly mountPath: string;
+      readonly expectedServerId: string;
+    }) => addVolumeFn({ data: { projectId, volume: { mountPath }, expectedServerId } }),
     successMessage: "Volume adicionado",
     invalidate,
   });

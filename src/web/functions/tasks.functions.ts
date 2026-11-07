@@ -5,7 +5,7 @@ import { userActor } from "@/auth";
 import { getConfig } from "@/config";
 import { getDatabase } from "@/db";
 import { getProject } from "@/projects";
-import { taskInputSchema } from "@/shared/schemas/task.schema";
+import { taskInputSchema, taskRunReviewSchema } from "@/shared/schemas/task.schema";
 import {
   createTask,
   deleteTask,
@@ -43,12 +43,20 @@ export const createTaskFn = createServerFn({ method: "POST" })
   });
 
 export const updateTaskFn = createServerFn({ method: "POST" })
-  .validator(z.object({ projectId: idSchema, taskId: idSchema, task: taskInputSchema }))
+  .validator(
+    z.object({
+      projectId: idSchema,
+      taskId: idSchema,
+      task: taskInputSchema,
+      expectedUpdatedAt: z.iso.datetime().optional(),
+    }),
+  )
   .handler(async ({ data }) => {
     const user = await authorizeProject("task:write", data.projectId);
     updateTask(getDatabase(), {
       projectId: data.projectId,
       taskId: data.taskId,
+      expectedUpdatedAt: data.expectedUpdatedAt,
       input: data.task,
       actor: userActor(user),
       timeZone: getConfig().SCHEDULE_TIME_ZONE,
@@ -67,7 +75,9 @@ export const deleteTaskFn = createServerFn({ method: "POST" })
   });
 
 export const runTaskFn = createServerFn({ method: "POST" })
-  .validator(z.object({ projectId: idSchema, taskId: idSchema }))
+  .validator(
+    z.object({ projectId: idSchema, taskId: idSchema, expected: taskRunReviewSchema.optional() }),
+  )
   .handler(async ({ data }) => {
     const user = await authorizeProject("task:run", data.projectId);
     return runTask(getDatabase(), {

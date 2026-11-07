@@ -5,8 +5,8 @@ import { getConfig } from "@/config";
 import { getDatabase } from "@/db";
 import { getGitHubApp } from "@/github";
 import { getWorkerStatus } from "@/monitoring";
-import { getSystemSettings, saveSystemSettings } from "@/settings";
-import { systemSettingsSchema } from "@/shared/schemas/settings.schema";
+import { getSystemSettings, saveSystemSettingsSection } from "@/settings";
+import { organizationSettingsChangeSchema } from "@/shared/schemas/settings/organization-settings.schema";
 import { authorize } from "@/web/server/authorization";
 
 export const getSettingsFn = createServerFn({ method: "GET" }).handler(async () => {
@@ -34,8 +34,8 @@ export const getSettingsFn = createServerFn({ method: "GET" }).handler(async () 
 });
 
 export const saveSettingsFn = createServerFn({ method: "POST" })
-  .validator(systemSettingsSchema)
+  .validator(organizationSettingsChangeSchema)
   .handler(async ({ data }) => {
     await authorize("settings:write");
-    saveSystemSettings(getDatabase(), data);
+    return saveSystemSettingsSection(getDatabase(), data);
   });

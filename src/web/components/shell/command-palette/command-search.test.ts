@@ -52,6 +52,33 @@ describe("filterCommands", () => {
 
     expect(result).toEqual([]);
   });
+
+  test("matches words across the project hint and destination in any order", () => {
+    const commands = [
+      command("Logs da aplicação", "API de pagamentos"),
+      command("Logs do build", "Site institucional"),
+    ];
+
+    expect(filterCommands(commands, "pagamentos logs").map((item) => item.label)).toEqual([
+      "Logs da aplicação",
+    ]);
+    expect(filterCommands(commands, " LOGS   pagamentos ").map((item) => item.label)).toEqual([
+      "Logs da aplicação",
+    ]);
+  });
+
+  test("finds common aliases without displaying them as labels", () => {
+    const commands = [
+      {
+        ...command("Build", "API de pagamentos", "Neste projeto"),
+        keywords: "dockerfile compilação",
+      },
+    ];
+
+    expect(filterCommands(commands, "api dockerfile")).toEqual(commands);
+    expect(filterCommands(commands, "compilacao")).toEqual(commands);
+    expect(filterCommands(commands, "dockerfile ausente")).toEqual([]);
+  });
 });
 
 describe("moveSelection", () => {

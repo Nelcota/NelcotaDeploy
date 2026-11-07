@@ -15,12 +15,12 @@ export function TokensTab() {
   return (
     <Section
       icon={KeyRoundIcon}
-      title="Tokens de API"
+      title="Tokens de acesso à API"
       description="Para o servidor MCP e outras integrações."
       action={
         <Button onClick={() => setCreateOpen(true)}>
           <PlusIcon aria-hidden />
-          Novo token
+          Configurar token de API
         </Button>
       }
     >
@@ -35,7 +35,9 @@ export function TokensTab() {
           }}
         />
       ) : null}
-      <CreatedTokenDialog token={createdToken} onClose={() => setCreatedToken(null)} />
+      {createdToken == null ? null : (
+        <CreatedTokenDialog token={createdToken} onClose={() => setCreatedToken(null)} />
+      )}
     </Section>
   );
 }

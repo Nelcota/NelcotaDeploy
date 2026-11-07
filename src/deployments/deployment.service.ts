@@ -111,48 +111,55 @@ export function cancelDeployment(
   deploymentId: string,
   actor: Actor,
 ): "cancelled" | "cancelling" | DeploymentStatus {
-  return database.transaction((transaction) => {
-    const deployment = transaction
-      .select({ status: tables.deployments.status, projectId: tables.deployments.projectId })
-      .from(tables.deployments)
-      .where(eq(tables.deployments.id, deploymentId))
-      .get();
-    if (deployment == null) {
-      throw new DeploymentNotFoundError(deploymentId);
-    }
-    if (isTerminalStatus(deployment.status)) {
-      return deployment.status;
-    }
-    const now = new Date().toISOString();
-    recordAuditEvent(transaction, {
-      actor,
-      action: "deployment.cancel",
-      targetType: "deployment",
-      targetId: deploymentId,
-      metadata: { projectId: deployment.projectId },
-    });
-    if (deployment.status === "queued") {
+  return database.transaction(
+    (transaction) => {
+      const deployment = transaction
+        .select({ status: tables.deployments.status, projectId: tables.deployments.projectId })
+        .from(tables.deployments)
+        .where(eq(tables.deployments.id, deploymentId))
+        .get();
+      if (deployment == null) {
+        throw new DeploymentNotFoundError(deploymentId);
+      }
+      if (isTerminalStatus(deployment.status)) {
+        return deployment.status;
+      }
+      const now = new Date().toISOString();
+      recordAuditEvent(transaction, {
+        actor,
+        action: "deployment.cancel",
+        targetType: "deployment",
+        targetId: deploymentId,
+        metadata: { projectId: deployment.projectId },
+      });
+      if (deployment.status === "queued") {
+        transaction
+          .update(tables.deployments)
+          .set({
+            status: "cancelled",
+            errorMessage: "Cancelled before it started",
+            finishedAt: now,
+          })
+          .where(eq(tables.deployments.id, deploymentId))
+          .run();
+        const jobIds = transaction
+          .select({ id: tables.jobs.id })
+          .from(tables.jobs)
+          .where(eq(tables.jobs.deploymentId, deploymentId))
+          .all()
+          .map((job) => job.id);
+        cancelQueuedJobs(transaction, jobIds);
+        return "cancelled";
+      }
       transaction
         .update(tables.deployments)
-        .set({ status: "cancelled", errorMessage: "Cancelled before it started", finishedAt: now })
+        .set({ cancelRequestedAt: now })
         .where(eq(tables.deployments.id, deploymentId))
         .run();
-      const jobIds = transaction
-        .select({ id: tables.jobs.id })
-        .from(tables.jobs)
-        .where(eq(tables.jobs.deploymentId, deploymentId))
-        .all()
-        .map((job) => job.id);
-      cancelQueuedJobs(transaction, jobIds);
-      return "cancelled";
-    }
-    transaction
-      .update(tables.deployments)
-      .set({ cancelRequestedAt: now })
-      .where(eq(tables.deployments.id, deploymentId))
-      .run();
-    return "cancelling";
-  });
+      return "cancelling";
+    },
+    { behavior: "immediate" },
+  );
 }
 
 /**
@@ -314,31 +321,37 @@ export function transitionDeployment(
  * @throws {InvalidDeploymentTransitionError} When it is not health checking.
  */
 export function completeDeployment(database: Database, deploymentId: string): void {
-  database.transaction((transaction) => {
-    transitionDeployment(transaction, deploymentId, { to: "succeeded", errorMessage: null });
-    const deployment = transaction
-      .select({ projectId: tables.deployments.projectId, previewId: tables.deployments.previewId })
-      .from(tables.deployments)
-      .where(eq(tables.deployments.id, deploymentId))
-      .get();
-    if (deployment == null) {
-      throw new DeploymentNotFoundError(deploymentId);
-    }
-    // A preview serves its own address; production keeps serving the project's domains.
-    if (deployment.previewId != null) {
+  database.transaction(
+    (transaction) => {
+      transitionDeployment(transaction, deploymentId, { to: "succeeded", errorMessage: null });
+      const deployment = transaction
+        .select({
+          projectId: tables.deployments.projectId,
+          previewId: tables.deployments.previewId,
+        })
+        .from(tables.deployments)
+        .where(eq(tables.deployments.id, deploymentId))
+        .get();
+      if (deployment == null) {
+        throw new DeploymentNotFoundError(deploymentId);
+      }
+      // A preview serves its own address; production keeps serving the project's domains.
+      if (deployment.previewId != null) {
+        transaction
+          .update(tables.previews)
+          .set({ currentDeploymentId: deploymentId, updatedAt: new Date().toISOString() })
+          .where(eq(tables.previews.id, deployment.previewId))
+          .run();
+        return;
+      }
       transaction
-        .update(tables.previews)
-        .set({ currentDeploymentId: deploymentId, updatedAt: new Date().toISOString() })
-        .where(eq(tables.previews.id, deployment.previewId))
+        .update(tables.projects)
+        .set({ currentDeploymentId: deploymentId })
+        .where(eq(tables.projects.id, deployment.projectId))
         .run();
-      return;
-    }
-    transaction
-      .update(tables.projects)
-      .set({ currentDeploymentId: deploymentId })
-      .where(eq(tables.projects.id, deployment.projectId))
-      .run();
-  });
+    },
+    { behavior: "immediate" },
+  );
 }
 
 /**

@@ -39,7 +39,7 @@ export function ServersTab({ canEdit }: { readonly canEdit: boolean }) {
   return (
     <Section
       icon={ServerIcon}
-      title="Servidores"
+      title="Servidores de deploy"
       description="Adicione uma VPS para rodar as aplicações fora do servidor do painel. Projetos novos vão para o servidor com menos projetos entre os que os recebem."
       action={
         canEdit ? (

@@ -50,6 +50,22 @@ async function saveVariable(database: Database, projectId: string, value: string
 }
 
 describe("runtimeConfigFingerprint", () => {
+  test.each([{ memoryLimitInMb: 128 }, { cpuLimitInMillicores: 250 }])(
+    "keeps a resource limit change pending until a redeploy applies it: %p",
+    (limits) => {
+      const database = openMemoryDatabase();
+      using _connection = database.$client;
+      const project = createTestProject(database);
+      deployLive(database, project.id);
+
+      database.update(tables.projects).set(limits).where(eq(tables.projects.id, project.id)).run();
+
+      expect(hasPendingRuntimeChanges(database, project.id)).toBe(true);
+      deployLive(database, project.id);
+      expect(hasPendingRuntimeChanges(database, project.id)).toBe(false);
+    },
+  );
+
   test("stays the same while nothing changes", () => {
     const database = openMemoryDatabase();
     const project = createTestProject(database);

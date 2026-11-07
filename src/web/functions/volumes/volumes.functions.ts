@@ -26,13 +26,20 @@ export const listVolumesFn = createServerFn({ method: "GET" })
 
 /** Adds a volume; projects that apply changes on their own are recreated with it. */
 export const addVolumeFn = createServerFn({ method: "POST" })
-  .validator(z.object({ projectId: idSchema, volume: volumeInputSchema }))
+  .validator(
+    z.object({
+      projectId: idSchema,
+      volume: volumeInputSchema,
+      expectedServerId: idSchema.optional(),
+    }),
+  )
   .handler(async ({ data }) => {
     const user = await authorizeProject("project:write", data.projectId);
     const database = getDatabase();
     addProjectVolume(database, {
       projectId: data.projectId,
       input: data.volume,
+      expectedServerId: data.expectedServerId,
       actor: userActor(user),
     });
     applyRuntimeChanges(database, data.projectId, {

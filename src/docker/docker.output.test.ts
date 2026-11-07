@@ -5,8 +5,31 @@ import {
   parseEnvironmentOutput,
   parseInspectOutput,
   parseStatsOutput,
+  parseExposedPorts,
   parseReclaimedBytes,
 } from "./docker.output";
+
+describe("parseExposedPorts", () => {
+  test("reads final image TCP ports in ascending order and ignores UDP", () => {
+    expect(parseExposedPorts('{"8080/tcp":{},"80/tcp":{},"53/udp":{}}')).toEqual([80, 8080]);
+  });
+
+  test.each(["null", "{}"])("returns no exposed ports for %s", (output) => {
+    expect(parseExposedPorts(output)).toEqual([]);
+  });
+
+  test.each([
+    "invalid JSON",
+    "[]",
+    "42",
+    '{"0/tcp":{}}',
+    '{"65536/tcp":{}}',
+    '{"NaN/tcp":{}}',
+    '{"80/invalid":{}}',
+  ])("rejects malformed exposed port metadata %s", (output) => {
+    expect(() => parseExposedPorts(output)).toThrow(/^Docker returned/);
+  });
+});
 
 describe("parseEnvironmentOutput", () => {
   test("preserves multiline, empty and equals-containing values", () => {

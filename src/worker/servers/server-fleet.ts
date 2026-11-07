@@ -5,6 +5,8 @@ import {
   applicationServersReady,
   dedicatePanelHostIfUnused,
   listServers,
+  getServer,
+  ServerNotFoundError,
   LOCAL_SERVER_ID,
   recordServerCheck,
   type Server,
@@ -13,8 +15,19 @@ import {
 import { removeProjectResources } from "../container-action-runner";
 import type { WorkerDependencies } from "../worker.types";
 import { ContainerObserver } from "./container-observer";
+import { FleetOperations } from "./fleet-operations";
 import { HostSampler } from "./host-sampler";
 import { checkServer } from "./server-checker";
+
+function sameServerIdentity(server: Server, current: Server): boolean {
+  return (
+    current.host === server.host &&
+    current.port === server.port &&
+    current.username === server.username &&
+    current.kind === server.kind &&
+    current.createdAt === server.createdAt
+  );
+}
 
 /**
  * Finds the projects that no longer exist among the owners of a server's containers.
@@ -46,6 +59,8 @@ export class ServerFleet implements Disposable {
   readonly #dependencies: WorkerDependencies;
   readonly #observers = new Map<string, ContainerObserver>();
   readonly #samplers = new Map<string, HostSampler>();
+  readonly #operations = new FleetOperations();
+  #disposed = false;
   /** Servers whose last check passed; only these are observed and sampled. */
   #readyServers: Server[] = [];
   #localDockerVersion: string | null = null;
@@ -83,11 +98,15 @@ export class ServerFleet implements Disposable {
    * others; the call returns at once.
    */
   check(): void {
+    if (this.#disposed) {
+      return;
+    }
     const servers = listServers(this.#dependencies.database);
-    const existing = new Set(servers.map((server) => server.id));
-    this.#dependencies.hosts.retain(existing);
+    const existing = new Map(servers.map((server) => [server.id, server]));
+    this.#dependencies.hosts.retain(new Set(existing.keys()));
     for (const server of this.#readyServers) {
-      if (existing.has(server.id) === false) {
+      const current = existing.get(server.id);
+      if (current == null || sameServerIdentity(server, current) === false) {
         this.#setReady(server, false);
       }
     }
@@ -96,7 +115,8 @@ export class ServerFleet implements Disposable {
         continue;
       }
       this.#checking.add(server.id);
-      this.#checkOne(server)
+      this.#operations
+        .run(`check:${server.id}`, async () => await this.#checkOne(server))
         .catch((error: unknown) =>
           this.#dependencies.logger.error(
             { err: error, serverId: server.id },
@@ -108,8 +128,14 @@ export class ServerFleet implements Disposable {
   }
 
   async #checkOne(server: Server): Promise<void> {
+    if (this.#isCurrent(server) === false) {
+      return;
+    }
     const { database, hosts, config, logger } = this.#dependencies;
     const check = await checkServer(config, server, hosts.hostFor(server));
+    if (this.#isCurrent(server) === false) {
+      return;
+    }
     recordServerCheck(database, server.id, check);
     if (check.status !== server.status) {
       logger.info(
@@ -121,6 +147,9 @@ export class ServerFleet implements Disposable {
       this.#localDockerVersion = check.dockerVersion;
     }
     await this.#alertOnChange(server, check.status);
+    if (this.#isCurrent(server) === false) {
+      return;
+    }
     // Only when a server works for the first time: later, the admin's choice stands.
     const firstTimeReady =
       server.kind === "ssh" && server.lastSeenAt == null && check.status === "ready";
@@ -133,7 +162,7 @@ export class ServerFleet implements Disposable {
   /** Tells the admins when a server that worked goes down, and when it comes back. */
   async #alertOnChange(server: Server, status: Server["status"]): Promise<void> {
     const { database, logger, config } = this.#dependencies;
-    const link = `${config.PUBLIC_URL}/settings?tab=servers`;
+    const link = `${config.PUBLIC_URL}/settings/servers`;
     if (server.status === "ready" && status === "unreachable") {
       await notify(database, logger, {
         title: "Servidor inacessível",
@@ -172,13 +201,15 @@ export class ServerFleet implements Disposable {
     if (existing != null) {
       return existing;
     }
-    const { database, hosts, secretBox, logger } = this.#dependencies;
+    const { database, hosts, secretBox, logger, config } = this.#dependencies;
     const observer = new ContainerObserver({
       serverId: server.id,
       database,
       docker: hosts.hostFor(server).docker,
       secretBox,
       logger,
+      runtimeLinesPerProject: config.RUNTIME_LOG_RETENTION_LINES,
+      isActive: () => this.#isCurrent(server, true),
     });
     this.#observers.set(server.id, observer);
     return observer;
@@ -191,7 +222,7 @@ export class ServerFleet implements Disposable {
    */
   async refreshServer(serverId: string): Promise<void> {
     const server = this.#readyServers.find((candidate) => candidate.id === serverId);
-    if (server == null) {
+    if (server == null || this.#isCurrent(server, true) === false) {
       return;
     }
     await this.#observerFor(server).refresh();
@@ -202,14 +233,15 @@ export class ServerFleet implements Disposable {
    * what deleted projects left on servers that were unreachable when they were deleted.
    */
   async refreshContainers(): Promise<void> {
-    await Promise.all(
-      this.#readyServers.map(async (server) => {
-        const observer = this.#observerFor(server);
-        observer.followEvents();
-        const containers = await observer.refresh();
-        await this.#removeDeletedProjects(server, containers);
-      }),
-    );
+    await this.#runOnReadyServers("containers", async (server) => {
+      const observer = this.#observerFor(server);
+      observer.followEvents();
+      const containers = await observer.refresh();
+      if (this.#isCurrent(server, true) === false) {
+        return;
+      }
+      await this.#removeDeletedProjects(server, containers);
+    });
   }
 
   async #removeDeletedProjects(
@@ -219,35 +251,90 @@ export class ServerFleet implements Disposable {
     const { database, hosts, logger } = this.#dependencies;
     const deleted = deletedProjectIds(containers, listProjectIds(database));
     const host = hosts.hostFor(server);
-    await Promise.all(
-      [...deleted].map(async (projectId) => {
+    const failures: unknown[] = [];
+    for (const projectId of deleted) {
+      if (this.#isCurrent(server, true) === false) {
+        return;
+      }
+      try {
         const removed = await removeProjectResources(host, projectId);
         logger.info(
           { projectId, serverId: server.id, ...removed },
           "removed what a deleted project left on a server",
         );
-      }),
-    );
+      } catch (error) {
+        failures.push(error);
+      }
+    }
+    if (failures.length > 0) {
+      throw new AggregateError(failures, `Deleted project cleanup failed on server ${server.id}`);
+    }
   }
 
   /** Samples host and container usage of every ready server. */
   async collectMetrics(): Promise<void> {
     const { database, hosts } = this.#dependencies;
-    await Promise.all(
+    await this.#runOnReadyServers("metrics", async (server) => {
+      const host = hosts.hostFor(server);
+      let sampler = this.#samplers.get(server.id);
+      if (sampler == null) {
+        sampler = new HostSampler(server.id);
+        this.#samplers.set(server.id, sampler);
+      }
+      await sampler.sample(database, {
+        runner: host.runner,
+        diskPath: host.workspaceDir,
+        isActive: () => this.#isCurrent(server, true),
+      });
+      if (this.#isCurrent(server, true) === false) {
+        return;
+      }
+      await this.#observerFor(server).sampleMetrics();
+    });
+  }
+
+  #isCurrent(server: Server, requireReady = false): boolean {
+    if (this.#disposed) {
+      return false;
+    }
+    try {
+      const current = getServer(this.#dependencies.database, server.id);
+      return (
+        sameServerIdentity(server, current) &&
+        (requireReady === false || current.status === "ready")
+      );
+    } catch (error) {
+      if (error instanceof ServerNotFoundError) {
+        return false;
+      }
+      throw error;
+    }
+  }
+
+  async #runOnReadyServers(name: string, run: (server: Server) => Promise<void>): Promise<void> {
+    const results = await Promise.allSettled(
       this.#readyServers.map(async (server) => {
-        const host = hosts.hostFor(server);
-        let sampler = this.#samplers.get(server.id);
-        if (sampler == null) {
-          sampler = new HostSampler(server.id);
-          this.#samplers.set(server.id, sampler);
-        }
-        await sampler.sample(database, { runner: host.runner, diskPath: host.workspaceDir });
-        await this.#observerFor(server).sampleMetrics();
+        await this.#operations.run(`${name}:${server.id}`, async () => {
+          if (this.#isCurrent(server, true)) {
+            await run(server);
+          }
+        });
       }),
     );
+    const failures = results.flatMap((result) =>
+      result.status === "rejected" ? [result.reason as unknown] : [],
+    );
+    if (failures.length > 0) {
+      throw new AggregateError(failures, `Fleet ${name} failed`);
+    }
   }
 
   [Symbol.dispose](): void {
+    this.#disposed = true;
+    this.#operations[Symbol.dispose]();
+    this.#readyServers = [];
+    this.#samplers.clear();
+    this.#onServerReady = () => undefined;
     for (const observer of this.#observers.values()) {
       observer[Symbol.dispose]();
     }

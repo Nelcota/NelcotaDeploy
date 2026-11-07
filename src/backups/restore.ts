@@ -1,5 +1,6 @@
 import type { SecretBox } from "@/secrets";
 
+import { acquireBackupMemory } from "./backup-memory";
 import { RestoreError } from "./backup.errors";
 import { downloadBackup, type ObjectStore } from "./offsite-backup";
 
@@ -37,6 +38,7 @@ export async function restoreBackupTo(
   secretBox: SecretBox,
   restore: { readonly key: string; readonly output: string },
 ): Promise<number> {
+  using _memory = await acquireBackupMemory();
   if (await Bun.file(restore.output).exists()) {
     throw new RestoreError(`${restore.output} already exists; choose a new file`);
   }

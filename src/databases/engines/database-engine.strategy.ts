@@ -10,7 +10,11 @@ type DatabaseContainerSettings = {
 /** Commands that dump a database to a file inside its container and load it back. */
 type DatabaseBackupCommands = {
   readonly dump: (path: string) => readonly string[];
-  readonly restore: (path: string) => readonly string[];
+  /** Load an isolated database before activation; cleanup touches only attempt-specific names. */
+  readonly restore: (path: string) => {
+    readonly commands: readonly (readonly string[])[];
+    readonly cleanup: readonly (readonly string[])[];
+  };
 };
 
 /** What differs between the database servers the platform runs. */

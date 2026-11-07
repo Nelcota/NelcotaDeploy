@@ -11,10 +11,11 @@ import {
   listProjects,
   requestProjectDeletion,
   setRepositoryToken,
-  updateProject,
+  updateProjectSettings,
 } from "@/projects";
 import { getSecretBox } from "@/secrets";
 import { projectInputSchema, repositoryTokenSchema } from "@/shared/schemas/project.schema";
+import { projectSettingsChangeSchema } from "@/shared/schemas/settings/project-settings.schema";
 import { authorize, authorizeProject, authorizeProjectListing } from "@/web/server/authorization";
 
 import { idSchema, projectIdInput } from "./ids";
@@ -54,17 +55,13 @@ export const createProjectFn = createServerFn({ method: "POST" })
     return project;
   });
 
-export const updateProjectFn = createServerFn({ method: "POST" })
-  .validator(z.object({ projectId: idSchema, project: projectInputSchema }))
+export const updateProjectSettingsFn = createServerFn({ method: "POST" })
+  .validator(z.object({ projectId: idSchema, change: projectSettingsChangeSchema }))
   .handler(async ({ data }) => {
     const user = await authorizeProject("project:write", data.projectId);
-    return updateProject(getDatabase(), {
-      projectId: data.projectId,
-      input: data.project,
-      editor: {
-        actor: userActor(user),
-        isAdmin: user.role === "admin",
-      },
+    return updateProjectSettings(getDatabase(), {
+      ...data,
+      editor: { actor: userActor(user), isAdmin: user.role === "admin" },
     });
   });
 

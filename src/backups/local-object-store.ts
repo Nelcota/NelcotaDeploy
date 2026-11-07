@@ -1,6 +1,8 @@
-import { mkdir, readdir, rm } from "node:fs/promises";
+import { mkdir, readdir, rename, rm } from "node:fs/promises";
 import { dirname, relative, resolve, sep } from "node:path";
 
+import { MAX_ENCRYPTED_BACKUP_BYTES } from "./backup-memory";
+import { readBackupFile } from "./backup-read";
 import type { ObjectStore } from "./offsite-backup";
 
 /** Resolves a key inside the directory, refusing keys that would climb out of it. */
@@ -41,12 +43,20 @@ export function localObjectStore(directory: string): ObjectStore {
     write: async (key, data) => {
       const path = pathOf(root, key);
       await mkdir(dirname(path), { recursive: true });
-      await Bun.write(path, data);
+      const temporary = `${path}.${Bun.randomUUIDv7()}.tmp`;
+      await using _temporary = {
+        [Symbol.asyncDispose]: async () => await rm(temporary, { force: true }),
+      };
+      await Bun.write(temporary, data);
+      await rename(temporary, path);
     },
     list: async (prefix) => (await listFiles(root)).filter((key) => key.startsWith(prefix)),
     delete: async (key) => {
       await rm(pathOf(root, key), { force: true });
     },
-    read: async (key) => await Bun.file(pathOf(root, key)).bytes(),
+    read: async (key, maxBytes = MAX_ENCRYPTED_BACKUP_BYTES) => {
+      const file = Bun.file(pathOf(root, key));
+      return await readBackupFile(file, maxBytes);
+    },
   };
 }

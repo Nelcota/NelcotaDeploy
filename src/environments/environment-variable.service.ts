@@ -104,19 +104,6 @@ export function listEnvironmentVariables(
  * @param change - Project id, validated variable and who changes it.
  * @throws {ProjectNotFoundError} When the project does not exist.
  */
-export async function saveEnvironmentVariable(
-  database: Database,
-  secretBox: SecretBox,
-  change: {
-    readonly projectId: string;
-    readonly input: EnvironmentVariableInput;
-    readonly actor: Actor;
-  },
-): Promise<void> {
-  const save = await prepareEnvironmentVariable(database, secretBox, change);
-  save(database);
-}
-
 /**
  * Encrypts a variable before a synchronous transaction commits it with related records.
  *
@@ -138,47 +125,52 @@ export async function prepareEnvironmentVariable(
     readonly input: EnvironmentVariableInput;
     readonly actor: Actor;
   },
-): Promise<(target: Database | Transaction) => void> {
+): Promise<(transaction: Transaction) => void> {
   const environmentId = productionEnvironmentId(database, projectId);
   const keepExistingSecret = input.kind === "secret" && input.value === "";
   const encryptedValue =
     input.kind === "secret" && keepExistingSecret === false
       ? await secretBox.encrypt(input.value, encryptionContext(environmentId, input.key))
       : null;
-  return (target) =>
-    target.transaction((transaction) => {
-      const existing = findVariable(transaction, environmentId, input.key);
-      const previousTime = existing == null ? 0 : Date.parse(existing.updatedAt);
-      if (Number.isFinite(previousTime) === false) {
-        throw new Error(`Invalid update timestamp for environment variable ${input.key}`);
-      }
-      // Two saves in the same millisecond must still produce distinct fingerprints.
-      const now = new Date(Math.max(Date.now(), previousTime + 1)).toISOString();
-      const values = {
-        kind: input.kind,
-        plainValue: input.kind === "plain" ? input.value : null,
-        encryptedValue: keepExistingSecret ? (existing?.encryptedValue ?? null) : encryptedValue,
-        availableAtBuild: input.availableAtBuild,
-        excludeFromPreviews: input.excludeFromPreviews,
-        updatedAt: now,
-      };
-      if (input.kind === "secret" && values.encryptedValue == null) {
-        throw new Error(`Secret ${input.key} needs a value`);
-      }
-      writeVariable(transaction, {
-        existingId: existing?.id,
-        environmentId,
-        key: input.key,
-        values,
-      });
-      recordAuditEvent(transaction, {
-        actor,
-        action: existing == null ? "environment_variable.create" : "environment_variable.update",
-        targetType: "project",
-        targetId: projectId,
-        metadata: { key: input.key, kind: input.kind },
-      });
+  return (transaction) => {
+    getProject(transaction, projectId);
+    const existing = findVariable(transaction, environmentId, input.key);
+    const previousTime = existing == null ? 0 : Date.parse(existing.updatedAt);
+    if (Number.isFinite(previousTime) === false) {
+      throw new Error(`Invalid update timestamp for environment variable ${input.key}`);
+    }
+    // Two saves in the same millisecond must still produce distinct fingerprints.
+    const now = new Date(Math.max(Date.now(), previousTime + 1)).toISOString();
+    const values = {
+      kind: input.kind,
+      plainValue: input.kind === "plain" ? input.value : null,
+      encryptedValue: keepExistingSecret ? (existing?.encryptedValue ?? null) : encryptedValue,
+      availableAtBuild: input.availableAtBuild,
+      excludeFromPreviews: input.excludeFromPreviews,
+      updatedAt: now,
+    };
+    if (input.kind === "secret" && values.encryptedValue == null) {
+      throw new Error(`Secret ${input.key} needs a value`);
+    }
+    writeVariable(transaction, { existingId: existing?.id, environmentId, key: input.key, values });
+    recordAuditEvent(transaction, {
+      actor,
+      action: existing == null ? "environment_variable.create" : "environment_variable.update",
+      targetType: "project",
+      targetId: projectId,
+      metadata: { key: input.key, kind: input.kind },
     });
+  };
+}
+
+/** Encrypts a variable and commits its audited write. */
+export async function saveEnvironmentVariable(
+  database: Database,
+  secretBox: SecretBox,
+  change: Parameters<typeof prepareEnvironmentVariable>[2],
+): Promise<void> {
+  const write = await prepareEnvironmentVariable(database, secretBox, change);
+  database.transaction(write, { behavior: "immediate" });
 }
 
 type VariableValues = {
@@ -254,28 +246,31 @@ export function deleteEnvironmentVariable(
   }: { readonly projectId: string; readonly variableId: string; readonly actor: Actor },
 ): void {
   const environmentId = productionEnvironmentId(database, projectId);
-  database.transaction((transaction) => {
-    const deleted = transaction
-      .delete(tables.environmentVariables)
-      .where(
-        and(
-          eq(tables.environmentVariables.id, variableId),
-          eq(tables.environmentVariables.environmentId, environmentId),
-        ),
-      )
-      .returning({ key: tables.environmentVariables.key })
-      .get();
-    if (deleted == null) {
-      throw new EnvironmentVariableNotFoundError(variableId);
-    }
-    recordAuditEvent(transaction, {
-      actor,
-      action: "environment_variable.delete",
-      targetType: "project",
-      targetId: projectId,
-      metadata: { key: deleted.key },
-    });
-  });
+  database.transaction(
+    (transaction) => {
+      const deleted = transaction
+        .delete(tables.environmentVariables)
+        .where(
+          and(
+            eq(tables.environmentVariables.id, variableId),
+            eq(tables.environmentVariables.environmentId, environmentId),
+          ),
+        )
+        .returning({ key: tables.environmentVariables.key })
+        .get();
+      if (deleted == null) {
+        throw new EnvironmentVariableNotFoundError(variableId);
+      }
+      recordAuditEvent(transaction, {
+        actor,
+        action: "environment_variable.delete",
+        targetType: "project",
+        targetId: projectId,
+        metadata: { key: deleted.key },
+      });
+    },
+    { behavior: "immediate" },
+  );
 }
 
 /**

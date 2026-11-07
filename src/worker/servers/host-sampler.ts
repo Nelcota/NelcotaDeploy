@@ -57,11 +57,18 @@ export class HostSampler {
    */
   async sample(
     database: Database,
-    host: { readonly runner: CommandRunner; readonly diskPath: string },
+    host: {
+      readonly runner: CommandRunner;
+      readonly diskPath: string;
+      readonly isActive?: () => boolean;
+    },
   ): Promise<void> {
     const result = await host.runner(["sh", "-c", READ_SCRIPT, "sh", host.diskPath], {
       timeoutInMs: READ_TIMEOUT_IN_MS,
     });
+    if (host.isActive?.() === false) {
+      return;
+    }
     const cpu = parseProcStat(result.stdout);
     const cpuPercent =
       this.#previousCpu == null || cpu == null ? null : cpuPercentBetween(this.#previousCpu, cpu);

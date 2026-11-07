@@ -1,3 +1,6 @@
+import { eq } from "drizzle-orm";
+
+import { tables } from "@/db";
 import {
   applyRuntimeChanges,
   getDeployment,
@@ -7,17 +10,15 @@ import {
   transitionDeployment,
 } from "@/deployments";
 import type { Job } from "@/jobs";
+import { getProject } from "@/projects";
 
 import {
   runContainerAction,
   runProjectCleanup,
   runVolumeDeleteJob,
 } from "./container-action-runner";
-import {
-  backupStorage,
-  runDatabaseBackupJob,
-  runDatabaseRestoreJob,
-} from "./databases/database-backup-runner";
+import { runDatabaseBackupJob, runDatabaseRestoreJob } from "./databases/database-backup-runner";
+import { backupStorage } from "./databases/database-backup-storage";
 import { runDatabaseDeleteJob, runDatabaseProvisionJob } from "./databases/database-runner";
 import type { DeployRunnerConfig, DeployRunnerDependencies } from "./deploy/deploy-context";
 import { runDeployment } from "./deploy/deploy-runner";
@@ -36,6 +37,7 @@ const ROUTING_SETTLE_IN_MS = 3000;
 
 /** What a job needs from the worker running it. */
 export type JobRun = {
+  readonly assertOwnership?: () => void;
   /** Aborted only when the job outlives the shutdown grace period. */
   readonly signal: AbortSignal;
   /** Updates the observed container state of a server after a job changed it. */
@@ -66,8 +68,10 @@ function deployRunnerConfig(
 function deployRunnerDependencies(
   dependencies: WorkerDependencies,
   host: ServerHost,
+  run: JobRun,
 ): DeployRunnerDependencies {
   return {
+    assertOwnership: run.assertOwnership ?? (() => undefined),
     database: dependencies.database,
     runner: host.runner,
     docker: host.docker,
@@ -124,7 +128,7 @@ async function runDeployJob(
   const host = hostOfDeployment(dependencies, deploymentId);
   await reportDeploymentStatus(dependencies, deploymentId, "pending");
   const status = await runDeployment(
-    deployRunnerDependencies(dependencies, host),
+    deployRunnerDependencies(dependencies, host, run),
     deploymentId,
     run.signal,
   );
@@ -158,7 +162,12 @@ async function runContainerActionJob(
   if (isContainerAction(action) === false) {
     throw new Error(`Job ${job.id} has an invalid container action`);
   }
-  const deployment = getDeployment(dependencies.database, requireId(job.deploymentId, job));
+  // Project controls follow the live deployment when executed, even if a deploy finished first.
+  const project = getProject(dependencies.database, job.projectId);
+  const deployment = getDeployment(
+    dependencies.database,
+    requireId(project.currentDeploymentId, job),
+  );
   const host = dependencies.hosts.hostOf(dependencies.database, deployment.serverId);
   await runContainerAction(dependencies.database, host.docker, {
     deploymentId: deployment.id,
@@ -183,22 +192,29 @@ async function runTaskJob(dependencies: WorkerDependencies, job: Job, run: JobRu
 }
 
 async function runProjectCleanupJob(dependencies: WorkerDependencies, job: Job): Promise<void> {
+  const project = dependencies.database
+    .select({ serverId: tables.projects.serverId })
+    .from(tables.projects)
+    .where(eq(tables.projects.id, job.projectId))
+    .get();
+  if (project == null) {
+    return;
+  }
+  const serverIds = [
+    ...new Set([
+      project.serverId,
+      ...listDeploymentServerIds(dependencies.database, job.projectId),
+    ]),
+  ];
+  const hosts = dependencies.hosts.hostsOf(dependencies.database, serverIds);
   const storage =
     dependencies.offsiteStore == null && dependencies.config.BACKUP_DIR == null
       ? null
       : backupStorage(dependencies);
-  const serverIds = listDeploymentServerIds(dependencies.database, job.projectId);
-  const hosts = dependencies.hosts.hostsOf(dependencies.database, serverIds);
-  const { failures, ...removed } = await runProjectCleanup(dependencies.database, hosts, {
+  const removed = await runProjectCleanup(dependencies.database, hosts, {
     projectId: job.projectId,
     storage,
   });
-  for (const failure of failures) {
-    dependencies.logger.warn(
-      { err: failure, projectId: job.projectId },
-      "server unreachable during project deletion; its containers go when it is back",
-    );
-  }
   dependencies.logger.info({ projectId: job.projectId, ...removed }, "project deleted");
 }
 
@@ -215,6 +231,8 @@ export async function dispatchJob(
   job: Job,
   run: JobRun,
 ): Promise<void> {
+  run.signal.throwIfAborted();
+  run.assertOwnership?.();
   switch (job.kind) {
     case "deploy": {
       await runDeployJob(dependencies, job, run);
@@ -241,19 +259,19 @@ export async function dispatchJob(
       return;
     }
     case "database_provision": {
-      await runDatabaseProvisionJob(dependencies, job, run.signal);
+      await runDatabaseProvisionJob(dependencies, job, run);
       return;
     }
     case "database_delete": {
-      await runDatabaseDeleteJob(dependencies, job);
+      await runDatabaseDeleteJob(dependencies, job, run);
       return;
     }
     case "database_backup": {
-      await runDatabaseBackupJob(dependencies, job);
+      await runDatabaseBackupJob(dependencies, job, run);
       return;
     }
     case "database_restore": {
-      await runDatabaseRestoreJob(dependencies, job);
+      await runDatabaseRestoreJob(dependencies, job, run);
       return;
     }
     case "console_command": {

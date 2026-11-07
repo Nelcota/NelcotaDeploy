@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray, sql } from "drizzle-orm";
 
 import { type Database, tables } from "@/db";
 import type { DatabaseEngineName } from "@/shared/schemas/database.schema";
@@ -125,7 +125,8 @@ export function markBackupFailed(database: Database, backupId: string, reason: s
 
 /**
  * Records the outcome of a restore on its backup and puts the database back to running: a
- * failed restore leaves the server up, possibly with part of the data replaced.
+ * failed load preserves the original database; activation may already have committed if a
+ * later step failed.
  *
  * @param database - Database.
  * @param backup - The restored backup's id and its database's.
@@ -137,26 +138,29 @@ export function finishBackupRestore(
   failure: string | null,
 ): void {
   const now = new Date().toISOString();
-  database.transaction((transaction) => {
-    transaction
-      .update(tables.databaseBackups)
-      .set(
-        failure == null
-          ? { restoredAt: now, restoreError: null }
-          : { restoreError: failure.slice(0, MAX_ERROR_LENGTH) },
-      )
-      .where(eq(tables.databaseBackups.id, backup.id))
-      .run();
-    transaction
-      .update(tables.projectDatabases)
-      .set({ status: "running", updatedAt: now })
-      .where(eq(tables.projectDatabases.id, backup.databaseId))
-      .run();
-  });
+  database.transaction(
+    (transaction) => {
+      transaction
+        .update(tables.databaseBackups)
+        .set(
+          failure == null
+            ? { restoredAt: now, restoreError: null }
+            : { restoreError: failure.slice(0, MAX_ERROR_LENGTH) },
+        )
+        .where(eq(tables.databaseBackups.id, backup.id))
+        .run();
+      transaction
+        .update(tables.projectDatabases)
+        .set({ status: "running", updatedAt: now })
+        .where(eq(tables.projectDatabases.id, backup.databaseId))
+        .run();
+    },
+    { behavior: "immediate" },
+  );
 }
 
 /**
- * Lists the successful backups of a database beyond the newest ones kept.
+ * Lists successful backups beyond the newest ones kept, preserving pending restore targets.
  *
  * @param database - Database.
  * @param databaseId - Database id.
@@ -173,7 +177,13 @@ export function listExpiredDatabaseBackups(
     throw new RangeError(`kept must be a positive integer, received ${kept}`);
   }
   return database
-    .select({ id: tables.databaseBackups.id, storageKey: tables.databaseBackups.storageKey })
+    .select({
+      id: tables.databaseBackups.id,
+      storageKey: tables.databaseBackups.storageKey,
+      restorePending: sql<boolean>`EXISTS (SELECT 1 FROM jobs WHERE kind = 'database_restore'
+        AND status IN ('queued', 'running')
+        AND json_extract(payload, '$.backupId') = database_backups.id)`.mapWith(Boolean),
+    })
     .from(tables.databaseBackups)
     .where(
       and(
@@ -181,10 +191,14 @@ export function listExpiredDatabaseBackups(
         eq(tables.databaseBackups.status, "succeeded"),
       ),
     )
-    .orderBy(desc(tables.databaseBackups.createdAt))
+    .orderBy(desc(tables.databaseBackups.createdAt), desc(tables.databaseBackups.id))
     .all()
     .slice(kept)
-    .flatMap((row) => (row.storageKey == null ? [] : [{ id: row.id, storageKey: row.storageKey }]));
+    .flatMap((row) =>
+      row.storageKey == null || row.restorePending
+        ? []
+        : [{ id: row.id, storageKey: row.storageKey }],
+    );
 }
 
 /**

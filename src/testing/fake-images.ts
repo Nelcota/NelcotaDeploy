@@ -5,6 +5,7 @@ type ImageStore = DockerEngine["images"];
 /** In-memory images; tests keep one project per double, so every image matches any scope. */
 export class FakeImages implements ImageStore {
   readonly tags = new Set<string>();
+  readonly ports = new Map<string, readonly number[]>();
   readonly #calls: string[];
 
   /**
@@ -18,6 +19,10 @@ export class FakeImages implements ImageStore {
 
   async exists(imageTag: string): Promise<boolean> {
     return await Promise.resolve(this.tags.has(imageTag));
+  }
+
+  async exposedPorts(imageTag: string): Promise<readonly number[]> {
+    return await Promise.resolve(this.ports.get(imageTag) ?? []);
   }
 
   async ensurePulled(imageTag: string): Promise<void> {

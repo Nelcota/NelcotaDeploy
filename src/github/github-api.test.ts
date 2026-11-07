@@ -1,7 +1,7 @@
-import { afterAll, describe, expect, test } from "bun:test";
+import { afterAll, afterEach, describe, expect, setSystemTime, test } from "bun:test";
 import { generateKeyPairSync, verify } from "node:crypto";
 
-import { createAppJwt, githubRequest } from "./github-api";
+import { githubAppAuthentication, githubInstallationToken, githubRequest } from "./github-api";
 import { GitHubApiError } from "./github.errors";
 
 const keys = generateKeyPairSync("rsa", {
@@ -25,20 +25,31 @@ afterAll(async () => {
   await server.stop(true);
 });
 
+afterEach(() => {
+  setSystemTime();
+});
+
 function decodePart(part: string | undefined): unknown {
   return JSON.parse(Buffer.from(part ?? "", "base64url").toString());
 }
 
-describe("createAppJwt", () => {
-  test("signs the app id with RS256 for 9 minutes, a minute in the past", () => {
+describe("githubAppAuthentication", () => {
+  test("signs the app id with RS256 using the SDK's clock-skew margin and ten-minute lifetime", async () => {
     const now = new Date("2026-10-29T12:00:00Z");
+    setSystemTime(now);
 
-    const jwt = createAppJwt("123", keys.privateKey, now);
+    const authentication = await githubAppAuthentication(api, {
+      appId: "123",
+      privateKey: keys.privateKey,
+    })({ type: "app" });
 
-    const [header, payload, signature] = jwt.split(".");
+    const [header, payload, signature] = authentication.token.split(".");
     expect(decodePart(header)).toEqual({ alg: "RS256", typ: "JWT" });
-    const issuedAt = now.getTime() / 1000 - 60;
-    expect(decodePart(payload)).toEqual({ iat: issuedAt, exp: issuedAt + 540, iss: "123" });
+    const issuedAt = now.getTime() / 1000 - 30;
+    expect(decodePart(payload)).toEqual({ iat: issuedAt, exp: issuedAt + 600, iss: "123" });
+    expect(authentication.type).toBe("app");
+    expect(authentication.appId).toBe("123");
+    expect(authentication.expiresAt).toBe("2026-10-29T12:09:30.000Z");
     const signed = Buffer.from(`${header}.${payload}`);
     const valid = verify(
       "sha256",
@@ -73,4 +84,36 @@ describe("githubRequest", () => {
 
     expect(error).toBeInstanceOf(GitHubApiError);
   });
+});
+
+test("isolates simultaneous installation tokens across different apps and API hosts", async () => {
+  const providerDelayInMs = 30;
+  const first = Bun.serve({
+    port: 0,
+    async fetch() {
+      await Bun.sleep(providerDelayInMs);
+      return Response.json({ token: "first-app-token", expires_at: "2027-01-01T00:00:00Z" });
+    },
+  });
+  await using _first = { [Symbol.asyncDispose]: async () => await first.stop(true) };
+  const second = Bun.serve({
+    port: 0,
+    fetch() {
+      return Response.json({ token: "second-app-token", expires_at: "2027-01-01T00:00:00Z" });
+    },
+  });
+  await using _second = { [Symbol.asyncDispose]: async () => await second.stop(true) };
+  const tokens = await Promise.all([
+    githubInstallationToken(
+      { baseUrl: first.url.origin },
+      { appId: "first", privateKey: keys.privateKey },
+      99,
+    ),
+    githubInstallationToken(
+      { baseUrl: second.url.origin },
+      { appId: "second", privateKey: keys.privateKey },
+      99,
+    ),
+  ]);
+  expect(tokens).toEqual(["first-app-token", "second-app-token"]);
 });

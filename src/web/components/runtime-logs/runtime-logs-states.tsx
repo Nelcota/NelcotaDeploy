@@ -33,7 +33,7 @@ export function RuntimeLogsHeader({
   const hasLiveDeploy = details?.project.currentDeploymentId != null;
   return (
     <TabHeader
-      title="Logs"
+      title="Logs da aplicação"
       description={
         details == null || hasLiveDeploy === false ? null : (
           <SourceDescription details={details} selected={selected} now={now} />

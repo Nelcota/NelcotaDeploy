@@ -1,6 +1,8 @@
 import { type CommandRunner, type OutputStream, type ProcessResult, runProcess } from "@/process";
+import { isValidEnvironmentVariableKey } from "@/shared/schemas/environment-variable.schema";
 
-import { DockerCompose, type DockerComposeStore } from "./docker-compose";
+import { DockerCompose, type DockerComposeStore } from "./compose/docker-compose";
+import { runContainerExec } from "./docker-exec";
 import { DockerImages, type DockerImageStore } from "./docker-images";
 import { DockerVolumes, type DockerVolumeStore } from "./docker-volumes";
 import {
@@ -18,7 +20,11 @@ import {
   staleBuildCachePruneArgs,
   stopContainerArgs,
 } from "./docker.commands";
-import { DockerCommandError, UnmanagedResourceError } from "./docker.errors";
+import {
+  DockerCommandError,
+  InvalidDockerArgumentError,
+  UnmanagedResourceError,
+} from "./docker.errors";
 import {
   type ContainerInfo,
   type ContainerStats,
@@ -35,6 +41,16 @@ const COPY_TIMEOUT_IN_MS = 600_000;
 // Pruning a large build cache takes a while on slow disks.
 const PRUNE_TIMEOUT_IN_MS = 600_000;
 const MS_PER_SECOND = 1000;
+
+function assertApplicationEnvironment(values: Readonly<Record<string, string>>): void {
+  for (const key of Object.keys(values)) {
+    if (isValidEnvironmentVariableKey(key) === false) {
+      throw new InvalidDockerArgumentError(
+        `Reserved or invalid application environment key: ${key}`,
+      );
+    }
+  }
+}
 
 /** Callback for streamed command output. */
 export type OutputHandler = (line: string, stream: OutputStream) => void;
@@ -132,6 +148,7 @@ export class DockerCli {
       readonly cwd: string;
     },
   ): Promise<void> {
+    assertApplicationEnvironment(buildArgValues);
     await this.#runChecked(buildImageArgs(options), "build", {
       timeoutInMs: run.timeoutInMs,
       env: { ...buildArgValues, DOCKER_BUILDKIT: "1" },
@@ -197,6 +214,7 @@ export class DockerCli {
     options: RunContainerOptions,
     environmentValues: Readonly<Record<string, string>>,
   ): Promise<string> {
+    assertApplicationEnvironment(environmentValues);
     const output = await this.#runChecked(runContainerArgs(options), "run", {
       env: environmentValues,
     });
@@ -524,7 +542,8 @@ export class DockerCli {
   }
 
   /**
-   * Runs a command inside a platform container, without a shell.
+   * Runs an argument vector inside a platform container, supervised by its POSIX shell.
+   * Timeout and cancellation stop the command's descendants through Linux procfs.
    *
    * @param reference - Name or id.
    * @param command - Argument vector.
@@ -542,11 +561,15 @@ export class DockerCli {
     },
   ): Promise<ProcessResult> {
     const info = await this.#assertManaged(reference);
-    return await this.#run(["container", "exec", info.id, ...command], {
-      timeoutInMs: run.timeoutInMs,
-      onLine: run.onLine,
-      signal: run.signal,
-    });
+    return await runContainerExec(
+      this.#runner,
+      {
+        binary: this.#binary,
+        containerId: info.id,
+        command,
+      },
+      run,
+    );
   }
 }
 

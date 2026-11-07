@@ -4,7 +4,7 @@ import { eq } from "drizzle-orm";
 
 import { openMemoryDatabase, tables } from "@/db";
 import { claimNextJob } from "@/jobs";
-import { createProject } from "@/projects";
+import { createProject, updateProject } from "@/projects";
 import { createTestProject, TEST_ACTOR } from "@/testing";
 
 import { requestDeployment, retryDeployment } from "./deployment-request.service";
@@ -61,6 +61,20 @@ describe("requestDeployment queueing", () => {
 });
 
 describe("requestDeployment deduplication", () => {
+  test("replaces a queued branch-head request after the project branch changes", () => {
+    const database = openMemoryDatabase();
+    const project = createTestProject(database);
+    const first = requestDeployment(database, { projectId: project.id, ...manual });
+    updateProject(database, {
+      projectId: project.id,
+      input: { ...project, branch: "release" },
+      editor: { actor: TEST_ACTOR, isAdmin: true },
+    });
+    const next = requestDeployment(database, { projectId: project.id, ...manual });
+    expect(next.created).toBe(true);
+    expect(getDeployment(database, next.deploymentId).branch).toBe("release");
+    expect(getDeployment(database, first.deploymentId).status).toBe("cancelled");
+  });
   test("does not deploy the same pushed commit twice while it is in progress", () => {
     const database = openMemoryDatabase();
     const project = createTestProject(database);

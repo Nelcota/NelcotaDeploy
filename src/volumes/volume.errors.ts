@@ -61,3 +61,10 @@ export class ProjectHasVolumesError extends Error {
     this.name = "ProjectHasVolumesError";
   }
 }
+/** The project's server changed after a volume addition was reviewed. */
+export class VolumeServerChangedError extends Error {
+  constructor(projectId: string) {
+    super(`Volume target server changed for project ${projectId}`);
+    this.name = "VolumeServerChangedError";
+  }
+}

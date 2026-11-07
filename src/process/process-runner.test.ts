@@ -1,6 +1,32 @@
 import { describe, expect, test } from "bun:test";
 
-import { buildChildEnvironment, failureReason, runProcess } from "./process-runner";
+import { buildChildEnvironment, failureReason, readLines, runProcess } from "./process-runner";
+
+async function* outputChunks(values: readonly string[]) {
+  for (const value of values) {
+    yield await Promise.resolve(new TextEncoder().encode(value));
+  }
+}
+
+test("bounds an unterminated output line and resumes after its newline", async () => {
+  const lines: string[] = [];
+  await readLines(outputChunks(["x".repeat(40_000), "x".repeat(40_000), "\nready\n"]), (line) =>
+    lines.push(line),
+  );
+  expect(lines).toEqual(["[Output line omitted: exceeds 65536 characters]", "ready"]);
+});
+
+test("handles split CRLF endings without adding empty lines", async () => {
+  const lines: string[] = [];
+  await readLines(outputChunks(["first\r", "", "\nsecond\rthird"]), (line) => lines.push(line));
+  expect(lines).toEqual(["first", "second", "third"]);
+});
+
+test("omits a long final line without waiting for a newline", async () => {
+  const lines: string[] = [];
+  await readLines(outputChunks(["x".repeat(100_000)]), (line) => lines.push(line));
+  expect(lines).toEqual(["[Output line omitted: exceeds 65536 characters]"]);
+});
 
 describe("runProcess", () => {
   test("returns exit code and streams each output line", async () => {

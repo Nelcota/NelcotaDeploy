@@ -72,12 +72,12 @@ export function UserAccessControls({
       <div className="flex items-center gap-2">
         <Switch
           id={switchId}
-          aria-label={`${user.name} ativo`}
+          aria-label={`Permitir acesso de ${user.name}`}
           checked={user.disabled === false}
           onCheckedChange={onActiveChange}
         />
         <Label htmlFor={switchId} aria-hidden className="text-sm font-normal">
-          Ativo
+          Acesso permitido
         </Label>
       </div>
     </>

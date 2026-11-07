@@ -69,3 +69,10 @@ export class DatabaseBackupNotFoundError extends Error {
     this.name = "DatabaseBackupNotFoundError";
   }
 }
+/** The project moved after its database creation was reviewed. */
+export class DatabaseServerChangedError extends Error {
+  constructor(projectId: string) {
+    super(`Database target server changed for project ${projectId}`);
+    this.name = "DatabaseServerChangedError";
+  }
+}

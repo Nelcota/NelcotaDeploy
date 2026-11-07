@@ -49,6 +49,24 @@ export const taskInputSchema = z
 
 export type TaskInput = z.output<typeof taskInputSchema>;
 
+/** Exact command and timeout captured when a task execution is reviewed or queued. */
+export const taskRunReviewSchema = z.object({
+  command: z
+    .array(
+      z
+        .string()
+        .max(MAX_ARG_LENGTH)
+        .refine((value) => value.includes("\0") === false),
+    )
+    .min(1)
+    .max(MAX_ARGS)
+    .refine((command) => {
+      const executable = command.at(0);
+      return executable != null && executable.trim() !== "";
+    }),
+  timeoutInSeconds: z.number().int().min(1).max(MAX_TIMEOUT_IN_SECONDS),
+});
+
 /**
  * Parses and limits a task command line.
  *
@@ -65,7 +83,7 @@ function parseTaskCommand(commandLine: string): string[] | string {
     }
     throw error;
   }
-  if (args.length === 0) {
+  if (args.length === 0 || args.at(0)?.trim() === "") {
     return "Informe o comando";
   }
   if (args.length > MAX_ARGS) {

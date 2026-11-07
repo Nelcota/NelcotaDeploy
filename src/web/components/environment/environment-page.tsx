@@ -9,7 +9,7 @@ import { useEnvironmentVariables } from "./use-environment-variables";
 import { VariableDialog } from "./variable-dialog/variable-dialog";
 import { VariablesList } from "./variables-list";
 
-/** Environment variables of one project: list, search, create, edit, delete and import. */
+/** Saved variables of one project; imports and repository discovery have their own routes. */
 export function EnvironmentPage({ projectId }: { readonly projectId: string }) {
   const can = useCan();
   const canEdit = can("environment:write");
@@ -28,7 +28,6 @@ export function EnvironmentPage({ projectId }: { readonly projectId: string }) {
         variables={variables.data}
         canEdit={canEdit}
         onCreate={() => openEditor(null)}
-        onImported={refreshPendingChanges}
       />
       <ApplyVariableChanges projectId={projectId} />
       <VariablesList
@@ -38,14 +37,17 @@ export function EnvironmentPage({ projectId }: { readonly projectId: string }) {
         onEdit={openEditor}
         onDelete={(variableId) => remove.mutate(variableId)}
       />
-      <VariableDialog
-        key={editing?.id ?? "new"}
-        projectId={projectId}
-        open={dialogOpen}
-        onOpenChange={setDialogOpen}
-        variable={editing}
-        onSaved={refreshPendingChanges}
-      />
+      {dialogOpen && variables.data != null ? (
+        <VariableDialog
+          key={editing?.id ?? "new"}
+          projectId={projectId}
+          open={dialogOpen}
+          onOpenChange={setDialogOpen}
+          variable={editing}
+          existingKeys={variables.data.map((variable) => variable.key)}
+          onSaved={refreshPendingChanges}
+        />
+      ) : null}
     </>
   );
 }

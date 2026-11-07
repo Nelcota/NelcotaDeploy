@@ -1,6 +1,7 @@
+import { isValidHostname } from "@/shared/schemas/domain.schema";
+
 import { InvalidRouteError } from "./routing.errors";
 
-const HOSTNAME_PATTERN = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+$/;
 const ROUTE_NAME_PATTERN = /^[a-z0-9](?:[a-z0-9-]{0,98}[a-z0-9])?$/;
 const CONTAINER_NAME_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,127}$/;
 const NAME_PATTERN = /^[A-Za-z0-9_-]{1,64}$/;
@@ -75,7 +76,9 @@ function domainRouters(
     readonly compress: boolean;
   },
 ): Record<string, Router> {
-  assertMatches(domain.hostname, HOSTNAME_PATTERN, "hostname");
+  if (isValidHostname(domain.hostname) === false) {
+    throw new InvalidRouteError(`Invalid hostname: ${JSON.stringify(domain.hostname)}`);
+  }
   const rule = `Host(\`${domain.hostname}\`)`;
   const middlewares = route.compress ? [COMPRESS_MIDDLEWARE] : [];
   if (domain.httpsEnabled === false) {
