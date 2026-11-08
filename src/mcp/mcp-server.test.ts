@@ -8,6 +8,7 @@ import { type Database, migrateDatabase, openDatabase } from "@/db";
 import { createTestProject, TEST_ACTOR } from "@/testing";
 
 const MAIN = join(import.meta.dir, "main.ts");
+const WINDOWS_SQLITE_RELEASE_DELAY_IN_MS = 1000;
 
 type JsonRpcResponse = {
   id: number;
@@ -97,6 +98,10 @@ async function setup(scopes: ("read" | "deploy")[]) {
       {
         using _connection = database.$client;
         await client[Symbol.asyncDispose]();
+      }
+      if (process.platform === "win32") {
+        // The terminated child can briefly retain its SQLite file on Windows.
+        await Bun.sleep(WINDOWS_SQLITE_RELEASE_DELAY_IN_MS);
       }
       await rm(directory, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
     },
