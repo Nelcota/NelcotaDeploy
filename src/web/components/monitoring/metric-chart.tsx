@@ -3,6 +3,7 @@ import {
   Area,
   AreaChart,
   CartesianGrid,
+  getNiceTickValues,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -14,10 +15,7 @@ import { formatShortTime } from "@/shared/format";
 const TICK_COUNT = 5;
 /** Headroom above the highest sample, so the line never touches the top of the chart. */
 const HEADROOM = 1.1;
-// Tick steps people read easily, times a power of ten. Written as text because the list
-// itself is the named constant, not ten separate magic numbers.
-const NICE_STEPS: readonly number[] = "1 1.5 2 2.5 3 4 5 6 8 10".split(" ").map(Number);
-const DECIMAL_BASE = 10;
+const MIN_NORMAL_VALUE = 2.2250738585072014e-308;
 /** Room for the value labels; compact charts hide the axis and only keep the stroke inset. */
 const AXIS_WIDTH_IN_PX = 64;
 const COMPACT_INSET_IN_PX = 4;
@@ -37,12 +35,14 @@ export function niceUpperBound(points: readonly MetricPoint[]): number {
   if (highest <= 0) {
     return 1;
   }
-  const intervals = TICK_COUNT - 1;
-  const rawStep = (highest * HEADROOM) / intervals;
-  const magnitude = DECIMAL_BASE ** Math.floor(Math.log10(rawStep));
-  const step =
-    (NICE_STEPS.find((candidate) => candidate * magnitude >= rawStep) ?? DECIMAL_BASE) * magnitude;
-  return step * intervals;
+  const withHeadroom = highest * HEADROOM;
+  const ceiling = Number.isFinite(withHeadroom) ? withHeadroom : highest;
+  if (ceiling < MIN_NORMAL_VALUE) {
+    return ceiling;
+  }
+  const bound = getNiceTickValues([0, ceiling], TICK_COUNT).at(-1);
+  // Extremely large or small finite values can exceed the tick algorithm's numeric range.
+  return bound != null && Number.isFinite(bound) && bound >= ceiling ? bound : ceiling;
 }
 
 /** One point of a time series; null means the value could not be collected. */

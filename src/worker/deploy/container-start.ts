@@ -11,6 +11,7 @@ import {
   type DeployRunnerConfig,
   type DeployRunnerDependencies,
   deploymentLabels,
+  assertNotCancelled,
 } from "./deploy-context";
 
 /**
@@ -28,11 +29,13 @@ export async function routeTrafficTo(
   dependencies: Pick<DeployRunnerDependencies, "database" | "routes"> & {
     readonly config: Pick<DeployRunnerConfig, "routingSettleInMs" | "traefik">;
   },
-  context: Pick<DeployContext, "deployment" | "project" | "logs">,
+  context: Pick<DeployContext, "deployment" | "project" | "logs" | "assertOwnership" | "signal">,
   containerNames: readonly string[],
 ): Promise<void> {
   const { routes, config } = dependencies;
   const { logs } = context;
+  context.assertOwnership();
+  assertNotCancelled(context.signal);
   const target = routeTarget(dependencies.database, context);
   if (target.domains.length === 0) {
     await routes?.remove(target.fileName);
@@ -126,7 +129,10 @@ export async function startContainers(
   dependencies: Pick<DeployRunnerDependencies, "database" | "docker"> & {
     readonly config: Pick<DeployRunnerConfig, "network">;
   },
-  context: Pick<DeployContext, "deployment" | "project" | "logs" | "state">,
+  context: Pick<
+    DeployContext,
+    "deployment" | "project" | "logs" | "state" | "assertOwnership" | "signal"
+  >,
   release: {
     readonly imageTag: string;
     readonly runtimeValues: Readonly<Record<string, string>>;
@@ -137,10 +143,13 @@ export async function startContainers(
 ): Promise<string[]> {
   const { database, docker, config } = dependencies;
   const { deployment, project, logs } = context;
+  const attemptId = Bun.randomUUIDv7();
   const containerNames = Array.from({ length: replicaCountOf(context) }, (_, index) =>
-    replicaContainerNameFor(project.slug, deployment.id, index + 1),
+    replicaContainerNameFor(project.slug, attemptId, index + 1),
   );
   const [containerName = ""] = containerNames;
+  context.assertOwnership();
+  assertNotCancelled(context.signal);
   transitionDeployment(database, deployment.id, {
     to: "starting",
     imageTag: release.imageTag,
@@ -156,6 +165,8 @@ export async function startContainers(
       : `Starting ${containerNames.length} replicas: ${containerNames.join(", ")}`,
   );
   await docker.ensureNetwork(config.network);
+  context.assertOwnership();
+  assertNotCancelled(context.signal);
   // Previews never mount production's data.
   const volumes = deployment.previewId == null ? await prepareVolumes(dependencies, context) : [];
   const starts = await Promise.allSettled(
@@ -175,7 +186,7 @@ async function startReplica(
   dependencies: Pick<DeployRunnerDependencies, "docker"> & {
     readonly config: Pick<DeployRunnerConfig, "network">;
   },
-  context: Pick<DeployContext, "deployment" | "project" | "state">,
+  context: Pick<DeployContext, "deployment" | "project" | "state" | "assertOwnership" | "signal">,
   replica: {
     readonly name: string;
     readonly imageTag: string;
@@ -185,11 +196,17 @@ async function startReplica(
 ): Promise<void> {
   const { docker, config } = dependencies;
   const { project } = context;
+  context.assertOwnership();
+  assertNotCancelled(context.signal);
   const leftover = await docker.inspectContainer(replica.name);
+  context.assertOwnership();
+  assertNotCancelled(context.signal);
   if (leftover != null) {
     // Left behind by a previous attempt of this same deployment that crashed.
     await docker.removeContainer(replica.name);
   }
+  context.assertOwnership();
+  assertNotCancelled(context.signal);
   context.state.useContainer(replica.name);
   await docker.runContainer(
     {

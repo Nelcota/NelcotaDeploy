@@ -3,7 +3,12 @@ import type { Logger } from "pino";
 import type { Database } from "@/db";
 import { type ContainerInfo, type DockerEngine, LABELS, type OutputHandler } from "@/docker";
 import { readDeploymentSecrets, resolveEnvironment } from "@/environments";
-import { appendRuntimeLogs, getLatestRuntimeLogTime, type RuntimeLogEntry } from "@/logs";
+import {
+  appendRuntimeLogs,
+  cleanLogMessage,
+  getLatestRuntimeLogTime,
+  type RuntimeLogEntry,
+} from "@/logs";
 import {
   combineSamplesByProject,
   type ContainerSample,
@@ -16,6 +21,10 @@ const FLUSH_INTERVAL_IN_MS = 1000;
 // Docker emits several events per change (create, start, health…); one refresh covers them.
 const EVENT_REFRESH_DELAY_IN_MS = 300;
 const MAX_PENDING_LINES = 5000;
+const MAX_PENDING_BYTES = 4_194_304;
+const UTF16_CODE_UNIT_BYTES = 2;
+const ENTRY_OVERHEAD_BYTES = 128;
+const DEFAULT_RUNTIME_RETENTION_LINES = 5000;
 const TIMESTAMPED_LINE = /^(\d{4}-\d{2}-\d{2}T\S+Z) ?(.*)$/;
 
 type Follower = { readonly controller: AbortController; readonly projectId: string };
@@ -62,9 +71,16 @@ export class ContainerObserver implements Disposable {
   readonly #followers = new Map<string, Follower>();
   readonly #flushTimer: ReturnType<typeof setInterval>;
   #pending: RuntimeLogEntry[] = [];
+  #pendingBytes = 0;
+  #droppedLines = 0;
+  readonly #runtimeLinesPerProject: number;
+  readonly #isActive: () => boolean;
   #running: ContainerInfo[] = [];
   #events: AbortController | null = null;
   #eventRefresh: ReturnType<typeof setTimeout> | null = null;
+  #refreshing: Promise<ContainerInfo[]> | null = null;
+  #refreshAgain = false;
+  #disposed = false;
 
   constructor(dependencies: {
     readonly serverId: string;
@@ -72,12 +88,17 @@ export class ContainerObserver implements Disposable {
     readonly docker: DockerEngine;
     readonly secretBox: SecretBox;
     readonly logger: Logger;
+    readonly runtimeLinesPerProject?: number;
+    readonly isActive?: () => boolean;
   }) {
     this.#serverId = dependencies.serverId;
     this.#database = dependencies.database;
     this.#docker = dependencies.docker;
     this.#secretBox = dependencies.secretBox;
     this.#logger = dependencies.logger;
+    this.#runtimeLinesPerProject =
+      dependencies.runtimeLinesPerProject ?? DEFAULT_RUNTIME_RETENTION_LINES;
+    this.#isActive = dependencies.isActive ?? (() => true);
     this.#flushTimer = setInterval(() => this.#flush(), FLUSH_INTERVAL_IN_MS);
   }
 
@@ -87,7 +108,35 @@ export class ContainerObserver implements Disposable {
    * @returns The platform containers the server has now.
    */
   async refresh(): Promise<ContainerInfo[]> {
+    if (this.#disposed || this.#isActive() === false) {
+      return [];
+    }
+    if (this.#refreshing != null) {
+      // The current list may have started before this caller changed a container.
+      this.#refreshAgain = true;
+      return await this.#refreshing;
+    }
+    this.#refreshing = this.#refreshUntilSettled().finally(() => {
+      this.#refreshing = null;
+    });
+    return await this.#refreshing;
+  }
+
+  async #refreshUntilSettled(): Promise<ContainerInfo[]> {
+    let containers: ContainerInfo[] = [];
+    do {
+      // A trailing read must follow the current one to observe changes made during it.
+      containers = await this.#refresh();
+    } while (this.#refreshAgain && this.#disposed === false);
+    return containers;
+  }
+
+  async #refresh(): Promise<ContainerInfo[]> {
+    this.#refreshAgain = false;
     const containers = await this.#docker.listManagedContainers();
+    if (this.#disposed || this.#isActive() === false) {
+      return [];
+    }
     // Pull request previews are short-lived: their state is their deployment's, and their usage
     // and logs stay out of the project's, which describe production.
     const production = containers.filter((container) => container.labels[LABELS.previewId] == null);
@@ -135,6 +184,9 @@ export class ContainerObserver implements Disposable {
       return;
     }
     const stats = await this.#docker.sampleStats([...byName.keys()]);
+    if (this.#disposed || this.#isActive() === false) {
+      return;
+    }
     const samples: ContainerSample[] = [];
     for (const stat of stats) {
       const projectId = byName.get(stat.name)?.labels[LABELS.projectId];
@@ -159,7 +211,7 @@ export class ContainerObserver implements Disposable {
    * ends (for example when the connection to the server dropped).
    */
   followEvents(): void {
-    if (this.#events != null) {
+    if (this.#disposed || this.#events != null) {
       return;
     }
     const controller = new AbortController();
@@ -177,7 +229,7 @@ export class ContainerObserver implements Disposable {
   }
 
   #scheduleRefresh(): void {
-    if (this.#eventRefresh != null) {
+    if (this.#disposed || this.#eventRefresh != null) {
       return;
     }
     this.#eventRefresh = setTimeout(() => {
@@ -197,6 +249,9 @@ export class ContainerObserver implements Disposable {
     const controller = new AbortController();
     this.#followers.set(container.id, { controller, projectId });
     const redact = await this.#loadRedactor(container, projectId);
+    if (controller.signal.aborted || this.#isActive() === false) {
+      return;
+    }
     if (redact == null) {
       this.#followers.delete(container.id);
       controller.abort();
@@ -259,6 +314,9 @@ export class ContainerObserver implements Disposable {
     },
     { line, stream }: { readonly line: string; readonly stream: Parameters<OutputHandler>[1] },
   ): void {
+    if (this.#disposed) {
+      return;
+    }
     const parsed = parseTimestampedLine(line);
     if (parsed == null) {
       // A message from the docker CLI, not the application: keep it out of its logs.
@@ -271,26 +329,48 @@ export class ContainerObserver implements Disposable {
     if (source.lastStored != null && parsed.createdAt <= source.lastStored) {
       return;
     }
-    if (this.#pending.length >= MAX_PENDING_LINES) {
+    // Redact before truncation so a secret crossing the cut is never partially exposed.
+    const message = cleanLogMessage(source.redact(parsed.message));
+    const entryBytes =
+      (message.length +
+        source.projectId.length +
+        (source.deploymentId?.length ?? 0) +
+        parsed.createdAt.length) *
+        UTF16_CODE_UNIT_BYTES +
+      ENTRY_OVERHEAD_BYTES;
+    if (
+      this.#pending.length >= MAX_PENDING_LINES ||
+      this.#pendingBytes + entryBytes > MAX_PENDING_BYTES
+    ) {
+      this.#droppedLines += 1;
       return;
     }
+    this.#pendingBytes += entryBytes;
     this.#pending.push({
       projectId: source.projectId,
       deploymentId: source.deploymentId,
       stream,
-      message: source.redact(parsed.message),
+      message,
       createdAt: parsed.createdAt,
     });
   }
 
   #flush(): void {
+    if (this.#droppedLines > 0) {
+      this.#logger.warn(
+        { serverId: this.#serverId, droppedLines: this.#droppedLines },
+        "Runtime log buffer capacity exceeded; lines dropped",
+      );
+      this.#droppedLines = 0;
+    }
     if (this.#pending.length === 0) {
       return;
     }
     const entries = this.#pending;
     this.#pending = [];
+    this.#pendingBytes = 0;
     try {
-      appendRuntimeLogs(this.#database, entries);
+      appendRuntimeLogs(this.#database, entries, this.#runtimeLinesPerProject);
     } catch (error) {
       // A project deleted mid-flush violates the foreign key; its lines are dropped.
       this.#logger.warn({ err: error, lines: entries.length }, "could not store runtime logs");
@@ -298,6 +378,8 @@ export class ContainerObserver implements Disposable {
   }
 
   [Symbol.dispose](): void {
+    this.#disposed = true;
+    this.#running = [];
     clearInterval(this.#flushTimer);
     if (this.#eventRefresh != null) {
       clearTimeout(this.#eventRefresh);

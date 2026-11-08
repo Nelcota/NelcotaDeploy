@@ -4,7 +4,43 @@ const MAX_KEY_LENGTH = 128;
 const MAX_VALUE_LENGTH = 32_768;
 const KEY_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/;
 /** Names the platform sets itself or that would change how the container runs. */
-const RESERVED_KEY_PREFIXES = ["NELCOTA_", "DOCKER_"];
+const RESERVED_KEY_PREFIXES = [
+  "NELCOTA_",
+  "DOCKER_",
+  "BUILDKIT_",
+  "BUILDX_",
+  "COMPOSE_",
+  "LD_",
+  "DYLD_",
+  "GIT_",
+  "BASH_",
+  "XDG_",
+  "GODEBUG",
+  "GOTRACEBACK",
+  "SSL_CERT_",
+];
+const RESERVED_KEYS: ReadonlySet<string> = new Set([
+  "PATH",
+  "HOME",
+  "USERPROFILE",
+  "ENV",
+  "SHELL",
+  "SHELLOPTS",
+  "BASHOPTS",
+  "CDPATH",
+  "IFS",
+  "TMPDIR",
+  "TMP",
+  "TEMP",
+  "HTTP_PROXY",
+  "HTTPS_PROXY",
+  "ALL_PROXY",
+  "NO_PROXY",
+  "SYSTEMROOT",
+  "WINDIR",
+  "COMSPEC",
+  "PATHEXT",
+]);
 
 /**
  * Tells whether an environment variable name is valid and not reserved.
@@ -17,12 +53,15 @@ export function isValidEnvironmentVariableKey(key: string): boolean {
     return false;
   }
   const upperKey = key.toUpperCase();
+  if (RESERVED_KEYS.has(upperKey)) {
+    return false;
+  }
   return RESERVED_KEY_PREFIXES.some((prefix) => upperKey.startsWith(prefix)) === false;
 }
 
 export const environmentVariableInputSchema = z.object({
   key: z.string().trim().refine(isValidEnvironmentVariableKey, {
-    message: "Use letras, números e _ (sem começar com número, NELCOTA_ ou DOCKER_)",
+    message: "Use letras, números e _. Nomes que controlam processos do servidor são reservados.",
   }),
   kind: z.enum(["plain", "secret"]),
   value: z

@@ -2,6 +2,7 @@ import { type CommandRunner, failureReason, type ProcessResult } from "@/process
 
 import { assertImageReference, isRailpackBaseTag, LABELS } from "./docker.commands";
 import { DockerCommandError, UnmanagedResourceError } from "./docker.errors";
+import { parseExposedPorts } from "./docker.output";
 
 const COMMAND_TIMEOUT_IN_MS = 30_000;
 // A first pull of a public image can take minutes on a slow server connection.
@@ -83,6 +84,22 @@ export class DockerImages {
       assertImageReference(imageTag),
     ]);
     return result.exitCode === 0;
+  }
+
+  /**
+   * Reads the final image's exposed TCP ports, including ports inherited from its base.
+   *
+   * @param imageTag - Image reference.
+   * @returns Ports in ascending order; empty when the image declares none.
+   * @throws {DockerCommandError} When inspection fails or its output is malformed.
+   * @throws {InvalidDockerArgumentError} When the reference is malformed.
+   */
+  async exposedPorts(imageTag: string): Promise<readonly number[]> {
+    const output = await this.#runChecked(
+      ["inspect", "--format", "{{json .Config.ExposedPorts}}", assertImageReference(imageTag)],
+      "inspect exposed ports",
+    );
+    return parseExposedPorts(output);
   }
 
   /**

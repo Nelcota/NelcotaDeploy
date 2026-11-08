@@ -44,6 +44,6 @@ export const mongodbEngine: DatabaseEngine = {
   // --drop replaces each restored collection, so restoring replaces what is there.
   backup: {
     dump: (path) => ["sh", "-c", DUMP_SCRIPT, "sh", path],
-    restore: (path) => ["sh", "-c", RESTORE_SCRIPT, "sh", path],
+    restore: (path) => ({ commands: [["sh", "-c", RESTORE_SCRIPT, "sh", path]], cleanup: [] }),
   },
 };

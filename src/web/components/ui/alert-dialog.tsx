@@ -48,9 +48,9 @@ function AlertDialogContent({
         data-slot="alert-dialog-content"
         data-size={size}
         className={cn(
-          // Same frame as Dialog: a bottom sheet on phones, a centered card from sm up.
-          "group/alert-dialog-content fixed inset-x-0 bottom-0 z-50 grid w-full gap-6 rounded-t-2xl bg-popover p-6 pb-[max(1.5rem,env(safe-area-inset-bottom))] text-popover-foreground has-data-[slot=alert-dialog-footer]:pb-0 shadow-2xl ring-1 ring-border/70 duration-200 outline-none data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:slide-out-to-bottom data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:slide-in-from-bottom",
-          "sm:inset-x-auto sm:top-[50%] sm:bottom-auto sm:left-[50%] sm:max-w-lg sm:translate-x-[-50%] sm:translate-y-[-50%] sm:rounded-2xl sm:data-[size=sm]:max-w-xs sm:data-[state=closed]:slide-out-to-bottom-0 sm:data-[state=closed]:zoom-out-95 sm:data-[state=open]:slide-in-from-bottom-0 sm:data-[state=open]:zoom-in-95",
+          // Match Dialog's bounded frame so long confirmations remain reachable on short screens.
+          "group/alert-dialog-content fixed inset-x-0 bottom-0 z-50 grid max-h-[calc(100dvh-1rem)] w-full gap-6 overflow-y-auto rounded-t-2xl bg-popover p-6 pb-[max(1.5rem,env(safe-area-inset-bottom))] text-popover-foreground has-data-[slot=alert-dialog-footer]:pb-0 shadow-2xl ring-1 ring-border/70 duration-200 outline-none data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:slide-out-to-bottom data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:slide-in-from-bottom",
+          "sm:inset-x-auto sm:top-[50%] sm:bottom-auto sm:left-[50%] sm:max-h-[calc(100dvh-4rem)] sm:max-w-lg sm:translate-x-[-50%] sm:translate-y-[-50%] sm:rounded-2xl sm:data-[size=sm]:max-w-xs sm:data-[state=closed]:slide-out-to-bottom-0 sm:data-[state=closed]:zoom-out-95 sm:data-[state=open]:slide-in-from-bottom-0 sm:data-[state=open]:zoom-in-95",
           className,
         )}
         {...props}
@@ -77,7 +77,7 @@ function AlertDialogFooter({ className, ...props }: React.ComponentProps<"div">)
     <div
       data-slot="alert-dialog-footer"
       className={cn(
-        "-mx-6 flex flex-col-reverse gap-2 border-t border-border/70 px-6 py-4 pb-[max(1rem,env(safe-area-inset-bottom))] group-data-[size=sm]/alert-dialog-content:grid group-data-[size=sm]/alert-dialog-content:grid-cols-2 sm:flex-row sm:justify-end sm:rounded-b-2xl",
+        "sticky bottom-0 -mx-6 flex flex-col-reverse gap-2 border-t border-border/70 bg-popover/95 px-6 py-4 pb-[max(1rem,env(safe-area-inset-bottom))] backdrop-blur-sm group-data-[size=sm]/alert-dialog-content:grid group-data-[size=sm]/alert-dialog-content:grid-cols-2 sm:flex-row sm:flex-wrap sm:justify-end sm:rounded-b-2xl",
         className,
       )}
       {...props}

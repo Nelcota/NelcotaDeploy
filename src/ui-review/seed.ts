@@ -190,9 +190,9 @@ recordCertificate(database, "pagamentos.exemplo.com", {
   checkedAt: new Date(now),
 });
 
-seedTasks(database, api.id);
+const taskId = seedTasks(database, api.id);
 seedVolumes(database, api.id);
-await seedDatabases(database, secretBox, api.id);
+const databaseId = await seedDatabases(database, secretBox, api.id);
 await seedStaging(database, secretBox, api.id);
 seedPreview(database, api.id);
 
@@ -342,4 +342,6 @@ for (const [command, output, exitCode] of CONSOLE_COMMANDS) {
 }
 
 // The last line is read by main.ts to know which pages to open.
-process.stdout.write(`${JSON.stringify({ projectId: api.id, deploymentId: liveDeploymentId })}\n`);
+process.stdout.write(
+  `${JSON.stringify({ projectId: api.id, deploymentId: liveDeploymentId, taskId, databaseId })}\n`,
+);

@@ -1,5 +1,6 @@
 import { ArrowDownIcon, ArrowUpIcon, CornerDownLeftIcon, SearchIcon } from "lucide-react";
 import { type KeyboardEvent, type ReactNode, useEffect, useState } from "react";
+import { toast } from "sonner";
 
 import { CommandResults } from "@/web/components/shell/command-palette/command-results";
 import { type Command, moveSelection } from "@/web/components/shell/command-palette/command-search";
@@ -172,7 +173,9 @@ export function CommandPalette({ open, onOpenChange, permissions }: CommandPalet
       return;
     }
     changeOpen(false);
-    void command.run();
+    void command.run().catch(() => {
+      toast.error("Não foi possível abrir a página. Tente novamente.");
+    });
   };
 
   const onKeyDown = paletteKeyHandler({ commands, activeIndex, setActiveIndex, choose });

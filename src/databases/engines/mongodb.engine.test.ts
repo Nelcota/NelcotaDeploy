@@ -61,7 +61,7 @@ describe("mongodbEngine.backup", () => {
   });
 
   test("restores by replacing each collection from the archive", () => {
-    const script = mongodbEngine.backup?.restore(ARCHIVE_PATH)[2] ?? "";
+    const script = mongodbEngine.backup?.restore(ARCHIVE_PATH).commands.at(0)?.[2] ?? "";
 
     expect(script).toContain("mongorestore");
     expect(script).toContain("--drop");

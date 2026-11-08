@@ -1,5 +1,6 @@
 import { useState } from "react";
 
+import { GitHubIcon } from "@/web/components/github/github.icon";
 import { authClient } from "@/web/components/shell/auth-client";
 import { Button } from "@/web/components/ui/button";
 
@@ -20,19 +21,32 @@ export function GitHubSignIn({
   readonly error: string | undefined;
 }) {
   const [starting, setStarting] = useState(false);
-  const start = () => {
+  const [startError, setStartError] = useState<string | null>(null);
+  const start = async () => {
+    if (starting) {
+      return;
+    }
     setStarting(true);
-    void authClient.signIn
-      .social({
+    setStartError(null);
+    try {
+      const result = await authClient.signIn.social({
         provider: "github",
         callbackURL: safeRedirectTarget(redirectTarget),
         errorCallbackURL: "/login",
-      })
-      .catch((signInError: unknown) => {
-        console.error("GitHub sign-in could not start", signInError);
-        setStarting(false);
       });
+      if (result.error != null) {
+        setStartError(
+          "Não foi possível iniciar a entrada com GitHub. Tente novamente ou entre com e-mail e senha.",
+        );
+        setStarting(false);
+      }
+    } catch (signInError: unknown) {
+      console.error("GitHub sign-in could not start", signInError);
+      setStartError("Sem conexão com o servidor. Tente novamente ou entre com e-mail e senha.");
+      setStarting(false);
+    }
   };
+  const message = startError ?? (error == null ? null : githubSignInErrorMessage(error));
   return (
     <div className="space-y-3">
       <div className="flex items-center gap-3 text-xs text-muted-foreground">
@@ -46,14 +60,15 @@ export function GitHubSignIn({
         size="lg"
         className="w-full"
         disabled={starting}
-        aria-describedby={error == null ? undefined : ERROR_ID}
-        onClick={start}
+        aria-describedby={message == null ? undefined : ERROR_ID}
+        onClick={() => void start()}
       >
+        <GitHubIcon aria-hidden />
         Entrar com GitHub
       </Button>
-      {error == null ? null : (
+      {message == null ? null : (
         <p id={ERROR_ID} role="alert" className="text-sm text-destructive">
-          {githubSignInErrorMessage(error)}
+          {message}
         </p>
       )}
     </div>

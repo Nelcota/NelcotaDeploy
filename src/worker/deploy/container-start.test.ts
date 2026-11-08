@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 
 import { openMemoryDatabase } from "@/db";
 import { getDeployment, requestDeployment } from "@/deployments";
+import { JobLeaseLostError } from "@/jobs";
 import { createTestProject, FakeDocker, TEST_ACTOR } from "@/testing";
 import { addProjectVolume, setVolumeAttached } from "@/volumes";
 
@@ -43,6 +44,8 @@ describe("startContainers volumes", () => {
     const docker = new FakeDocker();
     using logs = new DeploymentLogWriter(database, deploymentId);
     const context = {
+      assertOwnership: () => undefined,
+      signal: new AbortController().signal,
       deployment: getDeployment(database, deploymentId),
       project,
       logs,
@@ -70,6 +73,35 @@ function startSetup(replicas: number) {
 }
 
 describe("startContainers replicas", () => {
+  test("does not start a replica after ownership ends during container inspection", async () => {
+    const { database, project, deployment } = startSetup(2);
+    using _connection = database.$client;
+    const docker = new FakeDocker();
+    const state = new DeployState();
+    let owned = true;
+    docker.inspectContainer = async () => {
+      owned = false;
+      return await Promise.resolve(null);
+    };
+    using logs = new DeploymentLogWriter(database, deployment.id);
+    const failure = await startContainers(
+      { database, docker, config: { network: "nelcota" } },
+      {
+        deployment,
+        project,
+        logs,
+        state,
+        signal: new AbortController().signal,
+        assertOwnership: () => {
+          if (owned === false) throw new JobLeaseLostError("attempt");
+        },
+      },
+      RELEASE,
+    ).catch((error: unknown) => error);
+    expect(failure).toBeInstanceOf(JobLeaseLostError);
+    expect(docker.containers.size).toBe(0);
+    expect(state.containerNames).toEqual([]);
+  });
   test("waits for a pending replica before reporting another replica's failure", async () => {
     const { database, project, deployment } = startSetup(2);
     using _connection = database.$client;
@@ -90,7 +122,14 @@ describe("startContainers replicas", () => {
     let settled = false;
     const result = startContainers(
       { database, docker, config: { network: "nelcota" } },
-      { deployment, project, logs, state: new DeployState() },
+      {
+        assertOwnership: () => undefined,
+        signal: new AbortController().signal,
+        deployment,
+        project,
+        logs,
+        state: new DeployState(),
+      },
       RELEASE,
     ).catch((error: unknown) => {
       settled = true;
@@ -116,7 +155,14 @@ describe("startContainers replicas", () => {
 
     const names = await startContainers(
       { database, docker, config: { network: "nelcota" } },
-      { deployment, project, logs, state },
+      {
+        assertOwnership: () => undefined,
+        signal: new AbortController().signal,
+        deployment,
+        project,
+        logs,
+        state,
+      },
       RELEASE,
     );
 

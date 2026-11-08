@@ -5,6 +5,7 @@ import { useState } from "react";
 
 import { SegmentedControl } from "@/web/components/layout/overview";
 import { EmptyState } from "@/web/components/layout/states";
+import { ResourcesCard } from "@/web/components/project-overview/resources/resources-card";
 import { TabHeader } from "@/web/components/projects/project-header";
 import { projectQueryOptions } from "@/web/components/projects/project-query";
 import { Button } from "@/web/components/ui/button";
@@ -24,9 +25,9 @@ export function ProjectMetricsPage({ projectId }: { readonly projectId: string }
   const neverDeployed = project.data != null && project.data.project.currentDeploymentId == null;
 
   return (
-    <section aria-label="Métricas" className="space-y-6">
+    <section aria-label="Uso de recursos da aplicação" className="space-y-6">
       <TabHeader
-        title="Métricas"
+        title="Uso de recursos da aplicação"
         actions={
           <SegmentedControl label="Período" options={WINDOWS} value={hours} onChange={setHours} />
         }
@@ -34,7 +35,10 @@ export function ProjectMetricsPage({ projectId }: { readonly projectId: string }
       {neverDeployed ? (
         <NoContainerState projectId={projectId} />
       ) : (
-        <ProjectMetrics projectId={projectId} hours={hours} />
+        <>
+          <ResourcesCard projectId={projectId} />
+          <ProjectMetrics projectId={projectId} hours={hours} />
+        </>
       )}
     </section>
   );

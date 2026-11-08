@@ -47,12 +47,12 @@ function RevokeTokenButton({
       trigger={
         <Button variant="ghost" size="sm">
           <BanIcon aria-hidden />
-          Revogar
+          Revogar token de API
         </Button>
       }
       title={`Revogar o token ${name}?`}
       description="Clientes MCP que usam este token perdem o acesso imediatamente."
-      confirmLabel="Revogar"
+      confirmLabel="Revogar token de API"
       destructive
       onConfirm={onConfirm}
     />
@@ -73,7 +73,7 @@ export function TokenRow({
   return (
     <ListRow className="flex-wrap md:flex-nowrap">
       <div className="min-w-0 flex-1 basis-full space-y-1.5 md:basis-auto">
-        <p className="truncate text-sm font-medium">{token.name}</p>
+        <p className="text-sm font-medium [overflow-wrap:anywhere]">{token.name}</p>
         <div className="flex flex-wrap gap-1.5">
           {SCOPES.filter((scope) => token.scopes.includes(scope.value)).map((scope) => (
             <Tag key={scope.value} icon={scope.icon}>

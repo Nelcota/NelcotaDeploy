@@ -57,6 +57,6 @@ export async function deployThroughQueue(
     refreshContainers: async () => await Promise.resolve(),
   });
   // As the worker does, so the project can run its next job.
-  completeJob(database, job.id);
+  completeJob(database, job);
   return deploymentId;
 }

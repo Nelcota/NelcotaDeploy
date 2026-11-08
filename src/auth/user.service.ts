@@ -99,52 +99,55 @@ export async function createUser(
   const password = await context.password.hash(newUser.password);
   const userId = Bun.randomUUIDv7();
   // Hashing yields; admission and both credential rows must be one synchronous transaction.
-  database.transaction((transaction) => {
-    if (firstAdmin && hasAdmin(transaction)) {
-      throw new SetupAlreadyDoneError();
-    }
-    const duplicate = transaction
-      .select({ id: tables.users.id })
-      .from(tables.users)
-      .where(eq(tables.users.email, email))
-      .get();
-    if (duplicate != null) {
-      throw new UserOperationError("Email already in use");
-    }
-    const now = new Date();
-    transaction
-      .insert(tables.users)
-      .values({
-        id: userId,
-        email,
-        name: newUser.name.trim(),
-        emailVerified: true,
-        role: newUser.role,
-        disabled: false,
-        createdAt: now,
-        updatedAt: now,
-      })
-      .run();
-    transaction
-      .insert(tables.accounts)
-      .values({
-        id: Bun.randomUUIDv7(),
-        userId,
-        providerId: CREDENTIAL_PROVIDER_ID,
-        accountId: userId,
-        password,
-        createdAt: now,
-        updatedAt: now,
-      })
-      .run();
-    recordAuditEvent(transaction, {
-      actor,
-      action: "user.create",
-      targetType: "user",
-      targetId: userId,
-      metadata: { email, role: newUser.role },
-    });
-  });
+  database.transaction(
+    (transaction) => {
+      if (firstAdmin && hasAdmin(transaction)) {
+        throw new SetupAlreadyDoneError();
+      }
+      const duplicate = transaction
+        .select({ id: tables.users.id })
+        .from(tables.users)
+        .where(eq(tables.users.email, email))
+        .get();
+      if (duplicate != null) {
+        throw new UserOperationError("Email already in use");
+      }
+      const now = new Date();
+      transaction
+        .insert(tables.users)
+        .values({
+          id: userId,
+          email,
+          name: newUser.name.trim(),
+          emailVerified: true,
+          role: newUser.role,
+          disabled: false,
+          createdAt: now,
+          updatedAt: now,
+        })
+        .run();
+      transaction
+        .insert(tables.accounts)
+        .values({
+          id: Bun.randomUUIDv7(),
+          userId,
+          providerId: CREDENTIAL_PROVIDER_ID,
+          accountId: userId,
+          password,
+          createdAt: now,
+          updatedAt: now,
+        })
+        .run();
+      recordAuditEvent(transaction, {
+        actor,
+        action: "user.create",
+        targetType: "user",
+        targetId: userId,
+        metadata: { email, role: newUser.role },
+      });
+    },
+    { behavior: "immediate" },
+  );
   return userId;
 }
 
@@ -159,23 +162,26 @@ export function updateUserRole(
   database: Database,
   { userId, role, actor }: { readonly userId: string; readonly role: Role; readonly actor: Actor },
 ): void {
-  database.transaction((transaction) => {
-    if (role !== "admin") {
-      assertAnotherActiveAdminExists(transaction, userId);
-    }
-    transaction
-      .update(tables.users)
-      .set({ role, updatedAt: new Date() })
-      .where(eq(tables.users.id, userId))
-      .run();
-    recordAuditEvent(transaction, {
-      actor,
-      action: "user.role_update",
-      targetType: "user",
-      targetId: userId,
-      metadata: { role },
-    });
-  });
+  database.transaction(
+    (transaction) => {
+      if (role !== "admin") {
+        assertAnotherActiveAdminExists(transaction, userId);
+      }
+      transaction
+        .update(tables.users)
+        .set({ role, updatedAt: new Date() })
+        .where(eq(tables.users.id, userId))
+        .run();
+      recordAuditEvent(transaction, {
+        actor,
+        action: "user.role_update",
+        targetType: "user",
+        targetId: userId,
+        metadata: { role },
+      });
+    },
+    { behavior: "immediate" },
+  );
 }
 
 /**
@@ -193,23 +199,26 @@ export function setUserDisabled(
     actor,
   }: { readonly userId: string; readonly disabled: boolean; readonly actor: Actor },
 ): void {
-  database.transaction((transaction) => {
-    if (disabled) {
-      assertAnotherActiveAdminExists(transaction, userId);
-      transaction.delete(tables.sessions).where(eq(tables.sessions.userId, userId)).run();
-    }
-    transaction
-      .update(tables.users)
-      .set({ disabled, updatedAt: new Date() })
-      .where(eq(tables.users.id, userId))
-      .run();
-    recordAuditEvent(transaction, {
-      actor,
-      action: disabled ? "user.disable" : "user.enable",
-      targetType: "user",
-      targetId: userId,
-    });
-  });
+  database.transaction(
+    (transaction) => {
+      if (disabled) {
+        assertAnotherActiveAdminExists(transaction, userId);
+        transaction.delete(tables.sessions).where(eq(tables.sessions.userId, userId)).run();
+      }
+      transaction
+        .update(tables.users)
+        .set({ disabled, updatedAt: new Date() })
+        .where(eq(tables.users.id, userId))
+        .run();
+      recordAuditEvent(transaction, {
+        actor,
+        action: disabled ? "user.disable" : "user.enable",
+        targetType: "user",
+        targetId: userId,
+      });
+    },
+    { behavior: "immediate" },
+  );
 }
 
 /**

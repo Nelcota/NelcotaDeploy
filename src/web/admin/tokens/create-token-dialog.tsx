@@ -22,7 +22,14 @@ export function CreateTokenDialog({
 }) {
   const { form, isPending } = useCreateTokenForm(onCreated);
   return (
-    <Dialog open onOpenChange={(open) => (open ? undefined : onClose())}>
+    <Dialog
+      open
+      onOpenChange={(open) => {
+        if (open === false && isPending === false) {
+          onClose();
+        }
+      }}
+    >
       <DialogContent>
         <DialogHeader icon={<KeyRoundIcon />}>
           <DialogTitle>Novo token de API</DialogTitle>
@@ -35,14 +42,18 @@ export function CreateTokenDialog({
           className="space-y-4"
           onSubmit={(event) => {
             event.preventDefault();
-            void form.handleSubmit();
+            if (isPending === false) {
+              void form.handleSubmit();
+            }
           }}
         >
-          <TokenNameField form={form} />
-          <TokenScopesField form={form} />
-          <TokenExpiryField form={form} />
+          <fieldset disabled={isPending} className="space-y-4">
+            <TokenNameField form={form} />
+            <TokenScopesField form={form} />
+            <TokenExpiryField form={form} />
+          </fieldset>
           <DialogFormFooter
-            submitLabel="Criar token"
+            submitLabel="Criar token de API"
             isPending={isPending}
             onCancel={onClose}
             idleIcon={<ShieldPlusIcon aria-hidden />}

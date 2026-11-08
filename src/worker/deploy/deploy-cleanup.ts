@@ -1,4 +1,5 @@
 import { type ContainerInfo, type DockerEngine, LABELS } from "@/docker";
+import { JobLeaseLostError } from "@/jobs";
 
 import { type DeployRunnerDependencies, errorMessageOf } from "./deploy-context";
 import type { DeploymentLogWriter } from "./deployment-log-writer";
@@ -54,16 +55,21 @@ async function discardFailedContainer(
 }
 
 async function removeContainer(
-  docker: DockerEngine,
+  dependencies: DeployRunnerDependencies,
   container: ContainerInfo,
   logs: DeploymentLogWriter,
 ): Promise<void> {
   try {
+    dependencies.assertOwnership?.();
     // The routes no longer point here; a graceful stop lets requests still running finish.
-    await docker.stopContainer(container.id, STOP_GRACE_IN_SECONDS);
-    await docker.removeContainer(container.id);
+    await dependencies.docker.stopContainer(container.id, STOP_GRACE_IN_SECONDS);
+    dependencies.assertOwnership?.();
+    await dependencies.docker.removeContainer(container.id);
     logs.system(`Removed previous container ${container.name}`);
   } catch (error) {
+    if (error instanceof JobLeaseLostError) {
+      throw error;
+    }
     logs.system(
       `Could not remove previous container ${container.name}: ${errorMessageOf(error)}`,
       "warn",
@@ -73,7 +79,7 @@ async function removeContainer(
 
 // Sequential on purpose: stopping containers in parallel spikes host load.
 async function removeContainersInOrder(
-  docker: DockerEngine,
+  dependencies: DeployRunnerDependencies,
   containers: readonly ContainerInfo[],
   logs: DeploymentLogWriter,
 ): Promise<void> {
@@ -81,8 +87,8 @@ async function removeContainersInOrder(
   if (first == null) {
     return;
   }
-  await removeContainer(docker, first, logs);
-  await removeContainersInOrder(docker, rest, logs);
+  await removeContainer(dependencies, first, logs);
+  await removeContainersInOrder(dependencies, rest, logs);
 }
 
 /**
@@ -99,12 +105,12 @@ export async function removePreviousContainers(
   logs: DeploymentLogWriter,
   {
     projectId,
-    currentDeploymentId,
+    currentContainerNames,
     previewId,
     keepComposeServices = false,
   }: {
     readonly projectId: string;
-    readonly currentDeploymentId: string;
+    readonly currentContainerNames: readonly string[];
     /** Preview of the new deployment; null for production. Other scopes are left alone. */
     readonly previewId: string | null;
     /**
@@ -115,14 +121,15 @@ export async function removePreviousContainers(
   },
 ): Promise<void> {
   const containers = await dependencies.docker.listManagedContainers();
+  dependencies.assertOwnership?.();
   const previous = containers.filter(
     (container) =>
       container.labels[LABELS.projectId] === projectId &&
       (container.labels[LABELS.previewId] ?? null) === previewId &&
-      container.labels[LABELS.deploymentId] !== currentDeploymentId &&
+      currentContainerNames.includes(container.name) === false &&
       (keepComposeServices === false || container.labels[LABELS.composeProject] == null),
   );
-  await removeContainersInOrder(dependencies.docker, previous, logs);
+  await removeContainersInOrder(dependencies, previous, logs);
 }
 
 /**
@@ -142,6 +149,7 @@ export async function pruneOldImages(
     const images = await dependencies.docker.images.listForProject(scope.projectId, {
       previewId: scope.previewId,
     });
+    dependencies.assertOwnership?.();
     const kept =
       scope.previewId == null ? dependencies.config.imagesKeptPerProject : PREVIEW_IMAGES_KEPT;
     const stale = images.slice(kept);
@@ -153,6 +161,9 @@ export async function pruneOldImages(
       logs.system(`Removed ${removed} old image(s); kept the ${kept} newest`);
     }
   } catch (error) {
+    if (error instanceof JobLeaseLostError) {
+      throw error;
+    }
     logs.system(`Could not prune old images: ${errorMessageOf(error)}`, "warn");
   }
 }

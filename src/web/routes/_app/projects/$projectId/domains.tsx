@@ -3,7 +3,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { DomainsPage } from "@/web/components/domains/domains-page";
 
 export const Route = createFileRoute("/_app/projects/$projectId/domains")({
-  head: () => ({ meta: [{ title: "Domínios · Nelcota Deploy" }] }),
+  head: () => ({ meta: [{ title: "Domínios da aplicação · Nelcota Deploy" }] }),
   component: DomainsRoute,
 });
 

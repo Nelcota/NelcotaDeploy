@@ -4,7 +4,7 @@ import type { Database } from "@/db";
 import type { SecretBox } from "@/secrets";
 
 import { repositoryAccessToken } from "./github-access.service";
-import { createAppJwt, GITHUB_API, type GitHubApi, githubRequest } from "./github-api";
+import { GITHUB_API, type GitHubApi, githubAppAuthentication, githubRequest } from "./github-api";
 import { type GitHubAppCredentials, readGitHubAppCredentials } from "./github-app.service";
 import { GitHubApiError } from "./github.errors";
 
@@ -120,9 +120,10 @@ export async function installationsMissingPermissions(
   credentials: GitHubAppCredentials,
   required: Readonly<Record<string, "read" | "write">>,
 ): Promise<string[]> {
+  const { token } = await githubAppAuthentication(api, credentials)({ type: "app" });
   const answer = await githubRequest(api, {
     path: "/app/installations",
-    bearer: createAppJwt(credentials.appId, credentials.privateKey, new Date()),
+    bearer: token,
   });
   const parsed = installationsSchema.safeParse(answer);
   if (parsed.success === false) {

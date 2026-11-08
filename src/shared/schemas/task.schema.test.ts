@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { taskInputSchema } from "./task.schema";
+import { taskInputSchema, taskRunReviewSchema } from "./task.schema";
 
 const validTask = {
   name: "Migrar banco",
@@ -22,6 +22,10 @@ describe("taskInputSchema", () => {
     expect(taskInputSchema.safeParse({ ...validTask, commandLine: "  " }).success).toBe(false);
   });
 
+  test.each(['""', '"   "'])("rejects an empty executable %s", (commandLine) => {
+    expect(taskInputSchema.safeParse({ ...validTask, commandLine }).success).toBe(false);
+  });
+
   test("rejects an unterminated quote", () => {
     expect(taskInputSchema.safeParse({ ...validTask, commandLine: "echo 'x" }).success).toBe(false);
   });
@@ -29,4 +33,31 @@ describe("taskInputSchema", () => {
   test.each([0, -5, 3601])("rejects timeout %p", (timeoutInSeconds) => {
     expect(taskInputSchema.safeParse({ ...validTask, timeoutInSeconds }).success).toBe(false);
   });
+});
+
+describe("taskRunReviewSchema", () => {
+  test("preserves an empty argument after a valid executable", () => {
+    expect(
+      taskRunReviewSchema.safeParse({ command: ["echo", ""], timeoutInSeconds: 1 }).success,
+    ).toBe(true);
+  });
+
+  test.each([
+    { command: [] },
+    { command: [""] },
+    { command: [" "] },
+    { command: ["echo", "bad\0value"] },
+    { command: Array.from({ length: 65 }, () => "argument") },
+  ])("rejects an invalid reviewed command", ({ command }) => {
+    expect(taskRunReviewSchema.safeParse({ command, timeoutInSeconds: 60 }).success).toBe(false);
+  });
+
+  test.each([0, -1, 3601, Number.NaN, Number.POSITIVE_INFINITY])(
+    "rejects an invalid reviewed timeout %s",
+    (timeoutInSeconds) => {
+      expect(taskRunReviewSchema.safeParse({ command: ["echo"], timeoutInSeconds }).success).toBe(
+        false,
+      );
+    },
+  );
 });

@@ -68,7 +68,7 @@ function FirstAdminIntro() {
     <div className="space-y-2 text-center">
       <h1 className="text-3xl font-semibold tracking-tight">Criar o administrador</h1>
       <p className="text-base text-muted-foreground">
-        Esta é a primeira conta do painel. Ela poderá convidar as demais.
+        Esta é a primeira conta do painel. Ela poderá criar as demais.
       </p>
     </div>
   );

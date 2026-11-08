@@ -1,5 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
+import { eq } from "drizzle-orm";
+
 import type { ObjectStore } from "@/backups";
 import {
   createProjectDatabase,
@@ -11,12 +13,17 @@ import {
   requestDatabaseBackup,
   requestDatabaseRestore,
 } from "@/databases";
-import { openMemoryDatabase } from "@/db";
+import { openMemoryDatabase, tables } from "@/db";
 import type { CommandRunner } from "@/process";
 import { createTestProject, createTestSecretBox, FakeDocker, TEST_ACTOR } from "@/testing";
 
+import { runProjectCleanup } from "../container-action-runner";
 import type { ServerFiles } from "../server-host";
-import { runDatabaseBackup, runDatabaseRestore } from "./database-backup-runner";
+import {
+  deleteStoredDatabaseBackups,
+  runDatabaseBackup,
+  runDatabaseRestore,
+} from "./database-backup-runner";
 
 const DUMP = new Uint8Array([80, 71, 68, 77, 80]);
 
@@ -120,7 +127,7 @@ describe("runDatabaseBackup", () => {
     await runDatabaseBackup(dependencies, backupId);
 
     expect(docker.calls.some((call) => call.includes("pg_dump"))).toBe(true);
-    expect(docker.calls.some((call) => call.includes(`rm -f /tmp/nelcota-${backupId}.dump`))).toBe(
+    expect(docker.calls.some((call) => call.includes(`rm -f /tmp/nelcota-${backupId}-`))).toBe(
       true,
     );
   });
@@ -241,4 +248,99 @@ describe("runDatabaseRestore", () => {
     expect(error).toBeInstanceOf(Error);
     expect(docker.calls.slice(callsBefore).some((call) => call.includes("pg_restore"))).toBe(false);
   });
+});
+
+test("reports a missing backup instead of silently succeeding", async () => {
+  const { database, dependencies } = await setup();
+  using _connection = database.$client;
+
+  const failure = await runDatabaseRestore(dependencies, "missing-backup").catch(
+    (error: unknown) => error,
+  );
+
+  expect(failure).toMatchObject({ message: "Backup missing-backup no longer exists" });
+});
+
+test("records a missing storage key and releases the database from restoring", async () => {
+  const { database, dependencies, target, project, backups } = await setup();
+  using _connection = database.$client;
+  const backupId = requestDatabaseBackup(database, target);
+  database
+    .update(tables.databaseBackups)
+    .set({ status: "succeeded" })
+    .where(eq(tables.databaseBackups.id, backupId))
+    .run();
+  requestDatabaseRestore(database, { ...target, backupId });
+
+  const failure = await runDatabaseRestore(dependencies, backupId).catch((error: unknown) => error);
+
+  expect(failure).toMatchObject({ message: `Backup ${backupId} has no stored dump` });
+
+  expect(listProjectDatabases(database, project.id)[0]?.status).toBe("running");
+  expect(backups()[0]?.restoreError).toContain("no stored dump");
+});
+
+test("bounds concurrent storage deletions even when many old dumps remain", async () => {
+  const store = memoryStore();
+  const prefix = "nelcota/databases/database/";
+  for (const index of Array.from({ length: 27 }, (_, value) => value)) {
+    store.objects.set(`${prefix}${index}.dump.enc`, DUMP);
+  }
+  const state = { running: 0, maximum: 0 };
+  const boundedStore: ObjectStore = {
+    ...store,
+    delete: async (key) => {
+      state.running += 1;
+      state.maximum = Math.max(state.maximum, state.running);
+      await store.delete(key);
+      state.running -= 1;
+    },
+  };
+
+  await deleteStoredDatabaseBackups({ store: boundedStore, prefix: "nelcota/" }, "database");
+
+  expect(store.objects.size).toBe(0);
+  expect(state.maximum).toBeLessThanOrEqual(10);
+});
+
+test("deletes stored dumps before deleting a project's backup records", async () => {
+  const { database, project, created, dependencies, store, target } = await setup();
+  using _connection = database.$client;
+  const backupId = requestDatabaseBackup(database, target);
+  await runDatabaseBackup(dependencies, backupId);
+  store.objects.set(`nelcota/databases/${created.id}/orphan.dump.enc`, DUMP);
+  store.objects.set("nelcota/databases/another-project/keep.dump.enc", DUMP);
+
+  await runProjectCleanup(database, [{ docker: dependencies.docker, routes: null }], {
+    projectId: project.id,
+    storage: dependencies.storage,
+  });
+
+  expect([...store.objects.keys()]).toEqual(["nelcota/databases/another-project/keep.dump.enc"]);
+  expect(database.select().from(tables.databaseBackups).all()).toEqual([]);
+});
+
+test("preserves backup metadata when storage cleanup fails and succeeds on retry", async () => {
+  const { database, project, dependencies, store, target } = await setup();
+  using _connection = database.$client;
+  const backupId = requestDatabaseBackup(database, target);
+  await runDatabaseBackup(dependencies, backupId);
+  const storage = {
+    ...dependencies.storage,
+    store: { ...store, delete: () => Promise.reject(new Error("Storage unavailable")) },
+  };
+
+  const failure = await runProjectCleanup(database, [], { projectId: project.id, storage }).catch(
+    (error: unknown) => error,
+  );
+  expect(failure).toMatchObject({ message: "Storage unavailable" });
+  expect(
+    database.select({ id: tables.databaseBackups.id }).from(tables.databaseBackups).all(),
+  ).toEqual([{ id: backupId }]);
+  expect(store.objects.size).toBe(1);
+
+  await runProjectCleanup(database, [], { projectId: project.id, storage: dependencies.storage });
+
+  expect(store.objects.size).toBe(0);
+  expect(database.select({ id: tables.projects.id }).from(tables.projects).all()).toEqual([]);
 });

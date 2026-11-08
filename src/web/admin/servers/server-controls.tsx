@@ -35,7 +35,7 @@ export function AcceptsApplicationsSwitch({
         checked={server.acceptsApplications}
         onCheckedChange={(checked) => toggle.mutate(checked)}
       />
-      <Label htmlFor={id}>Recebe novos projetos</Label>
+      <Label htmlFor={id}>Permitir novos projetos neste servidor</Label>
     </div>
   );
 }
@@ -52,12 +52,12 @@ export function RemoveServerButton({ server }: { readonly server: ServerView }) 
       trigger={
         <Button variant="ghost" size="sm">
           <Trash2Icon aria-hidden />
-          Remover
+          Remover servidor do painel
         </Button>
       }
       title={`Remover o servidor ${server.name}?`}
       description="O painel deixa de acessar esta VPS. Nada é apagado nela. Só é possível remover um servidor sem projetos."
-      confirmLabel="Remover"
+      confirmLabel="Remover servidor do painel"
       destructive
       onConfirm={() => remove.mutate()}
     />

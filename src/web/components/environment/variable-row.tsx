@@ -24,7 +24,7 @@ export function VariableRow({
   const now = useNow();
   const secret = variable.kind === "secret";
   return (
-    <ListRow className="flex-wrap sm:flex-nowrap">
+    <ListRow className="flex-wrap">
       <div className="min-w-0 flex-1 basis-full space-y-1 sm:basis-auto">
         <p className="truncate font-mono text-sm font-medium">{variable.key}</p>
         <p
@@ -63,24 +63,26 @@ function VariableActions({
   readonly onDelete: (variableId: string) => void;
 }) {
   return (
-    <div className="ml-auto flex shrink-0 gap-1">
+    <div className="ml-auto flex max-w-full flex-wrap gap-1">
       <Button
         variant="ghost"
-        size="icon-sm"
-        aria-label={`Editar ${variable.key}`}
+        size="sm"
+        aria-label={`Editar variável ${variable.key}`}
         onClick={() => onEdit(variable)}
       >
         <PencilIcon aria-hidden />
+        Editar variável
       </Button>
       <ConfirmDialog
         trigger={
-          <Button variant="ghost" size="icon-sm" aria-label={`Excluir ${variable.key}`}>
+          <Button variant="ghost" size="sm" aria-label={`Excluir variável ${variable.key}`}>
             <Trash2Icon aria-hidden />
+            Excluir variável
           </Button>
         }
         title={`Excluir ${variable.key}?`}
-        description="A variável deixa de ser enviada ao contêiner a partir do próximo deploy."
-        confirmLabel="Excluir"
+        description="A variável será excluída do projeto. Ela deixará de ser enviada à aplicação quando o contêiner for recriado, automaticamente se essa opção estiver ativada."
+        confirmLabel="Excluir variável do projeto"
         destructive
         onConfirm={() => onDelete(variable.id)}
       />

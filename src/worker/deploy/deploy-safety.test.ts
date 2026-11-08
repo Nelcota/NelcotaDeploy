@@ -1,4 +1,5 @@
-import { expect, test } from "bun:test";
+import { expect, spyOn, test } from "bun:test";
+import { generateKeyPairSync } from "node:crypto";
 
 import { eq } from "drizzle-orm";
 
@@ -12,6 +13,8 @@ import {
 } from "@/deployments";
 import { imageTagFor } from "@/docker";
 import { resolveEnvironment, saveEnvironmentVariable } from "@/environments";
+import { saveGitHubApp } from "@/github";
+import { JobLeaseLostError } from "@/jobs";
 import type { CommandRunner } from "@/process";
 import { getProject, updateProject } from "@/projects";
 import { projectInputSchema } from "@/shared/schemas/project.schema";
@@ -82,6 +85,175 @@ async function setup() {
   }).deploymentId;
   return { database, project, dependencies, docker, deploymentId };
 }
+
+test("a lost lease never marks the replacement deployment failed or cleans its container", async () => {
+  const { database, deploymentId, dependencies, docker } = await setup();
+  let checks = 0;
+  const failure = await runDeployment(
+    {
+      ...dependencies,
+      assertOwnership: () => {
+        checks += 1;
+        if (checks > 1) {
+          throw new JobLeaseLostError("claimed-job");
+        }
+      },
+    },
+    deploymentId,
+    new AbortController().signal,
+  ).catch((error: unknown) => error);
+  expect(failure).toBeInstanceOf(JobLeaseLostError);
+  expect(getDeployment(database, deploymentId).status).not.toBe("failed");
+  expect(docker.calls.some((call) => call.startsWith("rm "))).toBe(false);
+});
+
+test("losing ownership during network setup never removes or starts a container", async () => {
+  const { database, dependencies, docker, deploymentId } = await setup();
+  using _connection = database.$client;
+  let owned = true;
+  docker.ensureNetwork = () => {
+    owned = false;
+    return Promise.resolve();
+  };
+
+  const failure = await runDeployment(
+    {
+      ...dependencies,
+      assertOwnership: () => {
+        if (owned === false) {
+          throw new JobLeaseLostError("previous-attempt");
+        }
+      },
+    },
+    deploymentId,
+    new AbortController().signal,
+  ).catch((error: unknown) => error);
+
+  expect(failure).toBeInstanceOf(JobLeaseLostError);
+  expect(docker.calls.some((call) => call.startsWith("run ") || call.startsWith("rm "))).toBe(
+    false,
+  );
+});
+
+test("a replacement attempt gets its own container and retires the abandoned attempt", async () => {
+  const { database, dependencies, docker, deploymentId } = await setup();
+  using _connection = database.$client;
+  let owned = true;
+  const run = docker.runContainer.bind(docker);
+  docker.runContainer = async (options, values) => {
+    const id = await run(options, values);
+    owned = false;
+    return id;
+  };
+  const failure = await runDeployment(
+    {
+      ...dependencies,
+      assertOwnership: () => {
+        if (owned === false) {
+          throw new JobLeaseLostError("previous-attempt");
+        }
+      },
+    },
+    deploymentId,
+    new AbortController().signal,
+  ).catch((error: unknown) => error);
+  expect(failure).toBeInstanceOf(JobLeaseLostError);
+  const abandoned = getDeployment(database, deploymentId).containerName;
+  transitionDeployment(database, deploymentId, { to: "queued" });
+  docker.runContainer = run;
+
+  expect(await runDeployment(dependencies, deploymentId, new AbortController().signal)).toBe(
+    "succeeded",
+  );
+
+  const current = getDeployment(database, deploymentId).containerName;
+  expect(current).not.toBe(abandoned);
+  expect([...docker.containers.keys()]).toEqual([current ?? ""]);
+}, 10_000);
+
+test("sends saved CPU and memory limits to the application container", async () => {
+  const { database, project, dependencies, docker, deploymentId } = await setup();
+  using _connection = database.$client;
+  database
+    .update(tables.projects)
+    .set({ memoryLimitInMb: 128, cpuLimitInMillicores: 250 })
+    .where(eq(tables.projects.id, project.id))
+    .run();
+
+  expect(await runDeployment(dependencies, deploymentId, new AbortController().signal)).toBe(
+    "succeeded",
+  );
+
+  const definition = docker.definitions.get(
+    getDeployment(database, deploymentId).containerName ?? "",
+  );
+  expect(definition?.resources?.memoryLimitInMb).toBe(128);
+  expect(definition?.resources?.cpuLimitInMillicores).toBe(250);
+}, 10_000);
+
+test("obtains a GitHub App token when a redeploy must rebuild its missing private image", async () => {
+  const { database, project, dependencies, deploymentId } = await setup();
+  using _connection = database.$client;
+  const { privateKey } = generateKeyPairSync("rsa", {
+    modulusLength: 2048,
+    privateKeyEncoding: { type: "pkcs1", format: "pem" },
+    publicKeyEncoding: { type: "spki", format: "pem" },
+  });
+  await saveGitHubApp(database, dependencies.secretBox, {
+    actor: TEST_ACTOR,
+    app: {
+      id: 985,
+      slug: "test",
+      name: "test",
+      html_url: "https://github.com/apps/test",
+      owner: { login: "acme" },
+      pem: privateKey,
+      webhook_secret: null,
+      client_id: "test",
+      client_secret: "test",
+    },
+  });
+  transitionDeployment(database, deploymentId, {
+    to: "starting",
+    imageTag: imageTagFor(project.slug, deploymentId),
+    commitSha: "a".repeat(40),
+    internalPort: 3000,
+  });
+  transitionDeployment(database, deploymentId, { to: "health_checking" });
+  completeDeployment(database, deploymentId);
+  const next = requestDeployment(database, {
+    projectId: project.id,
+    trigger: "redeploy",
+    actor: TEST_ACTOR,
+    triggeredByUserId: null,
+    sourceDeploymentId: deploymentId,
+  });
+  const fetchMock = spyOn(globalThis, "fetch")
+    .mockResolvedValueOnce(Response.json({ id: 985 }))
+    .mockResolvedValueOnce(
+      Response.json({ token: "installation-test-token", expires_at: "2099-01-01T00:00:00Z" }),
+    );
+  using _fetch = { [Symbol.dispose]: () => fetchMock.mockRestore() };
+  const received = { token: null as string | null };
+
+  const status = await runDeployment(
+    {
+      ...dependencies,
+      git: {
+        checkoutRevision: (options) => {
+          received.token = options.token;
+          return Promise.resolve({ sha: "a".repeat(40), message: "private" });
+        },
+      },
+    },
+    next.deploymentId,
+    new AbortController().signal,
+  );
+
+  expect(status).toBe("succeeded");
+  expect(received.token).toBe("installation-test-token");
+  expect(fetchMock).toHaveBeenCalledTimes(2);
+}, 10_000);
 
 test.each([false, true])(
   "refuses queued code after its repository changed, including reapproval=%p",

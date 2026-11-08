@@ -117,41 +117,44 @@ export function replaceContainerSnapshots(
   serverId: string,
   snapshots: readonly Omit<ContainerSnapshot, "serverId">[],
 ): void {
-  database.transaction((transaction) => {
-    const knownProjects = new Set(
-      transaction
-        .select({ id: tables.projects.id })
-        .from(tables.projects)
-        .all()
-        .map((project) => project.id),
-    );
-    // Containers of deleted projects would violate the foreign key; they are cleaned up separately.
-    const kept: ContainerSnapshot[] = [];
-    for (const snapshot of snapshots) {
-      if (knownProjects.has(snapshot.projectId)) {
-        kept.push({ ...snapshot, serverId });
+  database.transaction(
+    (transaction) => {
+      const knownProjects = new Set(
+        transaction
+          .select({ id: tables.projects.id })
+          .from(tables.projects)
+          .all()
+          .map((project) => project.id),
+      );
+      // Containers of deleted projects would violate the foreign key; they are cleaned up separately.
+      const kept: ContainerSnapshot[] = [];
+      for (const snapshot of snapshots) {
+        if (knownProjects.has(snapshot.projectId)) {
+          kept.push({ ...snapshot, serverId });
+        }
       }
-    }
-    const keptIds = kept.map((snapshot) => snapshot.containerId);
-    transaction
-      .delete(tables.containerSnapshots)
-      .where(
-        and(
-          eq(tables.containerSnapshots.serverId, serverId),
-          keptIds.length === 0
-            ? undefined
-            : notInArray(tables.containerSnapshots.containerId, keptIds),
-        ),
-      )
-      .run();
-    for (const snapshot of kept) {
+      const keptIds = kept.map((snapshot) => snapshot.containerId);
       transaction
-        .insert(tables.containerSnapshots)
-        .values(snapshot)
-        .onConflictDoUpdate({ target: tables.containerSnapshots.containerId, set: snapshot })
+        .delete(tables.containerSnapshots)
+        .where(
+          and(
+            eq(tables.containerSnapshots.serverId, serverId),
+            keptIds.length === 0
+              ? undefined
+              : notInArray(tables.containerSnapshots.containerId, keptIds),
+          ),
+        )
         .run();
-    }
-  });
+      for (const snapshot of kept) {
+        transaction
+          .insert(tables.containerSnapshots)
+          .values(snapshot)
+          .onConflictDoUpdate({ target: tables.containerSnapshots.containerId, set: snapshot })
+          .run();
+      }
+    },
+    { behavior: "immediate" },
+  );
 }
 
 /**

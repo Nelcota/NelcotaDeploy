@@ -69,6 +69,8 @@ jobs:
 
       - run: bunx playwright install --with-deps chromium
 
+      - run: bun run test:browser
+
       - run: bun run ui:review
 
       - if: always()

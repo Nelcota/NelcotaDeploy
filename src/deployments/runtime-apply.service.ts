@@ -1,4 +1,4 @@
-import { and, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 
 import type { Actor } from "@/audit";
 import { type Database, tables } from "@/db";
@@ -11,20 +11,30 @@ import { buildConfigFingerprint, hasPendingRuntimeChanges } from "./runtime-conf
 
 type ApplyContext = { readonly actor: Actor; readonly triggeredByUserId: string | null };
 
-function hasActiveDeployment(database: Database, projectId: string): boolean {
-  const active = database
-    .select({ id: tables.deployments.id })
-    .from(tables.deployments)
-    .where(
-      and(
-        eq(tables.deployments.projectId, projectId),
-        // Previews run their own containers; they never hold back production changes.
-        deploymentScope(null),
-        inArray(tables.deployments.status, ACTIVE_STATUSES),
-      ),
-    )
-    .get();
-  return active != null;
+/**
+ * Finds the latest production deployment that can pick up pending runtime changes.
+ *
+ * @param database - Database.
+ * @param projectId - Project whose deployment is being followed.
+ * @returns The active deployment identity and status, or null when production is idle.
+ */
+export function getActiveRuntimeDeployment(database: Database, projectId: string) {
+  return (
+    database
+      .select({ id: tables.deployments.id, status: tables.deployments.status })
+      .from(tables.deployments)
+      .where(
+        and(
+          eq(tables.deployments.projectId, projectId),
+          // Previews run their own containers; they never hold back production changes.
+          deploymentScope(null),
+          inArray(tables.deployments.status, ACTIVE_STATUSES),
+        ),
+      )
+      .orderBy(desc(tables.deployments.createdAt), desc(tables.deployments.id))
+      .limit(1)
+      .get() ?? null
+  );
 }
 
 function liveRevision(database: Database, deploymentId: string) {
@@ -105,7 +115,7 @@ export function applyRuntimeChanges(
   if (project.autoApplyChanges === false || project.deploymentsApproved === false) {
     return null;
   }
-  if (hasActiveDeployment(database, projectId)) {
+  if (getActiveRuntimeDeployment(database, projectId) != null) {
     return null;
   }
   return applyPendingChanges(database, projectId, context);

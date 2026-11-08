@@ -2,7 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 
 import { assertProjectPermission } from "@/access";
 import { getDatabase } from "@/db";
-import { getDeployment, hasPendingRuntimeChanges } from "@/deployments";
+import { getActiveRuntimeDeployment, getDeployment, hasPendingRuntimeChanges } from "@/deployments";
 import { listProjectDomains } from "@/domains";
 import { getWorkerStatus, listProjectContainers } from "@/monitoring";
 import { getProject } from "@/projects";
@@ -35,6 +35,7 @@ export const getProjectFn = createServerFn({ method: "GET" })
       worker: getWorkerStatus(database),
       /** Variables or domains changed since the live container started. */
       pendingRuntimeChanges: hasPendingRuntimeChanges(database, project.id),
+      activeDeployment: getActiveRuntimeDeployment(database, project.id),
       /** Production project and its staging environment, for the environment switcher. */
       /** Commit of the live deployment, which a staging project can promote. */
       liveCommitSha:

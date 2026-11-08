@@ -45,10 +45,11 @@ export async function seedServers(database: Database, secretBox: SecretBox): Pro
  *
  * @param database - Review database.
  * @param projectId - Project that owns the tasks.
+ * @returns The manual task identifier for its execution-history route.
  */
-export function seedTasks(database: Database, projectId: string): void {
+export function seedTasks(database: Database, projectId: string): string {
   const taskContext = { actor: ACTOR, userId: null, timeZone: "America/Sao_Paulo" };
-  createTask(database, {
+  const taskId = createTask(database, {
     projectId,
     input: taskInputSchema.parse({
       name: "Migrar banco",
@@ -70,6 +71,7 @@ export function seedTasks(database: Database, projectId: string): void {
     }),
     ...taskContext,
   });
+  return taskId;
 }
 
 /**
@@ -114,17 +116,18 @@ export function seedPreview(database: Database, projectId: string): void {
 
 /**
  * Adds a running PostgreSQL with a failed and a successful backup, and a Redis that failed to
- * start, so the databases tab and its backups dialog show each state.
+ * start, so database, backup and restoration pages show each state.
  *
  * @param database - Review database.
  * @param secretBox - Encrypts the passwords and connection URLs.
  * @param projectId - Project that owns the databases.
+ * @returns The PostgreSQL identifier for its backup and restoration routes.
  */
 export async function seedDatabases(
   database: Database,
   secretBox: SecretBox,
   projectId: string,
-): Promise<void> {
+): Promise<string> {
   const postgres = await createProjectDatabase(database, secretBox, {
     projectId,
     input: { engine: "postgres", environmentKey: "APP_DATABASE_URL" },
@@ -143,15 +146,10 @@ export async function seedDatabases(
     actor: ACTOR,
   });
   markDatabaseFailed(database, redis.id, "Database container stopped while starting");
+  return postgres.id;
 }
 
-/**
- * Creates the staging environment of a project, so its header shows the environment switcher.
- *
- * @param database - Review database.
- * @param secretBox - Copies the production secrets.
- * @param projectId - Production project.
- */
+/** Creates the staging fixture for the environment switcher. */
 export async function seedStaging(
   database: Database,
   secretBox: SecretBox,

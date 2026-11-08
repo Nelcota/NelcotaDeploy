@@ -3,7 +3,10 @@ import { Link } from "@tanstack/react-router";
 import { ExternalLinkIcon, GitPullRequestIcon } from "lucide-react";
 
 import { CardTitleRow, TEXT_LINK } from "@/web/components/layout/layout";
+import { ErrorState, ListSkeleton } from "@/web/components/layout/states";
 import { DeploymentStatusBadge } from "@/web/components/layout/status-badge";
+import { TabHeader } from "@/web/components/projects/project-header";
+import { projectQueryOptions } from "@/web/components/projects/project-query";
 import { Card } from "@/web/components/ui/card";
 import { Skeleton } from "@/web/components/ui/skeleton";
 import { listPreviewsFn } from "@/web/functions/previews/previews.functions";
@@ -15,9 +18,9 @@ type Preview = Awaited<ReturnType<typeof listPreviewsFn>>["previews"][number];
 
 /**
  * The project's open pull request previews, each with its state, address and deployment.
- * Shown only for projects with previews on, or while previews remain.
+ * Disabled projects keep their explicit state visible on the dedicated previews page.
  */
-export function PreviewsCard({
+function PreviewsCard({
   projectId,
   branch,
   enabled,
@@ -31,12 +34,24 @@ export function PreviewsCard({
     queryFn: () => listPreviewsFn({ data: { projectId } }),
     refetchInterval: PREVIEWS_REFRESH_IN_MS,
   });
-  if (enabled === false && (previews.data?.previews ?? []).length === 0) {
-    return null;
+  if (previews.isError) {
+    return <ErrorState error={previews.error} onRetry={() => void previews.refetch()} />;
   }
   return (
     <Card className="gap-4 p-5">
-      <CardTitleRow icon={GitPullRequestIcon} title="Previews" />
+      <CardTitleRow icon={GitPullRequestIcon} title="Ambientes de teste" />
+      {enabled ? null : (
+        <p role="status" className="text-sm text-muted-foreground">
+          Ambientes de teste estão desativados para novos pull requests.{" "}
+          <Link
+            to="/projects/$projectId/settings/automation"
+            params={{ projectId }}
+            className={TEXT_LINK}
+          >
+            Configurar automação de deploys
+          </Link>
+        </p>
+      )}
       <PreviewList
         projectId={projectId}
         branch={branch}
@@ -44,6 +59,27 @@ export function PreviewsCard({
         limit={previews.data?.limit ?? null}
       />
     </Card>
+  );
+}
+
+/** Lists pull request environments independently from the production application. */
+export function ProjectPreviewsPage({ projectId }: { readonly projectId: string }) {
+  const project = useQuery(projectQueryOptions(projectId));
+  if (project.isError) {
+    return <ErrorState error={project.error} onRetry={() => void project.refetch()} />;
+  }
+  if (project.data == null) {
+    return <ListSkeleton rows={2} />;
+  }
+  return (
+    <>
+      <TabHeader title="Ambientes de teste por pull request" />
+      <PreviewsCard
+        projectId={projectId}
+        branch={project.data.project.branch}
+        enabled={project.data.project.previewsEnabled}
+      />
+    </>
   );
 }
 

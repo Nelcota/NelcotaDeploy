@@ -20,6 +20,7 @@ data/
 .output/
 .vinxi/
 .claude/*.lock
+.claude/worktrees/
 
 # Screenshots and accessibility report from `bun run ui:review`
 ui-review-output/

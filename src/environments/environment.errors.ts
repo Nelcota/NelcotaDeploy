@@ -13,3 +13,10 @@ export class InvalidEnvironmentSnapshotError extends Error {
     this.name = "InvalidEnvironmentSnapshotError";
   }
 }
+/** Thrown when variables changed after the import preview was prepared. */
+export class EnvironmentImportConflictError extends Error {
+  constructor(key: string) {
+    super(`Environment variable ${key} changed after the import preview`);
+    this.name = "EnvironmentImportConflictError";
+  }
+}

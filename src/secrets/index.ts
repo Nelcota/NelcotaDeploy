@@ -1,2 +1,2 @@
 export { createRedactor } from "./redaction";
-export { getSecretBox, SecretBox } from "./secret-box";
+export { ENCRYPTED_FILE_OVERHEAD_BYTES, getSecretBox, SecretBox } from "./secret-box";

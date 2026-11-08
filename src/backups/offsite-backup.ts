@@ -4,10 +4,11 @@ import type { AppConfig } from "@/config";
 import { selectExpiredBackups } from "@/db";
 import type { SecretBox } from "@/secrets";
 
+import { acquireBackupMemory, MAX_BACKUP_BYTES, MAX_ENCRYPTED_BACKUP_BYTES } from "./backup-memory";
+import { readBackupBytes, readBackupFile } from "./backup-read";
 import { BackupTooLargeError } from "./backup.errors";
 
 /** The panel database is small; larger files would need streaming encryption. */
-const MAX_BACKUP_BYTES = 536_870_912; // 512 MiB
 const ENCRYPTED_SUFFIX = ".enc";
 
 /** The few bucket operations off-site backups use; tests replace the S3 client with a fake. */
@@ -16,7 +17,7 @@ export type ObjectStore = {
   /** Every key starting with the prefix. */
   readonly list: (prefix: string) => Promise<string[]>;
   readonly delete: (key: string) => Promise<void>;
-  readonly read: (key: string) => Promise<Uint8Array<ArrayBuffer>>;
+  readonly read: (key: string, maxBytes?: number) => Promise<Uint8Array<ArrayBuffer>>;
 };
 
 async function listAllKeys(
@@ -61,7 +62,14 @@ export function offsiteStoreFromConfig(config: AppConfig): ObjectStore | null {
     },
     list: async (prefix) => await listAllKeys(client, prefix),
     delete: async (key) => await client.delete(key),
-    read: async (key) => new Uint8Array(await client.file(key).arrayBuffer()),
+    read: async (key, maxBytes = MAX_ENCRYPTED_BACKUP_BYTES) => {
+      const file = client.file(key);
+      const metadata = await file.stat();
+      if (metadata.size > maxBytes) {
+        throw new BackupTooLargeError(metadata.size, maxBytes);
+      }
+      return await readBackupBytes(file.stream(), maxBytes, metadata.size);
+    },
   };
 }
 
@@ -101,12 +109,16 @@ export async function uploadBackup(
   secretBox: SecretBox,
   backup: { readonly path: string; readonly prefix: string; readonly kept: number },
 ): Promise<string> {
+  using _memory = await acquireBackupMemory();
   const file = Bun.file(backup.path);
   if (file.size > MAX_BACKUP_BYTES) {
     throw new BackupTooLargeError(file.size, MAX_BACKUP_BYTES);
   }
   const name = basename(backup.path);
-  const encrypted = await secretBox.encryptBytes(await file.bytes(), name);
+  const encrypted = await secretBox.encryptBytes(
+    await readBackupFile(file, MAX_BACKUP_BYTES),
+    name,
+  );
   const key = `${backup.prefix}${name}${ENCRYPTED_SUFFIX}`;
   await store.write(key, encrypted);
   const expired = selectExpiredRemoteBackups(
@@ -133,5 +145,9 @@ export async function downloadBackup(
   key: string,
 ): Promise<Uint8Array<ArrayBuffer>> {
   const name = basename(key).slice(0, -ENCRYPTED_SUFFIX.length);
-  return await secretBox.decryptBytes(await store.read(key), name);
+  const encrypted = await store.read(key, MAX_ENCRYPTED_BACKUP_BYTES);
+  if (encrypted.byteLength > MAX_ENCRYPTED_BACKUP_BYTES) {
+    throw new BackupTooLargeError(encrypted.byteLength, MAX_ENCRYPTED_BACKUP_BYTES);
+  }
+  return await secretBox.decryptBytes(encrypted, name);
 }

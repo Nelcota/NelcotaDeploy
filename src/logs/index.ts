@@ -1,6 +1,7 @@
 export {
   appendDeploymentLogs,
   appendRuntimeLogs,
+  cleanLogMessage,
   type DeploymentLogEntry,
   getLatestRuntimeLogTime,
   listDeploymentLogs,

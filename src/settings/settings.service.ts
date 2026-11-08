@@ -1,7 +1,8 @@
 import { eq, inArray } from "drizzle-orm";
 
-import { type Database, tables } from "@/db";
+import { type Database, tables, type Transaction } from "@/db";
 import { DEFAULT_SYSTEM_SETTINGS, type SystemSettings } from "@/shared/schemas/settings.schema";
+import type { OrganizationSettingsChange } from "@/shared/schemas/settings/organization-settings.schema";
 
 import { assertHostnameOwnership } from "./hostname-ownership";
 
@@ -49,26 +50,61 @@ export function getSystemSettings(
  * @param database - Database.
  * @param settings - Validated settings.
  */
-export function saveSystemSettings(database: Database, settings: SystemSettings): void {
+export function saveSystemSettings(
+  database: Database | Transaction,
+  settings: SystemSettings,
+): void {
   const updatedAt = new Date().toISOString();
-  database.transaction((transaction) => {
-    assertHostnameOwnership(transaction, settings);
-    for (const key of SETTING_KEYS) {
-      // The column cannot hold NULL; a missing row already reads back as "not set".
-      if (settings[key] == null) {
-        transaction.delete(tables.systemSettings).where(eq(tables.systemSettings.key, key)).run();
-        continue;
+  database.transaction(
+    (transaction) => {
+      assertHostnameOwnership(transaction, settings);
+      for (const key of SETTING_KEYS) {
+        // The column cannot hold NULL; a missing row already reads back as "not set".
+        if (settings[key] == null) {
+          transaction.delete(tables.systemSettings).where(eq(tables.systemSettings.key, key)).run();
+          continue;
+        }
+        transaction
+          .insert(tables.systemSettings)
+          .values({ key, value: settings[key], updatedAt })
+          .onConflictDoUpdate({
+            target: tables.systemSettings.key,
+            set: { value: settings[key], updatedAt },
+          })
+          .run();
       }
-      transaction
-        .insert(tables.systemSettings)
-        .values({ key, value: settings[key], updatedAt })
-        .onConflictDoUpdate({
-          target: tables.systemSettings.key,
-          set: { value: settings[key], updatedAt },
-        })
-        .run();
-    }
-  });
+    },
+    { behavior: "immediate" },
+  );
+}
+
+/**
+ * Saves one administration page without overwriting settings from another page.
+ * @param database - Database whose writer is reserved before reading saved settings.
+ * @param change - Validated fields owned by the selected page.
+ * @returns The effective settings after saving.
+ * @throws {HostnameConflictError} When automatic addresses would conflict.
+ */
+export function saveSystemSettingsSection(
+  database: Database,
+  change: OrganizationSettingsChange,
+): SystemSettings {
+  return database.transaction(
+    (transaction) => {
+      const current = getSystemSettings(transaction);
+      const settings = {
+        ...current,
+        ...change.settings,
+        requireAdminTwoFactor:
+          change.section === "organization"
+            ? (change.settings.requireAdminTwoFactor ?? current.requireAdminTwoFactor)
+            : current.requireAdminTwoFactor,
+      };
+      saveSystemSettings(transaction, settings);
+      return settings;
+    },
+    { behavior: "immediate" },
+  );
 }
 
 function readString(value: unknown, fallback: string): string {

@@ -14,6 +14,7 @@ export type DatabaseRecord = {
   readonly projectId: string;
   readonly engine: DatabaseEngineName;
   readonly imageTag: string;
+  readonly status: DatabaseStatus;
   readonly encryptedPassword: string;
   readonly deletionRequestedAt: string | null;
 };
@@ -37,6 +38,7 @@ export function findDatabaseRecord(database: Database, databaseId: string): Data
         projectId: tables.projectDatabases.projectId,
         engine: tables.projectDatabases.engine,
         imageTag: tables.projectDatabases.imageTag,
+        status: tables.projectDatabases.status,
         encryptedPassword: tables.projectDatabases.encryptedPassword,
         deletionRequestedAt: tables.projectDatabases.deletionRequestedAt,
       })

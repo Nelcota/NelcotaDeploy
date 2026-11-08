@@ -1,8 +1,11 @@
+import { useQuery } from "@tanstack/react-query";
+import { Link } from "@tanstack/react-router";
 import { LoaderCircleIcon, RefreshCwIcon } from "lucide-react";
-import { useState } from "react";
 
 import { shouldOfferApply } from "@/web/components/deployments/apply-changes";
+import { DEPLOYMENT_STATUS_LABELS } from "@/web/components/layout/labels";
 import { useAction } from "@/web/components/layout/use-action";
+import { projectQueryOptions } from "@/web/components/projects/project-query";
 import { Button } from "@/web/components/ui/button";
 import { applyProjectChangesFn } from "@/web/functions/deployments.functions";
 
@@ -12,55 +15,80 @@ import { applyProjectChangesFn } from "@/web/functions/deployments.functions";
  */
 export function ApplyChangesBanner({
   message,
-  applying,
-  onApply,
+  state,
 }: {
   readonly message: string;
-  readonly applying: boolean;
-  readonly onApply: () => void;
+  readonly state: ReturnType<typeof useApplyChanges>;
 }) {
+  const deployment = state.activeDeployment;
   return (
     <div
       role="status"
       className="flex flex-col gap-3 rounded-xl bg-warning/8 px-5 py-4 ring-1 ring-warning/25 sm:flex-row sm:items-center sm:justify-between"
     >
-      <p className="flex items-start gap-2 text-sm">
+      <div className="flex min-w-0 items-start gap-2 text-sm">
         <RefreshCwIcon aria-hidden className="mt-0.5 size-4 shrink-0 text-warning" />
-        {message}
-      </p>
-      <Button size="sm" disabled={applying} onClick={onApply}>
-        {applying ? <LoaderCircleIcon aria-hidden className="animate-spin" /> : null}
-        Aplicar agora
-      </Button>
+        <div className="min-w-0 space-y-1">
+          <p>{message}</p>
+          <p className="text-muted-foreground">
+            A aplicação usará um novo contêiner com a imagem atual e as alterações salvas, sem
+            reconstruir a imagem.
+          </p>
+          {deployment == null ? null : (
+            <p className="text-muted-foreground">
+              Deploy em andamento: {DEPLOYMENT_STATUS_LABELS[deployment.status]}. Ao terminar,
+              verificamos automaticamente se ainda há mudanças pendentes.
+            </p>
+          )}
+        </div>
+      </div>
+      {deployment == null ? (
+        <Button
+          size="sm"
+          disabled={state.canApply === false}
+          onClick={() => state.redeploy.mutate()}
+        >
+          {state.redeploy.isPending ? (
+            <LoaderCircleIcon aria-hidden className="animate-spin" />
+          ) : null}
+          Recriar contêiner com alterações
+        </Button>
+      ) : (
+        <Button size="sm" variant="outline" asChild>
+          <Link
+            to="/projects/$projectId/deployments/$deploymentId"
+            params={{ projectId: state.projectId, deploymentId: deployment.id }}
+          >
+            Ver progresso do deploy
+          </Link>
+        </Button>
+      )}
     </div>
   );
 }
 
 /**
- * Action that applies saved changes plus whether to offer it: the server reports changes not yet
- * applied, and once the apply is queued the offer waits until the new container clears them.
+ * Follows pending changes and production progress through the shared project query, including
+ * after navigation or reload. Failed or cancelled deployments allow another explicit attempt.
  *
  * @param projectId - Project being edited.
  * @param pending - The server's `pendingRuntimeChanges` for the project.
  * @param canRedeploy - The user may redeploy and the project has a live deployment.
- * @returns The apply action and whether to show the banner.
+ * @returns The apply action, production progress and whether the action can be offered.
  */
 export function useApplyChanges(projectId: string, pending: boolean, canRedeploy: boolean) {
-  const [requested, setRequested] = useState(false);
-  // Adjusts state during render when `pending` changes, as React recommends over an effect.
-  const [previousPending, setPreviousPending] = useState(pending);
-  if (pending !== previousPending) {
-    setPreviousPending(pending);
-    if (pending === false) {
-      setRequested(false);
-    }
-  }
+  const project = useQuery(projectQueryOptions(projectId));
+  const activeDeployment = project.data?.activeDeployment ?? null;
   const redeploy = useAction({
     action: () => applyProjectChangesFn({ data: { projectId } }),
     successMessage: (deploymentId) =>
       deploymentId == null ? "Nada novo para aplicar" : "Mudanças colocadas na fila",
     invalidate: [["project", projectId], ["deployments"]],
-    onSuccess: () => setRequested(true),
   });
-  return { redeploy, showBanner: shouldOfferApply({ pending, canRedeploy, requested }) };
+  const canApply = shouldOfferApply({
+    pending,
+    canRedeploy,
+    requested: activeDeployment != null || redeploy.isPending,
+  });
+  return { projectId, redeploy, activeDeployment, canApply, showBanner: pending && canRedeploy };
 }

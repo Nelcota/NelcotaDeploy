@@ -1,4 +1,4 @@
-import { desc, inArray } from "drizzle-orm";
+import { eq, inArray, sql } from "drizzle-orm";
 
 import { type Database, tables } from "@/db";
 import type { SystemSettings } from "@/shared/schemas/settings.schema";
@@ -41,21 +41,31 @@ export function summarizePreviews(
   const deployments = database
     .select({
       id: tables.deployments.id,
-      previewId: tables.deployments.previewId,
+      previewId: tables.previews.id,
       status: tables.deployments.status,
     })
-    .from(tables.deployments)
+    .from(tables.previews)
+    .leftJoin(
+      tables.deployments,
+      eq(
+        tables.deployments.id,
+        sql`(
+      SELECT latest.id FROM deployments AS latest
+      WHERE latest.preview_id = ${tables.previews.id}
+      ORDER BY latest.created_at DESC, latest.id DESC LIMIT 1
+    )`,
+      ),
+    )
     .where(
       inArray(
-        tables.deployments.previewId,
+        tables.previews.id,
         previews.map((preview) => preview.id),
       ),
     )
-    .orderBy(desc(tables.deployments.createdAt), desc(tables.deployments.id))
     .all();
   const latest = new Map<string, { id: string; status: DeploymentStatus }>();
   for (const deployment of deployments) {
-    if (deployment.previewId != null && latest.has(deployment.previewId) === false) {
+    if (deployment.id != null && deployment.status != null) {
       latest.set(deployment.previewId, { id: deployment.id, status: deployment.status });
     }
   }

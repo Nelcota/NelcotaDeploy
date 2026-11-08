@@ -41,6 +41,6 @@ export const mysqlEngine: DatabaseEngine = {
   // The dump drops and recreates the database, so restoring replaces what is there.
   backup: {
     dump: (path) => ["sh", "-c", DUMP_SCRIPT, "sh", path],
-    restore: (path) => ["sh", "-c", RESTORE_SCRIPT, "sh", path],
+    restore: (path) => ({ commands: [["sh", "-c", RESTORE_SCRIPT, "sh", path]], cleanup: [] }),
   },
 };

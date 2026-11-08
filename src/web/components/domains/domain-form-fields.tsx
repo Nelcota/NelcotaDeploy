@@ -8,10 +8,12 @@ import type { AddDomainFormApi } from "./use-add-domain-form";
 export function HostnameInput({
   form,
   error,
+  onDetect,
 }: {
   readonly form: AddDomainFormApi;
   /** Validation message shown below the form, or null when the hostname is valid. */
   readonly error: string | null;
+  readonly onDetect: (value: string) => boolean;
 }) {
   return (
     <div
@@ -38,7 +40,15 @@ export function HostnameInput({
             aria-describedby="domain-hostname-error"
             className="h-full rounded-none bg-transparent pl-0.5 font-mono ring-0 hover:ring-0 focus-visible:bg-transparent focus-visible:ring-0"
             value={field.state.value}
-            onBlur={field.handleBlur}
+            onBlur={() => {
+              onDetect(field.state.value);
+              field.handleBlur();
+            }}
+            onPaste={(event) => {
+              if (onDetect(event.clipboardData.getData("text"))) {
+                event.preventDefault();
+              }
+            }}
             onChange={(event) => field.handleChange(event.target.value)}
           />
         )}
@@ -47,7 +57,13 @@ export function HostnameInput({
   );
 }
 
-export function HttpsSwitch({ form }: { readonly form: AddDomainFormApi }) {
+export function HttpsSwitch({
+  form,
+  onEdited,
+}: {
+  readonly form: AddDomainFormApi;
+  readonly onEdited: () => void;
+}) {
   return (
     <form.Field name="httpsEnabled">
       {(field) => (
@@ -55,7 +71,10 @@ export function HttpsSwitch({ form }: { readonly form: AddDomainFormApi }) {
           <Switch
             id="domain-https"
             checked={field.state.value}
-            onCheckedChange={field.handleChange}
+            onCheckedChange={(checked) => {
+              onEdited();
+              field.handleChange(checked);
+            }}
             title="Certificado Let's Encrypt emitido automaticamente"
           />
           <label htmlFor="domain-https" className="text-sm">

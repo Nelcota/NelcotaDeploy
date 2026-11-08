@@ -17,4 +17,6 @@ export {
   updateProject,
 } from "./project.service";
 export { listProjects } from "./project-listing.service";
+export { suggestProjectSlug } from "./project-identity";
+export { updateProjectSettings } from "./project-settings.service";
 export { listProjectIds, recordDetectedPort } from "./project-worker.service";

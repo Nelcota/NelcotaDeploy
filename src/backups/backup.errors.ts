@@ -1,7 +1,7 @@
 /** Thrown when a backup is too large to be encrypted in memory and sent. */
 export class BackupTooLargeError extends Error {
   constructor(sizeInBytes: number, limitInBytes: number) {
-    super(`Backup has ${sizeInBytes} bytes, more than the ${limitInBytes} bytes sent off-site`);
+    super(`Backup has ${sizeInBytes} bytes, exceeding the ${limitInBytes} byte limit`);
     this.name = "BackupTooLargeError";
   }
 }

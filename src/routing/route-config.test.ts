@@ -110,6 +110,15 @@ describe("projectRouteConfig names", () => {
 describe("projectRouteConfig validation", () => {
   const domains = [{ hostname: "api.example.com", httpsEnabled: true }];
 
+  test.each(["localhost", "api.example.com.", `${"a".repeat(64)}.example.com`])(
+    "rejects hostnames outside the shared DNS limits: %s",
+    (hostname) => {
+      expect(() =>
+        projectRouteConfig({ ...BASE, domains: [{ hostname, httpsEnabled: true }] }),
+      ).toThrow(InvalidRouteError);
+    },
+  );
+
   test("throws InvalidRouteError for a hostname that could widen the rule", () => {
     const config = () =>
       projectRouteConfig({

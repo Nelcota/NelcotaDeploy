@@ -4,9 +4,6 @@ export const AVATAR_SIZE_IN_PX = 256;
 /** Largest file picked by the user (20 MiB); bigger photos are refused before decoding. */
 const MAX_SOURCE_IMAGE_BYTES = 20_971_520;
 
-// btoa takes a string of bytes; building it in chunks avoids a call with too many arguments.
-const BASE64_CHUNK_BYTES = 0x8000;
-
 /** Region of the source image to keep, in source pixels. */
 type SquareCrop = {
   readonly x: number;
@@ -40,11 +37,7 @@ export function centerSquareCrop(width: number, height: number): SquareCrop {
  * @returns The base64 text, empty for empty content.
  */
 export function bytesToBase64(bytes: Uint8Array): string {
-  const parts: string[] = [];
-  for (let offset = 0; offset < bytes.length; offset += BASE64_CHUNK_BYTES) {
-    parts.push(String.fromCharCode(...bytes.subarray(offset, offset + BASE64_CHUNK_BYTES)));
-  }
-  return btoa(parts.join(""));
+  return bytes.toBase64();
 }
 
 /**

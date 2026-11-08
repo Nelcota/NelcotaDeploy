@@ -9,5 +9,12 @@ export {
 } from "./github-app.service";
 export { appCloneToken, listConnectedRepositories } from "./github-access.service";
 export { GitHubApiError } from "./github.errors";
+export { getRepositoryAccess, inspectRepository } from "./repository/repository-inspection.service";
+export { readRepositoryEnvironmentExample } from "./repository/repository-environment.service";
+export {
+  readRepositoryTaskScripts,
+  readRepositoryVolumeHints,
+  readRepositoryHealthCheck,
+} from "./repository/repository-automation.service";
 export { readGitHubLoginCredentials } from "./github-login.service";
 export { accountsMissingPermissions, reportCommitStatus } from "./github-status.service";

@@ -1,3 +1,11 @@
+import { isValidEnvironmentVariableKey } from "@/shared/schemas/environment-variable.schema";
+import {
+  MIN_MEMORY_LIMIT_IN_MB,
+  MAX_MEMORY_LIMIT_IN_MB,
+  MIN_CPU_LIMIT_IN_MILLICORES,
+  MAX_CPU_LIMIT_IN_MILLICORES,
+} from "@/shared/schemas/project.schema";
+
 import { InvalidDockerArgumentError } from "./docker.errors";
 
 /** Labels that mark resources owned by the platform. Nothing without them is ever touched. */
@@ -40,7 +48,6 @@ const PROXY_CERTIFICATE_VOLUME = "nelcota-letsencrypt";
 
 const NAME_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,127}$/;
 const IMAGE_REFERENCE_PATTERN = /^[a-z0-9]+(?:[._/-][a-z0-9]+)*:[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$/;
-const ENVIRONMENT_KEY_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/;
 const LABEL_KEY_PATTERN = /^[a-z0-9][a-z0-9._/-]*[a-z0-9]$/i;
 const SLUG_PATTERN = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/;
 const IMAGE_REPOSITORY = "nelcota";
@@ -195,7 +202,9 @@ export type BuildImageOptions = {
 export function buildImageArgs(options: BuildImageOptions): string[] {
   assertMatches(options.imageTag, IMAGE_REFERENCE_PATTERN, "image tag");
   for (const key of options.buildArgKeys) {
-    assertMatches(key, ENVIRONMENT_KEY_PATTERN, "build argument name");
+    if (isValidEnvironmentVariableKey(key) === false) {
+      throw new InvalidDockerArgumentError(`Reserved or invalid build argument name: ${key}`);
+    }
   }
   return [
     "build",
@@ -283,7 +292,9 @@ export function railpackBuildArgs(options: RailpackBuildOptions): string[] {
   assertMatches(options.secretsHash, SECRETS_HASH_PATTERN, "secrets hash");
   assertMatches(options.cacheKey, CACHE_KEY_PATTERN, "cache key");
   for (const key of options.secretKeys) {
-    assertMatches(key, ENVIRONMENT_KEY_PATTERN, "build secret name");
+    if (isValidEnvironmentVariableKey(key) === false) {
+      throw new InvalidDockerArgumentError(`Invalid build secret name: ${JSON.stringify(key)}`);
+    }
   }
   return [
     "buildx",
@@ -343,6 +354,10 @@ export function danglingImagePruneArgs(): string[] {
 
 /** Options for {@link runContainerArgs}. */
 export type RunContainerOptions = {
+  /** Memory in MiB; null or absent leaves it unlimited. */
+  readonly memoryLimitInMb?: number | null;
+  /** Thousandths of a CPU core; null or absent leaves it unlimited. */
+  readonly cpuLimitInMillicores?: number | null;
   readonly containerName: string;
   readonly imageTag: string;
   readonly network: string;
@@ -401,6 +416,33 @@ export function resourceArgs(resources: ContainerResources | undefined): string[
 // Plain absolute path: no comma or "=", which would add options to the --mount value.
 const MOUNT_TARGET_PATTERN = /^(?:\/[A-Za-z0-9._-]+)+$/;
 
+function resourceLimitArgs(options: RunContainerOptions): string[] {
+  const args: string[] = [];
+  const memory = options.memoryLimitInMb;
+  if (memory != null) {
+    if (
+      Number.isInteger(memory) === false ||
+      memory < MIN_MEMORY_LIMIT_IN_MB ||
+      memory > MAX_MEMORY_LIMIT_IN_MB
+    ) {
+      throw new InvalidDockerArgumentError(`Invalid memory limit in MiB: ${memory}`);
+    }
+    args.push("--memory", `${memory}m`);
+  }
+  const cpu = options.cpuLimitInMillicores;
+  if (cpu != null) {
+    if (
+      Number.isInteger(cpu) === false ||
+      cpu < MIN_CPU_LIMIT_IN_MILLICORES ||
+      cpu > MAX_CPU_LIMIT_IN_MILLICORES
+    ) {
+      throw new InvalidDockerArgumentError(`Invalid CPU limit in millicores: ${cpu}`);
+    }
+    args.push("--cpus", String(cpu / MILLICORES_PER_CORE));
+  }
+  return args;
+}
+
 function mountArgs(volumes: RunContainerOptions["volumes"]): string[] {
   return volumes.flatMap((volume) => {
     assertMatches(volume.name, NAME_PATTERN, "volume name");
@@ -422,7 +464,9 @@ export function runContainerArgs(options: RunContainerOptions): string[] {
   assertMatches(options.imageTag, IMAGE_REFERENCE_PATTERN, "image tag");
   assertMatches(options.network, NAME_PATTERN, "network name");
   for (const key of options.environmentKeys) {
-    assertMatches(key, ENVIRONMENT_KEY_PATTERN, "environment variable name");
+    if (isValidEnvironmentVariableKey(key) === false) {
+      throw new InvalidDockerArgumentError(`Reserved or invalid environment variable name: ${key}`);
+    }
   }
   return [
     "run",
@@ -437,10 +481,10 @@ export function runContainerArgs(options: RunContainerOptions): string[] {
     "max-size=10m",
     "--log-opt",
     "max-file=3",
-    ...labelArgs(options.labels),
+    ...labelArgs({ ...options.labels, "traefik.enable": "false" }),
     ...options.environmentKeys.flatMap((key) => ["--env", key]),
     ...mountArgs(options.volumes),
-    ...resourceArgs(options.resources),
+    ...(options.resources == null ? resourceLimitArgs(options) : resourceArgs(options.resources)),
     options.imageTag,
     ...(options.command ?? []),
   ];

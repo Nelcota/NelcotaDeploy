@@ -24,6 +24,7 @@ import {
   DatabaseLimitError,
   DatabaseNotFoundError,
   DatabaseVariableConflictError,
+  DatabaseServerChangedError,
   ProjectHasDatabasesError,
 } from "./database.errors";
 
@@ -156,14 +157,31 @@ function removeConnectionVariable(
  * @throws {DatabaseLimitError} When the project already has 5 databases.
  * @throws {DatabaseVariableConflictError} When the project already has a variable with the
  *   chosen name.
+ * @throws {DatabaseServerChangedError} When the server differs from the reviewed target, including during encryption.
  */
 export async function createProjectDatabase(
   database: Database,
   secretBox: SecretBox,
-  request: { readonly projectId: string; readonly input: DatabaseInput; readonly actor: Actor },
+  request: {
+    readonly projectId: string;
+    readonly input: DatabaseInput;
+    readonly actor: Actor;
+    readonly expectedServerId?: string | undefined;
+  },
 ): Promise<ProjectDatabase> {
   const { projectId, input, actor } = request;
   assertDatabaseCreationPossible(database, projectId, input.environmentKey);
+  const project = getProject(database, projectId);
+  if (request.expectedServerId != null && project.serverId !== request.expectedServerId) {
+    throw new DatabaseServerChangedError(projectId);
+  }
+  if (listProjectDatabases(database, projectId).length >= MAX_DATABASES_PER_PROJECT) {
+    throw new DatabaseLimitError(MAX_DATABASES_PER_PROJECT);
+  }
+  const variables = listEnvironmentVariables(database, projectId);
+  if (variables.some((variable) => variable.key === input.environmentKey)) {
+    throw new DatabaseVariableConflictError(input.environmentKey);
+  }
   const engine = databaseEngine(input.engine);
   const id = Bun.randomUUIDv7();
   const password = generatePassword();
@@ -189,12 +207,30 @@ export async function createProjectDatabase(
     deletionRequestedAt: null,
     createdAt: new Date().toISOString(),
   };
-  database.transaction((transaction) => {
-    // Encryption yields: another request may have added a variable or database meanwhile.
-    assertDatabaseCreationPossible(transaction, projectId, input.environmentKey);
-    saveVariable(transaction);
-    insertDatabase(transaction, { row, projectId, encryptedPassword, actor });
-  });
+  database.transaction(
+    (transaction) => {
+      const currentProject = getProject(transaction, projectId);
+      if (
+        request.expectedServerId != null &&
+        currentProject.serverId !== request.expectedServerId
+      ) {
+        throw new DatabaseServerChangedError(projectId);
+      }
+      if (listProjectDatabases(transaction, projectId).length >= MAX_DATABASES_PER_PROJECT) {
+        throw new DatabaseLimitError(MAX_DATABASES_PER_PROJECT);
+      }
+      if (
+        listEnvironmentVariables(transaction, projectId).some(
+          (variable) => variable.key === input.environmentKey,
+        )
+      ) {
+        throw new DatabaseVariableConflictError(input.environmentKey);
+      }
+      saveVariable(transaction);
+      insertDatabase(transaction, { row, projectId, encryptedPassword, actor });
+    },
+    { behavior: "immediate" },
+  );
   return toView(row);
 }
 

@@ -106,20 +106,23 @@ export function dedicatePanelHostIfUnused(database: Database): boolean {
   if (readyRemote == null) {
     return false;
   }
-  database.transaction((transaction) => {
-    transaction
-      .update(tables.servers)
-      .set({ acceptsApplications: false, updatedAt: new Date().toISOString() })
-      .where(eq(tables.servers.id, LOCAL_SERVER_ID))
-      .run();
-    recordAuditEvent(transaction, {
-      actor: { type: "system", label: "Nelcota" },
-      action: "server.update",
-      targetType: "server",
-      targetId: LOCAL_SERVER_ID,
-      metadata: { acceptsApplications: false, reason: "first application server ready" },
-    });
-  });
+  database.transaction(
+    (transaction) => {
+      transaction
+        .update(tables.servers)
+        .set({ acceptsApplications: false, updatedAt: new Date().toISOString() })
+        .where(eq(tables.servers.id, LOCAL_SERVER_ID))
+        .run();
+      recordAuditEvent(transaction, {
+        actor: { type: "system", label: "Nelcota" },
+        action: "server.update",
+        targetType: "server",
+        targetId: LOCAL_SERVER_ID,
+        metadata: { acceptsApplications: false, reason: "first application server ready" },
+      });
+    },
+    { behavior: "immediate" },
+  );
   return true;
 }
 
@@ -180,18 +183,21 @@ export function assignProjectServer(
   if (server.status !== "ready") {
     throw new ServerNotReadyError(serverId);
   }
-  database.transaction((transaction) => {
-    transaction
-      .update(tables.projects)
-      .set({ serverId, updatedAt: new Date().toISOString() })
-      .where(eq(tables.projects.id, projectId))
-      .run();
-    recordAuditEvent(transaction, {
-      actor,
-      action: "project.move",
-      targetType: "project",
-      targetId: projectId,
-      metadata: { serverId, serverName: server.name },
-    });
-  });
+  database.transaction(
+    (transaction) => {
+      transaction
+        .update(tables.projects)
+        .set({ serverId, updatedAt: new Date().toISOString() })
+        .where(eq(tables.projects.id, projectId))
+        .run();
+      recordAuditEvent(transaction, {
+        actor,
+        action: "project.move",
+        targetType: "project",
+        targetId: projectId,
+        metadata: { serverId, serverName: server.name },
+      });
+    },
+    { behavior: "immediate" },
+  );
 }

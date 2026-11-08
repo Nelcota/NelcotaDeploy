@@ -7,7 +7,7 @@ import { LogViewer } from "@/web/components/monitoring/log-viewer";
 import { projectQueryOptions } from "@/web/components/projects/project-query";
 
 import { DeploymentPicker } from "./deployment-picker";
-import { ALL_DEPLOYMENTS, runtimeLogsUrl } from "./runtime-logs";
+import { LIVE_DEPLOYMENT, resolveRuntimeDeployment, runtimeLogsUrl } from "./runtime-logs";
 import {
   CONSOLE_HEIGHT_CLASS,
   ConsoleSkeleton,
@@ -18,17 +18,20 @@ import {
 
 /** Live container output of one project, for the live deploy, an older one or all of them. */
 export function RuntimeLogsPage({ projectId }: { readonly projectId: string }) {
+  return <ProjectRuntimeLogs key={projectId} projectId={projectId} />;
+}
+
+function ProjectRuntimeLogs({ projectId }: { readonly projectId: string }) {
   const now = useNow();
   const project = useQuery(projectQueryOptions(projectId));
-  // Null follows the deploy that is live, so a new deploy switches the view by itself.
-  const [chosen, setChosen] = useState<string | null>(null);
+  const [chosen, setChosen] = useState(LIVE_DEPLOYMENT);
 
   if (project.isError) {
     return <ErrorState error={project.error} onRetry={() => void project.refetch()} />;
   }
   const details = project.data;
   const currentDeploymentId = details?.project.currentDeploymentId ?? null;
-  const selected = chosen ?? currentDeploymentId ?? ALL_DEPLOYMENTS;
+  const selected = resolveRuntimeDeployment(chosen, currentDeploymentId);
   const header = <RuntimeLogsHeader details={details} selected={selected} now={now} />;
 
   if (details == null) {
@@ -54,7 +57,7 @@ export function RuntimeLogsPage({ projectId }: { readonly projectId: string }) {
         projectId={projectId}
         slug={details.project.slug}
         currentDeploymentId={currentDeploymentId}
-        selected={selected}
+        selected={chosen}
         onSelect={setChosen}
       />
     </RuntimeLogsSection>
@@ -77,7 +80,7 @@ function RuntimeConsole({
   const now = useNow();
   return (
     <LogViewer
-      url={runtimeLogsUrl(projectId, selected)}
+      url={runtimeLogsUrl(projectId, resolveRuntimeDeployment(selected, currentDeploymentId))}
       heightClass={CONSOLE_HEIGHT_CLASS}
       downloadName={`${slug}.log`}
       emptyMessage="Aguardando linhas do contêiner…"

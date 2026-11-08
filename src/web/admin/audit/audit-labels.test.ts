@@ -33,6 +33,15 @@ describe("targetTypeLabelOf", () => {
     expect(targetTypeLabelOf("environment_variable")).toBe("Variável");
   });
 
+  test.each([
+    ["server", "Servidor"],
+    ["volume", "Volume"],
+    ["github_app", "GitHub App"],
+    ["dns", "DNS"],
+  ])("describes infrastructure targets %s", (target, label) => {
+    expect(targetTypeLabelOf(target)).toBe(label);
+  });
+
   test("keeps the raw type when unknown", () => {
     expect(targetTypeLabelOf("invoice")).toBe("invoice");
   });

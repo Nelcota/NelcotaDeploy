@@ -1,6 +1,13 @@
-import { Building2Icon, LoaderCircleIcon, TriangleAlertIcon } from "lucide-react";
+import {
+  BellIcon,
+  Building2Icon,
+  GlobeIcon,
+  LoaderCircleIcon,
+  TriangleAlertIcon,
+} from "lucide-react";
 
 import type { SystemSettings } from "@/shared/schemas/settings.schema";
+import type { OrganizationSettingsSection } from "@/shared/schemas/settings/organization-settings.schema";
 import { Section } from "@/web/components/layout/layout";
 import { useAction } from "@/web/components/layout/use-action";
 import { Button } from "@/web/components/ui/button";
@@ -14,6 +21,27 @@ import {
   RequireAdminTwoFactorField,
 } from "./organization-fields";
 import { type OrganizationFormApi, useOrganizationForm } from "./use-organization-form";
+
+const SECTIONS = {
+  organization: {
+    title: "Nome da organização",
+    saveLabel: "Salvar nome da organização",
+    icon: Building2Icon,
+    fields: OrganizationNameField,
+  },
+  domains: {
+    title: "Domínios automáticos",
+    saveLabel: "Salvar domínios automáticos",
+    icon: GlobeIcon,
+    fields: AutomaticDomainFields,
+  },
+  alerts: {
+    title: "Notificações por webhook",
+    saveLabel: "Salvar webhook de notificações",
+    icon: BellIcon,
+    fields: AlertWebhookField,
+  },
+};
 
 function TestAlertButton() {
   const test = useAction({
@@ -31,11 +59,13 @@ function SaveSettingsBar({
   form,
   isPending,
   canTestAlerts,
+  saveLabel,
 }: {
   readonly form: OrganizationFormApi;
   readonly isPending: boolean;
   /** A saved webhook can be tested; an unsaved one would test the old address. */
   readonly canTestAlerts: boolean;
+  readonly saveLabel: string;
 }) {
   return (
     <form.Subscribe selector={(state) => state.isDefaultValue === false}>
@@ -43,7 +73,7 @@ function SaveSettingsBar({
         <div className="flex flex-wrap items-center gap-3">
           <Button type="submit" disabled={isPending || changed === false}>
             {isPending ? <LoaderCircleIcon aria-hidden className="animate-spin" /> : null}
-            Salvar
+            {saveLabel}
           </Button>
           {canTestAlerts && changed === false ? <TestAlertButton /> : null}
           {changed ? (
@@ -60,15 +90,18 @@ export function OrganizationForm({
   initial,
   canEdit,
   traefikEnabled,
+  section,
 }: {
   readonly initial: SystemSettings;
   readonly canEdit: boolean;
   /** Without the proxy, automatic domains and HTTPS are never applied. */
   readonly traefikEnabled: boolean;
+  readonly section: OrganizationSettingsSection;
 }) {
-  const { form, isPending } = useOrganizationForm(initial);
+  const { form, isPending } = useOrganizationForm(initial, section);
+  const current = SECTIONS[section];
   return (
-    <Section icon={Building2Icon} title="Organização">
+    <Section icon={current.icon} title={current.title}>
       <Card className="p-5">
         <form
           noValidate
@@ -78,11 +111,13 @@ export function OrganizationForm({
             void form.handleSubmit();
           }}
         >
-          <OrganizationNameField form={form} canEdit={canEdit} />
-          <AutomaticDomainFields form={form} canEdit={canEdit} />
-          <AlertWebhookField form={form} canEdit={canEdit} />
-          <RequireAdminTwoFactorField form={form} canEdit={canEdit} />
-          {traefikEnabled ? null : (
+          <fieldset disabled={isPending} className="space-y-4">
+            <current.fields form={form} canEdit={canEdit} />
+            {section === "organization" ? (
+              <RequireAdminTwoFactorField form={form} canEdit={canEdit} />
+            ) : null}
+          </fieldset>
+          {traefikEnabled || section !== "domains" ? null : (
             <p role="status" className="flex items-start gap-1.5 text-sm text-warning">
               <TriangleAlertIcon aria-hidden className="mt-0.5 size-4 shrink-0" />O Traefik está
               desativado neste servidor: domínios automáticos e HTTPS não são aplicados.
@@ -92,7 +127,8 @@ export function OrganizationForm({
             <SaveSettingsBar
               form={form}
               isPending={isPending}
-              canTestAlerts={initial.alertWebhookUrl != null}
+              saveLabel={current.saveLabel}
+              canTestAlerts={section === "alerts" && initial.alertWebhookUrl != null}
             />
           ) : (
             <p className="text-sm text-muted-foreground">

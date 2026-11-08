@@ -102,3 +102,40 @@ describe("listAppRepositories", () => {
     });
   });
 });
+
+test("follows SDK pagination links and caps each installation at ten repository pages", async () => {
+  const requestedPages: number[] = [];
+  const provider = Bun.serve({
+    port: 0,
+    fetch(request) {
+      const url = new URL(request.url);
+      if (url.pathname === "/app/installations") {
+        return Response.json([{ id: 91 }]);
+      }
+      if (url.pathname.endsWith("/access_tokens")) {
+        return Response.json({
+          token: "pagination-token",
+          expires_at: new Date(Date.now() + HOUR_IN_MS).toISOString(),
+        });
+      }
+      const page = Number(url.searchParams.get("page") ?? "1");
+      requestedPages.push(page);
+      const next = new URL(url);
+      next.searchParams.set("page", String(page + 1));
+      return Response.json(
+        { total_count: 2000, repositories: [repository(`acme/page-${page}`)] },
+        {
+          headers: { Link: `<${next.href}>; rel="next"` },
+        },
+      );
+    },
+  });
+  await using _provider = { [Symbol.asyncDispose]: async () => await provider.stop(true) };
+  const repositories = await listAppRepositories(
+    { baseUrl: provider.url.origin },
+    credentials("pagination"),
+  );
+  expect(requestedPages).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+  expect(repositories).toHaveLength(10);
+  expect(repositories.some((item) => item.fullName === "acme/page-10")).toBe(true);
+});

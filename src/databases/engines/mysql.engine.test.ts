@@ -61,7 +61,7 @@ describe("mysqlEngine.backup", () => {
   });
 
   test("restores from the path given as an argument", () => {
-    const restore = mysqlEngine.backup?.restore(DUMP_PATH) ?? [];
+    const restore = mysqlEngine.backup?.restore(DUMP_PATH).commands.at(0) ?? [];
 
     expect(restore.at(-1)).toBe(DUMP_PATH);
     expect(restore[2]).toContain('< "$1"');
@@ -70,7 +70,7 @@ describe("mysqlEngine.backup", () => {
   test("never puts the password in the command", () => {
     const commands = [
       ...(mysqlEngine.backup?.dump(DUMP_PATH) ?? []),
-      ...(mysqlEngine.backup?.restore(DUMP_PATH) ?? []),
+      ...(mysqlEngine.backup?.restore(DUMP_PATH).commands.at(0) ?? []),
     ];
 
     expect(commands.join(" ")).not.toContain("secret");

@@ -62,7 +62,7 @@ function RetryButton({
       ) : (
         <RotateCwIcon aria-hidden />
       )}
-      Tentar de novo
+      Repetir deploy deste commit
     </Button>
   );
 }

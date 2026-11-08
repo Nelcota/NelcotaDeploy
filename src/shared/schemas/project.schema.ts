@@ -15,12 +15,12 @@ const MAX_COMPOSE_SERVICE_LENGTH = 63;
 // Lowercase Compose service names, so the container Compose creates has a predictable name.
 const COMPOSE_SERVICE_PATTERN = /^[a-z0-9][a-z0-9_.-]*$/;
 /** Smallest memory limit Docker accepts with room for a real application, in MiB. */
-const MIN_MEMORY_LIMIT_IN_MB = 64;
-const MAX_MEMORY_LIMIT_IN_MB = 1_048_576;
+export const MIN_MEMORY_LIMIT_IN_MB = 64;
+export const MAX_MEMORY_LIMIT_IN_MB = 1_048_576;
 /** CPU limits offered in the interface, in thousandths of a core. */
 export const CPU_LIMIT_OPTIONS_IN_MILLICORES = [250, 500, 1000, 2000, 4000, 8000] as const;
-const MIN_CPU_LIMIT_IN_MILLICORES = 100;
-const MAX_CPU_LIMIT_IN_MILLICORES = 256_000;
+export const MIN_CPU_LIMIT_IN_MILLICORES = 100;
+export const MAX_CPU_LIMIT_IN_MILLICORES = 256_000;
 /** Most containers one deployment runs behind the load balancer. */
 export const MAX_REPLICAS = 10;
 

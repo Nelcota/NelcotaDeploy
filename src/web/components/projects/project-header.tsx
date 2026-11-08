@@ -1,11 +1,13 @@
-import { Link, useRouterState } from "@tanstack/react-router";
-import { FolderGit2Icon, GitBranchIcon, GlobeIcon } from "lucide-react";
-import { type ReactNode, useEffect, useRef } from "react";
+import { Link } from "@tanstack/react-router";
+import { ChevronLeftIcon, GitBranchIcon, GlobeIcon } from "lucide-react";
+import type { ReactNode } from "react";
 
+import { GitHubIcon } from "@/web/components/github/github.icon";
 import { ContainerStateBadge } from "@/web/components/layout/status-badge";
 import { ProjectActions } from "@/web/components/projects/project-actions";
 import type { ProjectDetails } from "@/web/components/projects/project-query";
 import { PROJECT_SECTIONS } from "@/web/components/shell/navigation";
+import { PageNavigation } from "@/web/components/shell/navigation/page-navigation";
 import { EnvironmentSwitcher } from "@/web/components/staging/environment-switcher";
 
 /** The container of the project's current deployment, if the worker has seen it. */
@@ -57,13 +59,13 @@ function ProjectLinks({
         title={project.repositoryFullName}
         className={`${HEADER_LINK} inline-flex items-center gap-1.5`}
       >
-        <FolderGit2Icon aria-hidden className="size-3.5 shrink-0" />
+        <GitHubIcon aria-hidden className="size-3.5 shrink-0" />
         <span className="truncate">{project.repositoryFullName}</span>
         <span className="sr-only"> (repositório no GitHub, abre em nova aba)</span>
       </a>
-      <span className="inline-flex items-center gap-1.5 font-mono">
-        <GitBranchIcon aria-hidden className="size-3.5" />
-        {project.branch}
+      <span className="inline-flex min-w-0 max-w-full items-start gap-1.5 font-mono">
+        <GitBranchIcon aria-hidden className="mt-1 size-3.5 shrink-0" />
+        <span className="[overflow-wrap:anywhere]">{project.branch}</span>
       </span>
     </div>
   );
@@ -71,7 +73,7 @@ function ProjectLinks({
 
 /**
  * Header shared by every project page: where you are, the project's state, its address,
- * the actions, and the tabs that lead to each part of the project.
+ * the actions, and the grouped navigation to each project page.
  */
 export function ProjectBand({ details }: { readonly details: ProjectDetails }) {
   const { project } = details;
@@ -79,10 +81,17 @@ export function ProjectBand({ details }: { readonly details: ProjectDetails }) {
   const url = publicUrl(details);
   return (
     <div className="space-y-5">
+      <Link
+        to="/projects"
+        className="inline-flex items-center gap-1 rounded-sm text-sm text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
+      >
+        <ChevronLeftIcon aria-hidden className="size-4" />
+        Todos os projetos
+      </Link>
       <header className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div className="min-w-0 space-y-1.5">
           <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-            <h1 className="max-w-full min-w-0 truncate text-2xl leading-tight font-semibold tracking-tight">
+            <h1 className="max-w-full min-w-0 text-2xl leading-tight font-semibold tracking-tight [overflow-wrap:anywhere]">
               {project.name}
             </h1>
             <ContainerStateBadge
@@ -104,37 +113,26 @@ export function ProjectBand({ details }: { readonly details: ProjectDetails }) {
 }
 
 function ProjectTabs({ projectId }: { readonly projectId: string }) {
-  const navRef = useRef<HTMLElement>(null);
-  const pathname = useRouterState({ select: (state) => state.location.pathname });
-  // On narrow screens the tabs scroll sideways; keep the open one in view.
-  useEffect(() => {
-    navRef.current
-      ?.querySelector("[data-status=active]")
-      ?.scrollIntoView({ inline: "nearest", block: "nearest" });
-  }, [pathname]);
-  return (
-    <nav
-      ref={navRef}
-      aria-label="Seções do projeto"
-      className="-mx-1 overflow-x-auto px-1 [scrollbar-width:none] max-sm:[mask-image:linear-gradient(to_right,black_calc(100%-2rem),transparent)]"
-    >
-      <ul className="flex w-fit min-w-max gap-1.5 py-0.5">
-        {PROJECT_SECTIONS.map((section) => (
-          <li key={section.to}>
-            <Link
-              to={section.to}
-              params={{ projectId }}
-              activeOptions={{ exact: section.exact }}
-              className="inline-flex h-9 items-center gap-2 rounded-full bg-well px-3 text-sm text-foreground ring-1 ring-border transition-colors hover:bg-well-hover focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none data-[status=active]:bg-primary data-[status=active]:text-primary-foreground data-[status=active]:ring-primary"
-            >
-              <section.icon aria-hidden className="size-4" />
-              {section.label}
-            </Link>
-          </li>
-        ))}
-      </ul>
-    </nav>
-  );
+  const items = PROJECT_SECTIONS.map((section) => ({
+    href: section.to.replace("$projectId", encodeURIComponent(projectId)),
+    to: section.to,
+    params: { projectId },
+    label: section.label,
+    group: section.group,
+    exact: section.exact,
+    link: (
+      <Link
+        to={section.to}
+        params={{ projectId }}
+        activeOptions={{ exact: section.exact }}
+        preload={false}
+      >
+        <section.icon aria-hidden />
+        {section.label}
+      </Link>
+    ),
+  }));
+  return <PageNavigation label="Páginas do projeto" items={items} />;
 }
 
 /**
@@ -157,7 +155,7 @@ export function TabHeader({
     <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
       <div className="min-w-0 flex-1">
         <div className="min-w-0 space-y-0.5">
-          <h2 className="flex items-center gap-2.5 text-xl leading-tight font-semibold tracking-tight">
+          <h2 className="flex min-w-0 flex-wrap items-center gap-2.5 text-xl leading-tight font-semibold tracking-tight break-words">
             {title}
             {count == null ? null : (
               <span className="rounded-md bg-well px-1.5 py-0.5 text-xs font-medium text-muted-foreground tabular-nums">

@@ -7,11 +7,16 @@ import { authClient } from "@/web/components/shell/auth-client";
 export function useSignOut() {
   const router = useRouter();
   return async () => {
-    const result = await authClient.signOut();
-    if (result.error != null) {
+    try {
+      const result = await authClient.signOut();
+      if (result.error != null) {
+        toast.error("Não foi possível sair. Tente novamente.");
+        return;
+      }
+      await router.navigate({ to: "/login" });
+    } catch (error) {
+      console.error("Sign-out request failed", error);
       toast.error("Não foi possível sair. Tente novamente.");
-      return;
     }
-    await router.navigate({ to: "/login" });
   };
 }

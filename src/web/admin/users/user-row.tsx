@@ -13,6 +13,12 @@ import { UserAccessControls } from "./user-access-controls";
 
 export type UserView = Awaited<ReturnType<typeof listUsersFn>>[number];
 
+const ROLE_TAG_TONES: Record<Role, "danger" | "warning" | "success"> = {
+  admin: "danger",
+  developer: "warning",
+  viewer: "success",
+};
+
 function UserIdentity({
   user,
   isCurrentUser,
@@ -60,7 +66,9 @@ export function UserRow({
         {isCurrentUser ? (
           // Your own role and access cannot change here, so show them instead of
           // controls that would only ever be disabled.
-          <Tag icon={ShieldCheckIcon}>{ROLE_LABELS[user.role]}</Tag>
+          <Tag icon={ShieldCheckIcon} tone={ROLE_TAG_TONES[user.role]}>
+            {ROLE_LABELS[user.role]}
+          </Tag>
         ) : (
           <UserAccessControls
             user={user}

@@ -7,6 +7,8 @@ import { type ProjectBuilder, projectInputSchema } from "@/shared/schemas/projec
 import { ProjectFormSections } from "@/web/components/forms/project-form-sections";
 import { Button } from "@/web/components/ui/button";
 
+import { useProjectAutomation } from "./repository/use-project-automation";
+
 /** Values as typed in the form; the server parses them with `projectInputSchema`. */
 export type ProjectFormValues = {
   readonly name: string;
@@ -135,7 +137,7 @@ export function projectToFormValues(project: {
  * @param options - Starting values and the submit handler.
  * @returns The form, to pass to the field groups.
  */
-export function useProjectForm({
+function useBaseProjectForm({
   initialValues,
   onSubmit,
 }: {
@@ -152,7 +154,22 @@ export function useProjectForm({
 }
 
 /** Form state returned by {@link useProjectForm}. */
-export type ProjectFormApi = ReturnType<typeof useProjectForm>;
+export type ProjectFormApi = ReturnType<typeof useBaseProjectForm>;
+
+/** Creates a project form with automatic repository discovery and editable suggestions. */
+export function useProjectForm(
+  options: Parameters<typeof useBaseProjectForm>[0] & {
+    readonly projectId?: string;
+    readonly canDetect?: boolean;
+  },
+) {
+  const form = useBaseProjectForm(options);
+  const automation = useProjectAutomation(form, options.initialValues, {
+    projectId: options.projectId,
+    enabled: options.canDetect,
+  });
+  return { form, automation };
+}
 
 function FormActions({
   form,
@@ -165,7 +182,9 @@ function FormActions({
 }) {
   return (
     <div className="flex flex-col-reverse gap-3 rounded-2xl bg-card px-5 py-4 ring-1 ring-border/70 sm:flex-row sm:items-center sm:justify-between md:px-6">
-      <p className="text-xs text-muted-foreground">Dá para mudar tudo depois em Ajustes.</p>
+      <p className="text-xs text-muted-foreground">
+        Depois, edite cada configuração na sua página em Ajustes.
+      </p>
       <div className="flex justify-end gap-2">
         <Button variant="ghost" asChild>
           <Link to="/projects">Cancelar</Link>
@@ -198,7 +217,11 @@ export function ProjectForm({
   readonly onSubmit: (values: ProjectFormInput) => Promise<unknown>;
   readonly disabled?: boolean;
 }) {
-  const form = useProjectForm({ initialValues, onSubmit });
+  const { form, automation } = useProjectForm({
+    initialValues,
+    onSubmit,
+    canDetect: disabled === false,
+  });
 
   return (
     <form
@@ -210,9 +233,13 @@ export function ProjectForm({
       }}
     >
       <fieldset disabled={disabled} className="min-w-0 space-y-6">
-        <ProjectFormSections form={form} />
+        <ProjectFormSections form={form} automation={automation} />
       </fieldset>
-      <FormActions form={form} submitLabel={submitLabel} disabled={disabled} />
+      <FormActions
+        form={form}
+        submitLabel={submitLabel}
+        disabled={disabled || automation.isDetecting}
+      />
     </form>
   );
 }

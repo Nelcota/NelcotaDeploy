@@ -27,28 +27,31 @@ export function requestContainerAction(
   database: Database,
   request: { readonly projectId: string; readonly action: ContainerAction; readonly actor: Actor },
 ): { jobId: string; created: boolean } {
-  return database.transaction((transaction) => {
-    const project = getProject(transaction, request.projectId);
-    if (project.currentDeploymentId == null) {
-      throw new NoActiveContainerError(project.id);
-    }
-    const job = enqueueJob(transaction, {
-      kind: "container_action",
-      projectId: project.id,
-      deploymentId: project.currentDeploymentId,
-      payload: { action: request.action },
-      dedupeKey: `container:${project.id}:${request.action}`,
-    });
-    if (job.created) {
-      recordAuditEvent(transaction, {
-        actor: request.actor,
-        action: `container.${request.action}`,
-        targetType: "project",
-        targetId: project.id,
+  return database.transaction(
+    (transaction) => {
+      const project = getProject(transaction, request.projectId);
+      if (project.currentDeploymentId == null) {
+        throw new NoActiveContainerError(project.id);
+      }
+      const job = enqueueJob(transaction, {
+        kind: "container_action",
+        projectId: project.id,
+        deploymentId: project.currentDeploymentId,
+        payload: { action: request.action },
+        dedupeKey: `container:${project.id}:${request.action}`,
       });
-    }
-    return { jobId: job.id, created: job.created };
-  });
+      if (job.created) {
+        recordAuditEvent(transaction, {
+          actor: request.actor,
+          action: `container.${request.action}`,
+          targetType: "project",
+          targetId: project.id,
+        });
+      }
+      return { jobId: job.id, created: job.created };
+    },
+    { behavior: "immediate" },
+  );
 }
 
 /**

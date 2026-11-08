@@ -1,17 +1,16 @@
 import { useQuery } from "@tanstack/react-query";
-import { HistoryIcon, PlayIcon } from "lucide-react";
+import { HistoryIcon } from "lucide-react";
 
 import { formatCommandLine } from "@/shared/command-line";
 import { durationBetween, formatDateTime, formatDuration } from "@/shared/format";
 import type { Task } from "@/tasks";
 import { EmptyState, ErrorState, ListSkeleton } from "@/web/components/layout/states";
 import { TaskStatusBadge } from "@/web/components/layout/status-badge";
-import { Button } from "@/web/components/ui/button";
-import { SheetDescription, SheetHeader, SheetTitle } from "@/web/components/ui/sheet";
+import { TabHeader } from "@/web/components/projects/project-header";
 import { listTaskExecutionsFn } from "@/web/functions/tasks.functions";
 
-const ACTIVE_EXECUTION_REFRESH_INTERVAL_IN_MS = 3000;
-const ACTIVE_EXECUTION_STATUSES: ReadonlySet<string> = new Set(["queued", "running"]);
+import { TaskExecutionOutput } from "./automation/task-execution-output";
+import { taskHistoryRefreshInterval } from "./automation/task-history";
 
 const TRIGGER_LABELS: Record<string, string> = {
   manual: "Manual",
@@ -23,7 +22,7 @@ type Execution = Awaited<ReturnType<typeof listTaskExecutionsFn>>[number];
 
 function ExecutionCard({ execution }: { readonly execution: Execution }) {
   return (
-    <article className="space-y-3 border-b border-border pb-4 last:border-b-0">
+    <article className="min-w-0 space-y-3 border-b border-border pb-4 last:border-b-0">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <TaskStatusBadge status={execution.status} />
         <span className="text-xs text-faint">
@@ -46,62 +45,50 @@ function ExecutionCard({ execution }: { readonly execution: Execution }) {
           <dd className="font-mono">{execution.exitCode ?? "—"}</dd>
         </div>
       </dl>
-      {execution.errorMessage == null ? null : (
-        <p className="text-sm text-destructive">{execution.errorMessage}</p>
-      )}
-      {execution.output === "" ? null : (
-        <pre className="max-h-64 overflow-auto rounded-lg bg-console p-3 font-mono text-xs whitespace-pre-wrap text-console-foreground">
-          {execution.output}
-        </pre>
-      )}
+      <TaskExecutionOutput output={execution.output} errorMessage={execution.errorMessage} />
     </article>
   );
 }
 
-/** Refreshes while an execution is queued or running, and stops once all have finished. */
+/** Discovers new executions at rest and follows queued or running executions more frequently. */
 function useTaskExecutions(projectId: string, taskId: string) {
   return useQuery({
     queryKey: ["task-executions", projectId, taskId],
     queryFn: () => listTaskExecutionsFn({ data: { projectId, taskId } }),
-    refetchInterval: (query) => {
-      const data = query.state.data ?? [];
-      return data.some((execution) => ACTIVE_EXECUTION_STATUSES.has(execution.status))
-        ? ACTIVE_EXECUTION_REFRESH_INTERVAL_IN_MS
-        : false;
-    },
+    refetchInterval: (query) => taskHistoryRefreshInterval(query.state.data ?? []),
   });
 }
 
-/** Sheet body with a task's past executions, newest first, and a button to run it now. */
+/** Past executions and their output, independent from scheduling and running a task. */
 export function ExecutionHistory({
   projectId,
   task,
-  canRun,
-  running,
-  onRun,
 }: {
   readonly projectId: string;
   readonly task: Task;
-  readonly canRun: boolean;
-  readonly running: boolean;
-  readonly onRun: () => void;
 }) {
   const executions = useTaskExecutions(projectId, task.id);
   return (
     <>
-      <SheetHeader className="border-b border-border px-6 py-5">
-        <SheetTitle>Execuções de {task.name}</SheetTitle>
-        <SheetDescription className="font-mono text-xs">
-          {formatCommandLine(task.command)}
-        </SheetDescription>
-        {canRun ? (
-          <Button size="sm" className="mt-3 w-fit" disabled={running} onClick={onRun}>
-            <PlayIcon aria-hidden />
-            Executar agora
-          </Button>
-        ) : null}
-      </SheetHeader>
-      <div className="space-y-4 px-6 py-5">
+      <div className="space-y-4">
+        <TabHeader
+          title={`Histórico de execuções de ${task.name}`}
+          description="Novas execuções e resultados aparecem automaticamente."
+        />
+        <details className="min-w-0 rounded-lg bg-secondary/50 p-3">
+          <summary className="w-fit cursor-pointer rounded text-xs font-medium focus-visible:outline-2 focus-visible:outline-ring">
+            Ver comando atual
+          </summary>
+          <pre
+            tabIndex={0}
+            aria-label="Comando atual"
+            className="mt-2 max-h-24 overflow-auto font-mono text-xs whitespace-pre-wrap break-all focus-visible:outline-2 focus-visible:outline-ring"
+          >
+            {formatCommandLine(task.command)}
+          </pre>
+        </details>
+      </div>
+      <div className="min-w-0 space-y-4">
         {executions.isError ? (
           <ErrorState error={executions.error} onRetry={() => void executions.refetch()} />
         ) : null}

@@ -2,7 +2,7 @@ import { and, eq, isNull, or, sql } from "drizzle-orm";
 
 import { type Actor, recordAuditEvent } from "@/audit";
 import { type Database, tables, type Transaction } from "@/db";
-import { enqueueJob } from "@/jobs";
+import { CLEANUP_MAX_ATTEMPTS, enqueueJob } from "@/jobs";
 import type { SecretBox } from "@/secrets";
 import { chooseServerForNewProject } from "@/servers";
 import { assertHostnameOwnership, getSystemSettings } from "@/settings";
@@ -175,41 +175,44 @@ export function createProject(
   const projectId = Bun.randomUUIDv7();
   const now = new Date().toISOString();
   const serverId = chooseServerForNewProject(database);
-  database.transaction((transaction) => {
-    if (isSlugTaken(transaction, input.slug)) {
-      throw new ProjectSlugTakenError(input.slug);
-    }
-    transaction
-      .insert(tables.projects)
-      .values({
-        id: projectId,
-        ...input,
-        repositoryUrl: repository.cloneUrl,
-        repositoryFullName: repository.fullName,
-        internalPort: input.internalPort ?? DEFAULT_INTERNAL_PORT,
-        internalPortAuto: input.internalPort == null,
-        serverId,
-        deploymentsApproved: creator.isAdmin,
-        createdByUserId: creator.userId,
-        parentProjectId: environment?.parentProjectId ?? null,
-        environmentName: environment?.environmentName ?? null,
-        createdAt: now,
-        updatedAt: now,
-      })
-      .run();
-    transaction
-      .insert(tables.environments)
-      .values({ id: Bun.randomUUIDv7(), projectId, name: PRODUCTION_ENVIRONMENT, createdAt: now })
-      .run();
-    assertHostnameOwnership(transaction, getSystemSettings(transaction));
-    recordAuditEvent(transaction, {
-      actor: creator.actor,
-      action: "project.create",
-      targetType: "project",
-      targetId: projectId,
-      metadata: { name: input.name, slug: input.slug, repository: repository.fullName },
-    });
-  });
+  database.transaction(
+    (transaction) => {
+      if (isSlugTaken(transaction, input.slug)) {
+        throw new ProjectSlugTakenError(input.slug);
+      }
+      transaction
+        .insert(tables.projects)
+        .values({
+          id: projectId,
+          ...input,
+          repositoryUrl: repository.cloneUrl,
+          repositoryFullName: repository.fullName,
+          internalPort: input.internalPort ?? DEFAULT_INTERNAL_PORT,
+          internalPortAuto: input.internalPort == null,
+          serverId,
+          deploymentsApproved: creator.isAdmin,
+          createdByUserId: creator.userId,
+          parentProjectId: environment?.parentProjectId ?? null,
+          environmentName: environment?.environmentName ?? null,
+          createdAt: now,
+          updatedAt: now,
+        })
+        .run();
+      transaction
+        .insert(tables.environments)
+        .values({ id: Bun.randomUUIDv7(), projectId, name: PRODUCTION_ENVIRONMENT, createdAt: now })
+        .run();
+      assertHostnameOwnership(transaction, getSystemSettings(transaction));
+      recordAuditEvent(transaction, {
+        actor: creator.actor,
+        action: "project.create",
+        targetType: "project",
+        targetId: projectId,
+        metadata: { name: input.name, slug: input.slug, repository: repository.fullName },
+      });
+    },
+    { behavior: "immediate" },
+  );
   return getProject(database, projectId);
 }
 
@@ -228,7 +231,7 @@ export function createProject(
  * Compose, whose services keep data in their own named volumes.
  */
 export function updateProject(
-  database: Database,
+  database: Database | Transaction,
   {
     projectId,
     input,
@@ -240,47 +243,50 @@ export function updateProject(
   },
 ): Project {
   const repository = repositoryFullNameOf(input.repositoryUrl);
-  database.transaction((transaction) => {
-    const current = findActiveProjectRow(transaction, projectId);
-    if (isSlugTaken(transaction, input.slug, projectId)) {
-      throw new ProjectSlugTakenError(input.slug);
-    }
-    if (input.replicas > 1 && mountsVolumes(transaction, projectId)) {
-      throw new ReplicasNeedNoVolumesError(projectId);
-    }
-    if (input.builder === "compose" && mountsVolumes(transaction, projectId)) {
-      throw new ComposeNeedsNoVolumesError(projectId);
-    }
-    // A different repository is different code, so a non-admin change needs new approval.
-    const repositoryChanged = current.repositoryFullName !== repository.fullName;
-    const deploymentsApproved =
-      editor.isAdmin || (current.deploymentsApproved && repositoryChanged === false);
-    transaction
-      .update(tables.projects)
-      .set({
-        ...input,
-        repositoryUrl: repository.cloneUrl,
-        repositoryFullName: repository.fullName,
-        // Automatic keeps the port the last build detected until the next build reads it again.
-        internalPort: input.internalPort ?? current.internalPort,
-        internalPortAuto: input.internalPort == null,
-        deploymentsApproved,
-        updatedAt: new Date().toISOString(),
-      })
-      .where(eq(tables.projects.id, projectId))
-      .run();
-    if (repositoryChanged || current.branch !== input.branch || input.previewsEnabled === false) {
-      closeProjectPreviews(transaction, projectId);
-    }
-    assertHostnameOwnership(transaction, getSystemSettings(transaction));
-    recordAuditEvent(transaction, {
-      actor: editor.actor,
-      action: "project.update",
-      targetType: "project",
-      targetId: projectId,
-      metadata: { slug: input.slug, repository: repository.fullName, branch: input.branch },
-    });
-  });
+  database.transaction(
+    (transaction) => {
+      const current = findActiveProjectRow(transaction, projectId);
+      if (isSlugTaken(transaction, input.slug, projectId)) {
+        throw new ProjectSlugTakenError(input.slug);
+      }
+      if (input.replicas > 1 && mountsVolumes(transaction, projectId)) {
+        throw new ReplicasNeedNoVolumesError(projectId);
+      }
+      if (input.builder === "compose" && mountsVolumes(transaction, projectId)) {
+        throw new ComposeNeedsNoVolumesError(projectId);
+      }
+      // A different repository is different code, so a non-admin change needs new approval.
+      const repositoryChanged = current.repositoryFullName !== repository.fullName;
+      const deploymentsApproved =
+        editor.isAdmin || (current.deploymentsApproved && repositoryChanged === false);
+      transaction
+        .update(tables.projects)
+        .set({
+          ...input,
+          repositoryUrl: repository.cloneUrl,
+          repositoryFullName: repository.fullName,
+          // Automatic keeps the port the last build detected until the next build reads it again.
+          internalPort: input.internalPort ?? current.internalPort,
+          internalPortAuto: input.internalPort == null,
+          deploymentsApproved,
+          updatedAt: new Date().toISOString(),
+        })
+        .where(eq(tables.projects.id, projectId))
+        .run();
+      if (repositoryChanged || current.branch !== input.branch || input.previewsEnabled === false) {
+        closeProjectPreviews(transaction, projectId);
+      }
+      assertHostnameOwnership(transaction, getSystemSettings(transaction));
+      recordAuditEvent(transaction, {
+        actor: editor.actor,
+        action: "project.update",
+        targetType: "project",
+        targetId: projectId,
+        metadata: { slug: input.slug, repository: repository.fullName, branch: input.branch },
+      });
+    },
+    { behavior: "immediate" },
+  );
   return getProject(database, projectId);
 }
 
@@ -293,20 +299,23 @@ export function updateProject(
  * @throws {ProjectNotFoundError} When the project does not exist.
  */
 export function approveProject(database: Database, projectId: string, actor: Actor): void {
-  database.transaction((transaction) => {
-    findActiveProjectRow(transaction, projectId);
-    transaction
-      .update(tables.projects)
-      .set({ deploymentsApproved: true, updatedAt: new Date().toISOString() })
-      .where(eq(tables.projects.id, projectId))
-      .run();
-    recordAuditEvent(transaction, {
-      actor,
-      action: "project.approve",
-      targetType: "project",
-      targetId: projectId,
-    });
-  });
+  database.transaction(
+    (transaction) => {
+      findActiveProjectRow(transaction, projectId);
+      transaction
+        .update(tables.projects)
+        .set({ deploymentsApproved: true, updatedAt: new Date().toISOString() })
+        .where(eq(tables.projects.id, projectId))
+        .run();
+      recordAuditEvent(transaction, {
+        actor,
+        action: "project.approve",
+        targetType: "project",
+        targetId: projectId,
+      });
+    },
+    { behavior: "immediate" },
+  );
 }
 
 /**
@@ -318,24 +327,27 @@ export function approveProject(database: Database, projectId: string, actor: Act
  * @throws {ProjectNotFoundError} When the project does not exist.
  */
 export function requestProjectDeletion(database: Database, projectId: string, actor: Actor): void {
-  database.transaction((transaction) => {
-    const project = findActiveProjectRow(transaction, projectId);
-    markForDeletion(transaction, { id: projectId, slug: project.slug }, actor);
-    // The environments of a production project, such as its staging, go with it.
-    const environments = transaction
-      .select({ id: tables.projects.id, slug: tables.projects.slug })
-      .from(tables.projects)
-      .where(
-        and(
-          eq(tables.projects.parentProjectId, projectId),
-          isNull(tables.projects.deletionRequestedAt),
-        ),
-      )
-      .all();
-    for (const environment of environments) {
-      markForDeletion(transaction, environment, actor);
-    }
-  });
+  database.transaction(
+    (transaction) => {
+      const project = findActiveProjectRow(transaction, projectId);
+      markForDeletion(transaction, { id: projectId, slug: project.slug }, actor);
+      // The environments of a production project, such as its staging, go with it.
+      const environments = transaction
+        .select({ id: tables.projects.id, slug: tables.projects.slug })
+        .from(tables.projects)
+        .where(
+          and(
+            eq(tables.projects.parentProjectId, projectId),
+            isNull(tables.projects.deletionRequestedAt),
+          ),
+        )
+        .all();
+      for (const environment of environments) {
+        markForDeletion(transaction, environment, actor);
+      }
+    },
+    { behavior: "immediate" },
+  );
 }
 
 function markForDeletion(
@@ -357,7 +369,12 @@ function markForDeletion(
     .run();
   enqueueJob(
     transaction,
-    { kind: "project_cleanup", projectId, dedupeKey: `cleanup:${projectId}`, maxAttempts: 3 },
+    {
+      kind: "project_cleanup",
+      projectId,
+      dedupeKey: `cleanup:${projectId}`,
+      maxAttempts: CLEANUP_MAX_ATTEMPTS,
+    },
     now,
   );
   recordAuditEvent(transaction, {
@@ -390,21 +407,24 @@ export async function setRepositoryToken(
     token == null || token === ""
       ? null
       : await secretBox.encrypt(token, repositoryTokenContext(projectId));
-  database.transaction((transaction) => {
-    findActiveProjectRow(transaction, projectId);
-    transaction
-      .update(tables.projects)
-      .set({ encryptedRepositoryToken: encrypted, updatedAt: new Date().toISOString() })
-      .where(eq(tables.projects.id, projectId))
-      .run();
-    recordAuditEvent(transaction, {
-      actor,
-      action:
-        encrypted == null ? "project.repository_token_remove" : "project.repository_token_set",
-      targetType: "project",
-      targetId: projectId,
-    });
-  });
+  database.transaction(
+    (transaction) => {
+      findActiveProjectRow(transaction, projectId);
+      transaction
+        .update(tables.projects)
+        .set({ encryptedRepositoryToken: encrypted, updatedAt: new Date().toISOString() })
+        .where(eq(tables.projects.id, projectId))
+        .run();
+      recordAuditEvent(transaction, {
+        actor,
+        action:
+          encrypted == null ? "project.repository_token_remove" : "project.repository_token_set",
+        targetType: "project",
+        targetId: projectId,
+      });
+    },
+    { behavior: "immediate" },
+  );
 }
 
 /**
@@ -461,6 +481,7 @@ function closeProjectPreviews(transaction: Transaction, projectId: string): void
   for (const preview of closed) {
     enqueueJob(transaction, {
       kind: "preview_cleanup",
+      maxAttempts: CLEANUP_MAX_ATTEMPTS,
       projectId,
       payload: { previewId: preview.id },
       dedupeKey: `preview-cleanup:${preview.id}`,

@@ -26,7 +26,12 @@ export function DangerZone({
     },
   });
   return (
-    <SettingsSection icon={TriangleAlertIcon} title="Zona de perigo" tone="danger">
+    <SettingsSection
+      id="settings-danger"
+      icon={TriangleAlertIcon}
+      title="Excluir projeto"
+      tone="danger"
+    >
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="space-y-1">
           <p className="text-sm font-medium">Excluir projeto</p>
@@ -63,7 +68,7 @@ function DeleteProjectButton({
       }
       title="Excluir este projeto?"
       description="A aplicação sai do ar e todos os dados do projeto são apagados."
-      confirmLabel="Excluir definitivamente"
+      confirmLabel="Excluir projeto definitivamente"
       destructive
       confirmationText={slug}
       onConfirm={onDelete}

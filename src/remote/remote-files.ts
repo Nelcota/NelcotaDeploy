@@ -100,7 +100,7 @@ export class RemoteFiles {
     if (code !== 0) {
       throw new RemoteFileError(`Cannot read ${path}: ${reason()}`);
     }
-    return new Uint8Array(Buffer.concat(received.chunks));
+    return Buffer.concat(received.chunks, received.size);
   }
 
   /**

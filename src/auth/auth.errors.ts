@@ -27,7 +27,7 @@ export class UserOperationError extends Error {
   }
 }
 
-/** Thrown when a profile photo is empty, too large or not a PNG, JPEG or WebP image. */
+/** Thrown when a profile photo exceeds the byte/pixel limits or cannot decode as PNG, JPEG or WebP. */
 export class InvalidAvatarError extends Error {
   constructor(reason: string) {
     super(`Invalid avatar: ${reason}`);

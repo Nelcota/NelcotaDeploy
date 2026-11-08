@@ -9,6 +9,7 @@ import {
 /** Deploys fetched per "load more" page. */
 export const PAGE_SIZE = 25;
 const ACTIVE_REFRESH_INTERVAL_IN_MS = 5000;
+const IDLE_REFRESH_INTERVAL_IN_MS = 15_000;
 const SHORT_SHA_LENGTH = 7;
 
 export const ALL_STATUSES = "all";
@@ -41,18 +42,18 @@ export function nextPageCursor(lastPage: readonly PageCursor[]): PageCursor | un
 }
 
 /**
- * Chooses how often the history refreshes: often while a deploy is running, never otherwise.
+ * Chooses a faster cadence for active deploys while still discovering new deploys when idle.
  *
  * @param rows - Every loaded deploy.
- * @returns The refetch interval in milliseconds, or false to stop polling.
+ * @returns The refetch interval in milliseconds.
  */
 export function historyRefreshInterval(
   rows: readonly { readonly status: DeploymentStatus }[],
-): number | false {
+): number {
   if (rows.some((row) => ACTIVE_DEPLOYMENT_STATUSES.has(row.status))) {
     return ACTIVE_REFRESH_INTERVAL_IN_MS;
   }
-  return false;
+  return IDLE_REFRESH_INTERVAL_IN_MS;
 }
 
 /**

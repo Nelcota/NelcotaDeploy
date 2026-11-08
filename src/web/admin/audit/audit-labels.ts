@@ -4,6 +4,8 @@ import {
   ContainerIcon,
   DatabaseIcon,
   GlobeIcon,
+  HardDriveIcon,
+  SettingsIcon,
   HistoryIcon,
   KeyRoundIcon,
   type LucideIcon,
@@ -33,9 +35,15 @@ const AREA_ICONS: Record<string, LucideIcon> = {
   api_token: KeyRoundIcon,
   container: ContainerIcon,
   database: DatabaseIcon,
+  server: ServerIcon,
+  volume: HardDriveIcon,
+  github_app: KeyRoundIcon,
+  dns: GlobeIcon,
+  settings: SettingsIcon,
 };
 
 const TARGET_TYPE_LABELS: Record<string, string> = {
+  settings: "Configurações",
   task: "Task",
   project: "Projeto",
   deployment: "Deploy",
@@ -45,6 +53,10 @@ const TARGET_TYPE_LABELS: Record<string, string> = {
   environment_variable: "Variável",
   container: "Contêiner",
   database: "Banco de dados",
+  server: "Servidor",
+  volume: "Volume",
+  github_app: "GitHub App",
+  dns: "DNS",
 };
 
 /**

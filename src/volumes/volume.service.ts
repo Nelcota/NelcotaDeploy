@@ -19,6 +19,7 @@ import {
   VolumeLimitError,
   VolumeNotFoundError,
   VolumePathOverlapError,
+  VolumeServerChangedError,
 } from "./volume.errors";
 
 const MAX_DELETION_ERROR_LENGTH = 500;
@@ -113,42 +114,55 @@ function assertNoOverlap(volumes: readonly ProjectVolume[], mountPath: string): 
  * @throws {VolumeLimitError} When the project already has 10 volumes.
  * @throws {VolumePathOverlapError} When the path equals or nests inside the path of another
  *   volume of the project, attached or not.
+ * @throws {VolumeServerChangedError} When the project's server differs from the reviewed target.
  * @throws {ReplicatedProjectVolumeError} When the project runs more than one replica.
  * @throws {ComposeProjectVolumeError} When the project runs with Docker Compose.
  */
 export function addProjectVolume(
   database: Database,
-  request: { readonly projectId: string; readonly input: VolumeInput; readonly actor: Actor },
+  request: {
+    readonly projectId: string;
+    readonly input: VolumeInput;
+    readonly actor: Actor;
+    readonly expectedServerId?: string | undefined;
+  },
 ): ProjectVolume {
   const { projectId, input, actor } = request;
-  return database.transaction((transaction) => {
-    assertSingleReplica(getProject(transaction, projectId));
-    const volumes = listProjectVolumes(transaction, projectId);
-    if (volumes.length >= MAX_VOLUMES_PER_PROJECT) {
-      throw new VolumeLimitError(MAX_VOLUMES_PER_PROJECT);
-    }
-    assertNoOverlap(volumes, input.mountPath);
-    const volume = {
-      id: Bun.randomUUIDv7(),
-      mountPath: input.mountPath,
-      attached: true,
-      deletionRequestedAt: null,
-      deletionError: null,
-      createdAt: new Date().toISOString(),
-    };
-    transaction
-      .insert(tables.projectVolumes)
-      .values({ ...volume, projectId })
-      .run();
-    recordAuditEvent(transaction, {
-      actor,
-      action: "volume.add",
-      targetType: "volume",
-      targetId: volume.id,
-      metadata: { projectId, mountPath: volume.mountPath },
-    });
-    return volume;
-  });
+  return database.transaction(
+    (transaction) => {
+      const project = getProject(transaction, projectId);
+      if (request.expectedServerId != null && project.serverId !== request.expectedServerId) {
+        throw new VolumeServerChangedError(projectId);
+      }
+      assertSingleReplica(project);
+      const volumes = listProjectVolumes(transaction, projectId);
+      if (volumes.length >= MAX_VOLUMES_PER_PROJECT) {
+        throw new VolumeLimitError(MAX_VOLUMES_PER_PROJECT);
+      }
+      assertNoOverlap(volumes, input.mountPath);
+      const volume = {
+        id: Bun.randomUUIDv7(),
+        mountPath: input.mountPath,
+        attached: true,
+        deletionRequestedAt: null,
+        deletionError: null,
+        createdAt: new Date().toISOString(),
+      };
+      transaction
+        .insert(tables.projectVolumes)
+        .values({ ...volume, projectId })
+        .run();
+      recordAuditEvent(transaction, {
+        actor,
+        action: "volume.add",
+        targetType: "volume",
+        targetId: volume.id,
+        metadata: { projectId, mountPath: volume.mountPath },
+      });
+      return volume;
+    },
+    { behavior: "immediate" },
+  );
 }
 
 // Replicas would write to the same volume at once, which corrupts files such as SQLite's.
@@ -194,27 +208,30 @@ export function setVolumeAttached(
   change: VolumeChange & { readonly attached: boolean },
 ): void {
   const { projectId, volumeId, actor, attached } = change;
-  database.transaction((transaction) => {
-    const volume = getProjectVolume(transaction, projectId, volumeId);
-    if (volume.deletionRequestedAt != null) {
-      throw new VolumeBeingDeletedError(volumeId);
-    }
-    if (attached) {
-      assertSingleReplica(getProject(transaction, projectId));
-    }
-    transaction
-      .update(tables.projectVolumes)
-      .set({ attached })
-      .where(eq(tables.projectVolumes.id, volumeId))
-      .run();
-    recordAuditEvent(transaction, {
-      actor,
-      action: attached ? "volume.attach" : "volume.detach",
-      targetType: "volume",
-      targetId: volumeId,
-      metadata: { projectId, mountPath: volume.mountPath },
-    });
-  });
+  database.transaction(
+    (transaction) => {
+      const volume = getProjectVolume(transaction, projectId, volumeId);
+      if (volume.deletionRequestedAt != null) {
+        throw new VolumeBeingDeletedError(volumeId);
+      }
+      if (attached) {
+        assertSingleReplica(getProject(transaction, projectId));
+      }
+      transaction
+        .update(tables.projectVolumes)
+        .set({ attached })
+        .where(eq(tables.projectVolumes.id, volumeId))
+        .run();
+      recordAuditEvent(transaction, {
+        actor,
+        action: attached ? "volume.attach" : "volume.detach",
+        targetType: "volume",
+        targetId: volumeId,
+        metadata: { projectId, mountPath: volume.mountPath },
+      });
+    },
+    { behavior: "immediate" },
+  );
 }
 
 /**
@@ -229,38 +246,41 @@ export function setVolumeAttached(
  */
 export function requestVolumeDeletion(database: Database, change: VolumeChange): void {
   const { projectId, volumeId, actor } = change;
-  database.transaction((transaction) => {
-    const volume = getProjectVolume(transaction, projectId, volumeId);
-    if (volume.attached) {
-      throw new VolumeAttachedError(volumeId);
-    }
-    if (volume.deletionRequestedAt != null) {
-      throw new VolumeBeingDeletedError(volumeId);
-    }
-    const now = new Date();
-    transaction
-      .update(tables.projectVolumes)
-      .set({ deletionRequestedAt: now.toISOString(), deletionError: null })
-      .where(eq(tables.projectVolumes.id, volumeId))
-      .run();
-    enqueueJob(
-      transaction,
-      {
-        kind: "volume_delete",
-        projectId,
-        payload: { volumeId },
-        dedupeKey: `volume-delete:${volumeId}`,
-      },
-      now,
-    );
-    recordAuditEvent(transaction, {
-      actor,
-      action: "volume.delete",
-      targetType: "volume",
-      targetId: volumeId,
-      metadata: { projectId, mountPath: volume.mountPath },
-    });
-  });
+  database.transaction(
+    (transaction) => {
+      const volume = getProjectVolume(transaction, projectId, volumeId);
+      if (volume.attached) {
+        throw new VolumeAttachedError(volumeId);
+      }
+      if (volume.deletionRequestedAt != null) {
+        throw new VolumeBeingDeletedError(volumeId);
+      }
+      const now = new Date();
+      transaction
+        .update(tables.projectVolumes)
+        .set({ deletionRequestedAt: now.toISOString(), deletionError: null })
+        .where(eq(tables.projectVolumes.id, volumeId))
+        .run();
+      enqueueJob(
+        transaction,
+        {
+          kind: "volume_delete",
+          projectId,
+          payload: { volumeId },
+          dedupeKey: `volume-delete:${volumeId}`,
+        },
+        now,
+      );
+      recordAuditEvent(transaction, {
+        actor,
+        action: "volume.delete",
+        targetType: "volume",
+        targetId: volumeId,
+        metadata: { projectId, mountPath: volume.mountPath },
+      });
+    },
+    { behavior: "immediate" },
+  );
 }
 
 /**

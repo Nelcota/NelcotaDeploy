@@ -76,12 +76,7 @@ export function SystemStatusButton() {
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <Link
-          to="/settings"
-          search={{ tab: "server" }}
-          aria-label={label}
-          className={ROUND_ICON_BUTTON}
-        >
+        <Link to="/settings/system" aria-label={label} className={ROUND_ICON_BUTTON}>
           <ActivityIcon aria-hidden className="size-4" />
           <span
             aria-hidden
