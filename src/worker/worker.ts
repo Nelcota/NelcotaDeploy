@@ -13,7 +13,7 @@ import {
 } from "@/jobs";
 import { recordWorkerHeartbeat } from "@/monitoring";
 
-import { dispatchJob } from "./job-dispatch";
+import { dispatchJob, jobHandlerFor } from "./job-dispatch";
 import { handleRecoveredJobs } from "./job-recovery";
 import { requeueFailedCleanups } from "./maintenance/cleanup-recovery";
 import { finishProjectMoves } from "./maintenance/project-moves";
@@ -161,10 +161,7 @@ export class Worker {
       (transaction) => {
         const result = failJob(transaction, job, {
           errorMessage: message,
-          retryable:
-            this.#abortJobs.signal.aborted ||
-            job.kind === "project_cleanup" ||
-            job.kind === "preview_cleanup",
+          retryable: this.#abortJobs.signal.aborted || jobHandlerFor(job.kind).retriesOnFailure,
         });
         if (result !== "lost") {
           handleRecoveredJobs(database, logger, [

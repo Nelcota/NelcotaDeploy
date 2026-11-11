@@ -1,7 +1,11 @@
 import { type ContainerInfo, type DockerEngine, LABELS } from "@/docker";
 import { JobLeaseLostError } from "@/jobs";
 
-import { type DeployRunnerDependencies, errorMessageOf } from "./deploy-context";
+import {
+  type DeployRunnerConfig,
+  type DeployRunnerDependencies,
+  errorMessageOf,
+} from "./deploy-context";
 import type { DeploymentLogWriter } from "./deployment-log-writer";
 
 const FAILED_CONTAINER_LOG_LINES = 50;
@@ -9,6 +13,20 @@ const FAILED_CONTAINER_LOG_LINES = 50;
 const STOP_GRACE_IN_SECONDS = 30;
 /** A preview has no rollback: only its running image is kept. */
 const PREVIEW_IMAGES_KEPT = 1;
+
+type FailedContainerDocker = Pick<DockerEngine, "readContainerLogs" | "removeContainer">;
+
+type PreviousContainerDependencies = Pick<DeployRunnerDependencies, "assertOwnership"> & {
+  readonly docker: Pick<
+    DockerEngine,
+    "listManagedContainers" | "stopContainer" | "removeContainer"
+  >;
+};
+
+type PruneImagesDependencies = Pick<DeployRunnerDependencies, "assertOwnership"> & {
+  readonly docker: Pick<DockerEngine, "images">;
+  readonly config: Pick<DeployRunnerConfig, "imagesKeptPerProject">;
+};
 
 /**
  * Copies the last lines of each failed container into the deployment log, then removes them,
@@ -19,7 +37,7 @@ const PREVIEW_IMAGES_KEPT = 1;
  * @param logs - Deployment log.
  */
 export async function discardFailedContainers(
-  docker: DockerEngine,
+  docker: FailedContainerDocker,
   containerNames: readonly string[],
   logs: DeploymentLogWriter,
 ): Promise<void> {
@@ -32,7 +50,7 @@ export async function discardFailedContainers(
 }
 
 async function discardFailedContainer(
-  docker: DockerEngine,
+  docker: FailedContainerDocker,
   containerName: string,
   logs: DeploymentLogWriter,
 ): Promise<void> {
@@ -55,7 +73,7 @@ async function discardFailedContainer(
 }
 
 async function removeContainer(
-  dependencies: DeployRunnerDependencies,
+  dependencies: PreviousContainerDependencies,
   container: ContainerInfo,
   logs: DeploymentLogWriter,
 ): Promise<void> {
@@ -79,7 +97,7 @@ async function removeContainer(
 
 // Sequential on purpose: stopping containers in parallel spikes host load.
 async function removeContainersInOrder(
-  dependencies: DeployRunnerDependencies,
+  dependencies: PreviousContainerDependencies,
   containers: readonly ContainerInfo[],
   logs: DeploymentLogWriter,
 ): Promise<void> {
@@ -101,7 +119,7 @@ async function removeContainersInOrder(
  *   and whether the project's Compose services stay too.
  */
 export async function removePreviousContainers(
-  dependencies: DeployRunnerDependencies,
+  dependencies: PreviousContainerDependencies,
   logs: DeploymentLogWriter,
   {
     projectId,
@@ -141,7 +159,7 @@ export async function removePreviousContainers(
  * @param logs - Deployment log.
  */
 export async function pruneOldImages(
-  dependencies: DeployRunnerDependencies,
+  dependencies: PruneImagesDependencies,
   scope: { readonly projectId: string; readonly previewId: string | null },
   logs: DeploymentLogWriter,
 ): Promise<void> {

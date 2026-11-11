@@ -261,54 +261,7 @@ export function StatusTile({
   );
 }
 
-/** Small tinted label beside a name, such as "Secret", "HTTPS" or "Pausada". */
-const TAG_TONES = {
-  neutral: "bg-well text-muted-foreground ring-border/60",
-  danger: "bg-destructive/10 text-destructive ring-destructive/25",
-  warning: "bg-warning/10 text-warning ring-warning/25",
-  success: "bg-success/10 text-success ring-success/25",
-} as const;
-
-export function Tag({
-  icon: Icon,
-  tone = "neutral",
-  children,
-}: {
-  readonly icon?: LucideIcon;
-  /** Draws the eye to a state, like a secret or a broken record; the text still says it. */
-  readonly tone?: keyof typeof TAG_TONES;
-  readonly children: ReactNode;
-}) {
-  return (
-    <span
-      className={cn(
-        "inline-flex shrink-0 items-center gap-1.5 rounded-md px-2 py-0.5 text-xs ring-1",
-        TAG_TONES[tone],
-      )}
-    >
-      {Icon == null ? null : <Icon aria-hidden className="size-3.5" />}
-      {children}
-    </span>
-  );
-}
-
-/** Marks the deployment a project is serving right now. */
-export function LiveBadge() {
-  return (
-    <span className="shrink-0 rounded-full bg-secondary px-2 py-0.5 text-xs font-medium text-muted-foreground">
-      No ar
-    </span>
-  );
-}
-
-/** Marks a version the panel rolled back on its own because its containers kept restarting. */
-export function AutoRolledBackBadge() {
-  return (
-    <span className="shrink-0 rounded-full bg-warning/15 px-2 py-0.5 text-xs font-medium text-warning">
-      Revertido automaticamente
-    </span>
-  );
-}
+export { AutoRolledBackBadge, LiveBadge, Tag } from "@/web/components/layout/status-badge";
 
 /** Heading inside a {@link List} that starts the rows of one day. */
 export function DayHeading({ children }: { readonly children: ReactNode }) {

@@ -5,8 +5,8 @@ import { eq } from "drizzle-orm";
 import { type Database, openMemoryDatabase, tables } from "@/db";
 import { createTestProject } from "@/testing";
 
+import { replaceContainerSnapshots } from "./container-snapshot.service";
 import { environmentHealth, getDashboardSummary } from "./dashboard.service";
-import { replaceContainerSnapshots } from "./monitoring.service";
 
 const NOW = new Date("2026-10-28T15:00:00Z");
 const DISPLAY_LIMIT = 8;

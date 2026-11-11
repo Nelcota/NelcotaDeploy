@@ -4,7 +4,7 @@ export {
   isContainerAction,
   requestContainerAction,
 } from "./container-action.service";
-export { requestDeployment, retryDeployment } from "./deployment-request.service";
+export { redeployProject, requestDeployment, retryDeployment } from "./deployment-request.service";
 export { summarizeDeployments } from "./deployment-stats.service";
 export {
   buildConfigFingerprint,
@@ -21,6 +21,7 @@ export {
   NoActiveContainerError,
   PreviewNotActiveError,
   ProjectNotApprovedError,
+  RedeployUnavailableError,
   RetryUnavailableError,
   RollbackUnavailableError,
 } from "./deployment.errors";

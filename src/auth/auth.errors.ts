@@ -19,11 +19,30 @@ export class ForbiddenError extends Error {
   }
 }
 
+/** Reason why a user operation could not be completed. */
+export type UserOperationReason =
+  | "weak-password"
+  | "email-taken"
+  | "last-admin"
+  | "self-role-change"
+  | "self-disable";
+
+const USER_OPERATION_MESSAGES: Readonly<Record<UserOperationReason, string>> = {
+  "weak-password": "Password does not meet the minimum length requirement",
+  "email-taken": "Email already in use",
+  "last-admin": "At least one active admin must remain",
+  "self-role-change": "Users cannot change their own role",
+  "self-disable": "Users cannot disable their own account",
+};
+
 /** Thrown when a user operation breaks an account rule, such as removing the last admin. */
 export class UserOperationError extends Error {
-  constructor(message: string) {
-    super(message);
+  readonly reason: UserOperationReason;
+
+  constructor(reason: UserOperationReason) {
+    super(USER_OPERATION_MESSAGES[reason]);
     this.name = "UserOperationError";
+    this.reason = reason;
   }
 }
 

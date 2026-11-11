@@ -90,6 +90,13 @@ export function assertNotCancelled(signal: AbortSignal): void {
   }
 }
 
+export function assertDeployActive(
+  context: Pick<DeployContext, "assertOwnership" | "signal">,
+): void {
+  context.assertOwnership();
+  assertNotCancelled(context.signal);
+}
+
 export function errorMessageOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }

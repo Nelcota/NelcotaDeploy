@@ -71,10 +71,25 @@ describe("toPublicError", () => {
   });
 
   test("translates the last-admin rule", () => {
-    const error = new UserOperationError("At least one active admin must remain");
+    const error = new UserOperationError("last-admin");
 
     expect(toPublicError(error)?.message).toBe(
       "É preciso manter pelo menos um administrador ativo.",
+    );
+  });
+
+  test("translates every user operation reason", () => {
+    expect(toPublicError(new UserOperationError("weak-password"))?.message).toBe(
+      "A senha precisa ter pelo menos 12 caracteres.",
+    );
+    expect(toPublicError(new UserOperationError("email-taken"))?.message).toBe(
+      "Este e-mail já está em uso.",
+    );
+    expect(toPublicError(new UserOperationError("self-role-change"))?.message).toBe(
+      "Você não pode alterar o próprio papel.",
+    );
+    expect(toPublicError(new UserOperationError("self-disable"))?.message).toBe(
+      "Você não pode desativar a própria conta.",
     );
   });
 

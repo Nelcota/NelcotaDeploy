@@ -1,11 +1,12 @@
-import { and, eq, gt, inArray, lt, sql } from "drizzle-orm";
+import { and, eq, gt, inArray, lt, notExists, or, sql } from "drizzle-orm";
+import { alias } from "drizzle-orm/sqlite-core";
 
 import { type Database, tables, type Transaction } from "@/db";
 
 import { JobLeaseLostError } from "./job.errors";
 
 export type Job = typeof tables.jobs.$inferSelect;
-type JobKind = Job["kind"];
+export type JobKind = Job["kind"];
 /** Identity of one claimed attempt; worker ids alone can be reused after a restart. */
 type JobLease = Pick<Job, "id" | "workerId" | "attempts">;
 
@@ -268,24 +269,26 @@ export function failJob(
 }
 
 /**
- * Cancels queued jobs that match a condition, such as a superseded deployment.
+ * Cancels queued jobs associated with the given deployments.
  *
  * @param database - Database or open transaction.
- * @param jobIds - Jobs to cancel; only those still queued change.
+ * @param deploymentIds - Deployment ids whose queued jobs should be cancelled.
  * @param now - Current time.
  */
-export function cancelQueuedJobs(
+export function cancelQueuedDeploymentJobs(
   database: Database | Transaction,
-  jobIds: readonly string[],
+  deploymentIds: readonly string[],
   now: Date = new Date(),
 ): void {
-  if (jobIds.length === 0) {
+  if (deploymentIds.length === 0) {
     return;
   }
   database
     .update(tables.jobs)
     .set({ status: "cancelled", finishedAt: now.toISOString() })
-    .where(and(inArray(tables.jobs.id, [...jobIds]), eq(tables.jobs.status, "queued")))
+    .where(
+      and(inArray(tables.jobs.deploymentId, [...deploymentIds]), eq(tables.jobs.status, "queued")),
+    )
     .run();
 }
 
@@ -370,4 +373,64 @@ export function releaseWorkerJobs(
     .where(and(eq(tables.jobs.workerId, workerId), eq(tables.jobs.status, "running")))
     .run();
   return recoverExpiredJobs(database, now);
+}
+
+/**
+ * Lists failed jobs of the requested kinds that have no newer job sharing the same `dedupeKey`.
+ *
+ * @param database - Database or open transaction.
+ * @param kinds - Job kinds to inspect.
+ * @returns Failed jobs not superseded by a newer attempt for the same resource.
+ */
+export function listLatestFailedJobs(
+  database: Database | Transaction,
+  kinds: readonly JobKind[],
+): Job[] {
+  if (kinds.length === 0) {
+    return [];
+  }
+  const newer = alias(tables.jobs, "newer_job");
+  return database
+    .select()
+    .from(tables.jobs)
+    .where(
+      and(
+        eq(tables.jobs.status, "failed"),
+        inArray(tables.jobs.kind, [...kinds]),
+        notExists(
+          database
+            .select({ id: newer.id })
+            .from(newer)
+            .where(
+              and(
+                eq(newer.dedupeKey, tables.jobs.dedupeKey),
+                or(
+                  gt(newer.createdAt, tables.jobs.createdAt),
+                  and(eq(newer.createdAt, tables.jobs.createdAt), gt(newer.id, tables.jobs.id)),
+                ),
+              ),
+            ),
+        ),
+      ),
+    )
+    .all();
+}
+
+/**
+ * Reads a required non-empty string field from a job payload.
+ *
+ * @param job - Job or recovered job containing the payload.
+ * @param key - Payload property name.
+ * @returns The string value.
+ * @throws {Error} When the property is missing or blank.
+ */
+export function requireJobPayloadString(
+  job: Pick<Job, "id" | "kind" | "payload">,
+  key: string,
+): string {
+  const value = job.payload[key];
+  if (typeof value !== "string" || value.trim() === "") {
+    throw new Error(`Job ${job.id} of kind ${job.kind} is missing its ${key}`);
+  }
+  return value;
 }

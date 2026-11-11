@@ -21,7 +21,7 @@ import {
 } from "@/databases";
 import type { Database } from "@/db";
 import { databaseContainerNameFor, type DockerEngine } from "@/docker";
-import type { Job } from "@/jobs";
+import { type Job, requireJobPayloadString } from "@/jobs";
 import { type CommandRunner, failureReason } from "@/process";
 import { getProject } from "@/projects";
 import type { SecretBox } from "@/secrets";
@@ -45,10 +45,15 @@ const BACKUP_DELETE_BATCH_SIZE = 10;
 /** Folder below the server's workspace where dumps wait between the container and the panel. */
 const DUMP_DIRECTORY = "database-dumps";
 
+type DatabaseBackupDocker = Pick<
+  DockerEngine,
+  "execInContainer" | "copyFromContainer" | "copyToContainer"
+>;
+
 /** What backing up or restoring needs on the database's server and in the panel. */
 export type DatabaseBackupDependencies = DatabaseOperation & {
   readonly database: Database;
-  readonly docker: DockerEngine;
+  readonly docker: DatabaseBackupDocker;
   readonly runner: CommandRunner;
   readonly files: ServerFiles;
   readonly workspaceDir: string;
@@ -337,11 +342,7 @@ async function cleanupRestoreDatabases(
 }
 
 function backupIdOf(job: Job): string {
-  const backupId = job.payload["backupId"];
-  if (typeof backupId !== "string" || backupId === "") {
-    throw new Error(`Job ${job.id} of kind ${job.kind} is missing its backup id`);
-  }
-  return backupId;
+  return requireJobPayloadString(job, "backupId");
 }
 
 function backupDependencies(

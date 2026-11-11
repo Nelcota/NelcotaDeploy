@@ -281,6 +281,27 @@ describe("interrupted database jobs", () => {
     expect(listDatabaseBackups(database, target).at(0)?.status).toBe("succeeded");
   });
 
+  test("preserves the specific failure reason on a recovered database job", async () => {
+    const { database, project, created, claim } = await setupDatabaseOperation();
+    const job = claim();
+
+    handleRecoveredJobs(database, createLogger("test"), [
+      {
+        id: job.id,
+        kind: "database_provision",
+        deploymentId: null,
+        taskExecutionId: null,
+        payload: { databaseId: created.id },
+        reason: "Container exited with code 137 (OOM)",
+        outcome: "failed",
+      },
+    ]);
+
+    expect(listProjectDatabases(database, project.id).at(0)?.errorMessage).toBe(
+      "Container exited with code 137 (OOM)",
+    );
+  });
+
   test("keeps a retriable backup running until its requeued job resumes", async () => {
     const { database, target, claim, finishProvision, recover } = await setupDatabaseOperation();
     finishProvision();

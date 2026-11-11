@@ -24,6 +24,7 @@ import {
 } from "./deploy-context";
 import { deploy } from "./deploy-steps";
 import { DeploymentLogWriter } from "./deployment-log-writer";
+import { buildStrategyFor } from "./image-source";
 
 const CANCEL_POLL_INTERVAL_IN_MS = 1000;
 
@@ -128,7 +129,8 @@ async function finishDeployment(
   context: DeployContext,
 ): Promise<void> {
   const { deployment, project, logs, state } = context;
-  if (state.containerNames.length === 0 && project.builder !== "compose") {
+  const strategy = buildStrategyFor(project.builder);
+  if (state.containerNames.length === 0 && strategy.managesReplicaContainers) {
     throw new Error(`Successful deployment ${deployment.id} has no container`);
   }
   logs.system("Deployment succeeded");
@@ -137,7 +139,7 @@ async function finishDeployment(
       projectId: project.id,
       currentContainerNames: state.containerNames,
       previewId: deployment.previewId,
-      keepComposeServices: project.builder === "compose",
+      keepComposeServices: strategy.managesReplicaContainers === false,
     });
   } catch (error) {
     if (error instanceof JobLeaseLostError) {
@@ -145,7 +147,7 @@ async function finishDeployment(
     }
     logs.system(`Could not retire previous containers: ${errorMessageOf(error)}`, "warn");
   }
-  if (project.builder === "compose") {
+  if (strategy.prunesOldImages === false) {
     // Compose reuses its image names; the daily cleanup removes the ones it left dangling.
     return;
   }

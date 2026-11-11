@@ -15,7 +15,7 @@ import {
 
 import { type Actor, recordAuditEvent } from "@/audit";
 import { type Database, tables, type Transaction } from "@/db";
-import { cancelQueuedJobs } from "@/jobs";
+import { cancelQueuedDeploymentJobs } from "@/jobs";
 import { getProject } from "@/projects";
 import type { PageCursor } from "@/shared/pagination";
 
@@ -142,13 +142,7 @@ export function cancelDeployment(
           })
           .where(eq(tables.deployments.id, deploymentId))
           .run();
-        const jobIds = transaction
-          .select({ id: tables.jobs.id })
-          .from(tables.jobs)
-          .where(eq(tables.jobs.deploymentId, deploymentId))
-          .all()
-          .map((job) => job.id);
-        cancelQueuedJobs(transaction, jobIds);
+        cancelQueuedDeploymentJobs(transaction, [deploymentId]);
         return "cancelled";
       }
       transaction

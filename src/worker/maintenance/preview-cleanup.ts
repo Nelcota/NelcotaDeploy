@@ -1,6 +1,6 @@
 import { listDeploymentServerIds } from "@/deployments";
 import { LABELS } from "@/docker";
-import type { Job } from "@/jobs";
+import { type Job, requireJobPayloadString } from "@/jobs";
 import { getPreview, previewRouteName } from "@/previews";
 
 import type { ServerHost } from "../server-host";
@@ -58,10 +58,7 @@ export async function runPreviewCleanupJob(
   },
   job: Job,
 ): Promise<void> {
-  const previewId = job.payload["previewId"];
-  if (typeof previewId !== "string" || previewId === "") {
-    throw new Error(`Job ${job.id} of kind ${job.kind} is missing its preview id`);
-  }
+  const previewId = requireJobPayloadString(job, "previewId");
   const { database, hosts, logger } = dependencies;
   const preview = getPreview(database, previewId);
   if (preview?.status !== "closed") {

@@ -1,8 +1,6 @@
-import { count, eq } from "drizzle-orm";
-
 import type { Actor } from "@/audit";
-import { assertProjectHasNoDatabases } from "@/databases";
-import { type Database, tables } from "@/db";
+import { assertProjectHasNoDatabases, countProjectDatabases } from "@/databases";
+import type { Database } from "@/db";
 import {
   getActiveRuntimeDeployment,
   ProjectNotApprovedError,
@@ -11,11 +9,12 @@ import {
 import { getProject } from "@/projects";
 import {
   assignProjectServer,
+  ComposeProjectMoveError,
   ProjectMoveInProgressError,
   ProjectMoveReviewChangedError,
 } from "@/servers";
-import { assertProjectHasNoVolumes } from "@/volumes";
-import { PublicError } from "@/web/server/public-error";
+import { BUILDER_CAPABILITIES } from "@/shared/schemas/project.schema";
+import { assertProjectHasNoVolumes, countProjectVolumes } from "@/volumes";
 
 type ProjectMoveRequest = {
   readonly projectId: string;
@@ -27,6 +26,7 @@ type ProjectMoveRequest = {
 
 /**
  * Reads the source revision and local resources that must be reviewed before a server move.
+ *
  * @param database - Database.
  * @param projectId - Project being reviewed.
  * @returns Current source identity, local resource counts and active production deployment.
@@ -34,35 +34,26 @@ type ProjectMoveRequest = {
  */
 export function projectMoveStatus(database: Database, projectId: string) {
   const project = getProject(database, projectId);
-  // Both counts use existing indexes whose first column is project_id.
-  const volumes = database
-    .select({ total: count() })
-    .from(tables.projectVolumes)
-    .where(eq(tables.projectVolumes.projectId, projectId))
-    .get();
-  const databases = database
-    .select({ total: count() })
-    .from(tables.projectDatabases)
-    .where(eq(tables.projectDatabases.projectId, projectId))
-    .get();
   return {
     serverId: project.serverId,
     currentDeploymentId: project.currentDeploymentId,
     updatedAt: project.updatedAt,
     deploymentsApproved: project.deploymentsApproved,
-    volumeCount: volumes?.total ?? 0,
-    databaseCount: databases?.total ?? 0,
+    volumeCount: countProjectVolumes(database, projectId),
+    databaseCount: countProjectDatabases(database, projectId),
     activeDeployment: getActiveRuntimeDeployment(database, projectId),
   };
 }
 
 /**
  * Applies a reviewed server move and queues its redeploy as one atomic change.
+ *
  * @param database - Shared synchronous database connection.
  * @param request - Destination and exact source revision that the user reviewed.
  * @param context - Authorized actor and the user requesting the redeploy.
  * @returns Destination, queued deployment and whether a move was needed.
  * @throws {ProjectNotFoundError} When the project no longer exists.
+ * @throws {ComposeProjectMoveError} When the project uses Docker Compose.
  * @throws {ProjectMoveReviewChangedError} When the reviewed source revision changed.
  * @throws {ProjectMoveInProgressError} When production already has an active deployment.
  * @throws {ProjectNotApprovedError} When a deployed project is no longer approved.
@@ -87,8 +78,8 @@ export function moveProject(
       if (project.serverId === request.serverId) {
         return { serverId: project.serverId, deploymentId: null, changed: false };
       }
-      if (project.builder === "compose") {
-        throw new PublicError("Projetos Docker Compose não podem mudar de servidor.");
+      if (BUILDER_CAPABILITIES[project.builder].movesBetweenServers === false) {
+        throw new ComposeProjectMoveError(project.id);
       }
       if (
         project.serverId !== request.expectedServerId ||

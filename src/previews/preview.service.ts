@@ -165,6 +165,36 @@ export function closePreview(
 }
 
 /**
+ * Closes every active preview of a project and queues cleanup jobs for their resources.
+ *
+ * @param database - Database or open transaction.
+ * @param projectId - Project id.
+ */
+export function closeProjectPreviews(database: Database | Transaction, projectId: string): void {
+  const now = new Date();
+  const nowIso = now.toISOString();
+  const closed = database
+    .update(tables.previews)
+    .set({ status: "closed", closedAt: nowIso, updatedAt: nowIso })
+    .where(and(eq(tables.previews.projectId, projectId), eq(tables.previews.status, "active")))
+    .returning({ id: tables.previews.id })
+    .all();
+  for (const preview of closed) {
+    enqueueJob(
+      database,
+      {
+        kind: "preview_cleanup",
+        maxAttempts: CLEANUP_MAX_ATTEMPTS,
+        projectId,
+        payload: { previewId: preview.id },
+        dedupeKey: `preview-cleanup:${preview.id}`,
+      },
+      now,
+    );
+  }
+}
+
+/**
  * Returns a preview.
  *
  * @param database - Database.

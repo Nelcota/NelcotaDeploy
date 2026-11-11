@@ -46,6 +46,14 @@ export class ProjectMoveInProgressError extends Error {
   }
 }
 
+/** Thrown when moving a Docker Compose project to another server is requested. */
+export class ComposeProjectMoveError extends Error {
+  constructor(projectId: string) {
+    super(`Docker Compose project ${projectId} cannot move between servers`);
+    this.name = "ComposeProjectMoveError";
+  }
+}
+
 /** Thrown when no server can take a new project. */
 export class NoServerAvailableError extends Error {
   constructor() {
