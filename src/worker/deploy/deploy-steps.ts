@@ -13,7 +13,7 @@ import { networkProbes } from "../probes";
 import { deployCompose } from "./compose/compose-deploy";
 import { routeTrafficTo, startContainers } from "./container-start";
 import {
-  assertNotCancelled,
+  assertDeployActive,
   type DeployContext,
   type DeployRunnerDependencies,
   MILLISECONDS_PER_SECOND,
@@ -34,7 +34,7 @@ export async function deploy(
   context: DeployContext,
 ): Promise<void> {
   const { database, docker, secretBox } = dependencies;
-  const { deployment, project, logs, signal } = context;
+  const { deployment, project, logs } = context;
   const strategy = buildStrategyFor(project.builder);
 
   // Read the fingerprints before yielding to decryption: a later edit must remain pending.
@@ -90,8 +90,7 @@ export async function deploy(
           repositoryToken,
         })
       : { imageTag: reused, detectedPort: deployment.internalPort };
-  assertNotCancelled(signal);
-  context.assertOwnership();
+  assertDeployActive(context);
 
   // Routing and the health check use the port this build found in the Dockerfile.
   const running: DeployContext =

@@ -4,7 +4,7 @@ import { recordDetectedPort } from "@/projects";
 import type { ProjectBuilder } from "@/shared/schemas/project.schema";
 
 import {
-  assertNotCancelled,
+  assertDeployActive,
   type DeployContext,
   type DeployRunnerDependencies,
   deploymentLabels,
@@ -76,8 +76,7 @@ export async function cloneRevision(
   const { database, git, config } = dependencies;
   const { deployment, project, logs, signal } = context;
 
-  context.assertOwnership();
-  assertNotCancelled(signal);
+  assertDeployActive(context);
   transitionDeployment(database, deployment.id, { to: "cloning" });
   // A redeploy or rollback that has to rebuild uses the exact commit of its source.
   const commitSha = deployment.requestedCommitSha ?? deployment.commitSha;
@@ -94,8 +93,7 @@ export async function cloneRevision(
     onLine: (line, stream) => logs.output(line, stream),
   });
   logs.system(`Checked out ${commit.sha.slice(0, DISPLAYED_SHA_LENGTH)}: ${commit.message}`);
-  context.assertOwnership();
-  assertNotCancelled(signal);
+  assertDeployActive(context);
   transitionDeployment(database, deployment.id, {
     to: "building",
     commitSha: commit.sha,
@@ -126,8 +124,7 @@ async function detectPort(
     }),
     dependencies.docker.images.exposedPorts(source.imageTag),
   ]);
-  context.assertOwnership();
-  assertNotCancelled(context.signal);
+  assertDeployActive(context);
   const declared = result.exitCode === 0 ? detectExposedPort(result.stdout) : null;
   const port = declared != null && exposed.includes(declared) ? declared : (exposed.at(0) ?? null);
   if (port == null) {
@@ -161,8 +158,7 @@ async function buildDockerfileImage(
     workspace.repositoryPath,
     project.buildContext,
   );
-  context.assertOwnership();
-  assertNotCancelled(signal);
+  assertDeployActive(context);
   // A build that outlives its lease must not overwrite the next attempt's image tag.
   const imageTag = imageTagFor(project.slug, Bun.randomUUIDv7());
   logs.system(`Building image ${imageTag} from ${project.dockerfilePath}`);

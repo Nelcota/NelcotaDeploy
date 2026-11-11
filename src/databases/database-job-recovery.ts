@@ -11,7 +11,6 @@ import {
   findDatabaseRecord,
   markDatabaseFailed,
 } from "./database-provisioning.service";
-import { getProjectDatabase } from "./database.service";
 
 const INTERRUPTION_MESSAGE = "The worker stopped while the database operation was running";
 
@@ -87,11 +86,7 @@ export function isDatabaseJobStranded(
 }
 
 function recoverProvision(database: Database, id: string, reason: string): void {
-  const record = findDatabaseRecord(database, id);
-  if (
-    record != null &&
-    getProjectDatabase(database, record.projectId, id).status === "provisioning"
-  ) {
+  if (findDatabaseRecord(database, id)?.status === "provisioning") {
     markDatabaseFailed(database, id, reason);
   }
 }
@@ -112,10 +107,7 @@ function recoverBackup(database: Database, id: string, reason: string): void {
 
 function recoverRestore(database: Database, id: string, reason: string): void {
   const backup = findDatabaseBackup(database, id);
-  if (
-    backup != null &&
-    getProjectDatabase(database, backup.projectId, backup.databaseId).status === "restoring"
-  ) {
+  if (backup != null && findDatabaseRecord(database, backup.databaseId)?.status === "restoring") {
     finishBackupRestore(database, backup, reason);
   }
 }

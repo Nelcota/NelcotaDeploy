@@ -393,7 +393,7 @@ export function assertProjectHasNoDatabases(
   database: Database | Transaction,
   projectId: string,
 ): void {
-  if (listProjectDatabases(database, projectId).length > 0) {
+  if (countProjectDatabases(database, projectId) > 0) {
     throw new ProjectHasDatabasesError(projectId);
   }
 }

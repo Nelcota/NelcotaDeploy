@@ -6,8 +6,10 @@ import {
   DatabaseServerChangedError,
   ProjectHasDatabasesError,
 } from "@/databases";
+import { RedeployUnavailableError } from "@/deployments";
 import { CloudflareApiError, DnsConfigurationError } from "@/domains";
 import { ProjectNotFoundError } from "@/projects";
+import { ComposeProjectMoveError } from "@/servers";
 import { StagingDeploymentChangedError } from "@/staging";
 import { TaskReviewChangedError } from "@/tasks";
 import { ProjectHasVolumesError, VolumeServerChangedError } from "@/volumes";
@@ -55,6 +57,15 @@ describe("toPublicError", () => {
   test("explains why a project with databases cannot move", () => {
     expect(toPublicError(new ProjectHasDatabasesError("x"))?.message).toContain(
       "não podem mudar de servidor",
+    );
+  });
+
+  test("explains why a Docker Compose project cannot move or a project without deployments cannot redeploy", () => {
+    expect(toPublicError(new ComposeProjectMoveError("x"))?.message).toBe(
+      "Projetos Docker Compose não podem mudar de servidor.",
+    );
+    expect(toPublicError(new RedeployUnavailableError("x"))?.message).toBe(
+      "Faça o primeiro deploy antes de usar o redeploy.",
     );
   });
 

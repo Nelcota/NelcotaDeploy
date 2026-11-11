@@ -369,7 +369,7 @@ export function assertProjectHasNoVolumes(
   database: Database | Transaction,
   projectId: string,
 ): void {
-  if (listProjectVolumes(database, projectId).length > 0) {
+  if (countProjectVolumes(database, projectId) > 0) {
     throw new ProjectHasVolumesError(projectId);
   }
 }
