@@ -89,7 +89,7 @@ export const tools = {
       domains: listProjectDomains(
         context.database,
         project.id,
-        getSystemSettings(context.database),
+        getSystemSettings(context.database, { includeSecrets: false }),
       ),
       containers: listProjectContainers(context.database, project.id),
     };

@@ -1,11 +1,13 @@
 import { createFileRoute } from "@tanstack/react-router";
 
 import { assertProjectPermission } from "@/access";
-import { getCurrentUser, requireUser } from "@/auth";
+import { getCurrentUser, needsTwoFactorSetup } from "@/auth";
 import { getDatabase } from "@/db";
 import { getDeployment, isTerminalStatus } from "@/deployments";
 import { createLogger } from "@/logging";
 import { listDeploymentLogs } from "@/logs";
+import { getSystemSettings } from "@/settings";
+import { authorizeHeaders } from "@/web/server/authorization";
 import { createEventStreamResponse } from "@/web/server/event-stream";
 
 const BATCH_SIZE = 500;
@@ -19,6 +21,9 @@ export const Route = createFileRoute("/api/deployments/$deploymentId/logs")({
           return new Response("Unauthorized", { status: 401 });
         }
         const database = getDatabase();
+        if (needsTwoFactorSetup(user, getSystemSettings(database, { includeSecrets: false }))) {
+          return new Response("Forbidden", { status: 403 });
+        }
         let projectId: string;
         try {
           projectId = getDeployment(database, params.deploymentId).projectId;
@@ -34,7 +39,7 @@ export const Route = createFileRoute("/api/deployments/$deploymentId/logs")({
           request,
           async (afterId) => {
             // Checked on every read, so removing a member ends their open stream.
-            const reader = await requireUser(request.headers, "project:read");
+            const reader = await authorizeHeaders(request.headers, "project:read");
             assertProjectPermission(database, reader, {
               projectId,
               permission: "project:read",

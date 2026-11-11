@@ -10,7 +10,7 @@ import { PublicError } from "@/web/server/public-error";
 /** Sends a test message to the saved alert webhook. */
 export const sendTestAlertFn = createServerFn({ method: "POST" }).handler(async () => {
   await authorize("settings:write");
-  const webhookUrl = getSystemSettings(getDatabase()).alertWebhookUrl;
+  const webhookUrl = getSystemSettings(getDatabase(), { includeSecrets: true }).alertWebhookUrl;
   if (webhookUrl == null) {
     throw new PublicError("Salve a URL do webhook antes de enviar um teste.");
   }

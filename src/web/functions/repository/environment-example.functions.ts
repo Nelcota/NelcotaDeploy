@@ -18,7 +18,7 @@ export const getEnvironmentExampleFn = createServerFn({ method: "GET" })
     }),
   )
   .handler(async ({ data }) => {
-    await authorizeProject("environment:write", data.projectId);
+    const user = await authorizeProject("environment:write", data.projectId);
     const database = getDatabase();
     const project = getProject(database, data.projectId);
     const secretBox = await getSecretBox();
@@ -32,6 +32,7 @@ export const getEnvironmentExampleFn = createServerFn({ method: "GET" })
         dockerfilePath: project.dockerfilePath,
         path: data.path,
         token,
+        allowGitHubApp: user.role === "admin" || project.deploymentsApproved,
       },
     );
   });

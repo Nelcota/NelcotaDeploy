@@ -15,8 +15,12 @@ const received: unknown[] = [];
 const webhook = Bun.serve({
   port: 0,
   async fetch(request) {
+    const pathname = new URL(request.url).pathname;
+    if (pathname === "/redirect") {
+      return Response.redirect("http://127.0.0.1:1/internal", 307);
+    }
     received.push(await request.json());
-    return new Response(null, { status: new URL(request.url).pathname === "/ok" ? 200 : 500 });
+    return new Response(null, { status: pathname === "/ok" ? 200 : 500 });
   },
 });
 const silent = pino({ level: "silent" });
@@ -57,6 +61,14 @@ describe("sendAlert", () => {
 
   test("throws AlertDeliveryError when the webhook cannot be reached", async () => {
     const error = await sendAlert("http://127.0.0.1:1/ok", ALERT).catch(
+      (caught: unknown) => caught,
+    );
+
+    expect(error).toBeInstanceOf(AlertDeliveryError);
+  });
+
+  test("refuses to follow webhook redirects", async () => {
+    const error = await sendAlert(`${webhook.url.origin}/redirect`, ALERT).catch(
       (caught: unknown) => caught,
     );
 

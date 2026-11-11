@@ -1,10 +1,12 @@
 import { createFileRoute } from "@tanstack/react-router";
 
 import { assertProjectPermission } from "@/access";
-import { getCurrentUser, requireUser } from "@/auth";
+import { getCurrentUser, needsTwoFactorSetup } from "@/auth";
 import { getDatabase } from "@/db";
 import { createLogger } from "@/logging";
 import { listRuntimeLogs } from "@/logs";
+import { getSystemSettings } from "@/settings";
+import { authorizeHeaders } from "@/web/server/authorization";
 import { createEventStreamResponse, readCursor } from "@/web/server/event-stream";
 
 const BATCH_SIZE = 500;
@@ -19,6 +21,9 @@ export const Route = createFileRoute("/api/projects/$projectId/runtime-logs")({
           return new Response("Unauthorized", { status: 401 });
         }
         const database = getDatabase();
+        if (needsTwoFactorSetup(user, getSystemSettings(database, { includeSecrets: false }))) {
+          return new Response("Forbidden", { status: 403 });
+        }
         try {
           // Non-members get the same answer as for a missing project.
           assertProjectPermission(database, user, {
@@ -34,7 +39,7 @@ export const Route = createFileRoute("/api/projects/$projectId/runtime-logs")({
           request,
           async (afterId) => {
             // Checked on every read, so removing a member ends their open stream.
-            const reader = await requireUser(request.headers, "project:read");
+            const reader = await authorizeHeaders(request.headers, "project:read");
             assertProjectPermission(database, reader, {
               projectId: params.projectId,
               permission: "project:read",

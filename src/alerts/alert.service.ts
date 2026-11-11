@@ -46,6 +46,7 @@ export async function sendAlert(
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(alertPayload(alert)),
+      redirect: "error",
       signal: AbortSignal.timeout(DELIVERY_TIMEOUT_IN_MS),
     });
   } catch (error) {
@@ -66,7 +67,7 @@ export async function sendAlert(
  * @param alert - The alert.
  */
 export async function notify(database: Database, logger: Logger, alert: Alert): Promise<void> {
-  const webhookUrl = getSystemSettings(database).alertWebhookUrl;
+  const webhookUrl = getSystemSettings(database, { includeSecrets: true }).alertWebhookUrl;
   if (webhookUrl == null) {
     return;
   }

@@ -16,7 +16,11 @@ export const listPreviewsFn = createServerFn({ method: "GET" })
     const database = getDatabase();
     const project = getProject(database, data.projectId);
     return {
-      previews: summarizePreviews(database, project, getSystemSettings(database)),
+      previews: summarizePreviews(
+        database,
+        project,
+        getSystemSettings(database, { includeSecrets: false }),
+      ),
       limit: MAX_ACTIVE_PREVIEWS,
     };
   });

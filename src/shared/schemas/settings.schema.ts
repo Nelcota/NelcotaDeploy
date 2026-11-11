@@ -33,13 +33,22 @@ export const systemSettingsSchema = z.object({
 });
 
 const MAX_URL_LENGTH = 2000;
+const INTERNAL_HOST_SUFFIX = /(?:^|\.)(?:localhost|local|internal)$/i;
 
 function isWebhookUrl(value: string): boolean {
   if (value.length > MAX_URL_LENGTH || URL.canParse(value) === false) {
     return false;
   }
-  const protocol = new URL(value).protocol;
-  return protocol === "https:" || protocol === "http:";
+  const url = new URL(value);
+  const hostname = url.hostname.toLowerCase();
+  return (
+    url.protocol === "https:" &&
+    url.username === "" &&
+    url.password === "" &&
+    z.ipv4().safeParse(hostname).success === false &&
+    isValidHostname(hostname) &&
+    INTERNAL_HOST_SUFFIX.test(hostname) === false
+  );
 }
 
 export type SystemSettings = z.output<typeof systemSettingsSchema>;

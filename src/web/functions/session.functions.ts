@@ -10,12 +10,11 @@ import {
   needsTwoFactorSetup,
   removeUserAvatar,
   saveUserAvatar,
-  UnauthenticatedError,
 } from "@/auth";
 import { getDatabase } from "@/db";
 import { getSystemSettings } from "@/settings";
 import { firstAdminSchema } from "@/shared/schemas/user.schema";
-import { currentUser } from "@/web/server/authorization";
+import { authorize, currentUser } from "@/web/server/authorization";
 import { uiPermissionsOf } from "@/web/server/ui-permissions";
 
 /**
@@ -29,7 +28,10 @@ export const getSessionFn = createServerFn({ method: "GET" }).handler(async () =
   }
   const permissions = uiPermissionsOf(user.role);
   // The panel shows only the setup screen; every server function refuses the user meanwhile.
-  const twoFactorSetupRequired = needsTwoFactorSetup(user, getSystemSettings(getDatabase()));
+  const twoFactorSetupRequired = needsTwoFactorSetup(
+    user,
+    getSystemSettings(getDatabase(), { includeSecrets: false }),
+  );
   return { ...user, permissions, twoFactorSetupRequired };
 });
 
@@ -46,10 +48,7 @@ const MAX_AVATAR_BASE64_LENGTH =
 export const updateAvatarFn = createServerFn({ method: "POST" })
   .validator(z.object({ imageBase64: z.base64().min(1).max(MAX_AVATAR_BASE64_LENGTH) }))
   .handler(async ({ data }) => {
-    const user = await currentUser();
-    if (user == null) {
-      throw new UnauthenticatedError();
-    }
+    const user = await authorize("project:read");
     return await saveUserAvatar(getDatabase(), {
       userId: user.id,
       bytes: Buffer.from(data.imageBase64, "base64"),
@@ -58,10 +57,7 @@ export const updateAvatarFn = createServerFn({ method: "POST" })
 
 /** Removes the signed-in user's profile photo. */
 export const removeAvatarFn = createServerFn({ method: "POST" }).handler(async () => {
-  const user = await currentUser();
-  if (user == null) {
-    throw new UnauthenticatedError();
-  }
+  const user = await authorize("project:read");
   removeUserAvatar(getDatabase(), user.id);
 });
 

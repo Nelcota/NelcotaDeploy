@@ -1,6 +1,8 @@
 import { timingSafeEqual } from "node:crypto";
 
-import { type CurrentUser, getCurrentUser } from "@/auth";
+import { type CurrentUser, getCurrentUser, needsTwoFactorSetup } from "@/auth";
+import { getDatabase } from "@/db";
+import { getSystemSettings } from "@/settings";
 import { hasPermission } from "@/shared/roles";
 
 /** Cookie that ties GitHub's callback to the browser that started the app creation. */
@@ -55,7 +57,11 @@ export function failurePage(message: string, status: number): Response {
  */
 export async function settingsEditor(headers: Headers): Promise<CurrentUser | null> {
   const user = await getCurrentUser(headers);
-  if (user == null || hasPermission(user.role, "settings:write") === false) {
+  if (
+    user == null ||
+    hasPermission(user.role, "settings:write") === false ||
+    needsTwoFactorSetup(user, getSystemSettings(getDatabase(), { includeSecrets: false }))
+  ) {
     return null;
   }
   return user;
