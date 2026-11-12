@@ -13,7 +13,7 @@ const token = requireConfigValue("NELCOTA_MCP_TOKEN");
 const database = getDatabase();
 if (verifyApiToken(database, token) == null) {
   process.stderr.write(
-    "NELCOTA_MCP_TOKEN is invalid, revoked or expired. Create a token in Configurações > Tokens de API.\n",
+    "NELCOTA_MCP_TOKEN is invalid, revoked or expired. Create an API token at /settings/tokens.\n",
   );
   process.exit(1);
 }

@@ -47,26 +47,26 @@ function pagesFor(
   const project = `/projects/${projectId}`;
   return [
     { name: "login", path: "/login", signedIn: false },
-    { name: "painel", path: "/", signedIn: true },
+    { name: "dashboard", path: "/", signedIn: true },
     { name: "deployment-activity", path: "/activity", signedIn: true },
     { name: "deployment-statistics", path: "/deployment-statistics", signedIn: true },
     { name: "server-metrics", path: "/server-metrics", signedIn: true },
-    { name: "projetos", path: "/projects", signedIn: true },
-    { name: "novo-projeto", path: "/projects/new", signedIn: true },
-    { name: "deploys", path: "/deployments", signedIn: true },
-    { name: "projeto-visao-geral", path: project, signedIn: true },
-    { name: "projeto-deploys", path: `${project}/deployments`, signedIn: true },
-    { name: "projeto-deploy", path: `${project}/deployments/${deploymentId}`, signedIn: true },
+    { name: "projects", path: "/projects", signedIn: true },
+    { name: "new-project", path: "/projects/new", signedIn: true },
+    { name: "deployments", path: "/deployments", signedIn: true },
+    { name: "project-overview", path: project, signedIn: true },
+    { name: "project-deployments", path: `${project}/deployments`, signedIn: true },
+    { name: "project-deployment", path: `${project}/deployments/${deploymentId}`, signedIn: true },
     { name: "build-logs", path: `${project}/deployments/${deploymentId}/logs`, signedIn: true },
     { name: "project-previews", path: `${project}/previews`, signedIn: true },
-    { name: "projeto-logs", path: `${project}/logs`, signedIn: true },
-    { name: "projeto-metricas", path: `${project}/metrics`, signedIn: true },
-    { name: "projeto-variaveis", path: `${project}/environment`, signedIn: true },
+    { name: "project-logs", path: `${project}/logs`, signedIn: true },
+    { name: "project-metrics", path: `${project}/metrics`, signedIn: true },
+    { name: "project-environment", path: `${project}/environment`, signedIn: true },
     { name: "environment-import", path: `${project}/environment/import`, signedIn: true },
     { name: "environment-repository", path: `${project}/environment/repository`, signedIn: true },
-    { name: "projeto-dominios", path: `${project}/domains`, signedIn: true },
+    { name: "project-domains", path: `${project}/domains`, signedIn: true },
     { name: "project-dns", path: `${project}/dns`, signedIn: true },
-    { name: "projeto-bancos", path: `${project}/databases`, signedIn: true },
+    { name: "project-databases", path: `${project}/databases`, signedIn: true },
     {
       name: "database-backups",
       path: `${project}/databases/${resources.databaseId}/backups`,
@@ -77,8 +77,8 @@ function pagesFor(
       path: `${project}/databases/${resources.databaseId}/restore`,
       signedIn: true,
     },
-    { name: "projeto-tasks", path: `${project}/tasks`, signedIn: true },
-    { name: "projeto-console", path: `${project}/console`, signedIn: true },
+    { name: "project-tasks", path: `${project}/tasks`, signedIn: true },
+    { name: "project-console", path: `${project}/console`, signedIn: true },
     { name: "task-history", path: `${project}/tasks/${resources.taskId}/history`, signedIn: true },
     ...[
       "identity",
@@ -94,16 +94,16 @@ function pagesFor(
       path: `${project}/settings/${section}`,
       signedIn: true,
     })),
-    { name: "admin-organizacao", path: "/settings/organization", signedIn: true },
+    { name: "admin-organization", path: "/settings/organization", signedIn: true },
     { name: "admin-domains", path: "/settings/domains", signedIn: true },
     { name: "admin-alerts", path: "/settings/alerts", signedIn: true },
-    { name: "admin-usuarios", path: "/settings/users", signedIn: true },
-    { name: "admin-servidores", path: "/settings/servers", signedIn: true },
-    { name: "admin-sistema", path: "/settings/system", signedIn: true },
+    { name: "admin-users", path: "/settings/users", signedIn: true },
+    { name: "admin-servers", path: "/settings/servers", signedIn: true },
+    { name: "admin-system", path: "/settings/system", signedIn: true },
     { name: "admin-github", path: "/settings/integrations/github", signedIn: true },
     { name: "admin-cloudflare", path: "/settings/integrations/cloudflare", signedIn: true },
     { name: "admin-tokens", path: "/settings/tokens", signedIn: true },
-    { name: "admin-auditoria", path: "/settings/audit", signedIn: true },
+    { name: "admin-audit", path: "/settings/audit", signedIn: true },
     { name: "webhook-deliveries", path: "/settings/webhooks", signedIn: true },
     { name: "project-settings-team", path: `${project}/settings/access/team`, signedIn: true },
     {
@@ -118,15 +118,23 @@ function pagesFor(
 /** Modals, opened by clicking the button named in `opens` on their page. */
 function dialogsFor(project: string, databaseId: string) {
   return [
-    ["modal-adicionar-servidor", "/settings/servers", "Adicionar servidor"],
-    ["modal-remover-servidor", "/settings/servers", "Remover servidor do painel"],
-    ["modal-novo-token", "/settings/tokens", "Configurar token de API"],
-    ["modal-novo-usuario", "/settings/users", "Novo usuário"],
-    ["modal-nova-variavel", `${project}/environment`, "Nova variável"],
-    ["modal-importar-env", `${project}/environment/import`, "Selecionar ou colar arquivo .env"],
-    ["modal-nova-task", `${project}/tasks`, "Nova tarefa"],
-    ["modal-restaurar-banco", `${project}/databases/${databaseId}/restore`, "Revisar restauração"],
-    ["modal-busca", "/", "Buscar projetos e páginas"],
+    ["add-server-dialog", "/settings/servers", "Adicionar servidor"],
+    ["remove-server-dialog", "/settings/servers", "Remover servidor do painel"],
+    ["create-token-dialog", "/settings/tokens", "Configurar token de API"],
+    ["create-user-dialog", "/settings/users", "Novo usuário"],
+    ["create-variable-dialog", `${project}/environment`, "Nova variável"],
+    [
+      "import-environment-dialog",
+      `${project}/environment/import`,
+      "Selecionar ou colar arquivo .env",
+    ],
+    ["create-task-dialog", `${project}/tasks`, "Nova tarefa"],
+    [
+      "restore-database-dialog",
+      `${project}/databases/${databaseId}/restore`,
+      "Revisar restauração",
+    ],
+    ["search-dialog", "/", "Buscar projetos e páginas"],
   ].map(([name = "", path = "", opens = ""]) => ({ name, path, signedIn: true, opens }));
 }
 
@@ -188,7 +196,7 @@ async function signIn(page: Page, email: string, password: string): Promise<void
   await page.getByRole("button", { name: "Entrar" }).click();
   try {
     await page.waitForURL(`${BASE_URL}/`);
-    await page.waitForLoadState("networkidle");
+    await page.locator("main#main").waitFor();
   } catch (error) {
     await page.screenshot({ path: join(OUTPUT_DIRECTORY, "login-failed.png") });
     const shown = await page
@@ -207,14 +215,21 @@ type PageEntry = {
 };
 
 async function capture(page: Page, directory: string, entry: PageEntry): Promise<void> {
-  await page.goto(`${BASE_URL}${entry.path}`);
-  await page.waitForTimeout(SETTLE_DELAY_IN_MS);
+  const url = `${BASE_URL}${entry.path}`;
   const opens = entry.opens ?? null;
+  // The sign-in redirect already loads the dashboard. Reloading cancels its pending requests.
+  if (opens != null || page.url() !== url) {
+    await page.goto(url);
+  }
+
+  await page.waitForTimeout(SETTLE_DELAY_IN_MS);
+
   if (opens != null) {
     await page.getByRole("button", { name: opens, exact: true }).first().click();
     await page.getByRole("dialog").or(page.getByRole("alertdialog")).first().waitFor();
     await page.waitForTimeout(SETTLE_DELAY_IN_MS);
   }
+
   // A modal sits over the viewport, so it is shot as the user sees it.
   await page.screenshot({ path: join(directory, `${entry.name}.png`), fullPage: opens == null });
 }
@@ -301,9 +316,9 @@ async function reviewTheme(run: ReviewRun, theme: Theme): Promise<Finding[]> {
 
 function reportOf(findings: readonly Finding[]): string {
   if (findings.length === 0) {
-    return "# Revisão de interface\n\nNenhum problema de acessibilidade encontrado.\n";
+    return "# Interface review\n\nNo accessibility issues found.\n";
   }
-  const lines = ["# Revisão de interface", "", `${findings.length} problemas encontrados.`, ""];
+  const lines = ["# Interface review", "", `Accessibility findings (${findings.length})`, ""];
   for (const finding of findings) {
     lines.push(
       `- **${finding.impact}** · ${finding.page} (${finding.theme}) · \`${finding.rule}\`: ${finding.help}`,
