@@ -1,4 +1,9 @@
-import { type CommandRunner, type ProcessResult, type RunProcessOptions } from "@/process";
+import {
+  type CommandRunner,
+  failureReason,
+  type ProcessResult,
+  type RunProcessOptions,
+} from "@/process";
 
 import { EXEC_SCRIPT, STOP_EXEC_SCRIPT } from "./docker-exec-scripts";
 import { DockerCommandError, InvalidDockerArgumentError } from "./docker.errors";
@@ -94,7 +99,7 @@ export async function runContainerExec(
       .then((result) => {
         if (result.exitCode !== 0) {
           state.failure = new DockerCommandError(
-            "Could not stop the container command and its descendants",
+            `Could not stop the container command and its descendants: ${failureReason(result)}`,
             result.exitCode,
           );
         }

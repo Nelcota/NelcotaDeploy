@@ -16,8 +16,8 @@ report_process
 wait "$!"
 `;
 
-// /proc/.../children lists direct children. Freeze each parent before visiting its children
-// so it cannot spawn more or reap a child whose PID could then be reused.
+// Freeze each parent before visiting its children so it cannot spawn more or reap a child
+// whose PID could then be reused. Kernels without the children file still expose each PPID.
 // https://www.kernel.org/doc/html/latest/filesystems/proc.html
 export const STOP_EXEC_SCRIPT = `
 root_pid=$1
@@ -45,6 +45,19 @@ if [ "$1" != "$expected_start" ]; then
   kill -CONT "$root_pid" 2>/dev/null
   exit 0
 fi
+proc_children() (
+  parent=$1
+  for stat_file in /proc/[0-9]*/stat; do
+    if IFS= read -r process_stat 2>/dev/null < "$stat_file"; then
+      process_fields=\${process_stat##*) }
+      set -- $process_fields
+      if [ "$2" = "$parent" ]; then
+        child=\${stat_file%/stat}
+        printf '%s\\n' "\${child##*/}"
+      fi
+    fi
+  done
+)
 stop_tree() {
   if kill -STOP "$1" 2>/dev/null; then
     :
@@ -62,18 +75,20 @@ stop_tree() {
         stop_tree "$child" || return 125
       done
     done
-    if kill -KILL "$1" 2>/dev/null; then
-      return 0
-    fi
-    if [ -d /proc/"$1" ]; then
-      printf 'Cannot kill a command descendant\\n' >&2
-      return 125
-    fi
+  else
+    children=$(proc_children "$1") || return 125
+    for child in $children; do
+      stop_tree "$child" || return 125
+    done
+  fi
+  if kill -KILL "$1" 2>/dev/null; then
     return 0
   fi
-  kill -CONT "$1" 2>/dev/null
-  printf 'Cannot enumerate command descendants\\n' >&2
-  return 125
+  if [ -d /proc/"$1" ]; then
+    printf 'Cannot kill a command descendant\\n' >&2
+    return 125
+  fi
+  return 0
 }
 stop_tree "$root_pid"
 `;
