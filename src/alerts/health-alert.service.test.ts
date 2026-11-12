@@ -24,7 +24,7 @@ describe("findHealthProblems", () => {
     const [problem] = findHealthProblems({ ...nothing, apps });
 
     expect(problem?.key).toBe("app:p1");
-    expect(problem?.title).toBe("Aplicação fora do ar");
+    expect(problem?.title).toBe("Application down");
   });
 
   test("reports a live application whose container is gone", () => {
@@ -33,7 +33,7 @@ describe("findHealthProblems", () => {
       apps: [{ ...healthyApp, container: null }],
     });
 
-    expect(problem?.title).toBe("Aplicação fora do ar");
+    expect(problem?.title).toBe("Application down");
   });
 
   test("reports an application in a restart loop", () => {
@@ -41,7 +41,7 @@ describe("findHealthProblems", () => {
 
     const [problem] = findHealthProblems({ ...nothing, apps });
 
-    expect(problem?.title).toBe("Aplicação reiniciando");
+    expect(problem?.title).toBe("Application restarting");
   });
 
   test("reports a database whose container is not running", () => {
@@ -52,7 +52,7 @@ describe("findHealthProblems", () => {
     const [problem] = findHealthProblems({ ...nothing, databases });
 
     expect(problem?.key).toBe("database:d1");
-    expect(problem?.text).toBe("O PostgreSQL de API não está rodando.");
+    expect(problem?.text).toBe("The PostgreSQL database for API is not running.");
   });
 
   test("reports a disk at 85% or more", () => {
@@ -62,7 +62,7 @@ describe("findHealthProblems", () => {
 
     const [problem] = findHealthProblems({ ...nothing, disks });
 
-    expect(problem?.text).toBe("O disco de vps-1 está 90% ocupado.");
+    expect(problem?.text).toBe("Disk usage on vps-1 is at 90%.");
   });
 
   test("ignores a disk below 85%", () => {
@@ -81,7 +81,11 @@ describe("findHealthProblems", () => {
 });
 
 describe("reconcileHealthAlerts", () => {
-  const problem = { key: "app:p1", title: "Aplicação fora do ar", text: "O contêiner de API…" };
+  const problem = {
+    key: "app:p1",
+    title: "Application down",
+    text: "The API container is not running.",
+  };
 
   test("opens a new problem once", () => {
     const database = openMemoryDatabase();

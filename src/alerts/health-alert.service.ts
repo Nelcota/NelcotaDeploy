@@ -43,15 +43,15 @@ function appProblem(app: AppHealth): HealthProblem | null {
   if (app.container?.state !== "running") {
     return {
       key,
-      title: "Aplicação fora do ar",
-      text: `O contêiner de ${app.projectName} não está rodando.`,
+      title: "Application down",
+      text: `The container for ${app.projectName} is not running.`,
     };
   }
   if (app.container.restartCount >= RESTART_LOOP_THRESHOLD) {
     return {
       key,
-      title: "Aplicação reiniciando",
-      text: `O contêiner de ${app.projectName} já reiniciou ${app.container.restartCount} vezes. Veja os logs.`,
+      title: "Application restarting",
+      text: `The container for ${app.projectName} has restarted ${app.container.restartCount} times. Check its logs.`,
     };
   }
   return null;
@@ -67,8 +67,8 @@ function diskProblem(disk: DiskHealth): HealthProblem | null {
   }
   return {
     key: `disk:${disk.serverId}`,
-    title: "Disco quase cheio",
-    text: `O disco de ${disk.serverName} está ${Math.round(usage * PERCENT)}% ocupado.`,
+    title: "Disk almost full",
+    text: `Disk usage on ${disk.serverName} is at ${Math.round(usage * PERCENT)}%.`,
   };
 }
 
@@ -87,8 +87,8 @@ export function findHealthProblems(input: {
     .filter((database) => database.containerRunning === false)
     .map((database) => ({
       key: `database:${database.databaseId}`,
-      title: "Banco de dados parado",
-      text: `O ${database.engineLabel} de ${database.projectName} não está rodando.`,
+      title: "Database down",
+      text: `The ${database.engineLabel} database for ${database.projectName} is not running.`,
     }));
   return [
     ...input.apps.map(appProblem).filter((problem) => problem != null),

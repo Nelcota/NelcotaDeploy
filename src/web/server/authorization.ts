@@ -3,16 +3,43 @@ import { getRequest } from "@tanstack/react-start/server";
 import { accessibleProjectIds, assertProjectPermission } from "@/access";
 import {
   type CurrentUser,
+  ForbiddenError,
   getCurrentUser,
   needsTwoFactorSetup,
   requireUser,
   TwoFactorRequiredError,
+  UnauthenticatedError,
 } from "@/auth";
 import { getDatabase } from "@/db";
 import { DeploymentNotFoundError, getDeployment } from "@/deployments";
 import { ProjectNotFoundError } from "@/projects";
 import { getSystemSettings } from "@/settings";
 import type { Permission } from "@/shared/roles";
+
+const NO_STORE = { "Cache-Control": "no-store" };
+
+/**
+ * Converts an expected access denial into an HTTP response for a raw route.
+ *
+ * @param error - Failure raised while checking access.
+ * @returns The denial, with inaccessible resources indistinguishable from missing ones.
+ * @throws The original error when it is outside the access policy.
+ */
+export function accessErrorResponse(error: unknown): Response {
+  if (error instanceof UnauthenticatedError) {
+    return new Response("Unauthorized", { status: 401, headers: NO_STORE });
+  }
+
+  if (error instanceof ForbiddenError || error instanceof TwoFactorRequiredError) {
+    return new Response("Forbidden", { status: 403, headers: NO_STORE });
+  }
+
+  if (error instanceof ProjectNotFoundError || error instanceof DeploymentNotFoundError) {
+    return new Response("Not found", { status: 404, headers: NO_STORE });
+  }
+
+  throw error;
+}
 
 /**
  * Checks the session in the given headers and a permission of the user's global role.

@@ -144,24 +144,36 @@ export const tools = {
   },
 
   deployProject(context: McpToolContext, input: z.infer<typeof toolSchemas.deployProject>) {
-    const actor = authorize(context, "deploy");
-    const project = findProject(context.database, input.project);
-    return requestDeployment(context.database, {
-      projectId: project.id,
-      trigger: "mcp",
-      actor,
-      triggeredByUserId: null,
-      commitSha: input.commitSha ?? null,
-    });
+    const { database } = context;
+    return database.transaction(
+      () => {
+        const actor = authorize(context, "deploy");
+        const project = findProject(database, input.project);
+        return requestDeployment(database, {
+          projectId: project.id,
+          trigger: "mcp",
+          actor,
+          triggeredByUserId: null,
+          commitSha: input.commitSha ?? null,
+        });
+      },
+      { behavior: "immediate" },
+    );
   },
 
   restartProject(context: McpToolContext, input: z.infer<typeof toolSchemas.restartProject>) {
-    const actor = authorize(context, "deploy");
-    const project = findProject(context.database, input.project);
-    return requestContainerAction(context.database, {
-      projectId: project.id,
-      action: "restart",
-      actor,
-    });
+    const { database } = context;
+    return database.transaction(
+      () => {
+        const actor = authorize(context, "deploy");
+        const project = findProject(database, input.project);
+        return requestContainerAction(database, {
+          projectId: project.id,
+          action: "restart",
+          actor,
+        });
+      },
+      { behavior: "immediate" },
+    );
   },
 };

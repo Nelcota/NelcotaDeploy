@@ -1,14 +1,39 @@
 import { type CallToolResult, McpServer } from "@modelcontextprotocol/server";
 
+import {
+  DeploymentNotFoundError,
+  NoActiveContainerError,
+  ProjectNotApprovedError,
+} from "@/deployments";
+import { createLogger } from "@/logging";
+import { ProjectNotFoundError } from "@/projects";
+
 import type { McpToolContext } from "./mcp-authorization";
 import { tools, toolSchemas } from "./mcp-tools";
+import { McpAuthorizationError } from "./mcp.errors";
+
+function toolErrorMessage(error: unknown): string {
+  if (
+    error instanceof McpAuthorizationError ||
+    error instanceof DeploymentNotFoundError ||
+    error instanceof ProjectNotFoundError ||
+    error instanceof ProjectNotApprovedError ||
+    error instanceof NoActiveContainerError
+  ) {
+    return error.message;
+  }
+
+  // Database errors can include SQL and its bound parameters.
+  const errorType = error instanceof Error ? error.name : typeof error;
+  createLogger("mcp").error({ errorType }, "MCP tool failed");
+  return "The tool could not complete the operation";
+}
 
 function result(run: () => unknown): CallToolResult {
   try {
     return { content: [{ type: "text", text: JSON.stringify(run(), null, 2) }] };
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Unknown error";
-    return { isError: true, content: [{ type: "text", text: message }] };
+    return { isError: true, content: [{ type: "text", text: toolErrorMessage(error) }] };
   }
 }
 

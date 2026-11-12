@@ -15,8 +15,8 @@ export const sendTestAlertFn = createServerFn({ method: "POST" }).handler(async 
     throw new PublicError("Salve a URL do webhook antes de enviar um teste.");
   }
   await sendAlert(webhookUrl, {
-    title: "Teste",
-    text: "Os alertas do Nelcota Deploy vão chegar aqui.",
+    title: "Test alert",
+    text: "Nelcota Deploy alerts will appear here.",
     link: getConfig().PUBLIC_URL,
   });
 });

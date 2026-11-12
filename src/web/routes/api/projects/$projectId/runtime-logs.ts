@@ -1,12 +1,10 @@
 import { createFileRoute } from "@tanstack/react-router";
 
 import { assertProjectPermission } from "@/access";
-import { getCurrentUser, needsTwoFactorSetup } from "@/auth";
 import { getDatabase } from "@/db";
 import { createLogger } from "@/logging";
 import { listRuntimeLogs } from "@/logs";
-import { getSystemSettings } from "@/settings";
-import { authorizeHeaders } from "@/web/server/authorization";
+import { accessErrorResponse, authorizeHeaders } from "@/web/server/authorization";
 import { createEventStreamResponse, readCursor } from "@/web/server/event-stream";
 
 const BATCH_SIZE = 500;
@@ -16,22 +14,16 @@ export const Route = createFileRoute("/api/projects/$projectId/runtime-logs")({
   server: {
     handlers: {
       GET: async ({ request, params }) => {
-        const user = await getCurrentUser(request.headers);
-        if (user == null) {
-          return new Response("Unauthorized", { status: 401 });
-        }
         const database = getDatabase();
-        if (needsTwoFactorSetup(user, getSystemSettings(database, { includeSecrets: false }))) {
-          return new Response("Forbidden", { status: 403 });
-        }
         try {
+          const user = await authorizeHeaders(request.headers, "project:read");
           // Non-members get the same answer as for a missing project.
           assertProjectPermission(database, user, {
             projectId: params.projectId,
             permission: "project:read",
           });
-        } catch {
-          return new Response("Not found", { status: 404 });
+        } catch (error) {
+          return accessErrorResponse(error);
         }
         const deploymentId = new URL(request.url).searchParams.get("deploymentId") ?? undefined;
         const firstConnection = readCursor(request) === 0;

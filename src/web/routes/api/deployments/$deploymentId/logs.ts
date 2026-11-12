@@ -1,13 +1,11 @@
 import { createFileRoute } from "@tanstack/react-router";
 
 import { assertProjectPermission } from "@/access";
-import { getCurrentUser, needsTwoFactorSetup } from "@/auth";
 import { getDatabase } from "@/db";
 import { getDeployment, isTerminalStatus } from "@/deployments";
 import { createLogger } from "@/logging";
 import { listDeploymentLogs } from "@/logs";
-import { getSystemSettings } from "@/settings";
-import { authorizeHeaders } from "@/web/server/authorization";
+import { accessErrorResponse, authorizeHeaders } from "@/web/server/authorization";
 import { createEventStreamResponse } from "@/web/server/event-stream";
 
 const BATCH_SIZE = 500;
@@ -16,24 +14,18 @@ export const Route = createFileRoute("/api/deployments/$deploymentId/logs")({
   server: {
     handlers: {
       GET: async ({ request, params }) => {
-        const user = await getCurrentUser(request.headers);
-        if (user == null) {
-          return new Response("Unauthorized", { status: 401 });
-        }
         const database = getDatabase();
-        if (needsTwoFactorSetup(user, getSystemSettings(database, { includeSecrets: false }))) {
-          return new Response("Forbidden", { status: 403 });
-        }
         let projectId: string;
         try {
+          const user = await authorizeHeaders(request.headers, "project:read");
           projectId = getDeployment(database, params.deploymentId).projectId;
           // Non-members get the same answer as for a missing deployment.
           assertProjectPermission(database, user, {
             projectId,
             permission: "project:read",
           });
-        } catch {
-          return new Response("Not found", { status: 404 });
+        } catch (error) {
+          return accessErrorResponse(error);
         }
         return createEventStreamResponse(
           request,

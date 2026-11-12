@@ -78,35 +78,51 @@ export function createApiToken(
 export function verifyApiToken(
   database: Database,
   token: string,
-  now: Date = new Date(),
+  now?: Date,
 ): VerifiedApiToken | null {
   if (token.startsWith(TOKEN_PREFIX) === false) {
     return null;
   }
-  const row = database
-    .select({
-      id: tables.apiTokens.id,
-      name: tables.apiTokens.name,
-      scopes: tables.apiTokens.scopes,
-      expiresAt: tables.apiTokens.expiresAt,
-    })
-    .from(tables.apiTokens)
-    .where(
-      and(eq(tables.apiTokens.tokenHash, hashToken(token)), isNull(tables.apiTokens.revokedAt)),
-    )
-    .get();
-  if (row == null) {
-    return null;
-  }
-  if (row.expiresAt != null && row.expiresAt <= now.toISOString()) {
-    return null;
-  }
-  database
-    .update(tables.apiTokens)
-    .set({ lastUsedAt: now.toISOString() })
-    .where(eq(tables.apiTokens.id, row.id))
-    .run();
-  return { id: row.id, name: row.name, scopes: row.scopes };
+  const tokenHash = hashToken(token);
+  return database.transaction(
+    (transaction) => {
+      const verifiedAt = now ?? new Date();
+      const nowInMs = verifiedAt.getTime();
+      if (Number.isFinite(nowInMs) === false) {
+        return null;
+      }
+
+      const row = transaction
+        .select({
+          id: tables.apiTokens.id,
+          name: tables.apiTokens.name,
+          scopes: tables.apiTokens.scopes,
+          expiresAt: tables.apiTokens.expiresAt,
+        })
+        .from(tables.apiTokens)
+        .where(and(eq(tables.apiTokens.tokenHash, tokenHash), isNull(tables.apiTokens.revokedAt)))
+        .get();
+      if (row == null) {
+        return null;
+      }
+
+      const { expiresAt, ...verified } = row;
+      if (expiresAt != null) {
+        const expiryInMs = Date.parse(expiresAt);
+        if (Number.isFinite(expiryInMs) === false || expiryInMs <= nowInMs) {
+          return null;
+        }
+      }
+
+      transaction
+        .update(tables.apiTokens)
+        .set({ lastUsedAt: verifiedAt.toISOString() })
+        .where(eq(tables.apiTokens.id, verified.id))
+        .run();
+      return verified;
+    },
+    { behavior: "immediate" },
+  );
 }
 
 /**
