@@ -65,8 +65,8 @@ jobs:
           bun-version-file: package.json
 
       - run: bash -n install.sh
-      - run: bun test ./deploy/publish-release.integration.test.ts
-      - run: sudo "$(command -v bun)" test ./deploy/install.integration.test.ts
+      - run: bun test ./deploy/publish-release.test.ts
+      - run: sudo "$(command -v bun)" test ./deploy/install.test.ts
 
   ui-review:
     # Screenshots of every screen plus an axe accessibility pass on a seeded throwaway panel.
