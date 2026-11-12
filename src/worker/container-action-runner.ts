@@ -111,6 +111,7 @@ export async function removeProjectResources(
   if (failures.length > 0) {
     throw new AggregateError(failures, `Could not remove all resources of project ${projectId}`);
   }
+  await docker.networks.remove(projectId);
   await docker.compose.removeProjectNetworks(projectId);
   return {
     containers: containers.length,

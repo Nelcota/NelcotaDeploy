@@ -91,6 +91,17 @@ describe("checkComposeConfig", () => {
     expect(() => checkComposeConfig({ name: "x" }, OPTIONS)).toThrow(InvalidComposeFileError);
   });
 
+  test("rejects Compose service names reserved for platform routing", () => {
+    const config = model(
+      {},
+      { services: { web: { image: "app" }, "nelcota-reserved": { image: "app" } } },
+    );
+
+    expect(problemsOf(config)).toContain(
+      "service nelcota-reserved: the nelcota- name prefix is reserved",
+    );
+  });
+
   test.each([
     ["privileged", { privileged: true }],
     ["Docker API access", { use_api_socket: true }],
@@ -123,6 +134,11 @@ describe("checkComposeConfig", () => {
     ["an SSH agent in the build", { build: { context: REPOSITORY, ssh: ["default"] } }],
     ["other build contexts", { build: { context: REPOSITORY, additional_contexts: { x: "/" } } }],
     ["the server's network in the build", { build: { context: REPOSITORY, network: "host" } }],
+    [
+      "a named network in the build",
+      { build: { context: REPOSITORY, network: "another-network" } },
+    ],
+    ["a named runtime network mode", { network_mode: "another-network" }],
     ["a remote build context", { build: { context: "https://github.com/acme/api.git" } }],
     [
       "local build cache writes",

@@ -19,6 +19,7 @@ import type { Job } from "@/jobs";
 import { getProject } from "@/projects";
 import type { SecretBox } from "@/secrets";
 
+import { prepareProjectNetwork } from "../server-host";
 import type { WorkerDependencies } from "../worker.types";
 import { deleteStoredDatabaseBackups } from "./database-backup-runner";
 import { type BackupStorage, backupStorage } from "./database-backup-storage";
@@ -269,7 +270,17 @@ export async function runDatabaseProvisionJob(
   job: Job,
   run: DatabaseOperation & { readonly signal: AbortSignal },
 ): Promise<void> {
-  await provisionDatabase(runDependencies(dependencies, job, run), databaseIdOf(job), run.signal);
+  const { database, hosts, config } = dependencies;
+  const target = databaseIdOf(job);
+  const host = hosts.hostOf(database, getProject(database, job.projectId).serverId);
+  const network = await prepareProjectNetwork({ config, database, host }, job.projectId, () => {
+    assertDatabaseOperationActive(run);
+  });
+  await provisionDatabase(
+    { ...run, database, docker: host.docker, secretBox: dependencies.secretBox, network },
+    target,
+    run.signal,
+  );
 }
 
 /**
