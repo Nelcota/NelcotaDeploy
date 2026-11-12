@@ -183,7 +183,7 @@ function FormActions({
   return (
     <div className="flex flex-col-reverse gap-3 rounded-2xl bg-card px-5 py-4 ring-1 ring-border/70 sm:flex-row sm:items-center sm:justify-between md:px-6">
       <p className="text-xs text-muted-foreground">
-        Depois, edite cada configuração na sua página em Ajustes.
+        Depois de criar o projeto, você pode alterar esses dados em Configurações do projeto.
       </p>
       <div className="flex justify-end gap-2">
         <Button variant="ghost" asChild>

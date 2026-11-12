@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { Link } from "@tanstack/react-router";
 import { LockIcon } from "lucide-react";
 import { useState } from "react";
 
@@ -54,8 +55,14 @@ export function GitHubRepositoryPicker({ form }: { readonly form: ProjectFormApi
   if (repositories.data == null) {
     return (
       <p className="text-sm text-muted-foreground sm:col-span-2">
-        GitHub App não conectado. Conecte-o em Administração → Sistema ou cole a URL de um
-        repositório público abaixo.
+        GitHub App não conectado. Abra{" "}
+        <Link
+          to="/settings/integrations/github"
+          className="font-medium text-brand underline underline-offset-2 focus-visible:outline-2 focus-visible:outline-ring"
+        >
+          Conexão com o GitHub
+        </Link>{" "}
+        ou cole abaixo a URL de um repositório público.
       </p>
     );
   }
