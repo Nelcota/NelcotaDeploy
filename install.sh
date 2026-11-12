@@ -12,9 +12,13 @@ readonly domain_pattern='^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]([a-z0-9-]
 readonly email_pattern='^([a-z0-9_+-]+(\.[a-z0-9_+-]+)*)@(([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63})$'
 readonly release_image_pattern='^ghcr\.io/nelcota/nelcotadeploy@sha256:[a-f0-9]{64}$'
 readonly service_timeout_seconds=180
+readonly public_health_attempts=3
+readonly public_health_timeout_seconds=10
+readonly public_health_retry_delay_seconds=2
 readonly secret_bytes=32
 readonly password_bytes=24
 readonly installation_id_bytes=16
+readonly curl_timeout_error=28
 readonly curl_certificate_error=60
 
 fail() {
@@ -24,6 +28,7 @@ fail() {
 
 usage() {
   printf 'Usage: sudo bash install.sh [--domain deploy.example.com] [--email admin@example.com]\n'
+  printf '       sudo bash install.sh --update\n'
 }
 
 docker_local() {
@@ -31,9 +36,15 @@ docker_local() {
 }
 
 compose() {
-  docker_local compose --project-directory "$install_dir" --project-name nelcota \
-    --env-file "$install_dir/.env" --file "$install_dir/docker-compose.yml" \
-    --file "$install_dir/docker-compose.override.yml" "$@"
+  compose_from "$install_dir" "$@"
+}
+
+compose_from() {
+  local directory=$1
+  shift
+  docker_local compose --project-directory "$directory" --project-name nelcota \
+    --env-file "$directory/.env" --file "$directory/docker-compose.yml" \
+    --file "$directory/docker-compose.override.yml" "$@"
 }
 
 configure_docker_repository() {
@@ -158,6 +169,15 @@ check_dns() {
   done <<< "$addresses"
 }
 
+copy_release_files() {
+  local directory=$1
+  install -d -m 0700 "$directory/deploy/traefik"
+  install -m 0600 "$source_dir/docker-compose.yml" "$directory/docker-compose.yml"
+  install -m 0600 "$source_dir/deploy/compose.install.yml" "$directory/docker-compose.override.yml"
+  # Traefik reads the bind-mounted file from inside the container.
+  install -m 0644 "$source_dir/deploy/traefik/panel.yml" "$directory/deploy/traefik/panel.yml"
+}
+
 write_configuration() {
   local image=$1 docker_gid auth_secret encryption_key webhook_secret
   docker_gid=$(stat -c '%g' "$docker_socket")
@@ -165,11 +185,7 @@ write_configuration() {
   encryption_key=$(openssl rand -base64 "$secret_bytes")
   webhook_secret=$(openssl rand -hex "$secret_bytes")
   installation_id=$(openssl rand -hex "$installation_id_bytes")
-  install -d -m 0700 "$install_dir/deploy/traefik"
-  install -m 0600 "$source_dir/docker-compose.yml" "$install_dir/docker-compose.yml"
-  install -m 0600 "$source_dir/deploy/compose.install.yml" "$install_dir/docker-compose.override.yml"
-  # Traefik reads the bind-mounted file from inside the container.
-  install -m 0644 "$source_dir/deploy/traefik/panel.yml" "$install_dir/deploy/traefik/panel.yml"
+  copy_release_files "$install_dir"
 
   if [[ ! -f "$password_file" ]]; then
     install -m 0600 /dev/null "$password_file.tmp"
@@ -193,17 +209,30 @@ EOF
   mv -T -- "$install_dir/.env.tmp" "$install_dir/.env"
 }
 
+read_saved_configuration() {
+  local directory=$1
+  local configuration saved_domain saved_email
+  configuration=$(compose_from "$directory" config --environment)
+  saved_domain=$(awk -F= '$1 == "PANEL_DOMAIN" {print $2}' <<< "$configuration")
+  saved_email=$(awk -F= '$1 == "NELCOTA_INSTALL_ADMIN_EMAIL" {print $2}' <<< "$configuration")
+  [[ -z "$domain" || "$domain" == "$saved_domain" ]] || fail "The installed panel uses $saved_domain."
+  [[ -z "$email" || "$email" == "$saved_email" ]] || fail 'The installation already has a configured administrator email.'
+  domain=$saved_domain
+  email=$saved_email
+  image=$(awk -F= '$1 == "NELCOTA_IMAGE" {print $2}' <<< "$configuration")
+}
+
+check_panel_address() {
+  [[ ${#domain} -le 253 && "$domain" =~ $domain_pattern ]] || fail 'Enter a valid domain without a scheme, port or path.'
+  [[ ${#email} -le 254 && "$email" =~ $email_pattern ]] || fail 'Enter a valid administrator email address.'
+  [[ ${#BASH_REMATCH[1]} -le 64 ]] || fail 'The administrator email local part exceeds 64 characters.'
+  check_dns
+}
+
 configure() {
-  local image configuration saved_domain saved_email
+  local image
   if [[ -f "$install_dir/.env" ]]; then
-    configuration=$(compose config --environment)
-    saved_domain=$(awk -F= '$1 == "PANEL_DOMAIN" {print $2}' <<< "$configuration")
-    saved_email=$(awk -F= '$1 == "NELCOTA_INSTALL_ADMIN_EMAIL" {print $2}' <<< "$configuration")
-    [[ -z "$domain" || "$domain" == "$saved_domain" ]] || fail "The installed panel uses $saved_domain."
-    [[ -z "$email" || "$email" == "$saved_email" ]] || fail 'The installation already has a configured administrator email.'
-    domain=$saved_domain
-    email=$saved_email
-    image=$(awk -F= '$1 == "NELCOTA_IMAGE" {print $2}' <<< "$configuration")
+    read_saved_configuration "$install_dir"
   else
     if [[ -z "$domain" && -t 0 ]]; then
       read -r -p 'Panel domain (for example deploy.example.com): ' domain || fail 'No domain provided.'
@@ -224,10 +253,7 @@ configure() {
     fi
   fi
 
-  [[ ${#domain} -le 253 && "$domain" =~ $domain_pattern ]] || fail 'Enter a valid domain without a scheme, port or path.'
-  [[ ${#email} -le 254 && "$email" =~ $email_pattern ]] || fail 'Enter a valid administrator email address.'
-  [[ ${#BASH_REMATCH[1]} -le 64 ]] || fail 'The administrator email local part exceeds 64 characters.'
-  check_dns
+  check_panel_address
 
   if [[ ! -f "$install_dir/.env" ]]; then
     if [[ "$image" == nelcota-deploy:local ]]; then
@@ -248,11 +274,15 @@ configure() {
   fi
 }
 
-start_panel() {
-  local password=''
+start_web() {
   printf 'Starting the panel on its internal Docker network.\n'
   compose up --wait --wait-timeout "$service_timeout_seconds" --no-build web ||
     fail "The panel failed to start. Run docker compose --project-directory $install_dir logs web."
+}
+
+start_panel() {
+  local password=''
+  start_web
 
   if [[ -f "$password_file" ]]; then
     password=$(< "$password_file")
@@ -264,6 +294,12 @@ start_panel() {
     bun run admin:create --if-missing --email "$email" ||
     fail 'First-admin provisioning failed. Resolve the error above before publishing the panel.'
 
+  start_worker
+  start_ingress
+  report_panel_ready
+}
+
+start_worker() {
   # Initialize the shared routes volume from the worker before Traefik mounts panel.yml in it.
   printf 'Starting the worker.\n'
   compose up --detach --no-build worker ||
@@ -273,15 +309,14 @@ start_panel() {
   # The nested bind mount needs a mountpoint before Docker mounts the parent read-only.
   compose exec -T worker sh -c 'test -w /routes && { test -f /routes/panel.yml || touch /routes/panel.yml; }' ||
     fail 'The worker cannot prepare the routes volume. Check its ownership and permissions.'
-
-  start_ingress
 }
 
 start_ingress() {
   local health_url="https://$domain/api/health" health_response previous_ingress running_ingress probe_status=0
+  local public_probe_status=0 attempt
   previous_ingress=$(compose ps --status running -q traefik)
   printf 'Starting Traefik. Waiting for HTTPS.\n'
-  compose up --detach --no-build traefik ||
+  compose up --detach --no-build "$@" traefik ||
     fail "Traefik failed to start. Run docker compose --project-directory $install_dir logs traefik."
 
   running_ingress=$(compose ps --status running -q traefik)
@@ -299,10 +334,24 @@ start_ingress() {
     --retry 18 --retry-all-errors --retry-delay 5 --retry-max-time 100 --max-time 5 \
     "$health_url") && [[ "$health_response" == '{"status":"ok"}' ]] ||
     fail "HTTPS is not ready at the local Traefik origin. Check DNS, inbound ports 80 and 443, and docker compose --project-directory $install_dir logs traefik. Then rerun the installer."
-  health_response=$(curl --disable --noproxy '*' --fail --silent --show-error --max-time 10 "$health_url") &&
-    [[ "$health_response" == '{"status":"ok"}' ]] ||
-    fail "The origin has HTTPS, but $health_url is unavailable through public DNS from this server. Check DNS, proxy and firewall settings, then rerun."
 
+  for ((attempt = 1; attempt <= public_health_attempts; attempt++)); do
+    public_probe_status=0
+    health_response=$(curl --disable --noproxy '*' --fail --silent --show-error \
+      --max-time "$public_health_timeout_seconds" "$health_url") || public_probe_status=$?
+    if ((public_probe_status != curl_timeout_error || attempt == public_health_attempts)); then
+      break
+    fi
+
+    printf 'Public HTTPS check timed out. Retrying in %s seconds.\n' "$public_health_retry_delay_seconds"
+    sleep "$public_health_retry_delay_seconds"
+  done
+
+  [[ "$public_probe_status" == 0 && "$health_response" == '{"status":"ok"}' ]] ||
+    fail "The origin has HTTPS, but $health_url is unavailable through public DNS from this server. Check DNS, proxy and firewall settings, then rerun."
+}
+
+report_panel_ready() {
   printf '\nPanel ready at https://%s\n' "$domain"
   if [[ -f "$password_file" ]]; then
     printf 'Administrator: %s\nRead the initial password: sudo cat %s\nRemove this file after signing in: sudo rm %s\n' \
@@ -311,6 +360,7 @@ start_ingress() {
 }
 
 main() {
+  local update=false
   domain=''
   email=''
   installation_id=''
@@ -327,6 +377,7 @@ main() {
         shift 2
         ;;
       --help|-h) usage; return ;;
+      --update) update=true; shift ;;
       *) fail "Unknown option: $1. Run bash install.sh --help." ;;
     esac
   done
@@ -349,6 +400,13 @@ main() {
   exec 9< "$install_dir"
   flock -n 9 || fail 'Another Nelcota Deploy installer is running.'
 
+  if [[ "$update" == true ]]; then
+    [[ -z "$domain" && -z "$email" ]] || fail '--update uses the installed domain and email.'
+    [[ -f "$install_dir/.env" ]] || fail 'No installer-managed installation found. Run install.sh first.'
+  elif [[ -L "$install_dir/update-backups/pending" ]]; then
+    fail 'An update is pending. Rerun the same release with --update or follow the release recovery instructions.'
+  fi
+
   if [[ ! -f "$install_dir/.env" && ! -t 0 && ( -z "$domain" || -z "$email" ) ]]; then
     usage >&2
     fail 'Pass --domain and --email when running without an interactive terminal.'
@@ -369,6 +427,14 @@ main() {
   fi
 
   check_docker_resources
+  if [[ "$update" == true ]]; then
+    [[ -f "$source_dir/deploy/update.sh" ]] || fail 'Extract the complete release bundle before updating.'
+    # shellcheck source=deploy/update.sh
+    source "$source_dir/deploy/update.sh"
+    update_panel
+    return
+  fi
+
   check_ports
   configure
   check_docker_resources

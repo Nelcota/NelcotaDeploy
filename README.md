@@ -51,6 +51,54 @@ If installation stops with an error, fix the reported issue and rerun the same c
 installer reuses the saved configuration, image, and volumes. Manage an existing manual Compose
 installation from its original checkout.
 
+### Update an installer-managed panel
+
+Download, verify, and extract the newer release in an empty directory using the steps above. Use
+`sudo bash nelcota-deploy/install.sh --update` as the final command. The updater downloads
+the release images, briefly stops the panel and worker, and saves SQLite and the installed
+configuration before the new image runs migrations. It preserves the existing Docker volumes,
+administrator, and secrets. Allow for a short interruption while the panel restarts.
+
+The updater prints the root-only backup directory under `/opt/nelcota-deploy/update-backups`.
+It keeps that backup if the update fails. To retry, rerun `--update` from the same release.
+Running the command again after a successful update reports that the release is already installed.
+
+#### Restore the previous release
+
+Use the backup directory printed by the updater. Restoring SQLite returns panel data to its
+pre-update state, so changes made after that snapshot will be lost. Run the following as root,
+with no installer or updater running:
+
+```bash
+(
+  set -eu
+  cd /opt/nelcota-deploy
+  backup=/opt/nelcota-deploy/update-backups/REPLACE_WITH_BACKUP_DIRECTORY
+  exec 9< .
+  flock -n 9
+  test -s "$backup/nelcota.db"
+  docker compose stop web worker
+  install -m 0600 "$backup/docker-compose.yml" docker-compose.yml
+  install -m 0600 "$backup/docker-compose.override.yml" docker-compose.override.yml
+  install -m 0644 "$backup/deploy/traefik/panel.yml" deploy/traefik/panel.yml
+  install -m 0600 "$backup/.env" .env
+  previous_image=$(docker compose config --environment | sed -n 's/^NELCOTA_IMAGE=//p')
+  test -n "$previous_image"
+  docker run --rm -i --pull=never --network none \
+    --mount type=volume,source=nelcota_data,target=/data --entrypoint sh "$previous_image" -ec '
+    umask 077
+    cat > /data/nelcota.db.restore
+    test -s /data/nelcota.db.restore
+    rm -f /data/nelcota.db-wal /data/nelcota.db-shm
+    mv -f /data/nelcota.db.restore /data/nelcota.db
+  ' < "$backup/nelcota.db"
+  docker compose up --wait --no-build web
+  docker compose up -d --no-build worker
+  docker compose up -d --no-build --force-recreate traefik
+  rm -f update-backups/pending
+)
+```
+
 ## Deploy your first application
 
 1. Create a project from a GitHub repository. Connect the GitHub App for private repositories and

@@ -65,6 +65,7 @@ jobs:
           bun-version-file: package.json
 
       - run: bash -n install.sh
+      - run: bash -n deploy/update.sh
       - run: bun test ./deploy/publish-release.test.ts
       - run: sudo "$(command -v bun)" test ./deploy/install.test.ts
 
