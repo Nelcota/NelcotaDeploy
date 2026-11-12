@@ -16,7 +16,7 @@ import { createProjectCommands } from "./project-commands";
 type Navigate = ReturnType<typeof useNavigate>;
 
 const PAGE_TERMS: Readonly<Record<string, string>> = {
-  "/": "estado saúde aplicações apps",
+  "/": "status estado saúde aplicações apps",
   "/activity": "falhas recentes atividade deploys",
   "/deployment-statistics": "gráficos análise sucesso falhas deploys",
   "/server-metrics": "métricas cpu memória servidor consumo recursos",

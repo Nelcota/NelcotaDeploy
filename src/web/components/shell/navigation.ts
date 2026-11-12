@@ -36,7 +36,7 @@ export const MAIN_AREAS = [
   {
     to: "/",
     id: "dashboard",
-    label: "Status das aplicações",
+    label: "Visão geral",
     icon: OverviewIcon,
     exact: true,
     group: "general",

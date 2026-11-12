@@ -13,7 +13,7 @@ export function DashboardPage() {
   const data = dashboard.data ?? null;
   return (
     <>
-      <PageHeader title="Status das aplicações" />
+      <PageHeader title="Visão geral" />
       <OverviewCard data={data} />
     </>
   );
