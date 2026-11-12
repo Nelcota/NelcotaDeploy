@@ -6,12 +6,13 @@ import { type Database, tables } from "@/db";
 import { requestDeployment } from "@/deployments";
 import { createLogger, singleLine } from "@/logging";
 
-import { processPullRequest } from "./pull-request-event";
+import { queuePullRequestReconciliation } from "./pull-request-reconciliation";
 import {
   commitSubject,
   ignored,
   INVALID_JSON,
   parseJsonBody,
+  recordWebhookOutcome,
   type ProcessedEvent,
   requireGitHubSignature,
   type WebhookOutcome,
@@ -74,8 +75,8 @@ export async function handleGitHubDelivery(
       if (claimed === false) {
         return { status: "duplicate" };
       }
-      const outcome = processEvent(database, event, delivery.rawBody);
-      recordOutcome(database, deliveryId, outcome);
+      const outcome = processEvent(database, { event, deliveryId, rawBody: delivery.rawBody });
+      recordWebhookOutcome(database, deliveryId, outcome);
       return outcome.result;
     },
     { behavior: "immediate" },
@@ -136,30 +137,21 @@ function claimDelivery(database: Database, deliveryId: string, event: string): b
   return claimed != null;
 }
 
-function recordOutcome(database: Database, deliveryId: string, outcome: ProcessedEvent): void {
-  const { result } = outcome;
-  database
-    .update(tables.webhookDeliveries)
-    .set({
-      status: result.status === "accepted" ? "accepted" : "ignored",
-      reason: result.status === "ignored" ? result.reason : "deployments queued",
-      deploymentIds: result.status === "accepted" ? [...result.deploymentIds] : [],
-      repositoryFullName: outcome.repositoryFullName,
-      ref: outcome.ref,
-      commitSha: outcome.commitSha,
-    })
-    .where(eq(tables.webhookDeliveries.id, deliveryId))
-    .run();
-}
-
 type PushPayload = z.infer<typeof pushPayloadSchema>;
 
-function processEvent(database: Database, event: string, rawBody: string): ProcessedEvent {
+function processEvent(
+  database: Database,
+  {
+    event,
+    deliveryId,
+    rawBody,
+  }: { readonly event: string; readonly deliveryId: string; readonly rawBody: string },
+): ProcessedEvent {
   if (event === "ping") {
     return ignored("ping");
   }
   if (event === "pull_request") {
-    return processPullRequest(database, rawBody);
+    return queuePullRequestReconciliation(database, deliveryId, rawBody);
   }
   if (event !== "push") {
     return ignored(`event ${event} is not handled`);

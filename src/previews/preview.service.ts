@@ -182,6 +182,14 @@ export function openPreview(
         closedAt: null,
       };
       if (existing != null) {
+        if (existing.headSha !== pullRequest.headSha) {
+          cancelOutdatedPreviewDeployments(transaction, {
+            previewId: existing.id,
+            headSha: pullRequest.headSha,
+            timestamp: now,
+          });
+        }
+
         transaction
           .update(tables.previews)
           .set(fields)
@@ -206,6 +214,25 @@ export function openPreview(
     },
     { behavior: "immediate" },
   );
+}
+
+function cancelOutdatedPreviewDeployments(
+  database: Transaction,
+  target: { readonly previewId: string; readonly headSha: string; readonly timestamp: string },
+): void {
+  database
+    .update(tables.deployments)
+    .set({ cancelRequestedAt: target.timestamp })
+    .where(
+      and(
+        eq(tables.deployments.previewId, target.previewId),
+        eq(tables.deployments.trigger, "webhook"),
+        ne(tables.deployments.requestedCommitSha, target.headSha),
+        isNull(tables.deployments.cancelRequestedAt),
+        notInArray(tables.deployments.status, ["succeeded", "failed", "cancelled"]),
+      ),
+    )
+    .run();
 }
 
 /**

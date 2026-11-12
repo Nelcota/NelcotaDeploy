@@ -8,6 +8,11 @@ export {
   saveGitHubApp,
 } from "./github-app.service";
 export { appCloneToken, listConnectedRepositories } from "./github-access.service";
+export {
+  getGitHubPullRequest,
+  pullRequestFields,
+  type GitHubPullRequest,
+} from "./github-pull-request";
 export { GitHubApiError } from "./github.errors";
 export { getRepositoryAccess, inspectRepository } from "./repository/repository-inspection.service";
 export { readRepositoryEnvironmentExample } from "./repository/repository-environment.service";

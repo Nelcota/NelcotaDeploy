@@ -11,6 +11,7 @@ import {
   transitionDeployment,
 } from "@/deployments";
 import { JobLeaseLostError } from "@/jobs";
+import { getPreview } from "@/previews";
 import { getProject } from "@/projects";
 
 import {
@@ -113,6 +114,8 @@ export async function runDeployment(
     if (error instanceof JobLeaseLostError || jobSignal.reason instanceof JobLeaseLostError) {
       throw error;
     }
+
+    await restorePreviewTraffic(database, context);
     const cancellationRequested =
       cancellation.signal.aborted ||
       error instanceof PreviewNotActiveError ||
@@ -131,6 +134,28 @@ export async function runDeployment(
   assertOwnership();
   await finishDeployment(dependencies, context);
   return "succeeded";
+}
+
+async function restorePreviewTraffic(database: Database, context: DeployContext): Promise<void> {
+  const { deployment, logs, state } = context;
+  if (
+    deployment.previewId == null ||
+    state.restorePreviewRoute == null ||
+    getPreview(database, deployment.previewId)?.status !== "active"
+  ) {
+    return;
+  }
+
+  try {
+    await state.restorePreviewRoute();
+  } catch (error) {
+    logs.system(
+      `Could not restore the preview route: ${state.redact(errorMessageOf(error))}`,
+      "warn",
+    );
+  }
+
+  context.assertOwnership();
 }
 
 function requeueDeployment(database: Database, deploymentId: string): void {

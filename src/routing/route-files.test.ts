@@ -16,6 +16,29 @@ async function routeDirectory(): Promise<string> {
 }
 
 describe("RouteFiles", () => {
+  test("restores the prior route after a candidate changed it", async () => {
+    const directory = await routeDirectory();
+    const routes = new RouteFiles(runProcess, toShellPath(directory));
+    await routes.write("preview", CONFIG);
+    const restore = await routes.snapshot("preview");
+
+    await routes.write("preview", { http: {} });
+    await restore();
+
+    expect(await Bun.file(join(directory, "preview.yml")).json()).toEqual(CONFIG);
+  });
+
+  test("removes a candidate route if no previous route existed", async () => {
+    const directory = await routeDirectory();
+    const routes = new RouteFiles(runProcess, toShellPath(directory));
+    const restore = await routes.snapshot("preview");
+
+    await routes.write("preview", CONFIG);
+    await restore();
+
+    expect(await Bun.file(join(directory, "preview.yml")).exists()).toBe(false);
+  });
+
   test("creates the directory and writes the routes as JSON under a .yml name", async () => {
     const directory = await routeDirectory();
 

@@ -1,3 +1,7 @@
+import { eq } from "drizzle-orm";
+
+import { type Database, tables, type Transaction } from "@/db";
+
 import { InvalidWebhookSignatureError } from "./webhook.errors";
 
 const MAX_COMMIT_SUBJECT_LENGTH = 500;
@@ -27,7 +31,31 @@ export type ProcessedEvent = {
   readonly repositoryFullName: string | null;
   readonly ref: string | null;
   readonly commitSha: string | null;
+  readonly acceptedReason?: string;
 };
+
+export function recordWebhookOutcome(
+  database: Database | Transaction,
+  deliveryId: string,
+  outcome: ProcessedEvent,
+): void {
+  const { result } = outcome;
+  database
+    .update(tables.webhookDeliveries)
+    .set({
+      status: result.status,
+      reason:
+        result.status === "ignored"
+          ? result.reason
+          : (outcome.acceptedReason ?? "deployments queued"),
+      deploymentIds: result.status === "accepted" ? [...result.deploymentIds] : [],
+      repositoryFullName: outcome.repositoryFullName,
+      ref: outcome.ref,
+      commitSha: outcome.commitSha,
+    })
+    .where(eq(tables.webhookDeliveries.id, deliveryId))
+    .run();
+}
 
 /**
  * Records a delivery that queued nothing, with the reason.

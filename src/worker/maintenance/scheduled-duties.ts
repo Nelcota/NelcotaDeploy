@@ -3,6 +3,7 @@ import { pruneLogs } from "@/logs";
 import { pruneMetricSamples } from "@/monitoring";
 import { scheduleDueTasks } from "@/tasks";
 import { pruneUptimeChecks } from "@/uptime";
+import { reconcilePullRequests } from "@/webhooks";
 
 import type { WorkerDependencies } from "../worker.types";
 import { rollBackRestartLoops } from "./auto-rollback";
@@ -80,7 +81,12 @@ export function startScheduledDuties(
   guard: Guard,
 ): Bun.CronJob[] {
   const panelBackup = startPanelBackup(dependencies, guard);
+  const reconcile = guard(
+    "pull request reconciliation",
+    async () => await reconcilePullRequests(dependencies.database, dependencies.secretBox),
+  );
   return [
+    Bun.cron("* * * * *", reconcile),
     Bun.cron(
       "* * * * *",
       guard("scheduler", () => scheduleTasks(dependencies)),

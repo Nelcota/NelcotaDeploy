@@ -35,13 +35,23 @@ export async function routeTrafficTo(
   dependencies: Pick<DeployRunnerDependencies, "database" | "routes"> & {
     readonly config: Pick<DeployRunnerConfig, "routingSettleInMs" | "traefik">;
   },
-  context: Pick<DeployContext, "deployment" | "project" | "logs" | "assertOwnership" | "signal">,
+  context: Pick<
+    DeployContext,
+    "deployment" | "project" | "logs" | "assertOwnership" | "signal" | "state"
+  >,
   containerNames: readonly string[],
 ): Promise<void> {
   const { routes, config } = dependencies;
-  const { logs } = context;
+  const { logs, state } = context;
   assertDeployActive(context);
-  const target = routeTarget(dependencies.database, context);
+  let target = routeTarget(dependencies.database, context);
+  if (routes != null && context.deployment.previewId != null) {
+    const restore = await routes.snapshot(target.fileName);
+    assertDeployActive(context);
+    target = routeTarget(dependencies.database, context);
+    state.restorePreviewRoute = restore;
+  }
+
   if (target.domains.length === 0) {
     await routes?.remove(target.fileName);
     return;

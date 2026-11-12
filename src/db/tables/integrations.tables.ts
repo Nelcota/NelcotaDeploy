@@ -1,4 +1,4 @@
-import { index, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { index, integer, primaryKey, sqliteTable, text } from "drizzle-orm/sqlite-core";
 
 import { users } from "./auth.tables";
 import { createdAt, updatedAt } from "./columns";
@@ -17,6 +17,27 @@ export const webhookDeliveries = sqliteTable(
     receivedAt: text("received_at").notNull(),
   },
   (table) => [index("webhook_deliveries_received_idx").on(table.receivedAt)],
+);
+
+export const pullRequestReconciliations = sqliteTable(
+  "pull_request_reconciliations",
+  {
+    repositoryFullName: text("repository_full_name").notNull(),
+    pullRequestNumber: integer("pull_request_number").notNull(),
+    deliveryId: text("delivery_id").notNull(),
+    senderLogin: text("sender_login"),
+    nextAttemptAt: text("next_attempt_at"),
+    attempts: integer("attempts").notNull().default(0),
+    observedState: text("observed_state", { enum: ["open", "closed"] }),
+    observedHeadSha: text("observed_head_sha"),
+    observedHeadRef: text("observed_head_ref"),
+    observedHeadRepository: text("observed_head_repository"),
+    observedBaseRef: text("observed_base_ref"),
+  },
+  (table) => [
+    primaryKey({ columns: [table.repositoryFullName, table.pullRequestNumber] }),
+    index("pull_request_reconciliations_due_idx").on(table.nextAttemptAt),
+  ],
 );
 
 export const auditEvents = sqliteTable(

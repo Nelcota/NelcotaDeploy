@@ -21,7 +21,7 @@ const PAGE_SIZE = 100;
 const MAX_INSTALLATIONS = 20;
 const MAX_PAGES = 10;
 // Dots alone would turn the name into a relative path ("../..").
-const FULL_NAME_PATTERN = /^(?!\.{1,2}\/)[A-Za-z0-9_.-]+\/(?!\.{1,2}$)[A-Za-z0-9_.-]+$/;
+export const FULL_NAME_PATTERN = /^(?!\.{1,2}\/)[A-Za-z0-9_.-]+\/(?!\.{1,2}$)[A-Za-z0-9_.-]+$/;
 
 const installationSchema = z.object({ id: z.number().int().positive() });
 const repositoryPageSchema = z

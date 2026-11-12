@@ -44,6 +44,7 @@ export type DeployRunnerDependencies = Pick<ServerHost, "runner" | "docker" | "g
 export class DeployState {
   /** Containers this deployment started, which a failure removes. */
   readonly containerNames: string[] = [];
+  restorePreviewRoute: (() => Promise<void>) | null = null;
   redact: (text: string) => string = (text) => text;
 
   useContainer(name: string): void {
