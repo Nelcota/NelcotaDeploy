@@ -162,10 +162,12 @@ export async function checkReleaseUpdate(fixture: UpdateFixture) {
   expect(failed.stderr).toContain(`Update incomplete. Backup: ${backup}`);
   await checkBackup(backup, fixture.savedEnvironment);
 
-  const currentEnvironment = await readFile(join(fixture.installDirectory, ".env"), "utf8");
+  const environment = join(fixture.installDirectory, ".env");
+  const currentEnvironment = await readFile(environment, "utf8");
   expect(currentEnvironment).toBe(
     fixture.savedEnvironment.replace(/^NELCOTA_IMAGE=.*$/m, `NELCOTA_IMAGE=${RELEASE_IMAGE}`),
   );
+  expect((await stat(environment)).mode & PERMISSION_BITS).toBe(PRIVATE_MODE);
   await checkLiveMigration("applied");
   await rm(publicError);
 

@@ -41,6 +41,7 @@ backup_before_update() {
   compose stop web worker || fail 'Could not stop the panel and worker for the backup.'
 
   # Keep the snapshot in the container until SQLite finishes, then stream it to a private host file.
+  install -m 0600 /dev/null "$update_backup/nelcota.db"
   docker_local run --rm --pull=never --network none \
     --mount type=volume,source=nelcota_data,target=/data --entrypoint sh "$image" -ec '
       bun -e '\''import { Database } from "bun:sqlite";
@@ -85,6 +86,7 @@ update_panel() (
 
   staged_update=$(mktemp -d "$update_backup_root/.stage.XXXXXXXX")
   copy_release_files "$staged_update"
+  install -m 0600 /dev/null "$staged_update/.env"
   awk -v image="$next_image" '
     /^NELCOTA_IMAGE=/ { print "NELCOTA_IMAGE=" image; count++; next }
     { print }
