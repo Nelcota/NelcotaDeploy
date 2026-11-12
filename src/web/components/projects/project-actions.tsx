@@ -33,6 +33,7 @@ const REDEPLOY_DESCRIPTION =
   "Um novo contêiner será criado com a imagem atual, aplicando as variáveis e domínios salvos, sem novo build. Pode haver uma breve troca de versão durante a substituição.";
 
 type Confirmation = "stop" | "redeploy" | "deploy";
+const HEADER_ACTION_CLASS = "max-sm:px-2 max-sm:has-[>svg]:px-2";
 
 function ContainerMenuItems({
   containerState,
@@ -85,9 +86,14 @@ function MoreActionsMenu({
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="outline" size="sm" aria-label="Mais ações da aplicação">
+        <Button
+          variant="ghost"
+          size="sm"
+          aria-label="Ações da aplicação"
+          className={HEADER_ACTION_CLASS}
+        >
           <EllipsisIcon aria-hidden />
-          Ações da aplicação
+          Ações
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-72 max-w-[calc(100vw-2rem)]">
@@ -113,10 +119,10 @@ function MoreActionsMenu({
 
 function OpenAppButton({ url }: { readonly url: string }) {
   return (
-    <Button variant="outline" size="sm" asChild>
+    <Button variant="outline" size="sm" className={HEADER_ACTION_CLASS} asChild>
       <a href={url} target="_blank" rel="noreferrer noopener">
         <ExternalLinkIcon aria-hidden />
-        Abrir aplicação
+        Abrir app
         <span className="sr-only"> em nova aba</span>
       </a>
     </Button>
@@ -133,13 +139,13 @@ function DeployButton({
   readonly onDeploy: () => void;
 }) {
   return (
-    <Button size="sm" disabled={busy} onClick={onDeploy}>
+    <Button size="sm" disabled={busy} onClick={onDeploy} className={HEADER_ACTION_CLASS}>
       {deploying ? (
         <LoaderCircleIcon aria-hidden className="animate-spin" />
       ) : (
         <RocketIcon aria-hidden />
       )}
-      Publicar nova versão
+      Publicar
     </Button>
   );
 }
@@ -215,7 +221,7 @@ export function ProjectActions({
   const canRedeploy = canDeploy && hasDeployment;
 
   return (
-    <div className="flex flex-wrap items-center gap-2 max-lg:border-b max-lg:border-border/70 max-lg:pb-4">
+    <div className="flex shrink-0 flex-wrap items-center gap-1.5">
       {url == null ? null : <OpenAppButton url={url} />}
       {canControl || canRedeploy ? (
         <MoreActionsMenu

@@ -1,5 +1,4 @@
 import { useMatchRoute } from "@tanstack/react-router";
-import { ChevronDownIcon } from "lucide-react";
 import type { ReactElement } from "react";
 
 import { Button } from "@/web/components/ui/button";
@@ -14,28 +13,100 @@ import {
 } from "@/web/components/ui/dropdown-menu";
 
 import { activeNavigationHref, type NavigationDestination } from "./navigation-state";
+import { ProjectResourcesSheet } from "./project-resources-sheet";
 
 export type PageNavigationItem = NavigationDestination & {
   readonly label: string;
+  readonly primary: boolean;
   readonly group: string;
-  readonly exact: boolean;
-  readonly link: ReactElement;
+  readonly renderLink: (current: boolean) => ReactElement;
 };
 
-function MenuItems({ items }: { readonly items: readonly PageNavigationItem[] }) {
-  return items.map((item) => (
-    <DropdownMenuItem
-      key={item.href}
-      asChild
-      textValue={item.label}
-      className="data-[status=active]:bg-secondary data-[status=active]:font-medium data-[status=active]:text-foreground"
-    >
-      {item.link}
-    </DropdownMenuItem>
-  ));
+export type ProjectResourceGroups = readonly (readonly [string, readonly PageNavigationItem[]])[];
+
+const RESOURCE_GROUP_ORDER: ReadonlyMap<string, number> = new Map([
+  ["Configuração", 0],
+  ["Dados e tarefas", 1],
+  ["Publicação", 2],
+]);
+
+type ResourcesMenuProps = {
+  readonly groups: ProjectResourceGroups;
+  readonly currentHref: string | null;
+  readonly currentLabel: string | undefined;
+};
+
+function DesktopResourcesMenu({ groups, currentHref, currentLabel }: ResourcesMenuProps) {
+  return (
+    <DropdownMenu modal={false}>
+      <DropdownMenuTrigger asChild>
+        <Button
+          variant="ghost"
+          size="sm"
+          className={cn(
+            "rounded-lg px-2.5 data-[state=open]:bg-well data-[state=open]:text-foreground",
+            currentLabel != null && "bg-well text-foreground",
+          )}
+          aria-description={currentLabel == null ? undefined : `Página atual: ${currentLabel}`}
+        >
+          Recursos
+          <span aria-hidden className="solar-[alt-arrow-down-linear] size-3.5 shrink-0" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" className="w-56 divide-y divide-border">
+        {groups.map(([group, resources]) => (
+          <DropdownMenuGroup key={group} aria-label={group} className="py-1">
+            <DropdownMenuLabel className="text-xs text-faint">{group}</DropdownMenuLabel>
+            {resources.map((item) => (
+              <DropdownMenuItem key={item.href} asChild textValue={item.label}>
+                {item.renderLink(item.href === currentHref)}
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuGroup>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
 }
 
-/** Exposes all destinations in named groups, with a single complete menu on narrow screens. */
+function ProjectResources({
+  items,
+  currentHref,
+}: {
+  readonly items: readonly PageNavigationItem[];
+  readonly currentHref: string | null;
+}) {
+  if (items.length === 0) {
+    return null;
+  }
+
+  const groups = [...Map.groupBy(items, (item) => item.group)].toSorted(
+    ([first], [second]) =>
+      (RESOURCE_GROUP_ORDER.get(first) ?? Number.MAX_SAFE_INTEGER) -
+      (RESOURCE_GROUP_ORDER.get(second) ?? Number.MAX_SAFE_INTEGER),
+  );
+  const currentLabel = items.find((item) => item.href === currentHref)?.label;
+  return (
+    <li>
+      <div className="sm:hidden">
+        <ProjectResourcesSheet
+          groups={groups}
+          currentHref={currentHref}
+          currentLabel={currentLabel}
+        />
+      </div>
+      <div className="hidden sm:block">
+        <DesktopResourcesMenu
+          groups={groups}
+          currentHref={currentHref}
+          currentLabel={currentLabel}
+        />
+      </div>
+    </li>
+  );
+}
+
+/** Keeps common project pages one click away at any width. */
 export function PageNavigation({
   label,
   items,
@@ -47,71 +118,21 @@ export function PageNavigation({
   if (items.length === 0) {
     return null;
   }
-  const activeHref = activeNavigationHref(items, matchRoute);
-  const active = items.find((item) => item.href === activeHref);
-  const groups = Map.groupBy(items, (item) => item.group);
+
+  const currentHref = activeNavigationHref(items, matchRoute);
   return (
-    <nav aria-label={label}>
-      <div className="md:hidden">
-        <DropdownMenu modal={false}>
-          <DropdownMenuTrigger asChild>
-            <Button
-              variant="outline"
-              className="h-auto min-h-11 w-full justify-between gap-3 text-left"
-              aria-label={`${label}: ${active?.label ?? "Escolher página"}`}
-            >
-              <span className="min-w-0">
-                <span className="block text-xs font-normal text-muted-foreground">{label}</span>
-                <span className="block break-words">{active?.label ?? "Escolher página"}</span>
-              </span>
-              <ChevronDownIcon aria-hidden className="shrink-0" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent
-            align="start"
-            className="w-72 max-w-[calc(100vw-2rem)]"
-            aria-label={label}
-          >
-            {Array.from(groups, ([group, destinations]) => (
-              <DropdownMenuGroup key={group} aria-label={group}>
-                <DropdownMenuLabel className="text-xs text-muted-foreground">
-                  {group}
-                </DropdownMenuLabel>
-                <MenuItems items={destinations} />
-              </DropdownMenuGroup>
-            ))}
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </div>
-      <div className="hidden flex-wrap gap-2 md:flex">
-        {Array.from(groups, ([group, destinations]) => (
-          <DropdownMenu key={group} modal={false}>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="outline"
-                aria-label={`${label}: ${group}`}
-                className={cn(
-                  "gap-2",
-                  active?.group === group && "bg-secondary text-foreground ring-1 ring-border",
-                )}
-                aria-description={
-                  active?.group === group ? `Página atual: ${active.label}` : undefined
-                }
-              >
-                {group}
-                <ChevronDownIcon aria-hidden />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent
-              align="start"
-              className="w-72 max-w-[calc(100vw-2rem)]"
-              aria-label={group}
-            >
-              <MenuItems items={destinations} />
-            </DropdownMenuContent>
-          </DropdownMenu>
-        ))}
-      </div>
+    <nav aria-label={label} className="border-b border-border pb-2">
+      <ul className="grid grid-cols-[minmax(0,1fr)_minmax(max-content,1fr)_minmax(0,1fr)] gap-1 sm:flex sm:flex-wrap sm:items-center">
+        {items
+          .filter((item) => item.primary)
+          .map((item) => (
+            <li key={item.href}>{item.renderLink(item.href === currentHref)}</li>
+          ))}
+        <ProjectResources
+          items={items.filter((item) => item.primary === false)}
+          currentHref={currentHref}
+        />
+      </ul>
     </nav>
   );
 }
