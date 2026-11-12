@@ -165,15 +165,15 @@ export class ServerFleet implements Disposable {
     const link = `${config.PUBLIC_URL}/settings/servers`;
     if (server.status === "ready" && status === "unreachable") {
       await notify(database, logger, {
-        title: "Servidor inacessível",
-        text: `O painel perdeu o acesso ao servidor ${server.name}.`,
+        title: "Server unreachable",
+        text: `The panel lost access to ${server.name}.`,
         link,
       });
     }
     if (server.status === "unreachable" && status === "ready") {
       await notify(database, logger, {
-        title: "Servidor de volta",
-        text: `O servidor ${server.name} voltou a responder.`,
+        title: "Server back online",
+        text: `${server.name} is responding again.`,
         link,
       });
     }

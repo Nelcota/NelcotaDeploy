@@ -1,4 +1,4 @@
-export { backupDatabase, listBackups, selectExpiredBackups } from "./backup";
+export { backupDatabase, isPanelBackupName, listBackups, selectExpiredBackups } from "./backup";
 export {
   type Database,
   getDatabase,

@@ -28,14 +28,14 @@ if (store == null) {
   logger.error("set BACKUP_S3_BUCKET, BACKUP_S3_ACCESS_KEY_ID and BACKUP_S3_SECRET_ACCESS_KEY");
   process.exit(1);
 }
-const keys = await store.list(config.BACKUP_S3_PREFIX);
+const keys = values.list || values.latest ? await store.list(config.BACKUP_S3_PREFIX) : [];
 if (values.list) {
   for (const key of keys.toSorted()) {
     process.stdout.write(`${key}\n`);
   }
   process.exit(0);
 }
-const key = values.latest ? newestBackupKey(keys) : (values.key ?? null);
+const key = values.latest ? newestBackupKey(keys, config.BACKUP_S3_PREFIX) : (values.key ?? null);
 const output = values.output?.trim() ?? "";
 if (key == null || output === "") {
   logger.error("usage: bun run db:restore (--latest | --key <key>) --output <new file>");
@@ -47,5 +47,5 @@ const written = await restoreBackupTo(store, await getSecretBox(), {
 });
 logger.info({ key, output: resolve(output), bytes: written }, "backup restored to a new file");
 process.stdout.write(
-  "Pare o painel e o worker, troque o arquivo do banco por este e remova os -wal/-shm antigos.\n",
+  "Stop the panel and worker, replace the database with this file, and remove the old -wal and -shm files.\n",
 );

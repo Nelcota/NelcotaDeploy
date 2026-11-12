@@ -12,7 +12,7 @@ export type RunProcessOptions = {
   readonly signal?: AbortSignal;
   /** Called for every complete output line, in order per stream. */
   readonly onLine?: (line: string, stream: OutputStream) => void;
-  /** Bytes kept in `stdout`/`stderr` of the result; extra output is only streamed. */
+  /** UTF-8 bytes kept per result stream; zero only streams output to `onLine`. */
   readonly maxCapturedBytes?: number;
 };
 
@@ -119,9 +119,16 @@ export async function readLines(
 export class CapturedOutput {
   readonly #limit: number;
   #text = "";
+  #bytes = 0;
   #truncated = false;
 
   constructor(limit: number) {
+    if (Number.isSafeInteger(limit) === false || limit < 0) {
+      throw new RangeError(
+        `maxCapturedBytes must be a non-negative safe integer, received ${limit}`,
+      );
+    }
+
     this.#limit = limit;
   }
 
@@ -129,10 +136,14 @@ export class CapturedOutput {
     if (this.#truncated) {
       return;
     }
-    if (this.#text.length + line.length + 1 > this.#limit) {
+
+    const bytes = Buffer.byteLength(line, "utf8") + 1;
+    if (bytes > this.#limit - this.#bytes) {
       this.#truncated = true;
       return;
     }
+
+    this.#bytes += bytes;
     this.#text += `${line}\n`;
   }
 
@@ -153,6 +164,9 @@ export async function runProcess(
   command: readonly string[],
   options: RunProcessOptions,
 ): Promise<ProcessResult> {
+  const limit = options.maxCapturedBytes ?? DEFAULT_MAX_CAPTURED_BYTES;
+  const stdout = new CapturedOutput(limit);
+  const stderr = new CapturedOutput(limit);
   const startedAt = performance.now();
   const child = Bun.spawn([...command], {
     cwd: options.cwd ?? process.cwd(),
@@ -164,9 +178,6 @@ export async function runProcess(
     killSignal: "SIGKILL",
     ...(options.signal == null ? {} : { signal: options.signal }),
   });
-  const limit = options.maxCapturedBytes ?? DEFAULT_MAX_CAPTURED_BYTES;
-  const stdout = new CapturedOutput(limit);
-  const stderr = new CapturedOutput(limit);
   await Promise.all([
     readLines(child.stdout, (line) => {
       stdout.append(line);

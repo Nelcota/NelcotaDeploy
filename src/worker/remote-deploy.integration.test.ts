@@ -60,7 +60,7 @@ describe("deploy to a server reached over SSH", () => {
       await sampler.sample(database, { runner: hosts.hostFor(server).runner, diskPath: "/" });
       const routed = await fetchThroughProxy(vps);
 
-      expect(environment.installOutput).toContain("Servidor pronto");
+      expect(environment.installOutput).toContain("Server ready");
       expect(check.status).toBe("ready");
       expect(getServer(database, server.id).hostKeyFingerprint).toStartWith("SHA256:");
       const deployment = getDeployment(database, deploymentId);
