@@ -13,7 +13,7 @@ export type BackupSummary = {
     readonly configured: boolean;
     readonly kept: number;
     /** Outcome of the latest upload; null before the first one. */
-    readonly status: OffsiteStatus | null;
+    readonly status: Pick<OffsiteStatus, "attemptedAt" | "uploadedAt" | "error"> | null;
   };
 };
 
@@ -36,7 +36,10 @@ export async function summarizeBackups(config: AppConfig): Promise<BackupSummary
     offsite: {
       configured: config.BACKUP_S3_BUCKET != null,
       kept: config.BACKUP_S3_KEPT,
-      status,
+      status:
+        status == null
+          ? null
+          : { attemptedAt: status.attemptedAt, uploadedAt: status.uploadedAt, error: status.error },
     },
   };
 }

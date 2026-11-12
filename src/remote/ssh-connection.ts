@@ -71,11 +71,15 @@ export class SshConnection implements Disposable {
    * Opens a channel that runs a command.
    *
    * @param command - Command line for the remote login shell.
+   * @param signal - Cancellation checked before and after establishing the shared connection.
    * @returns The channel: stdout is the stream itself, stderr is `channel.stderr`.
    * @throws {SshConnectionError} When the connection or the channel cannot be opened.
+   * @throws The cancellation reason when the signal aborts before requesting the channel.
    */
-  async exec(command: string): Promise<ClientChannel> {
+  async exec(command: string, signal?: AbortSignal): Promise<ClientChannel> {
+    signal?.throwIfAborted();
     const client = await this.#ready();
+    signal?.throwIfAborted();
     const { promise, resolve, reject } = Promise.withResolvers<ClientChannel>();
     client.exec(command, (error, channel) => {
       if (error != null) {

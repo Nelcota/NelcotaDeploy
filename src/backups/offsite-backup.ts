@@ -10,6 +10,7 @@ import { BackupTooLargeError } from "./backup.errors";
 
 /** The panel database is small; larger files would need streaming encryption. */
 const ENCRYPTED_SUFFIX = ".enc";
+const RETENTION_BATCH_SIZE = 8;
 
 /** The few bucket operations off-site backups use; tests replace the S3 client with a fake. */
 export type ObjectStore = {
@@ -20,21 +21,31 @@ export type ObjectStore = {
   readonly read: (key: string, maxBytes?: number) => Promise<Uint8Array<ArrayBuffer>>;
 };
 
-async function listAllKeys(
-  client: Bun.S3Client,
-  prefix: string,
-  continuationToken?: string,
-): Promise<string[]> {
-  const page = await client.list({
-    prefix,
-    ...(continuationToken == null ? {} : { continuationToken }),
-  });
-  const keys = (page.contents ?? []).map((object) => object.key);
-  if (page.isTruncated !== true || page.nextContinuationToken == null) {
-    return keys;
+async function listAllKeys(client: Bun.S3Client, prefix: string): Promise<string[]> {
+  const keys: string[] = [];
+  const seenTokens = new Set<string>();
+  let continuationToken: string | undefined;
+  for (;;) {
+    const page = await client.list({
+      prefix,
+      ...(continuationToken == null ? {} : { continuationToken }),
+    });
+    for (const object of page.contents ?? []) {
+      keys.push(object.key);
+    }
+
+    if (page.isTruncated !== true) {
+      return keys;
+    }
+
+    const next = page.nextContinuationToken;
+    if (next == null || next.trim() === "" || seenTokens.has(next)) {
+      throw new Error("The backup bucket returned an invalid continuation token");
+    }
+
+    seenTokens.add(next);
+    continuationToken = next;
   }
-  // Each page needs the token of the one before it.
-  return [...keys, ...(await listAllKeys(client, prefix, page.nextContinuationToken))];
 }
 
 /**
@@ -100,7 +111,7 @@ function selectExpiredRemoteBackups(
  * @param store - Bucket.
  * @param secretBox - Encrypts with NELCOTA_ENCRYPTION_KEY; the file name is bound to it.
  * @param backup - Local backup `path`, bucket `prefix` and how many remote copies are `kept`.
- * @returns The key of the uploaded backup.
+ * @returns The uploaded key and any failure encountered while applying retention.
  * @throws {BackupTooLargeError} When the backup is larger than 512 MiB.
  * @throws {RangeError} When `kept` is not a positive integer.
  */
@@ -108,6 +119,30 @@ export async function uploadBackup(
   store: ObjectStore,
   secretBox: SecretBox,
   backup: { readonly path: string; readonly prefix: string; readonly kept: number },
+): Promise<{ readonly key: string; readonly retention: { readonly error: unknown } | null }> {
+  if (Number.isSafeInteger(backup.kept) === false || backup.kept < 1) {
+    throw new RangeError(`kept must be a positive safe integer, received ${backup.kept}`);
+  }
+
+  const key = await writeEncryptedBackup(store, secretBox, backup);
+  try {
+    const expired = selectExpiredRemoteBackups(
+      await store.list(backup.prefix),
+      backup.prefix,
+      backup.kept,
+    );
+    await deleteExpiredBackups(store, expired);
+  } catch (error) {
+    return { key, retention: { error } };
+  }
+
+  return { key, retention: null };
+}
+
+async function writeEncryptedBackup(
+  store: ObjectStore,
+  secretBox: SecretBox,
+  backup: { readonly path: string; readonly prefix: string },
 ): Promise<string> {
   using _memory = await acquireBackupMemory();
   const file = Bun.file(backup.path);
@@ -121,13 +156,24 @@ export async function uploadBackup(
   );
   const key = `${backup.prefix}${name}${ENCRYPTED_SUFFIX}`;
   await store.write(key, encrypted);
-  const expired = selectExpiredRemoteBackups(
-    await store.list(backup.prefix),
-    backup.prefix,
-    backup.kept,
-  );
-  await Promise.all(expired.map(async (expiredKey) => await store.delete(expiredKey)));
   return key;
+}
+
+async function deleteExpiredBackups(store: ObjectStore, keys: readonly string[]): Promise<void> {
+  const failures: unknown[] = [];
+  for (let offset = 0; offset < keys.length; offset += RETENTION_BATCH_SIZE) {
+    const batch = keys.slice(offset, offset + RETENTION_BATCH_SIZE);
+    const results = await Promise.allSettled(batch.map(async (key) => await store.delete(key)));
+    failures.push(
+      ...results
+        .filter((result) => result.status === "rejected")
+        .map((result): unknown => result.reason),
+    );
+  }
+
+  if (failures.length > 0) {
+    throw new AggregateError(failures, "Could not delete all expired off-site backups");
+  }
 }
 
 /**

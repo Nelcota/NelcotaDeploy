@@ -1,6 +1,12 @@
 import { describe, expect, test } from "bun:test";
 
-import { buildChildEnvironment, failureReason, readLines, runProcess } from "./process-runner";
+import {
+  buildChildEnvironment,
+  CapturedOutput,
+  failureReason,
+  readLines,
+  runProcess,
+} from "./process-runner";
 
 async function* outputChunks(values: readonly string[]) {
   for (const value of values) {
@@ -26,6 +32,47 @@ test("omits a long final line without waiting for a newline", async () => {
   const lines: string[] = [];
   await readLines(outputChunks(["x".repeat(100_000)]), (line) => lines.push(line));
   expect(lines).toEqual(["[Output line omitted: exceeds 65536 characters]"]);
+});
+
+describe("CapturedOutput", () => {
+  test("counts UTF-8 bytes including line endings and accepts the exact limit", () => {
+    const output = new CapturedOutput(8);
+
+    output.append("é");
+    output.append("😀");
+    output.append("extra");
+
+    expect(output.text).toBe("é\n😀\n");
+  });
+
+  test("retains only the prefix of complete lines within the byte limit", () => {
+    const output = new CapturedOutput(2);
+
+    output.append("é");
+    output.append("a");
+
+    expect(output.text).toBe("");
+  });
+
+  test("allows callers to disable capture while continuing to stream lines", async () => {
+    const lines: string[] = [];
+
+    const result = await runProcess(["bun", "-e", "console.log('test')"], {
+      timeoutInMs: 5_000,
+      maxCapturedBytes: 0,
+      onLine: (line) => lines.push(line),
+    });
+
+    expect(result.stdout).toBe("");
+    expect(lines).toEqual(["test"]);
+  });
+
+  test.each([Number.NaN, Number.POSITIVE_INFINITY, -1, 1.5])(
+    "rejects an invalid byte limit of %p",
+    (limit) => {
+      expect(() => new CapturedOutput(limit)).toThrow(RangeError);
+    },
+  );
 });
 
 describe("runProcess", () => {

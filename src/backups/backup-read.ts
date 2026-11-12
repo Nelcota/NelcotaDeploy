@@ -26,14 +26,27 @@ export async function readBackupFile(
   if (metadata.size > maxBytes) {
     throw new BackupTooLargeError(metadata.size, maxBytes);
   }
-  // Reuse the original BunFile allocation; local objects are replaced atomically.
-  const bytes = await file.bytes();
-  if (bytes.byteLength > maxBytes) {
-    throw new BackupTooLargeError(bytes.byteLength, maxBytes);
+  // Size and contents must come from the same descriptor when the path is replaced.
+  const bytes = new Uint8Array(metadata.size);
+  let offset = 0;
+  while (offset < bytes.byteLength) {
+    const { bytesRead } = await handle.read(bytes, offset, bytes.byteLength - offset, offset);
+    if (bytesRead === 0) {
+      throw new Error("Backup file shrank during its snapshot read");
+    }
+
+    offset += bytesRead;
   }
-  if (bytes.byteLength !== metadata.size) {
+
+  const finalMetadata = await handle.stat();
+  if (finalMetadata.size > maxBytes) {
+    throw new BackupTooLargeError(finalMetadata.size, maxBytes);
+  }
+
+  if (finalMetadata.size !== metadata.size || finalMetadata.mtimeMs !== metadata.mtimeMs) {
     throw new Error("Backup file changed during its snapshot read");
   }
+
   return bytes;
 }
 

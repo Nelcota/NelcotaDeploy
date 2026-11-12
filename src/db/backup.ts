@@ -1,11 +1,12 @@
-import { mkdir, readdir, rm, stat } from "node:fs/promises";
+import { link, mkdir, open, readdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 
 import type { Database } from "./database";
 
+const OWNER_READ_WRITE = 0o600;
 const BACKUP_PREFIX = "nelcota-";
 const BACKUP_SUFFIX = ".db";
-const BACKUP_NAME = /^nelcota-\d{8}T\d{6}Z\.db$/;
+const BACKUP_NAME = /^nelcota-(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})Z\.db$/;
 
 /** One backup file in the backup directory. */
 export type BackupFile = { readonly name: string; readonly createdAt: string };
@@ -19,6 +20,26 @@ function backupName(now: Date): string {
   return `${BACKUP_PREFIX}${stamp}${BACKUP_SUFFIX}`;
 }
 
+function backupCreatedAt(name: string): string | null {
+  const timestamp = name.replace(BACKUP_NAME, "$1-$2-$3T$4:$5:$6.000Z");
+  if (timestamp === name) {
+    return null;
+  }
+
+  const date = new Date(timestamp);
+  return Number.isFinite(date.getTime()) && date.toISOString() === timestamp ? timestamp : null;
+}
+
+/**
+ * Identifies a panel backup by its file name and a valid UTC timestamp.
+ *
+ * @param name - File name without any directory prefix.
+ * @returns Whether it is a panel backup name.
+ */
+function isPanelBackupName(name: string): boolean {
+  return backupCreatedAt(name) != null;
+}
+
 /**
  * Picks the backups to delete so that only the newest ones remain.
  *
@@ -28,39 +49,36 @@ function backupName(now: Date): string {
  * @throws {RangeError} When `kept` is not a positive integer.
  */
 export function selectExpiredBackups(names: readonly string[], kept: number): string[] {
-  if (Number.isInteger(kept) === false || kept < 1) {
-    throw new RangeError(`kept must be a positive integer, received ${kept}`);
+  assertValidRetention(kept);
+  return names.filter(isPanelBackupName).toSorted().slice(0, -kept).toReversed();
+}
+
+function assertValidRetention(kept: number): void {
+  if (Number.isSafeInteger(kept) === false || kept < 1) {
+    throw new RangeError(`kept must be a positive safe integer, received ${kept}`);
   }
-  return names
-    .filter((name) => BACKUP_NAME.test(name))
-    .toSorted()
-    .toReversed()
-    .slice(kept);
 }
 
 /**
- * Lists the backups in a directory, newest first.
+ * Lists the backups by their snapshot timestamps, newest first.
  *
  * @param directory - Backup directory.
  * @returns The backups; empty when the directory does not exist yet.
  */
 export async function listBackups(directory: string): Promise<BackupFile[]> {
-  const names = await readdir(directory).catch((error: unknown) => {
+  const entries = await readdir(directory, { withFileTypes: true }).catch((error: unknown) => {
     if (error instanceof Error && "code" in error && error.code === "ENOENT") {
       return [];
     }
     throw error;
   });
-  const backups = names
-    .filter((name) => BACKUP_NAME.test(name))
-    .toSorted()
-    .toReversed();
-  return await Promise.all(
-    backups.map(async (name) => ({
-      name,
-      createdAt: (await stat(join(directory, name))).mtime.toISOString(),
-    })),
-  );
+  return entries
+    .filter((entry) => entry.isFile())
+    .flatMap(({ name }) => {
+      const createdAt = backupCreatedAt(name);
+      return createdAt == null ? [] : [{ name, createdAt }];
+    })
+    .toSorted((first, second) => second.name.localeCompare(first.name));
 }
 
 /**
@@ -76,14 +94,28 @@ export async function backupDatabase(
   database: Database,
   target: { readonly directory: string; readonly kept: number; readonly now?: Date },
 ): Promise<string> {
-  await mkdir(target.directory, { recursive: true });
+  assertValidRetention(target.kept);
   const path = join(target.directory, backupName(target.now ?? new Date()));
-  database.$client.run("VACUUM INTO ?", [path]);
-  const names = await readdir(target.directory);
+  await mkdir(target.directory, { recursive: true });
+  await publishBackup(database, path);
+  const entries = await readdir(target.directory, { withFileTypes: true });
+  const names = entries.filter((entry) => entry.isFile()).map((entry) => entry.name);
   await Promise.all(
     selectExpiredBackups(names, target.kept).map(
       async (name) => await rm(join(target.directory, name), { force: true }),
     ),
   );
   return path;
+}
+
+async function publishBackup(database: Database, path: string): Promise<void> {
+  const temporaryPath = `${path}.${Bun.randomUUIDv7()}.tmp`;
+  const reservation = await open(temporaryPath, "wx", OWNER_READ_WRITE);
+  await using _temporary = {
+    [Symbol.asyncDispose]: async () => await rm(temporaryPath, { force: true }),
+  };
+  await reservation.close();
+  database.$client.run("VACUUM INTO ?", [temporaryPath]);
+  // A same-filesystem hard link publishes the complete file and fails if the name was taken.
+  await link(temporaryPath, path);
 }

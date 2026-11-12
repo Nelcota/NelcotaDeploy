@@ -95,6 +95,21 @@ afterAll(async () => {
 });
 
 describe("remote runner over SSH", () => {
+  test("applies the UTF-8 capture limit while streaming all remote output", async () => {
+    const run = createRemoteRunner(connection);
+    const lines: string[] = [];
+
+    const result = await run(["printf", "%s\\n", "é", "😀", "extra"], {
+      timeoutInMs: COMMAND_TIMEOUT_IN_MS,
+      maxCapturedBytes: 8,
+      onLine: (line) => lines.push(line),
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toBe("é\n😀\n");
+    expect(lines).toEqual(["é", "😀", "extra"]);
+  });
+
   test("returns output, exit code and streamed lines like a local process", async () => {
     const run = createRemoteRunner(connection);
     const lines: string[] = [];

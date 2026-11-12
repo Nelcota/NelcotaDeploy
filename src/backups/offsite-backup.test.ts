@@ -45,9 +45,14 @@ describe("uploadBackup", () => {
     const box = await createTestSecretBox();
     const path = await localBackup("nelcota-20261029T033000Z.db", "SQLite format 3 data");
 
-    const key = await uploadBackup(store, box, { path, prefix: "nelcota/", kept: 3 });
+    const { key, retention } = await uploadBackup(store, box, {
+      path,
+      prefix: "nelcota/",
+      kept: 3,
+    });
 
     expect(key).toBe("nelcota/nelcota-20261029T033000Z.db.enc");
+    expect(retention).toBeNull();
     expect(new TextDecoder().decode(store.objects.get(key))).not.toContain("SQLite");
     const restored = await downloadBackup(store, box, key);
     expect(new TextDecoder().decode(restored)).toBe("SQLite format 3 data");
@@ -69,17 +74,69 @@ describe("uploadBackup", () => {
   });
 });
 
+test("reports a retention failure after preserving the uploaded backup", async () => {
+  const store = memoryStore();
+  const path = await localBackup("nelcota-20261029T033000Z.db", "backup");
+  const box = await createTestSecretBox();
+  const failure = new Error("listing failed");
+
+  const result = await uploadBackup({ ...store, list: () => Promise.reject(failure) }, box, {
+    path,
+    prefix: "nelcota/",
+    kept: 1,
+  });
+
+  expect(result.retention).toEqual({ error: failure });
+  expect(store.objects.has(result.key)).toBe(true);
+});
+
+test("settles bounded batches of deletions even when one deletion fails", async () => {
+  const store = memoryStore();
+  const box = await createTestSecretBox();
+  const path = await localBackup("nelcota-20261029T033000Z.db", "backup");
+  const older = Array.from({ length: 12 }, (_, index) => {
+    const day = String(index + 1).padStart(2, "0");
+    return `nelcota/nelcota-202610${day}T033000Z.db.enc`;
+  });
+  const failure = new Error("object locked");
+  const completed: string[] = [];
+  let active = 0;
+  let peak = 0;
+  const bucket = {
+    ...store,
+    list: () => Promise.resolve([...older, ...store.objects.keys()]),
+    delete: async (key: string) => {
+      active += 1;
+      peak = Math.max(peak, active);
+      await Promise.resolve();
+      active -= 1;
+      completed.push(key);
+      if (key === older[0]) {
+        throw failure;
+      }
+    },
+  };
+
+  const result = await uploadBackup(bucket, box, { path, prefix: "nelcota/", kept: 1 });
+
+  expect(result.retention?.error).toBeInstanceOf(AggregateError);
+  expect(completed.toSorted()).toEqual(older.toSorted());
+  expect(peak).toBeLessThan(older.length);
+});
+
 describe("uploadBackup refusals", () => {
   test("throws RangeError when kept is not a positive integer", async () => {
     const path = await localBackup("nelcota-20261029T033000Z.db", "x");
 
-    const error = await uploadBackup(memoryStore(), await createTestSecretBox(), {
+    const store = memoryStore();
+    const error = await uploadBackup(store, await createTestSecretBox(), {
       path,
       prefix: "nelcota/",
       kept: 0,
     }).catch((failure: unknown) => failure);
 
     expect(error).toBeInstanceOf(RangeError);
+    expect(store.objects.size).toBe(0);
   });
 
   test("throws BackupTooLargeError for a backup above 512 MiB, before reading it", async () => {

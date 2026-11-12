@@ -2,8 +2,10 @@ import { join } from "node:path";
 
 import { z } from "zod";
 
+import { localObjectStore } from "./local-object-store";
+
 const STATUS_FILE = "offsite-status.json";
-const MAX_ERROR_LENGTH = 300;
+const UPLOAD_FAILURE = "Offsite backup upload failed";
 
 const statusSchema = z.object({
   attemptedAt: z.iso.datetime(),
@@ -19,15 +21,15 @@ export type OffsiteStatus = z.infer<typeof statusSchema>;
  * Records the outcome of an off-site upload. A failure keeps the time of the last success.
  *
  * @param directory - Local backup directory.
- * @param outcome - The uploaded `key`, or the `error` of a failed upload, and when it ran.
+ * @param outcome - The uploaded `key` or a failure marker, and when the attempt ran.
  */
 export async function recordOffsiteStatus(
   directory: string,
   outcome:
     | { readonly at: Date; readonly key: string }
-    | { readonly at: Date; readonly error: string },
+    | { readonly at: Date; readonly failed: true },
 ): Promise<void> {
-  const previous = await readOffsiteStatus(directory);
+  const previous = "failed" in outcome ? await readOffsiteStatus(directory) : null;
   const attemptedAt = outcome.at.toISOString();
   const status: OffsiteStatus =
     "key" in outcome
@@ -36,9 +38,10 @@ export async function recordOffsiteStatus(
           attemptedAt,
           uploadedAt: previous?.uploadedAt ?? null,
           key: previous?.key ?? null,
-          error: outcome.error.slice(0, MAX_ERROR_LENGTH),
+          error: UPLOAD_FAILURE,
         };
-  await Bun.write(join(directory, STATUS_FILE), JSON.stringify(status));
+  const bytes = new TextEncoder().encode(JSON.stringify(status));
+  await localObjectStore(directory).write(STATUS_FILE, bytes);
 }
 
 /**
@@ -54,5 +57,10 @@ export async function readOffsiteStatus(directory: string): Promise<OffsiteStatu
   }
   // A damaged file only means the status is unknown; the next upload writes a new one.
   const parsed = statusSchema.safeParse(await file.json().catch(() => null));
-  return parsed.success ? parsed.data : null;
+  if (parsed.success === false) {
+    return null;
+  }
+
+  // Older versions persisted raw storage errors. Keep the failure signal without the details.
+  return { ...parsed.data, error: parsed.data.error == null ? null : UPLOAD_FAILURE };
 }
