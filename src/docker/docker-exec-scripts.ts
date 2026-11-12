@@ -17,7 +17,8 @@ wait "$!"
 `;
 
 // Freeze each parent before visiting its children so it cannot spawn more or reap a child
-// whose PID could then be reused. Kernels without the children file still expose each PPID.
+// whose PID could then be reused. Resume surviving processes as a failed stop unwinds.
+// Kernels without the children file still expose each PPID.
 // https://www.kernel.org/doc/html/latest/filesystems/proc.html
 export const STOP_EXEC_SCRIPT = `
 root_pid=$1
@@ -52,6 +53,36 @@ proc_children() (
     fi
   done
 )
+resume_process() {
+  if resume_error=$(kill -s CONT "$1" 2>&1); then
+    return 0
+  fi
+  if [ -d /proc/"$1" ]; then
+    printf 'Cannot resume container process %s: %s\\n' "$1" "$resume_error" >&2
+    return 1
+  fi
+  return 0
+}
+stop_children() {
+  if [ -r /proc/"$1"/task/"$1"/children ]; then
+    for task_children in /proc/"$1"/task/*/children; do
+      children=
+      IFS= read -r children < "$task_children" || :
+      for child in $children; do
+        stop_tree "$child" || return 125
+      done
+    done
+  else
+    if children=$(proc_children "$1"); then
+      for child in $children; do
+        stop_tree "$child" || return 125
+      done
+    else
+      printf 'Cannot enumerate children of container process %s\\n' "$1" >&2
+      return 125
+    fi
+  fi
+}
 stop_tree() {
   if pause_error=$(kill -s STOP "$1" 2>&1); then
     :
@@ -67,36 +98,27 @@ stop_tree() {
   if [ "$1" = "$root_pid" ]; then
     if started_at=$(process_start "$1"); then
       if [ "$started_at" != "$expected_start" ]; then
-        kill -s CONT "$1" 2>/dev/null
+        resume_process "$1" || return 125
         return 0
       fi
     elif [ -d /proc/"$1" ]; then
-      kill -s CONT "$1" 2>/dev/null
+      resume_process "$1"
       printf 'Cannot verify the paused container command identity\\n' >&2
       return 125
     else
       return 0
     fi
   fi
-  if [ -r /proc/"$1"/task/"$1"/children ]; then
-    for task_children in /proc/"$1"/task/*/children; do
-      children=
-      IFS= read -r children < "$task_children" || :
-      for child in $children; do
-        stop_tree "$child" || return 125
-      done
-    done
-  else
-    children=$(proc_children "$1") || return 125
-    for child in $children; do
-      stop_tree "$child" || return 125
-    done
-  fi
+  stop_children "$1" || {
+    resume_process "$1"
+    return 125
+  }
   if stop_error=$(kill -s KILL "$1" 2>&1); then
     return 0
   fi
   if [ -d /proc/"$1" ]; then
     printf 'Cannot kill container process %s: %s\\n' "$1" "$stop_error" >&2
+    resume_process "$1"
     return 125
   fi
   return 0
