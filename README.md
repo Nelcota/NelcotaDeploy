@@ -1,11 +1,26 @@
-# Nelcota Deploy
+<div align="center">
 
-Nelcota Deploy is a self-hosted panel for deploying Docker applications from GitHub to Linux VPSs.
-Use one server for the panel and your applications, or run workloads on additional servers over SSH.
-The panel tracks deployments, logs, resource usage, and uptime, and manages HTTPS for your domains.
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="public/nelcota-logo-white.svg" />
+  <img src="public/nelcota-logo-black.svg" alt="Nelcota" width="220" />
+</picture>
 
-[Latest release](https://github.com/Nelcota/NelcotaDeploy/releases/latest) ·
-[Public container image](https://github.com/Nelcota/NelcotaDeploy/pkgs/container/nelcotadeploy)
+<h1>Nelcota Deploy</h1>
+
+<p>Deploy Docker applications from GitHub to your own Linux VPS.<br />
+Manage deployments, logs, uptime, and HTTPS from a single panel.</p>
+
+<p>
+  <a href="#install-on-a-vps">Install on a VPS</a> ·
+  <a href="https://github.com/Nelcota/NelcotaDeploy/releases/latest">Latest release</a> ·
+  <a href="https://github.com/Nelcota/NelcotaDeploy/pkgs/container/nelcotadeploy">Public container image</a>
+</p>
+
+<p>
+  <a href="https://github.com/Nelcota/NelcotaDeploy/actions/workflows/check.yml?query=branch%3Amain"><img src="https://github.com/Nelcota/NelcotaDeploy/actions/workflows/check.yml/badge.svg?branch=main" alt="CI status on main" /></a>
+</p>
+
+</div>
 
 ## Install on a VPS
 
@@ -47,6 +62,8 @@ installation from its original checkout.
 
 Projects created by developers need an administrator's approval before they can deploy. See the
 [GitHub App setup](docs/guia.md#github-app-recomendado) for repository permissions and webhooks.
+
+![Project overview showing the production and staging tabs, application health, and the deployed commit](docs/images/project.png)
 
 ## What you can manage
 
