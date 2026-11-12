@@ -17,32 +17,27 @@ wait "$!"
 `;
 
 // Freeze each parent before visiting its children so it cannot spawn more or reap a child
-// whose PID could then be reused. Kernels without the children file still expose each PPID.
+// whose PID could then be reused. Resume surviving processes as a failed stop unwinds.
+// Kernels without the children file still expose each PPID.
 // https://www.kernel.org/doc/html/latest/filesystems/proc.html
 export const STOP_EXEC_SCRIPT = `
 root_pid=$1
 expected_start=$2
 case "$root_pid" in ''|*[!0-9]*|0|1) exit 125;; esac
 case "$expected_start" in ''|*[!0-9]*) exit 125;; esac
-if kill -STOP "$root_pid" 2>/dev/null; then
-  :
+process_start() (
+  IFS= read -r process_stat 2>/dev/null < /proc/"$1"/stat || return 1
+  process_fields=\${process_stat##*) }
+  set -- $process_fields
+  shift 19
+  printf '%s' "$1"
+)
+if started_at=$(process_start "$root_pid"); then
+  [ "$started_at" = "$expected_start" ] || exit 0
 elif [ -d /proc/"$root_pid" ]; then
-  printf 'Cannot pause container command\\n' >&2
+  printf 'Cannot verify the container command identity\\n' >&2
   exit 125
 else
-  exit 0
-fi
-if IFS= read -r process_stat < /proc/"$root_pid"/stat; then
-  :
-else
-  kill -CONT "$root_pid" 2>/dev/null
-  exit 125
-fi
-process_fields=\${process_stat##*) }
-set -- $process_fields
-shift 19
-if [ "$1" != "$expected_start" ]; then
-  kill -CONT "$root_pid" 2>/dev/null
   exit 0
 fi
 proc_children() (
@@ -58,15 +53,17 @@ proc_children() (
     fi
   done
 )
-stop_tree() {
-  if kill -STOP "$1" 2>/dev/null; then
-    :
-  elif [ -d /proc/"$1" ]; then
-    printf 'Cannot pause a command descendant\\n' >&2
-    return 125
-  else
+resume_process() {
+  if resume_error=$(kill -s CONT "$1" 2>&1); then
     return 0
   fi
+  if [ -d /proc/"$1" ]; then
+    printf 'Cannot resume container process %s: %s\\n' "$1" "$resume_error" >&2
+    return 1
+  fi
+  return 0
+}
+stop_children() {
   if [ -r /proc/"$1"/task/"$1"/children ]; then
     for task_children in /proc/"$1"/task/*/children; do
       children=
@@ -76,16 +73,52 @@ stop_tree() {
       done
     done
   else
-    children=$(proc_children "$1") || return 125
-    for child in $children; do
-      stop_tree "$child" || return 125
-    done
+    if children=$(proc_children "$1"); then
+      for child in $children; do
+        stop_tree "$child" || return 125
+      done
+    else
+      printf 'Cannot enumerate children of container process %s\\n' "$1" >&2
+      return 125
+    fi
   fi
-  if kill -KILL "$1" 2>/dev/null; then
+}
+stop_tree() {
+  if pause_error=$(kill -s STOP "$1" 2>&1); then
+    :
+  elif [ -d /proc/"$1" ]; then
+    if [ "$1" = "$root_pid" ] && started_at=$(process_start "$1") && [ "$started_at" != "$expected_start" ]; then
+      return 0
+    fi
+    printf 'Cannot pause container process %s: %s\\n' "$1" "$pause_error" >&2
+    return 125
+  else
+    return 0
+  fi
+  if [ "$1" = "$root_pid" ]; then
+    if started_at=$(process_start "$1"); then
+      if [ "$started_at" != "$expected_start" ]; then
+        resume_process "$1" || return 125
+        return 0
+      fi
+    elif [ -d /proc/"$1" ]; then
+      resume_process "$1"
+      printf 'Cannot verify the paused container command identity\\n' >&2
+      return 125
+    else
+      return 0
+    fi
+  fi
+  stop_children "$1" || {
+    resume_process "$1"
+    return 125
+  }
+  if stop_error=$(kill -s KILL "$1" 2>&1); then
     return 0
   fi
   if [ -d /proc/"$1" ]; then
-    printf 'Cannot kill a command descendant\\n' >&2
+    printf 'Cannot kill container process %s: %s\\n' "$1" "$stop_error" >&2
+    resume_process "$1"
     return 125
   fi
   return 0
