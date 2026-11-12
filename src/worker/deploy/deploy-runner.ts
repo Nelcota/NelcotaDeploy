@@ -1,22 +1,25 @@
 import type { Database } from "@/db";
 import {
   completeDeployment,
+  DeploymentCancelledError,
   getDeployment,
   isCancellationRequested,
   isTerminalStatus,
+  PreviewNotActiveError,
   ProjectNotApprovedError,
+  requireActivePreview,
   transitionDeployment,
 } from "@/deployments";
 import { JobLeaseLostError } from "@/jobs";
 import { getProject } from "@/projects";
 
-import { DeploymentCancelledError } from "../worker.errors";
 import {
   discardFailedContainers,
   pruneOldImages,
   removePreviousContainers,
 } from "./deploy-cleanup";
 import {
+  assertNotCancelled,
   type DeployContext,
   type DeployRunnerDependencies,
   DeployState,
@@ -34,11 +37,13 @@ function watchCancellation(
   deploymentId: string,
   controller: AbortController,
 ): Disposable {
-  const timer = setInterval(() => {
+  const check = () => {
     if (isCancellationRequested(database, deploymentId)) {
       controller.abort();
     }
-  }, CANCEL_POLL_INTERVAL_IN_MS);
+  };
+  check();
+  const timer = setInterval(check, CANCEL_POLL_INTERVAL_IN_MS);
   return { [Symbol.dispose]: () => clearInterval(timer) };
 }
 
@@ -87,6 +92,11 @@ export async function runDeployment(
   };
 
   try {
+    assertNotCancelled(context.signal);
+    if (deployment.previewId != null) {
+      requireActivePreview(database, project.id, deployment.previewId);
+    }
+
     if (
       project.deploymentsApproved === false ||
       (deployment.repositoryUrl != null && deployment.repositoryUrl !== project.repositoryUrl)
@@ -102,12 +112,17 @@ export async function runDeployment(
     if (error instanceof JobLeaseLostError || jobSignal.reason instanceof JobLeaseLostError) {
       throw error;
     }
-    if (jobSignal.aborted && cancellation.signal.aborted === false) {
+    const cancellationRequested =
+      cancellation.signal.aborted ||
+      error instanceof PreviewNotActiveError ||
+      (deployment.previewId != null && isCancellationRequested(database, deployment.id));
+    if (jobSignal.aborted && cancellationRequested === false) {
       await discardFailedContainers(dependencies.docker, context.state.containerNames, logs);
       requeueDeployment(database, deployment.id);
       throw error;
     }
-    const cancelled = cancellation.signal.aborted || error instanceof DeploymentCancelledError;
+
+    const cancelled = cancellationRequested || error instanceof DeploymentCancelledError;
     await recordFailure(dependencies, context, { error, cancelled });
     return cancelled ? "cancelled" : "failed";
   }
@@ -164,9 +179,14 @@ async function recordFailure(
   const { deployment, logs, state } = context;
   await discardFailedContainers(dependencies.docker, state.containerNames, logs);
   context.assertOwnership();
-  const message = cancelled
-    ? "Deployment cancelled by a user"
-    : state.redact(errorMessageOf(error));
+  let message = state.redact(errorMessageOf(error));
+  if (cancelled) {
+    message =
+      deployment.previewId == null
+        ? "Deployment cancelled by a user"
+        : "Preview deployment cancelled";
+  }
+
   logs.system(message, "error");
   logs.flush();
   transitionDeployment(dependencies.database, deployment.id, {

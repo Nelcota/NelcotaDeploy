@@ -1,12 +1,17 @@
 import { describe, expect, test } from "bun:test";
 
 import { type Database, openMemoryDatabase } from "@/db";
+import { claimNextJob } from "@/jobs";
 import { closePreview, getPreview, openPreview } from "@/previews";
 import { getProject } from "@/projects";
 import { createTestProject, TEST_ACTOR } from "@/testing";
 
 import { requestDeployment } from "./deployment-request.service";
-import { PreviewNotActiveError, RollbackUnavailableError } from "./deployment.errors";
+import {
+  DeploymentCancelledError,
+  PreviewNotActiveError,
+  RollbackUnavailableError,
+} from "./deployment.errors";
 import {
   completeDeployment,
   getDeployment,
@@ -17,7 +22,7 @@ import {
 
 const manual = { trigger: "manual" as const, actor: TEST_ACTOR, triggeredByUserId: null };
 
-function finish(database: Database, deploymentId: string): void {
+function startHealthCheck(database: Database, deploymentId: string): void {
   transitionDeployment(database, deploymentId, { to: "cloning" });
   transitionDeployment(database, deploymentId, { to: "building" });
   transitionDeployment(database, deploymentId, {
@@ -26,6 +31,10 @@ function finish(database: Database, deploymentId: string): void {
     containerName: `nelcota-api-${deploymentId.slice(-6)}`,
   });
   transitionDeployment(database, deploymentId, { to: "health_checking" });
+}
+
+function finish(database: Database, deploymentId: string): void {
+  startHealthCheck(database, deploymentId);
   completeDeployment(database, deploymentId);
 }
 
@@ -75,9 +84,63 @@ describe("preview deployments in the queue", () => {
 
     expect(() => preview()).toThrow(PreviewNotActiveError);
   });
+
+  test("cancels an unclaimed preview deployment and preserves the production queue on close", () => {
+    const { database, project, production, preview } = setup();
+    using _connection = database.$client;
+    const pending = preview();
+    const live = production();
+
+    closePreview(database, { projectId: project.id, number: 12 });
+
+    expect(getDeployment(database, pending.deploymentId).status).toBe("cancelled");
+    expect(getDeployment(database, live.deploymentId).status).toBe("queued");
+    expect(claimNextJob(database, "worker")?.deploymentId).toBe(live.deploymentId);
+  });
+
+  test("queues a fresh deployment when a claimed preview deployment was cancelled before reopening", () => {
+    const { database, project, preview } = setup();
+    using _connection = database.$client;
+    const target = {
+      projectId: project.id,
+      number: 12,
+      branch: "feature/pix",
+      headSha: "a".repeat(40),
+    };
+    const claimed = preview();
+    expect(claimNextJob(database, "worker")?.deploymentId).toBe(claimed.deploymentId);
+
+    closePreview(database, target);
+    openPreview(database, target);
+    const replacement = preview();
+
+    expect(getDeployment(database, claimed.deploymentId).cancelRequestedAt).not.toBeNull();
+    expect(replacement.deploymentId).not.toBe(claimed.deploymentId);
+    expect(getDeployment(database, replacement.deploymentId).cancelRequestedAt).toBeNull();
+  });
 });
 
 describe("a finished preview deployment", () => {
+  test("cannot make a cancelled deployment current after the pull request reopens", () => {
+    const { database, project, previewId, preview } = setup();
+    using _connection = database.$client;
+    const target = {
+      projectId: project.id,
+      number: 12,
+      branch: "feature/pix",
+      headSha: "a".repeat(40),
+    };
+    const { deploymentId } = preview();
+    claimNextJob(database, "worker");
+    startHealthCheck(database, deploymentId);
+    closePreview(database, target);
+    openPreview(database, target);
+
+    expect(() => completeDeployment(database, deploymentId)).toThrow(DeploymentCancelledError);
+    expect(getDeployment(database, deploymentId).status).toBe("health_checking");
+    expect(getPreview(database, previewId)?.currentDeploymentId).toBeNull();
+  });
+
   test("becomes the preview's current deployment, never the project's", () => {
     const { database, project, previewId, preview } = setup();
     const { deploymentId } = preview();

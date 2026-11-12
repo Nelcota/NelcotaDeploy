@@ -1,4 +1,4 @@
-import { and, eq, inArray, notExists, or, gt } from "drizzle-orm";
+import { and, eq, inArray, notExists, or, gt, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/sqlite-core";
 
 import { type Database, tables, type Transaction } from "@/db";
@@ -20,7 +20,18 @@ function latestFailedCleanups(transaction: Transaction): Job[] {
             .from(newer)
             .where(
               and(
-                eq(newer.dedupeKey, tables.jobs.dedupeKey),
+                eq(newer.projectId, tables.jobs.projectId),
+                eq(newer.kind, tables.jobs.kind),
+                or(
+                  eq(newer.dedupeKey, tables.jobs.dedupeKey),
+                  and(
+                    eq(tables.jobs.kind, "preview_cleanup"),
+                    eq(
+                      sql`json_extract(${newer.payload}, '$.previewId')`,
+                      sql`json_extract(${tables.jobs.payload}, '$.previewId')`,
+                    ),
+                  ),
+                ),
                 or(
                   gt(newer.createdAt, tables.jobs.createdAt),
                   and(eq(newer.createdAt, tables.jobs.createdAt), gt(newer.id, tables.jobs.id)),

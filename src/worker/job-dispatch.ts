@@ -255,7 +255,10 @@ export async function dispatchJob(
       return;
     }
     case "preview_cleanup": {
-      await runPreviewCleanupJob(dependencies, job);
+      await runPreviewCleanupJob(dependencies, job, () => {
+        run.signal.throwIfAborted();
+        run.assertOwnership?.();
+      });
       return;
     }
     case "database_provision": {

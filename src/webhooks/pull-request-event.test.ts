@@ -123,6 +123,23 @@ describe("processPullRequest refusals", () => {
 });
 
 describe("processPullRequest closing a preview", () => {
+  test("closes a known preview when the pull request head repository is absent", () => {
+    const { database, project } = setup();
+    using _connection = database.$client;
+    processPullRequest(database, pullRequestBody());
+
+    const outcome = processPullRequest(
+      database,
+      pullRequestBody({ action: "closed", headRepo: null }),
+    );
+
+    expect(outcome.result).toEqual({
+      status: "ignored",
+      reason: "pull request closed; its previews are being removed",
+    });
+    expect(listActivePreviews(database, project.id)).toHaveLength(0);
+  });
+
   test("closes an existing preview even after previews were disabled", () => {
     const { database, project } = setup();
     using _connection = database.$client;

@@ -7,6 +7,64 @@ import { PathOutsideWorkspaceError, WorkspaceCommandError } from "../worker.erro
 const COMMAND_TIMEOUT_IN_MS = 30_000;
 // Deleting a large checkout with node_modules can take a while on a slow disk.
 const REMOVE_TIMEOUT_IN_MS = 120_000;
+const PATH_NOT_FOUND_EXIT_CODE = 44;
+const PATH_LINE_SUFFIX = ".";
+// Preserve realpath's trailing newline through command substitution. Mark each output line
+// so CR in a path cannot be mistaken for the CR in a normal CRLF line ending by the runner.
+const RESOLVE_PATHS_SCRIPT = [
+  `[ -e "$2" ] || exit ${PATH_NOT_FOUND_EXIT_CODE}`,
+  'paths=$(realpath "$1" "$2" && printf ".") || exit "$?"',
+  'printf "%s" "${paths%.}" | sed "s/$/./"',
+].join("\n");
+
+function containsPathDelimiter(path: string): boolean {
+  return path.includes("\0") || path.includes("\r") || path.includes("\n");
+}
+
+/** Checks whether an absolute path is lexically inside an absolute workspace root. */
+export function isPathInsideWorkspace(root: string, path: string): boolean {
+  if (
+    posix.isAbsolute(root) === false ||
+    posix.isAbsolute(path) === false ||
+    containsPathDelimiter(root) ||
+    containsPathDelimiter(path)
+  ) {
+    return false;
+  }
+
+  const relative = posix.relative(root, path);
+  return (
+    relative !== ".." &&
+    relative.startsWith("../") === false &&
+    posix.isAbsolute(relative) === false
+  );
+}
+
+function parseResolvedPaths(output: string): readonly [string, string] {
+  const lines = output.split("\n");
+  const [root, candidate, end] = lines;
+  if (
+    lines.length !== 3 ||
+    end !== "" ||
+    root?.endsWith(PATH_LINE_SUFFIX) !== true ||
+    candidate?.endsWith(PATH_LINE_SUFFIX) !== true
+  ) {
+    throw new WorkspaceCommandError("realpath returned invalid path output");
+  }
+
+  const realRoot = root.slice(0, -1);
+  const realCandidate = candidate.slice(0, -1);
+  if (
+    posix.isAbsolute(realRoot) === false ||
+    posix.isAbsolute(realCandidate) === false ||
+    containsPathDelimiter(realRoot) ||
+    containsPathDelimiter(realCandidate)
+  ) {
+    throw new WorkspaceCommandError("realpath returned an invalid absolute path");
+  }
+
+  return [realRoot, realCandidate];
+}
 
 async function runChecked(
   runner: CommandRunner,
@@ -14,7 +72,7 @@ async function runChecked(
   timeoutInMs: number = COMMAND_TIMEOUT_IN_MS,
 ): Promise<string> {
   const result: ProcessResult = await runner(command, { timeoutInMs });
-  if (result.exitCode !== 0) {
+  if (result.exitCode !== 0 || result.timedOut || result.aborted) {
     throw new WorkspaceCommandError(`${command[0] ?? ""} failed: ${failureReason(result)}`);
   }
   return result.stdout;
@@ -34,26 +92,50 @@ async function runChecked(
  * @returns The absolute real path.
  * @throws {PathOutsideWorkspaceError} When the path is missing or a symlink points outside
  *   the root.
+ * @throws {WorkspaceCommandError} When path resolution fails or returns invalid output.
  */
 export async function resolveInsideWorkspace(
   runner: CommandRunner,
   root: string,
   relativePath: string,
 ): Promise<string> {
-  const candidate = posix.resolve(root, relativePath);
-  // BusyBox has neither `realpath -e` nor `--`; both paths are absolute, so neither is needed.
-  const result = await runner(
-    ["sh", "-c", 'test -e "$2" && realpath "$1" "$2"', "sh", root, candidate],
-    { timeoutInMs: COMMAND_TIMEOUT_IN_MS },
-  );
-  const [realRoot, realCandidate] = result.stdout.split("\n");
-  if (result.exitCode !== 0 || realRoot == null || realCandidate == null || realCandidate === "") {
-    throw new PathOutsideWorkspaceError(`${relativePath} (not found)`);
+  if (posix.isAbsolute(root) === false || containsPathDelimiter(root)) {
+    throw new WorkspaceCommandError("the repository root must be an absolute single-line path");
   }
-  const fromRoot = posix.relative(realRoot, realCandidate);
-  if (fromRoot.startsWith("..") || posix.isAbsolute(fromRoot)) {
+
+  if (
+    relativePath.trim() === "" ||
+    posix.isAbsolute(relativePath) ||
+    containsPathDelimiter(relativePath)
+  ) {
     throw new PathOutsideWorkspaceError(relativePath);
   }
+
+  const candidate = posix.resolve(root, relativePath);
+  if (isPathInsideWorkspace(root, candidate) === false) {
+    throw new PathOutsideWorkspaceError(relativePath);
+  }
+
+  const result = await runner(["sh", "-c", RESOLVE_PATHS_SCRIPT, "sh", root, candidate], {
+    timeoutInMs: COMMAND_TIMEOUT_IN_MS,
+  });
+  if (result.timedOut || result.aborted) {
+    throw new WorkspaceCommandError(`realpath ${failureReason(result)}`);
+  }
+
+  if (result.exitCode === PATH_NOT_FOUND_EXIT_CODE) {
+    throw new PathOutsideWorkspaceError(`${relativePath} (not found)`);
+  }
+
+  if (result.exitCode !== 0) {
+    throw new WorkspaceCommandError(`realpath exited with code ${result.exitCode}`);
+  }
+
+  const [realRoot, realCandidate] = parseResolvedPaths(result.stdout);
+  if (isPathInsideWorkspace(realRoot, realCandidate) === false) {
+    throw new PathOutsideWorkspaceError(relativePath);
+  }
+
   return realCandidate;
 }
 
@@ -90,6 +172,17 @@ export class DeploymentWorkspace implements AsyncDisposable {
     },
   ): Promise<DeploymentWorkspace> {
     const { root: workspaceRoot, prefix } = location;
+    if (
+      posix.isAbsolute(workspaceRoot) === false ||
+      containsPathDelimiter(workspaceRoot) ||
+      prefix.trim() === "" ||
+      containsPathDelimiter(prefix) ||
+      prefix.includes("/") ||
+      prefix.includes("\\")
+    ) {
+      throw new WorkspaceCommandError("invalid workspace root or directory prefix");
+    }
+
     await runChecked(runner, ["mkdir", "-p", "--", workspaceRoot]);
     const output = await runChecked(runner, [
       "mktemp",
@@ -97,10 +190,16 @@ export class DeploymentWorkspace implements AsyncDisposable {
       "--",
       posix.join(workspaceRoot, `${prefix}-XXXXXXXX`),
     ]);
-    const path = output.trim();
-    if (path === "") {
-      throw new WorkspaceCommandError("mktemp printed no directory");
+    const path = output.endsWith("\n") ? output.slice(0, -1) : output;
+    if (
+      containsPathDelimiter(path) ||
+      posix.isAbsolute(path) === false ||
+      posix.dirname(path) !== posix.resolve(workspaceRoot) ||
+      posix.basename(path).startsWith(`${prefix}-`) === false
+    ) {
+      throw new WorkspaceCommandError("mktemp returned an invalid workspace directory");
     }
+
     return new DeploymentWorkspace(runner, path, location.onCleanupError);
   }
 

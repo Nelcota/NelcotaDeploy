@@ -3,7 +3,7 @@ export { appRegistrationUrl, buildAppManifest, isGitHubAccountName } from "./git
 export {
   convertManifestCode,
   getGitHubApp,
-  readGitHubAppCredentials,
+  readGitHubAppWebhookSecret,
   removeGitHubApp,
   saveGitHubApp,
 } from "./github-app.service";

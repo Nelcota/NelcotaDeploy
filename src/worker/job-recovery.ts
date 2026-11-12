@@ -13,7 +13,7 @@ import {
 } from "@/databases";
 import { type Database, tables } from "@/db";
 import { getDeployment, isTerminalStatus, transitionDeployment } from "@/deployments";
-import type { RecoveredJob } from "@/jobs";
+import { cancelQueuedJobs, type RecoveredJob } from "@/jobs";
 import { appendDeploymentLogs } from "@/logs";
 import { failTaskExecutions } from "@/tasks";
 import { failVolumeDeletion } from "@/volumes";
@@ -65,15 +65,31 @@ function recoverBackup(database: Database, job: RecoveredJob, reason: string): v
   }
 }
 
-function recoverDeployment(
-  database: Database,
-  deploymentId: string,
-  outcome: RecoveredJob["outcome"],
-): void {
+function recoverDeployment(database: Database, job: RecoveredJob): void {
+  const { deploymentId, outcome } = job;
+  if (deploymentId == null) {
+    return;
+  }
+
   const deployment = getDeployment(database, deploymentId);
   if (isTerminalStatus(deployment.status)) {
     return;
   }
+
+  if (deployment.previewId != null && deployment.cancelRequestedAt != null) {
+    database.transaction(
+      (transaction) => {
+        transitionDeployment(transaction, deploymentId, {
+          to: "cancelled",
+          errorMessage: "Preview deployment cancelled",
+        });
+        cancelQueuedJobs(transaction, [job.id]);
+      },
+      { behavior: "immediate" },
+    );
+    return;
+  }
+
   const message =
     outcome === "requeued"
       ? "The worker stopped during this deployment; it will run again"
@@ -113,7 +129,7 @@ export function handleRecoveredJobs(
       failTaskExecutions(database, [job.taskExecutionId], reason);
     }
     if (job.deploymentId != null && job.kind === "deploy") {
-      recoverDeployment(database, job.deploymentId, job.outcome);
+      recoverDeployment(database, job);
     }
   }
 }

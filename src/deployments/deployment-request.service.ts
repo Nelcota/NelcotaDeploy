@@ -1,4 +1,4 @@
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, isNull } from "drizzle-orm";
 
 import { type Actor, recordAuditEvent } from "@/audit";
 import { type Database, tables, type Transaction } from "@/db";
@@ -12,7 +12,7 @@ import {
   RollbackUnavailableError,
 } from "./deployment.errors";
 import { type DeploymentTrigger, getDeployment } from "./deployment.service";
-import { activePreviewBranch, deploymentScope } from "./preview-scope";
+import { deploymentScope, requireActivePreview } from "./preview-scope";
 
 /** Total runs of a deploy job; the second only happens when a worker crashed mid-deploy. */
 const DEPLOY_MAX_ATTEMPTS = 2;
@@ -109,6 +109,7 @@ function listPendingDeployments(
         eq(tables.deployments.projectId, projectId),
         deploymentScope(previewId),
         inArray(tables.deployments.status, ACTIVE_STATUSES),
+        isNull(tables.deployments.cancelRequestedAt),
       ),
     )
     .all();
@@ -292,7 +293,7 @@ export function requestDeployment(
       const branch =
         previewId == null
           ? project.branch
-          : activePreviewBranch(transaction, project.id, previewId);
+          : requireActivePreview(transaction, project.id, previewId).branch;
       const sourceDeploymentId = request.sourceDeploymentId ?? null;
       const source =
         sourceDeploymentId == null

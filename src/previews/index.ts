@@ -2,6 +2,7 @@ export { previewHostname, previewRouteName, previewRoutePrefix } from "./preview
 export { PreviewLimitError } from "./preview.errors";
 export {
   closePreview,
+  closeProjectPreviews,
   getPreview,
   listActivePreviews,
   MAX_ACTIVE_PREVIEWS,

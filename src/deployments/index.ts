@@ -18,12 +18,14 @@ export {
 } from "./runtime-apply.service";
 export {
   DeploymentNotFoundError,
+  DeploymentCancelledError,
   NoActiveContainerError,
   PreviewNotActiveError,
   ProjectNotApprovedError,
   RetryUnavailableError,
   RollbackUnavailableError,
 } from "./deployment.errors";
+export { requireActivePreview } from "./preview-scope";
 export {
   cancelDeployment,
   completeDeployment,

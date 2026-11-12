@@ -13,6 +13,7 @@ import {
   INVALID_JSON,
   parseJsonBody,
   type ProcessedEvent,
+  requireGitHubSignature,
   type WebhookOutcome,
 } from "./webhook-event";
 import { InvalidWebhookRequestError, InvalidWebhookSignatureError } from "./webhook.errors";
@@ -97,10 +98,12 @@ async function verifyDelivery(
   delivery: GitHubDelivery,
   secrets: readonly string[],
 ): Promise<{ readonly deliveryId: string; readonly event: string }> {
-  if (delivery.signature == null || delivery.signature === "") {
-    throw new InvalidWebhookSignatureError();
+  const signature = requireGitHubSignature(delivery.signature);
+  if (delivery.rawBody === "") {
+    throw new InvalidWebhookRequestError("Webhook body is empty");
   }
-  const valid = await isSignedWithAny({ ...delivery, signature: delivery.signature }, secrets);
+
+  const valid = await isSignedWithAny({ ...delivery, signature }, secrets);
   if (valid === false) {
     throw new InvalidWebhookSignatureError();
   }
@@ -217,18 +220,19 @@ function findAutoDeployProjects(
   branch: string,
 ): string[] {
   const projects = database
-    .select({ id: tables.projects.id, deploymentsApproved: tables.projects.deploymentsApproved })
+    .select({ id: tables.projects.id })
     .from(tables.projects)
     .where(
       and(
         eq(tables.projects.repositoryFullName, repositoryFullName),
         eq(tables.projects.branch, branch),
         eq(tables.projects.autoDeploy, true),
+        eq(tables.projects.deploymentsApproved, true),
         isNull(tables.projects.deletionRequestedAt),
       ),
     )
     .all();
-  return projects.filter((project) => project.deploymentsApproved).map((project) => project.id);
+  return projects.map((project) => project.id);
 }
 
 function queueDeployments(
@@ -259,6 +263,9 @@ function queueDeployments(
  * @returns Deliveries.
  */
 export function listWebhookDeliveries(database: Database, limit: number) {
+  const pageSize = Number.isNaN(limit)
+    ? 1
+    : Math.min(Math.max(Math.trunc(limit), 1), MAX_LIST_SIZE);
   return database
     .select({
       id: tables.webhookDeliveries.id,
@@ -273,6 +280,6 @@ export function listWebhookDeliveries(database: Database, limit: number) {
     })
     .from(tables.webhookDeliveries)
     .orderBy(desc(tables.webhookDeliveries.receivedAt))
-    .limit(Math.min(Math.max(Math.trunc(limit), 1), MAX_LIST_SIZE))
+    .limit(pageSize)
     .all();
 }

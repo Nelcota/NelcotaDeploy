@@ -60,6 +60,27 @@ describe("checkComposeConfig", () => {
     expect(checked.hostPaths).toContain(`${REPOSITORY}/token.txt`);
   });
 
+  test("returns each referenced host path once", () => {
+    const path = `${REPOSITORY}/shared.env`;
+    const config = model(
+      { env_file: [{ path }, { path }] },
+      { configs: { shared: { file: path } } },
+    );
+
+    const checked = checkComposeConfig(config, OPTIONS);
+
+    expect(checked.hostPaths).toEqual([path, REPOSITORY, `${REPOSITORY}/Dockerfile`]);
+  });
+
+  test("accepts a repository file with a name starting in two dots", () => {
+    const path = `${REPOSITORY}/..notes`;
+    const config = model({ env_file: [{ path }] });
+
+    const checked = checkComposeConfig(config, OPTIONS);
+
+    expect(checked.hostPaths).toContain(path);
+  });
+
   test("throws InvalidComposeFileError when the routed service is missing", () => {
     expect(() => checkComposeConfig(model(), { ...OPTIONS, routedService: "api" })).toThrow(
       InvalidComposeFileError,
@@ -92,6 +113,12 @@ describe("checkComposeConfig", () => {
     ["volumes of other containers", { volumes_from: ["nelcota-db-1"] }],
     ["a bind mount", { volumes: [{ type: "bind", source: "/etc", target: "/host-etc" }] }],
     ["a platform label", { labels: { "io.nelcota.project-id": "someone-else" } }],
+    ["a proxy label", { labels: { "traefik.enable": "true" } }],
+    ["a mixed-case proxy label", { labels: { "Traefik.Enable": "true" } }],
+    [
+      "a proxy label on the build image",
+      { build: { context: REPOSITORY, labels: { "traefik.enable": "true" } } },
+    ],
     ["build secrets", { build: { context: REPOSITORY, secrets: [{ source: "x" }] } }],
     ["an SSH agent in the build", { build: { context: REPOSITORY, ssh: ["default"] } }],
     ["other build contexts", { build: { context: REPOSITORY, additional_contexts: { x: "/" } } }],
