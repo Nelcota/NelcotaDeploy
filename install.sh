@@ -172,10 +172,12 @@ write_configuration() {
   install -m 0644 "$source_dir/deploy/traefik/panel.yml" "$install_dir/deploy/traefik/panel.yml"
 
   if [[ ! -f "$password_file" ]]; then
+    install -m 0600 /dev/null "$password_file.tmp"
     openssl rand -hex "$password_bytes" > "$password_file.tmp"
     mv -T -- "$password_file.tmp" "$password_file"
   fi
 
+  install -m 0600 /dev/null "$install_dir/.env.tmp"
   cat > "$install_dir/.env.tmp" <<EOF
 PANEL_DOMAIN=$domain
 ACME_EMAIL=$email
