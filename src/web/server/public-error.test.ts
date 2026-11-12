@@ -6,8 +6,10 @@ import {
   DatabaseServerChangedError,
   ProjectHasDatabasesError,
 } from "@/databases";
+import { RedeployUnavailableError } from "@/deployments";
 import { CloudflareApiError, DnsConfigurationError } from "@/domains";
 import { ProjectNotFoundError } from "@/projects";
+import { ComposeProjectMoveError } from "@/servers";
 import { StagingDeploymentChangedError } from "@/staging";
 import { TaskReviewChangedError } from "@/tasks";
 import { ProjectHasVolumesError, VolumeServerChangedError } from "@/volumes";
@@ -58,6 +60,15 @@ describe("toPublicError", () => {
     );
   });
 
+  test("explains why a Docker Compose project cannot move or a project without deployments cannot redeploy", () => {
+    expect(toPublicError(new ComposeProjectMoveError("x"))?.message).toBe(
+      "Projetos Docker Compose não podem mudar de servidor.",
+    );
+    expect(toPublicError(new RedeployUnavailableError("x"))?.message).toBe(
+      "Faça o primeiro deploy antes de usar o redeploy.",
+    );
+  });
+
   test("tells the user to pick another variable name for a database", () => {
     expect(toPublicError(new DatabaseVariableConflictError("DATABASE_URL"))?.message).toContain(
       "já tem uma variável com esse nome",
@@ -71,10 +82,25 @@ describe("toPublicError", () => {
   });
 
   test("translates the last-admin rule", () => {
-    const error = new UserOperationError("At least one active admin must remain");
+    const error = new UserOperationError("last-admin");
 
     expect(toPublicError(error)?.message).toBe(
       "É preciso manter pelo menos um administrador ativo.",
+    );
+  });
+
+  test("translates every user operation reason", () => {
+    expect(toPublicError(new UserOperationError("weak-password"))?.message).toBe(
+      "A senha precisa ter pelo menos 12 caracteres.",
+    );
+    expect(toPublicError(new UserOperationError("email-taken"))?.message).toBe(
+      "Este e-mail já está em uso.",
+    );
+    expect(toPublicError(new UserOperationError("self-role-change"))?.message).toBe(
+      "Você não pode alterar o próprio papel.",
+    );
+    expect(toPublicError(new UserOperationError("self-disable"))?.message).toBe(
+      "Você não pode desativar a própria conta.",
     );
   });
 

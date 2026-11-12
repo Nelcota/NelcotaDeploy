@@ -11,6 +11,7 @@ import {
   transitionDeployment,
 } from "@/deployments";
 import { JobLeaseLostError } from "@/jobs";
+import { getPreview } from "@/previews";
 import { getProject } from "@/projects";
 
 import {
@@ -27,6 +28,7 @@ import {
 } from "./deploy-context";
 import { deploy } from "./deploy-steps";
 import { DeploymentLogWriter } from "./deployment-log-writer";
+import { buildStrategyFor } from "./image-source";
 
 const CANCEL_POLL_INTERVAL_IN_MS = 1000;
 
@@ -112,6 +114,8 @@ export async function runDeployment(
     if (error instanceof JobLeaseLostError || jobSignal.reason instanceof JobLeaseLostError) {
       throw error;
     }
+
+    await restorePreviewTraffic(database, context);
     const cancellationRequested =
       cancellation.signal.aborted ||
       error instanceof PreviewNotActiveError ||
@@ -132,6 +136,28 @@ export async function runDeployment(
   return "succeeded";
 }
 
+async function restorePreviewTraffic(database: Database, context: DeployContext): Promise<void> {
+  const { deployment, logs, state } = context;
+  if (
+    deployment.previewId == null ||
+    state.restorePreviewRoute == null ||
+    getPreview(database, deployment.previewId)?.status !== "active"
+  ) {
+    return;
+  }
+
+  try {
+    await state.restorePreviewRoute();
+  } catch (error) {
+    logs.system(
+      `Could not restore the preview route: ${state.redact(errorMessageOf(error))}`,
+      "warn",
+    );
+  }
+
+  context.assertOwnership();
+}
+
 function requeueDeployment(database: Database, deploymentId: string): void {
   if (getDeployment(database, deploymentId).status !== "queued") {
     transitionDeployment(database, deploymentId, { to: "queued", errorMessage: null });
@@ -143,7 +169,8 @@ async function finishDeployment(
   context: DeployContext,
 ): Promise<void> {
   const { deployment, project, logs, state } = context;
-  if (state.containerNames.length === 0 && project.builder !== "compose") {
+  const strategy = buildStrategyFor(project.builder);
+  if (state.containerNames.length === 0 && strategy.managesReplicaContainers) {
     throw new Error(`Successful deployment ${deployment.id} has no container`);
   }
   logs.system("Deployment succeeded");
@@ -152,7 +179,7 @@ async function finishDeployment(
       projectId: project.id,
       currentContainerNames: state.containerNames,
       previewId: deployment.previewId,
-      keepComposeServices: project.builder === "compose",
+      keepComposeServices: strategy.managesReplicaContainers === false,
     });
   } catch (error) {
     if (error instanceof JobLeaseLostError) {
@@ -160,7 +187,7 @@ async function finishDeployment(
     }
     logs.system(`Could not retire previous containers: ${errorMessageOf(error)}`, "warn");
   }
-  if (project.builder === "compose") {
+  if (strategy.prunesOldImages === false) {
     // Compose reuses its image names; the daily cleanup removes the ones it left dangling.
     return;
   }

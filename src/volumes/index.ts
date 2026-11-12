@@ -12,10 +12,13 @@ export {
 export {
   addProjectVolume,
   assertProjectHasNoVolumes,
+  countProjectVolumes,
   failVolumeDeletion,
   finishVolumeDeletion,
+  isVolumeDeletionPending,
   listMountedVolumes,
   listProjectVolumes,
+  recoverVolumeDeletion,
   requestVolumeDeletion,
   setVolumeAttached,
 } from "./volume.service";

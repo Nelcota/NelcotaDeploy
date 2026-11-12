@@ -9,6 +9,7 @@ import { DEFAULT_SYSTEM_SETTINGS } from "@/shared/schemas/settings.schema";
 import { createTestProject, TEST_ACTOR } from "@/testing";
 
 import { routeTrafficTo } from "./container-start";
+import { DeployState } from "./deploy-context";
 import { DeploymentLogWriter } from "./deployment-log-writer";
 
 const CONTAINER = "nelcota-api-0c1d2e3f4a5b";
@@ -57,13 +58,14 @@ function setup(options: { readonly baseDomain: string | null; readonly preview: 
     deployment: getDeployment(database, deploymentId),
     project,
     logs,
+    state: new DeployState(),
   });
   return { database, deploymentId, project, commands, dependencies, context };
 }
 
 /** The file name and content of the route write; the content is the last argument. */
 function writtenRoutes(commands: readonly (readonly string[])[]) {
-  const write = commands.at(0) ?? [];
+  const write = commands.find((command) => command[2]?.includes("printf") === true) ?? [];
   return { fileName: write.at(-2), content: JSON.parse(write.at(-1) ?? "null") as unknown };
 }
 

@@ -8,12 +8,11 @@ import {
   type Job,
   JobLeaseLostError,
   recoverExpiredJobs,
-  releaseWorkerJobs,
   renewJobLeases,
 } from "@/jobs";
 import { recordWorkerHeartbeat } from "@/monitoring";
 
-import { dispatchJob } from "./job-dispatch";
+import { dispatchJob, jobHandlerFor } from "./job-dispatch";
 import { handleRecoveredJobs } from "./job-recovery";
 import { requeueFailedCleanups } from "./maintenance/cleanup-recovery";
 import { finishProjectMoves } from "./maintenance/project-moves";
@@ -86,7 +85,8 @@ export class Worker {
     const { database, workerId, logger } = this.#dependencies;
     database.transaction(
       () => {
-        handleRecoveredJobs(database, logger, releaseWorkerJobs(database, workerId));
+        // A configured worker ID can be shared while a previous process is still draining.
+        handleRecoveredJobs(database, logger, recoverExpiredJobs(database));
         recoverFailedResources(database, logger);
       },
       { behavior: "immediate" },
@@ -113,8 +113,12 @@ export class Worker {
     if (this.#shutdown.signal.aborted) {
       return;
     }
-    this.#claimAvailableJobs();
-    this.#timers.push(setInterval(() => this.#claimAvailableJobs(), IDLE_POLL_INTERVAL_IN_MS));
+
+    const claim = guardDuty(this.#dependencies.logger, "claim jobs", () =>
+      this.#claimAvailableJobs(),
+    );
+    void claim();
+    this.#timers.push(setInterval(() => void claim(), IDLE_POLL_INTERVAL_IN_MS));
     await shutdown.promise;
   }
 
@@ -150,7 +154,13 @@ export class Worker {
         logger.warn({ jobId: job.id }, "job lease lost; the previous attempt stopped");
         return;
       }
-      this.#recordFailure(job, error);
+
+      try {
+        this.#recordFailure(job, error);
+      } catch (failure) {
+        const errorType = failure instanceof Error ? failure.name : typeof failure;
+        logger.error({ jobId: job.id, kind: job.kind, errorType }, "could not record job failure");
+      }
     }
   }
 
@@ -161,10 +171,7 @@ export class Worker {
       (transaction) => {
         const result = failJob(transaction, job, {
           errorMessage: message,
-          retryable:
-            this.#abortJobs.signal.aborted ||
-            job.kind === "project_cleanup" ||
-            job.kind === "preview_cleanup",
+          retryable: this.#abortJobs.signal.aborted || jobHandlerFor(job.kind).retriesOnFailure,
         });
         if (result !== "lost") {
           handleRecoveredJobs(database, logger, [
@@ -243,8 +250,9 @@ export class Worker {
 
   async #drain(): Promise<void> {
     // Other workers must not reclaim jobs while this worker is still draining them.
+    const renew = guardDuty(this.#dependencies.logger, "drain heartbeat", () => this.#heartbeat());
     using _leaseRenewal = {
-      timer: setInterval(() => this.#heartbeat(), HEARTBEAT_INTERVAL_IN_MS),
+      timer: setInterval(() => void renew(), HEARTBEAT_INTERVAL_IN_MS),
       [Symbol.dispose]() {
         clearInterval(this.timer);
       },

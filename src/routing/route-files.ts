@@ -12,6 +12,7 @@ const SHARED_FILE = "shared";
 // directory, never reads half a file. The content travels as an argument, never as code.
 const ATOMIC_WRITE_SCRIPT =
   'mkdir -p "$1" && printf "%s" "$3" > "$1/.$2.tmp" && mv -f "$1/.$2.tmp" "$1/$2"';
+const READ_ROUTE_SCRIPT = 'if [ -e "$1" ]; then cat -- "$1"; fi';
 
 /**
  * The directory of route files the proxy of one server watches, reached through that server's
@@ -48,21 +49,39 @@ export class RouteFiles {
    * @throws {RouteFileError} When the file cannot be written.
    */
   async write(name: string, config: DynamicConfig): Promise<void> {
+    await this.#write(name, JSON.stringify(config));
+  }
+
+  async #write(name: string, body: string): Promise<void> {
     const result = await this.#runner(
-      [
-        "sh",
-        "-c",
-        ATOMIC_WRITE_SCRIPT,
-        "sh",
-        this.#directory,
-        fileName(name),
-        JSON.stringify(config),
-      ],
+      ["sh", "-c", ATOMIC_WRITE_SCRIPT, "sh", this.#directory, fileName(name), body],
       { timeoutInMs: COMMAND_TIMEOUT_IN_MS },
     );
     if (result.exitCode !== 0) {
       throw new RouteFileError(`Could not write routes ${name}: ${failureReason(result)}`);
     }
+  }
+
+  /**
+   * Saves a route before switching it so a failed attempt can restore the previous target.
+   *
+   * @param name - File name without extension.
+   * @returns A function that atomically restores the saved route or removes a newly created route.
+   * @throws {InvalidRouteError} When the name could leave the route directory.
+   * @throws {RouteFileError} When reading or restoring the route fails.
+   */
+  async snapshot(name: string): Promise<() => Promise<void>> {
+    const result = await this.#runner(
+      ["sh", "-c", READ_ROUTE_SCRIPT, "sh", `${this.#directory}/${fileName(name)}`],
+      { timeoutInMs: COMMAND_TIMEOUT_IN_MS },
+    );
+    if (result.exitCode !== 0) {
+      throw new RouteFileError(`Could not read routes ${name}: ${failureReason(result)}`);
+    }
+
+    return result.stdout === ""
+      ? async () => await this.remove(name)
+      : async () => await this.#write(name, result.stdout);
   }
 
   /**

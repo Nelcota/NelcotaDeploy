@@ -52,6 +52,7 @@ export const jobs = sqliteTable(
   (table) => [
     index("jobs_status_run_after_idx").on(table.status, table.runAfter),
     index("jobs_project_id_idx").on(table.projectId),
+    index("jobs_dedupe_history_idx").on(table.dedupeKey, table.createdAt, table.id),
     // The database itself refuses a second running job for the same project.
     uniqueIndex("jobs_one_running_per_project_idx")
       .on(table.projectId)

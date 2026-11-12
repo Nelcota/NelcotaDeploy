@@ -85,7 +85,7 @@ export async function createUser(
 ): Promise<string> {
   const email = newUser.email.trim().toLowerCase();
   if (newUser.password.length < PASSWORD_MIN_LENGTH) {
-    throw new UserOperationError(`Password must have at least ${PASSWORD_MIN_LENGTH} characters`);
+    throw new UserOperationError("weak-password");
   }
   const existing = database
     .select({ id: tables.users.id })
@@ -93,7 +93,7 @@ export async function createUser(
     .where(eq(tables.users.email, email))
     .get();
   if (existing != null) {
-    throw new UserOperationError("Email already in use");
+    throw new UserOperationError("email-taken");
   }
   const context = await auth.$context;
   const password = await context.password.hash(newUser.password);
@@ -110,7 +110,7 @@ export async function createUser(
         .where(eq(tables.users.email, email))
         .get();
       if (duplicate != null) {
-        throw new UserOperationError("Email already in use");
+        throw new UserOperationError("email-taken");
       }
       const now = new Date();
       transaction
@@ -156,12 +156,16 @@ export async function createUser(
  *
  * @param database - Database.
  * @param change - User to change, the new role and who is changing it.
- * @throws {UserOperationError} When the change would leave no active admin.
+ * @throws {UserOperationError} When the user attempts to change their own role or when the change
+ *   would leave no active admin.
  */
 export function updateUserRole(
   database: Database,
   { userId, role, actor }: { readonly userId: string; readonly role: Role; readonly actor: Actor },
 ): void {
+  if (actor.type === "user" && actor.id === userId) {
+    throw new UserOperationError("self-role-change");
+  }
   database.transaction(
     (transaction) => {
       if (role !== "admin") {
@@ -189,7 +193,8 @@ export function updateUserRole(
  *
  * @param database - Database.
  * @param change - User to change, `disabled` true to block sign-in, and who is changing it.
- * @throws {UserOperationError} When disabling would leave no active admin.
+ * @throws {UserOperationError} When the user attempts to disable their own account or when
+ *   disabling would leave no active admin.
  */
 export function setUserDisabled(
   database: Database,
@@ -199,6 +204,9 @@ export function setUserDisabled(
     actor,
   }: { readonly userId: string; readonly disabled: boolean; readonly actor: Actor },
 ): void {
+  if (disabled && actor.type === "user" && actor.id === userId) {
+    throw new UserOperationError("self-disable");
+  }
   database.transaction(
     (transaction) => {
       if (disabled) {
@@ -239,7 +247,7 @@ export async function resetUserPassword(
   }: { readonly userId: string; readonly password: string; readonly actor: Actor },
 ): Promise<void> {
   if (password.length < PASSWORD_MIN_LENGTH) {
-    throw new UserOperationError(`Password must have at least ${PASSWORD_MIN_LENGTH} characters`);
+    throw new UserOperationError("weak-password");
   }
   const context = await auth.$context;
   await context.internalAdapter.updatePassword(userId, await context.password.hash(password));
@@ -268,6 +276,6 @@ function assertAnotherActiveAdminExists(
     )
     .get();
   if (otherAdmin == null) {
-    throw new UserOperationError("At least one active admin must remain");
+    throw new UserOperationError("last-admin");
   }
 }

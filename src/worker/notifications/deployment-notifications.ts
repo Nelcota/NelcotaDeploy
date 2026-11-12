@@ -19,10 +19,9 @@ const DESCRIPTIONS: Record<CommitState, string> = {
   error: "Deployment cancelled",
 };
 
-type NotificationDependencies = Pick<
-  WorkerDependencies,
-  "database" | "secretBox" | "config" | "logger"
->;
+type NotificationDependencies = Pick<WorkerDependencies, "database" | "secretBox" | "logger"> & {
+  readonly config: Pick<WorkerDependencies["config"], "PUBLIC_URL">;
+};
 
 function deploymentLink(dependencies: NotificationDependencies, deployment: Deployment): string {
   return `${dependencies.config.PUBLIC_URL}/projects/${deployment.projectId}/deployments/${deployment.id}`;

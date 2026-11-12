@@ -2,7 +2,7 @@ import { and, count, desc, eq, gte, inArray, isNull } from "drizzle-orm";
 
 import { type Database, tables } from "@/db";
 
-import { getWorkerStatus } from "./monitoring.service";
+import { getWorkerStatus } from "./worker-heartbeat.service";
 
 const RECENT_DEPLOYMENTS = 8;
 const RECENT_FAILURE_WINDOW_IN_MS = 86_400_000;

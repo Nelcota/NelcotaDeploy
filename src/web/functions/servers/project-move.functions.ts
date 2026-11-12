@@ -3,10 +3,10 @@ import { z } from "zod";
 
 import { userActor } from "@/auth";
 import { getDatabase } from "@/db";
+import { moveProject, projectMoveStatus } from "@/project-moves";
 import { authorize } from "@/web/server/authorization";
 
 import { idSchema, projectIdInput } from "../ids";
-import { moveProject, projectMoveStatus } from "./project-move.service";
 
 /** Read-only prerequisites for the server move shown in project settings. */
 export const getProjectMoveStatusFn = createServerFn({ method: "GET" })

@@ -1,11 +1,9 @@
-import { eq } from "drizzle-orm";
-
-import { type Database, tables } from "@/db";
+import type { Database } from "@/db";
 import { type ContainerAction, getDeployment } from "@/deployments";
 import { type DockerEngine, LABELS, volumeNameFor } from "@/docker";
-import type { Job } from "@/jobs";
+import { type Job, requireJobPayloadString } from "@/jobs";
 import { previewRoutePrefix } from "@/previews";
-import { getProject } from "@/projects";
+import { deleteProjectRecord, getProject } from "@/projects";
 import type { RouteFiles } from "@/routing";
 import { failVolumeDeletion, finishVolumeDeletion } from "@/volumes";
 
@@ -13,8 +11,18 @@ import { deleteProjectDatabaseBackups } from "./databases/database-backup-cleanu
 import type { BackupStorage } from "./databases/database-backup-storage";
 import type { WorkerDependencies } from "./worker.types";
 
+type ContainerActionDocker = Pick<
+  DockerEngine,
+  "listManagedContainers" | "startContainer" | "stopContainer" | "restartContainer"
+>;
+
+type ProjectResourceDocker = Pick<
+  DockerEngine,
+  "listManagedContainers" | "removeContainer" | "images" | "volumes" | "compose" | "networks"
+>;
+
 /** What cleaning a project off one server needs: its Docker and its proxy's route files. */
-type ProjectServer = { readonly docker: DockerEngine; readonly routes: RouteFiles | null };
+type ProjectServer = { readonly docker: ProjectResourceDocker; readonly routes: RouteFiles | null };
 
 /**
  * Starts, stops or restarts every replica of a deployment.
@@ -26,7 +34,7 @@ type ProjectServer = { readonly docker: DockerEngine; readonly routes: RouteFile
  */
 export async function runContainerAction(
   database: Database,
-  docker: DockerEngine,
+  docker: ContainerActionDocker,
   { deploymentId, action }: { readonly deploymentId: string; readonly action: ContainerAction },
 ): Promise<void> {
   const deployment = getDeployment(database, deploymentId);
@@ -44,7 +52,7 @@ export async function runContainerAction(
 
 // One replica at a time, so a restart never takes every replica down at once.
 async function applyInOrder(
-  docker: DockerEngine,
+  docker: ContainerActionDocker,
   containerNames: readonly string[],
   action: ContainerAction,
 ): Promise<void> {
@@ -57,7 +65,7 @@ async function applyInOrder(
 }
 
 async function applyContainerAction(
-  docker: DockerEngine,
+  docker: ContainerActionDocker,
   containerName: string,
   action: ContainerAction,
 ): Promise<void> {
@@ -192,7 +200,7 @@ export async function runProjectCleanup(
     );
   }
   await deleteProjectDatabaseBackups(database, projectId, storage);
-  database.delete(tables.projects).where(eq(tables.projects.id, projectId)).run();
+  deleteProjectRecord(database, projectId);
   return {
     containers: removed.containers,
     images: removed.images,
@@ -212,10 +220,7 @@ export async function runVolumeDeleteJob(
   dependencies: Pick<WorkerDependencies, "database" | "hosts">,
   job: Job,
 ): Promise<void> {
-  const volumeId = job.payload["volumeId"];
-  if (typeof volumeId !== "string" || volumeId === "") {
-    throw new Error(`Job ${job.id} of kind ${job.kind} is missing its volume id`);
-  }
+  const volumeId = requireJobPayloadString(job, "volumeId");
   const { database, hosts } = dependencies;
   // Projects with volumes cannot move, so the data is on the project's current server.
   const host = hosts.hostOf(database, getProject(database, job.projectId).serverId);

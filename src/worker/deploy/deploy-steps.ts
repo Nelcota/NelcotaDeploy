@@ -13,13 +13,13 @@ import { networkProbes } from "../probes";
 import { deployCompose } from "./compose/compose-deploy";
 import { routeTrafficTo, startContainers } from "./container-start";
 import {
-  assertNotCancelled,
+  assertDeployActive,
   type DeployContext,
   type DeployRunnerDependencies,
   MILLISECONDS_PER_SECOND,
 } from "./deploy-context";
 import { waitUntilHealthy } from "./health-check";
-import { buildFromSource, reuseImage } from "./image-source";
+import { buildFromSource, buildStrategyFor, reuseImage } from "./image-source";
 
 /**
  * Builds or reuses the image, starts the new replicas, waits until all are healthy and routes
@@ -34,7 +34,8 @@ export async function deploy(
   context: DeployContext,
 ): Promise<void> {
   const { database, docker, secretBox } = dependencies;
-  const { deployment, project, logs, signal } = context;
+  const { deployment, project, logs } = context;
+  const strategy = buildStrategyFor(project.builder);
 
   // Read the fingerprints before yielding to decryption: a later edit must remain pending.
   const runtimeConfigHash = runtimeConfigFingerprint(database, project.id);
@@ -44,7 +45,7 @@ export async function deploy(
     forPreview: deployment.previewId != null,
   });
   const reused =
-    project.builder === "compose" || deployment.sourceDeploymentId == null
+    strategy.reusesPreviousImage === false || deployment.sourceDeploymentId == null
       ? null
       : await reuseImage(docker, deployment, logs);
   const repositoryToken = reused == null ? await cloneToken(dependencies, context) : null;
@@ -61,7 +62,7 @@ export async function deploy(
   context.state.useRedactor(createRedactor([...secretValues, repositoryToken ?? ""]));
   logs.useRedactor(context.state.redact);
 
-  if (project.builder === "compose") {
+  if (strategy.managesReplicaContainers === false) {
     // Compose always builds the commit: redeploys and rollbacks have no single image to reuse.
     const routed = await deployCompose(dependencies, context, {
       runtimeValues: environment.runtime,
@@ -89,8 +90,7 @@ export async function deploy(
           repositoryToken,
         })
       : { imageTag: reused, detectedPort: deployment.internalPort };
-  assertNotCancelled(signal);
-  context.assertOwnership();
+  assertDeployActive(context);
 
   // Routing and the health check use the port this build found in the Dockerfile.
   const running: DeployContext =
@@ -122,10 +122,7 @@ export function withPortVariable(
   values: Readonly<Record<string, string>>,
   project: { readonly builder: ProjectBuilder; readonly internalPort: number },
 ): Readonly<Record<string, string>> {
-  if (project.builder !== "railpack" || Object.hasOwn(values, "PORT")) {
-    return values;
-  }
-  return { ...values, PORT: String(project.internalPort) };
+  return buildStrategyFor(project.builder).runtimeVariables(values, project.internalPort);
 }
 
 /** A token saved on the project wins; otherwise the GitHub App provides one when installed. */

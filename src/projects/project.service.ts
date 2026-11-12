@@ -8,6 +8,7 @@ import type { SecretBox } from "@/secrets";
 import { chooseServerForNewProject } from "@/servers";
 import { assertHostnameOwnership, getSystemSettings } from "@/settings";
 import {
+  BUILDER_CAPABILITIES,
   parseGitHubRepository,
   type ProjectBuilder,
   type ProjectInput,
@@ -253,7 +254,10 @@ export function updateProject(
       if (input.replicas > 1 && mountsVolumes(transaction, projectId)) {
         throw new ReplicasNeedNoVolumesError(projectId);
       }
-      if (input.builder === "compose" && mountsVolumes(transaction, projectId)) {
+      if (
+        BUILDER_CAPABILITIES[input.builder].mountsPanelVolumes === false &&
+        mountsVolumes(transaction, projectId)
+      ) {
         throw new ComposeNeedsNoVolumesError(projectId);
       }
       // A different repository is different code, so a non-admin change needs new approval.

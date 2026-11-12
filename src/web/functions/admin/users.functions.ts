@@ -14,7 +14,6 @@ import { getDatabase } from "@/db";
 import { ROLES } from "@/shared/roles";
 import { newUserSchema, passwordSchema } from "@/shared/schemas/user.schema";
 import { authorize } from "@/web/server/authorization";
-import { PublicError } from "@/web/server/public-error";
 
 import { idSchema } from "../ids";
 
@@ -34,9 +33,6 @@ export const updateUserRoleFn = createServerFn({ method: "POST" })
   .validator(z.object({ userId: idSchema, role: z.enum(ROLES) }))
   .handler(async ({ data }) => {
     const user = await authorize("user:manage");
-    if (data.userId === user.id) {
-      throw new PublicError("Você não pode alterar o próprio papel.");
-    }
     updateUserRole(getDatabase(), { userId: data.userId, role: data.role, actor: userActor(user) });
   });
 
@@ -44,9 +40,6 @@ export const setUserDisabledFn = createServerFn({ method: "POST" })
   .validator(z.object({ userId: idSchema, disabled: z.boolean() }))
   .handler(async ({ data }) => {
     const user = await authorize("user:manage");
-    if (data.userId === user.id && data.disabled) {
-      throw new PublicError("Você não pode desativar a própria conta.");
-    }
     setUserDisabled(getDatabase(), {
       userId: data.userId,
       disabled: data.disabled,

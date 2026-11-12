@@ -2,12 +2,13 @@ import { and, eq, inArray, isNull } from "drizzle-orm";
 
 import { type Actor, recordAuditEvent } from "@/audit";
 import { type Database, tables, type Transaction } from "@/db";
-import { cancelQueuedJobs, enqueueJob } from "@/jobs";
+import { cancelQueuedDeploymentJobs, enqueueJob } from "@/jobs";
 import { getProject } from "@/projects";
 
 import { ACTIVE_STATUSES, type DeploymentStatus } from "./deployment-status";
 import {
   ProjectNotApprovedError,
+  RedeployUnavailableError,
   RetryUnavailableError,
   RollbackUnavailableError,
 } from "./deployment.errors";
@@ -158,13 +159,7 @@ function cancelSupersededDeployments(
     })
     .where(inArray(tables.deployments.id, superseded))
     .run();
-  const supersededJobs = transaction
-    .select({ id: tables.jobs.id })
-    .from(tables.jobs)
-    .where(inArray(tables.jobs.deploymentId, superseded))
-    .all()
-    .map((job) => job.id);
-  cancelQueuedJobs(transaction, supersededJobs, now);
+  cancelQueuedDeploymentJobs(transaction, superseded, now);
 }
 
 // A redeploy or rollback inherits the revision and image of its source deployment.
@@ -360,4 +355,41 @@ export function retryDeployment(
     commitMessage: deployment.commitMessage,
     previewId: deployment.previewId,
   });
+}
+
+/**
+ * Recreates the container from the project's current live image, applying saved variables and domains.
+ *
+ * @param database - Database.
+ * @param projectId - Project to redeploy.
+ * @param context - Who asks, for the audit log.
+ * @returns The queued deployment id and whether it was newly created.
+ * @throws {ProjectNotFoundError} When the project does not exist.
+ * @throws {RedeployUnavailableError} When the project has not been deployed yet.
+ * @throws {ProjectNotApprovedError} When an admin has not approved the project.
+ * @throws {RollbackUnavailableError} When the live deployment has no reusable image.
+ */
+export function redeployProject(
+  database: Database,
+  projectId: string,
+  context: { readonly actor: Actor; readonly triggeredByUserId: string | null },
+): { deploymentId: string; created: boolean } {
+  // Reserve the writer before reading the live deployment so the queued image matches that read.
+  return database.transaction(
+    (transaction) => {
+      const project = getProject(transaction, projectId);
+      if (project.currentDeploymentId == null) {
+        throw new RedeployUnavailableError(projectId);
+      }
+
+      return requestDeployment(database, {
+        projectId: project.id,
+        trigger: "redeploy",
+        actor: context.actor,
+        triggeredByUserId: context.triggeredByUserId,
+        sourceDeploymentId: project.currentDeploymentId,
+      });
+    },
+    { behavior: "immediate" },
+  );
 }

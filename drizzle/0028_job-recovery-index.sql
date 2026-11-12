@@ -1,0 +1,1 @@
+CREATE INDEX `jobs_dedupe_history_idx` ON `jobs` (`dedupe_key`,`created_at`,`id`);

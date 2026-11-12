@@ -34,3 +34,30 @@ export function recordDetectedPort(database: Database, projectId: string, port: 
     .where(and(eq(tables.projects.id, projectId), eq(tables.projects.internalPortAuto, true)))
     .run();
 }
+
+/**
+ * Returns the server id of a project even when deletion was requested, or `null` if gone.
+ *
+ * @param database - Database.
+ * @param projectId - Project id.
+ * @returns Server id, or `null`.
+ */
+export function findProjectServerId(database: Database, projectId: string): string | null {
+  return (
+    database
+      .select({ serverId: tables.projects.serverId })
+      .from(tables.projects)
+      .where(eq(tables.projects.id, projectId))
+      .get()?.serverId ?? null
+  );
+}
+
+/**
+ * Deletes a project row and its cascading history after its resources have been cleaned up.
+ *
+ * @param database - Database.
+ * @param projectId - Project id.
+ */
+export function deleteProjectRecord(database: Database, projectId: string): void {
+  database.delete(tables.projects).where(eq(tables.projects.id, projectId)).run();
+}

@@ -11,19 +11,18 @@ import {
   getDeployment,
   listDeployments,
   listRollbackCandidates,
+  redeployProject,
   requestContainerAction,
   requestDeployment,
   retryDeployment,
   summarizeDeployments,
 } from "@/deployments";
-import { getProject } from "@/projects";
 import { pageCursorSchema } from "@/shared/pagination";
 import {
   authorizeDeployment,
   authorizeProject,
   authorizeProjectListing,
 } from "@/web/server/authorization";
-import { PublicError } from "@/web/server/public-error";
 
 import { idSchema, projectIdInput } from "./ids";
 
@@ -87,17 +86,9 @@ export const redeployProjectFn = createServerFn({ method: "POST" })
   .validator(projectIdInput)
   .handler(async ({ data }) => {
     const user = await authorizeProject("deployment:create", data.projectId);
-    const database = getDatabase();
-    const project = getProject(database, data.projectId);
-    if (project.currentDeploymentId == null) {
-      throw new PublicError("Faça o primeiro deploy antes de usar o redeploy.");
-    }
-    return requestDeployment(database, {
-      projectId: project.id,
-      trigger: "redeploy",
+    return redeployProject(getDatabase(), data.projectId, {
       actor: userActor(user),
       triggeredByUserId: user.id,
-      sourceDeploymentId: project.currentDeploymentId,
     });
   });
 

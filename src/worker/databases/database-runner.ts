@@ -15,7 +15,7 @@ import {
   type DockerEngine,
   LABELS,
 } from "@/docker";
-import type { Job } from "@/jobs";
+import { type Job, requireJobPayloadString } from "@/jobs";
 import { getProject } from "@/projects";
 import type { SecretBox } from "@/secrets";
 
@@ -38,10 +38,21 @@ type Readiness = { readonly timeoutInMs: number; readonly intervalInMs: number }
 // The first start of PostgreSQL creates its cluster, which takes a while on small servers.
 const DEFAULT_READINESS: Readiness = { timeoutInMs: 120_000, intervalInMs: 1000 };
 
+type DatabaseRunDocker = Pick<
+  DockerEngine,
+  | "inspectContainer"
+  | "removeContainer"
+  | "images"
+  | "ensureNetwork"
+  | "volumes"
+  | "runContainer"
+  | "execInContainer"
+>;
+
 /** What running or removing a database needs on its project's server. */
 export type DatabaseRunDependencies = DatabaseOperation & {
   readonly database: Database;
-  readonly docker: DockerEngine;
+  readonly docker: DatabaseRunDocker;
   readonly secretBox: SecretBox;
   /** Platform network the applications of the server are on. */
   readonly network: string;
@@ -154,7 +165,7 @@ async function waitUntilReady(
 // Polls one step at a time: each check must finish before the next one starts.
 async function pollUntilReady(
   context: {
-    readonly docker: DockerEngine;
+    readonly docker: Pick<DockerEngine, "inspectContainer" | "execInContainer">;
     readonly readiness: Readiness;
     readonly signal: AbortSignal;
     readonly record: DatabaseRecord;
@@ -239,11 +250,7 @@ export async function deleteDatabase(
 }
 
 function databaseIdOf(job: Job): string {
-  const databaseId = job.payload["databaseId"];
-  if (typeof databaseId !== "string" || databaseId === "") {
-    throw new Error(`Job ${job.id} of kind ${job.kind} is missing its database id`);
-  }
-  return databaseId;
+  return requireJobPayloadString(job, "databaseId");
 }
 
 function runDependencies(

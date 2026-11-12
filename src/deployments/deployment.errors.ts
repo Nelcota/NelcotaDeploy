@@ -45,6 +45,14 @@ export class PreviewNotActiveError extends Error {
     this.name = "PreviewNotActiveError";
   }
 }
+
+/** Thrown when redeploying a project that has not completed a first deployment yet. */
+export class RedeployUnavailableError extends Error {
+  constructor(projectId: string) {
+    super(`Project ${projectId} has no deployed image to redeploy`);
+    this.name = "RedeployUnavailableError";
+  }
+}
 /** Thrown when a deployment is cancelled at a checkpoint. */
 export class DeploymentCancelledError extends Error {
   constructor() {

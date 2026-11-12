@@ -1,6 +1,6 @@
-import { eq } from "drizzle-orm";
-
-import { tables } from "@/db";
+import { recoverConsoleJob } from "@/console";
+import { isDatabaseJobStranded, recoverDatabaseJob } from "@/databases";
+import type { Database } from "@/db";
 import {
   applyRuntimeChanges,
   getDeployment,
@@ -9,8 +9,17 @@ import {
   listDeploymentServerIds,
   transitionDeployment,
 } from "@/deployments";
-import type { Job } from "@/jobs";
-import { getProject } from "@/projects";
+import {
+  cancelQueuedDeploymentJobs,
+  type Job,
+  type JobKind,
+  type RecoveredJob,
+  requireJobPayloadString,
+} from "@/jobs";
+import { appendDeploymentLogs } from "@/logs";
+import { findProjectServerId, getProject } from "@/projects";
+import { failTaskExecutions } from "@/tasks";
+import { isVolumeDeletionPending, recoverVolumeDeletion } from "@/volumes";
 
 import {
   runContainerAction,
@@ -42,6 +51,17 @@ export type JobRun = {
   readonly signal: AbortSignal;
   /** Updates the observed container state of a server after a job changed it. */
   readonly refreshContainers: (serverId: string) => Promise<void>;
+};
+
+/** Strategy for executing, retrying and recovering one kind of job. */
+export type JobHandler = {
+  readonly run: (dependencies: WorkerDependencies, job: Job, run: JobRun) => Promise<void>;
+  /** Whether a failed attempt is retried even when the worker is not shutting down. */
+  readonly retriesOnFailure: boolean;
+  /** Brings the job's resource back in line after the queue requeued or failed it. */
+  readonly recover: (database: Database, job: RecoveredJob, reason: string) => void;
+  /** Whether a failed job still left its resource in a transient state. */
+  readonly isStranded: (database: Database, job: Job) => boolean;
 };
 
 function deployRunnerConfig(
@@ -127,10 +147,14 @@ async function runDeployJob(
   const deploymentId = requireId(job.deploymentId, job);
   // The server was chosen when the deployment was queued; a retry after a crash stays there.
   const host = hostOfDeployment(dependencies, deploymentId);
-  const network = await prepareProjectNetwork({ ...dependencies, host }, job.projectId, () => {
-    run.signal.throwIfAborted();
-    run.assertOwnership?.();
-  });
+  const network = await prepareProjectNetwork(
+    { config: dependencies.config, database: dependencies.database, host },
+    job.projectId,
+    () => {
+      run.signal.throwIfAborted();
+      run.assertOwnership?.();
+    },
+  );
   await reportDeploymentStatus(dependencies, deploymentId, "pending");
   const status = await runDeployment(
     deployRunnerDependencies(dependencies, { host, network }, run),
@@ -197,19 +221,12 @@ async function runTaskJob(dependencies: WorkerDependencies, job: Job, run: JobRu
 }
 
 async function runProjectCleanupJob(dependencies: WorkerDependencies, job: Job): Promise<void> {
-  const project = dependencies.database
-    .select({ serverId: tables.projects.serverId })
-    .from(tables.projects)
-    .where(eq(tables.projects.id, job.projectId))
-    .get();
-  if (project == null) {
+  const serverId = findProjectServerId(dependencies.database, job.projectId);
+  if (serverId == null) {
     return;
   }
   const serverIds = [
-    ...new Set([
-      project.serverId,
-      ...listDeploymentServerIds(dependencies.database, job.projectId),
-    ]),
+    ...new Set([serverId, ...listDeploymentServerIds(dependencies.database, job.projectId)]),
   ];
   const hosts = dependencies.hosts.hostsOf(dependencies.database, serverIds);
   const storage =
@@ -221,6 +238,175 @@ async function runProjectCleanupJob(dependencies: WorkerDependencies, job: Job):
     storage,
   });
   dependencies.logger.info({ projectId: job.projectId, ...removed }, "project deleted");
+}
+
+async function runConsoleJob(
+  dependencies: WorkerDependencies,
+  job: Job,
+  run: JobRun,
+): Promise<void> {
+  const commandId = requireJobPayloadString(job, "commandId");
+  const status = await runConsoleCommandJob(
+    {
+      database: dependencies.database,
+      secretBox: dependencies.secretBox,
+      dockerOf: (serverId) => dependencies.hosts.hostOf(dependencies.database, serverId).docker,
+    },
+    commandId,
+    run.signal,
+  );
+  if (status === "failed") {
+    throw new Error("Console command failed");
+  }
+}
+
+function recoverDeployment(database: Database, job: RecoveredJob): void {
+  const { deploymentId, outcome } = job;
+  if (deploymentId == null) {
+    return;
+  }
+
+  const deployment = getDeployment(database, deploymentId);
+  if (isTerminalStatus(deployment.status)) {
+    return;
+  }
+
+  if (deployment.previewId != null && deployment.cancelRequestedAt != null) {
+    database.transaction(
+      (transaction) => {
+        transitionDeployment(transaction, deploymentId, {
+          to: "cancelled",
+          errorMessage: "Preview deployment cancelled",
+        });
+        cancelQueuedDeploymentJobs(transaction, [deploymentId]);
+      },
+      { behavior: "immediate" },
+    );
+    return;
+  }
+
+  const message =
+    outcome === "requeued"
+      ? "The worker stopped during this deployment; it will run again"
+      : "The worker stopped during this deployment";
+  appendDeploymentLogs(database, deploymentId, [{ stream: "system", level: "warn", message }]);
+  if (deployment.status !== "queued" || outcome === "failed") {
+    transitionDeployment(database, deploymentId, {
+      to: outcome === "requeued" ? "queued" : "failed",
+      errorMessage: outcome === "requeued" ? null : message,
+    });
+  }
+}
+
+function recoverTaskJob(database: Database, job: RecoveredJob, reason: string): void {
+  if (job.taskExecutionId != null && job.outcome === "failed") {
+    failTaskExecutions(database, [job.taskExecutionId], reason);
+  }
+}
+
+function recoverVolumeJob(database: Database, job: RecoveredJob, reason: string): void {
+  if (job.outcome !== "failed") {
+    return;
+  }
+  const volumeId = job.payload["volumeId"];
+  if (typeof volumeId === "string" && volumeId.trim() !== "") {
+    recoverVolumeDeletion(database, volumeId, reason);
+  }
+}
+
+function isVolumeJobStranded(database: Database, job: Job): boolean {
+  const volumeId = job.payload["volumeId"];
+  return (
+    typeof volumeId === "string" &&
+    volumeId.trim() !== "" &&
+    isVolumeDeletionPending(database, volumeId)
+  );
+}
+
+const noRecovery = (): void => undefined;
+const neverStranded = (): boolean => false;
+
+const JOB_HANDLERS = {
+  deploy: {
+    run: runDeployJob,
+    retriesOnFailure: false,
+    recover: recoverDeployment,
+    isStranded: neverStranded,
+  },
+  container_action: {
+    run: runContainerActionJob,
+    retriesOnFailure: false,
+    recover: noRecovery,
+    isStranded: neverStranded,
+  },
+  task_run: {
+    run: runTaskJob,
+    retriesOnFailure: false,
+    recover: recoverTaskJob,
+    isStranded: neverStranded,
+  },
+  project_cleanup: {
+    run: async (dependencies, job) => await runProjectCleanupJob(dependencies, job),
+    retriesOnFailure: true,
+    recover: noRecovery,
+    isStranded: neverStranded,
+  },
+  volume_delete: {
+    run: async (dependencies, job) => await runVolumeDeleteJob(dependencies, job),
+    retriesOnFailure: false,
+    recover: recoverVolumeJob,
+    isStranded: isVolumeJobStranded,
+  },
+  preview_cleanup: {
+    run: async (dependencies, job, run) =>
+      await runPreviewCleanupJob(dependencies, job, () => {
+        run.signal.throwIfAborted();
+        run.assertOwnership?.();
+      }),
+    retriesOnFailure: true,
+    recover: noRecovery,
+    isStranded: neverStranded,
+  },
+  database_provision: {
+    run: runDatabaseProvisionJob,
+    retriesOnFailure: false,
+    recover: recoverDatabaseJob,
+    isStranded: isDatabaseJobStranded,
+  },
+  database_delete: {
+    run: runDatabaseDeleteJob,
+    retriesOnFailure: false,
+    recover: recoverDatabaseJob,
+    isStranded: isDatabaseJobStranded,
+  },
+  database_backup: {
+    run: runDatabaseBackupJob,
+    retriesOnFailure: false,
+    recover: recoverDatabaseJob,
+    isStranded: isDatabaseJobStranded,
+  },
+  database_restore: {
+    run: runDatabaseRestoreJob,
+    retriesOnFailure: false,
+    recover: recoverDatabaseJob,
+    isStranded: isDatabaseJobStranded,
+  },
+  console_command: {
+    run: runConsoleJob,
+    retriesOnFailure: false,
+    recover: (database, job) => recoverConsoleJob(database, job),
+    isStranded: neverStranded,
+  },
+} as const satisfies Record<JobKind, JobHandler>;
+
+/**
+ * Returns the handler registered for a job kind.
+ *
+ * @param kind - Job kind.
+ * @returns The handler.
+ */
+export function jobHandlerFor(kind: JobKind): JobHandler {
+  return JOB_HANDLERS[kind];
 }
 
 /**
@@ -238,75 +424,5 @@ export async function dispatchJob(
 ): Promise<void> {
   run.signal.throwIfAborted();
   run.assertOwnership?.();
-  switch (job.kind) {
-    case "deploy": {
-      await runDeployJob(dependencies, job, run);
-      return;
-    }
-    case "container_action": {
-      await runContainerActionJob(dependencies, job, run);
-      return;
-    }
-    case "task_run": {
-      await runTaskJob(dependencies, job, run);
-      return;
-    }
-    case "project_cleanup": {
-      await runProjectCleanupJob(dependencies, job);
-      return;
-    }
-    case "volume_delete": {
-      await runVolumeDeleteJob(dependencies, job);
-      return;
-    }
-    case "preview_cleanup": {
-      await runPreviewCleanupJob(dependencies, job, () => {
-        run.signal.throwIfAborted();
-        run.assertOwnership?.();
-      });
-      return;
-    }
-    case "database_provision": {
-      await runDatabaseProvisionJob(dependencies, job, run);
-      return;
-    }
-    case "database_delete": {
-      await runDatabaseDeleteJob(dependencies, job, run);
-      return;
-    }
-    case "database_backup": {
-      await runDatabaseBackupJob(dependencies, job, run);
-      return;
-    }
-    case "database_restore": {
-      await runDatabaseRestoreJob(dependencies, job, run);
-      return;
-    }
-    case "console_command": {
-      await runConsoleJob(dependencies, job, run);
-    }
-  }
-}
-
-async function runConsoleJob(
-  dependencies: WorkerDependencies,
-  job: Job,
-  run: JobRun,
-): Promise<void> {
-  const commandId = job.payload["commandId"];
-  if (typeof commandId !== "string" || commandId === "") {
-    throw new Error(`Job ${job.id} has no console command`);
-  }
-  const status = await runConsoleCommandJob(
-    {
-      database: dependencies.database,
-      secretBox: dependencies.secretBox,
-      dockerOf: (serverId) => dependencies.hosts.hostOf(dependencies.database, serverId).docker,
-    },
-    commandId,
-    run.signal,
-  );
-  if (status === "failed") {
-    throw new Error("Console command failed");
-  }
+  await jobHandlerFor(job.kind).run(dependencies, job, run);
 }

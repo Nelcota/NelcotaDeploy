@@ -50,6 +50,24 @@ test("does not revive an expired lease before recovery", () => {
   expect(renewJobLeases(database, { leases: [claimed], now }).size).toBe(0);
 });
 
+test("only recovery can settle a job at its lease deadline", () => {
+  const database = openMemoryDatabase();
+  using _connection = database.$client;
+  const projectId = insertProject(database, "lease-deadline");
+  const { id } = enqueueJob(database, { kind: "deploy", projectId, maxAttempts: 2 }, T0);
+  const claimed = claimNextJob(database, "worker-1", T0);
+  if (claimed == null) {
+    throw new Error("Expected a claimed job");
+  }
+
+  const now = new Date(T0.getTime() + JOB_LEASE_IN_MS);
+  const outcome = failJob(database, claimed, { errorMessage: "stale", retryable: false, now });
+  const recovered = recoverExpiredJobs(database, now);
+
+  expect(outcome).toBe("lost");
+  expect(recovered).toMatchObject([{ id, outcome: "requeued" }]);
+});
+
 function insertProject(database: Database, slug: string): string {
   const id = Bun.randomUUIDv7();
   const now = new Date().toISOString();

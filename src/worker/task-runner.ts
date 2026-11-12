@@ -14,17 +14,30 @@ import { getExecutionForRun, updateTaskExecution } from "@/tasks";
 const MILLISECONDS_PER_SECOND = 1000;
 const MAX_OUTPUT_LENGTH = 65_536;
 
+type ContainerExecDocker = Pick<DockerEngine, "execInContainer" | "readContainerEnvironment">;
+
 type TaskRunnerDependencies = {
   readonly database: Database;
   /** Docker of a server; the task runs where the project's current container is. */
-  readonly dockerOf: (serverId: string) => DockerEngine;
+  readonly dockerOf: (serverId: string) => ContainerExecDocker;
   readonly secretBox: SecretBox;
 };
 
-type QueuedExecution = {
-  readonly id: string;
+type ContainerCommandChange = {
+  readonly status: "running" | "succeeded" | "failed";
+  readonly output?: string;
+  readonly exitCode?: number | null;
+  readonly errorMessage?: string | null;
+};
+
+type ContainerCommandRun = {
+  readonly projectId: string;
   readonly command: readonly string[];
   readonly timeoutInSeconds: number;
+  readonly signal: AbortSignal;
+  readonly missingContainerMessage: string;
+  readonly onOutput?: (output: string) => void;
+  readonly record: (change: ContainerCommandChange) => void;
 };
 
 /**
@@ -50,90 +63,14 @@ export async function runTaskExecution(
   if (execution?.status !== "queued") {
     return "skipped";
   }
-  const project = getProject(database, execution.projectId);
-  const container = currentContainer(database, project.currentDeploymentId);
-  if (container == null) {
-    updateTaskExecution(database, executionId, {
-      status: "failed",
-      errorMessage: "The project has no deployed container to run the task in",
-    });
-    return "failed";
-  }
-  const docker = dependencies.dockerOf(container.serverId);
-  const redact = await secretRedactor(dependencies, { project, container, docker });
-  updateTaskExecution(database, executionId, { status: "running" });
-  return await executeInContainer(
-    { database, docker },
-    {
-      execution: { ...execution, id: executionId },
-      containerName: container.containerName,
-      redact,
-      signal,
-    },
-  );
-}
-
-async function executeInContainer(
-  { database, docker }: { readonly database: Database; readonly docker: DockerEngine },
-  run: {
-    readonly execution: QueuedExecution;
-    readonly containerName: string;
-    readonly redact: (text: string) => string;
-    readonly signal: AbortSignal;
-  },
-): Promise<"succeeded" | "failed"> {
-  const { execution } = run;
-  let output = "";
-  try {
-    const result = await docker.execInContainer(run.containerName, execution.command, {
-      timeoutInMs: execution.timeoutInSeconds * MILLISECONDS_PER_SECOND,
-      signal: run.signal,
-      onLine: (line) => {
-        output = `${output}${run.redact(line)}\n`.slice(-MAX_OUTPUT_LENGTH);
-      },
-    });
-    const status = result.exitCode === 0 ? "succeeded" : "failed";
-    updateTaskExecution(database, execution.id, {
-      status,
-      exitCode: result.exitCode,
-      output,
-      errorMessage: describeFailure(result, execution.timeoutInSeconds),
-    });
-    return status;
-  } catch (error) {
-    updateTaskExecution(database, execution.id, {
-      status: "failed",
-      output,
-      errorMessage: run.redact(error instanceof Error ? error.message : String(error)),
-    });
-    return "failed";
-  }
-}
-
-/**
- * Hides from command output the project's secrets, both the current ones and the ones the
- * live container started with.
- */
-async function secretRedactor(
-  dependencies: TaskRunnerDependencies,
-  target: {
-    readonly project: { readonly id: string; readonly currentDeploymentId: string | null };
-    readonly container: { readonly containerName: string };
-    readonly docker: DockerEngine;
-  },
-): Promise<(text: string) => string> {
-  const { database, secretBox } = dependencies;
-  const environment = await resolveEnvironment(database, secretBox, {
-    projectId: target.project.id,
+  return await runInLiveContainer(dependencies, {
+    projectId: execution.projectId,
+    command: execution.command,
+    timeoutInSeconds: execution.timeoutInSeconds,
+    signal,
+    missingContainerMessage: "The project has no deployed container to run the task in",
+    record: (change) => updateTaskExecution(database, executionId, change),
   });
-  const saved = await readDeploymentSecrets(
-    database,
-    secretBox,
-    target.project.currentDeploymentId,
-  );
-  const previous =
-    saved ?? (await target.docker.readContainerEnvironment(target.container.containerName));
-  return createRedactor([...environment.secretValues, ...previous]);
 }
 
 /**
@@ -161,54 +98,91 @@ export async function runConsoleCommandJob(
   if (queued.status !== "queued") {
     return "skipped";
   }
+  let flushedAt = 0;
+  return await runInLiveContainer(dependencies, {
+    projectId: queued.projectId,
+    command: ["sh", "-c", queued.command],
+    timeoutInSeconds: CONSOLE_TIMEOUT_IN_SECONDS,
+    signal,
+    missingContainerMessage: "The project has no live container",
+    onOutput: (output) => {
+      // At most one write a second, so a chatty command does not flood the database.
+      if (Date.now() - flushedAt >= MILLISECONDS_PER_SECOND) {
+        flushedAt = Date.now();
+        updateConsoleCommand(database, commandId, { status: "running", output });
+      }
+    },
+    record: (change) => updateConsoleCommand(database, commandId, change),
+  });
+}
+
+async function runInLiveContainer(
+  dependencies: TaskRunnerDependencies,
+  run: ContainerCommandRun,
+): Promise<"succeeded" | "failed"> {
+  const { database } = dependencies;
   let redact = (text: string) => text;
   let output = "";
-  let flushedAt = 0;
   try {
-    const project = getProject(database, queued.projectId);
+    const project = getProject(database, run.projectId);
     const container = currentContainer(database, project.currentDeploymentId);
     if (container == null) {
-      updateConsoleCommand(database, commandId, {
-        status: "failed",
-        errorMessage: "The project has no live container",
-      });
+      run.record({ status: "failed", errorMessage: run.missingContainerMessage });
       return "failed";
     }
     const docker = dependencies.dockerOf(container.serverId);
     redact = await secretRedactor(dependencies, { project, container, docker });
-    updateConsoleCommand(database, commandId, { status: "running" });
-    const result = await docker.execInContainer(
-      container.containerName,
-      ["sh", "-c", queued.command],
-      {
-        timeoutInMs: CONSOLE_TIMEOUT_IN_SECONDS * MILLISECONDS_PER_SECOND,
-        signal,
-        onLine: (line) => {
-          output = `${output}${redact(line)}\n`.slice(-MAX_OUTPUT_LENGTH);
-          // At most one write a second, so a chatty command does not flood the database.
-          if (Date.now() - flushedAt >= MILLISECONDS_PER_SECOND) {
-            flushedAt = Date.now();
-            updateConsoleCommand(database, commandId, { status: "running", output });
-          }
-        },
+    run.record({ status: "running" });
+    const result = await docker.execInContainer(container.containerName, run.command, {
+      timeoutInMs: run.timeoutInSeconds * MILLISECONDS_PER_SECOND,
+      signal: run.signal,
+      onLine: (line) => {
+        output = `${output}${redact(line)}\n`.slice(-MAX_OUTPUT_LENGTH);
+        run.onOutput?.(output);
       },
-    );
+    });
     const status = result.exitCode === 0 ? "succeeded" : "failed";
-    updateConsoleCommand(database, commandId, {
+    run.record({
       status,
       output,
       exitCode: result.exitCode,
-      errorMessage: describeFailure(result, CONSOLE_TIMEOUT_IN_SECONDS),
+      errorMessage: describeFailure(result, run.timeoutInSeconds),
     });
     return status;
   } catch (error) {
-    updateConsoleCommand(database, commandId, {
+    run.record({
       status: "failed",
       output,
       errorMessage: redact(error instanceof Error ? error.message : String(error)),
     });
     return "failed";
   }
+}
+
+/**
+ * Hides from command output the project's secrets, both the current ones and the ones the
+ * live container started with.
+ */
+async function secretRedactor(
+  dependencies: TaskRunnerDependencies,
+  target: {
+    readonly project: { readonly id: string; readonly currentDeploymentId: string | null };
+    readonly container: { readonly containerName: string };
+    readonly docker: ContainerExecDocker;
+  },
+): Promise<(text: string) => string> {
+  const { database, secretBox } = dependencies;
+  const environment = await resolveEnvironment(database, secretBox, {
+    projectId: target.project.id,
+  });
+  const saved = await readDeploymentSecrets(
+    database,
+    secretBox,
+    target.project.currentDeploymentId,
+  );
+  const previous =
+    saved ?? (await target.docker.readContainerEnvironment(target.container.containerName));
+  return createRedactor([...environment.secretValues, ...previous]);
 }
 
 function currentContainer(
