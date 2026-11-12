@@ -264,7 +264,7 @@ start_panel() {
 
   # Initialize the shared routes volume from the worker before Traefik mounts panel.yml in it.
   printf 'Starting the worker.\n'
-  compose up --wait --wait-timeout "$service_timeout_seconds" --no-build worker ||
+  compose up --detach --no-build worker ||
     fail "The worker failed to start. Run docker compose --project-directory $install_dir logs worker."
   compose exec -T worker docker info --format '{{.ServerVersion}}' >/dev/null ||
     fail 'The worker cannot access the Docker socket. Check DOCKER_GID and the socket permissions.'
@@ -279,7 +279,7 @@ start_ingress() {
   local health_url="https://$domain/api/health" health_response previous_ingress running_ingress probe_status=0
   previous_ingress=$(compose ps --status running -q traefik)
   printf 'Starting Traefik. Waiting for HTTPS.\n'
-  compose up --wait --wait-timeout "$service_timeout_seconds" --no-build traefik ||
+  compose up --detach --no-build traefik ||
     fail "Traefik failed to start. Run docker compose --project-directory $install_dir logs traefik."
 
   running_ingress=$(compose ps --status running -q traefik)
