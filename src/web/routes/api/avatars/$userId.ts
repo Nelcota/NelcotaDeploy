@@ -1,20 +1,23 @@
 import { createFileRoute } from "@tanstack/react-router";
 
-import { getCurrentUser, getUserAvatar } from "@/auth";
+import { getUserAvatar } from "@/auth";
 import { getDatabase } from "@/db";
+import { accessErrorResponse, authorizeHeaders } from "@/web/server/authorization";
 
 const MAX_USER_ID_LENGTH = 128;
-// The address carries a version that changes on every upload, so a copy never goes stale.
-const AVATAR_CACHE = "private, max-age=31536000, immutable";
+// A cached image must pass authorization again before the browser can reuse it.
+const AVATAR_CACHE = "private, no-cache";
 
 export const Route = createFileRoute("/api/avatars/$userId")({
   server: {
     handlers: {
       GET: async ({ request, params }) => {
-        const user = await getCurrentUser(request.headers);
-        if (user == null) {
-          return new Response("Unauthorized", { status: 401 });
+        try {
+          await authorizeHeaders(request.headers, "project:read");
+        } catch (error) {
+          return accessErrorResponse(error);
         }
+
         const userId = params.userId.trim();
         if (userId === "" || userId.length > MAX_USER_ID_LENGTH) {
           return new Response("Not found", { status: 404 });

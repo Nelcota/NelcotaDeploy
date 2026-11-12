@@ -4,6 +4,13 @@ import { isAbsolute, resolve } from "node:path";
 import { InvalidConfigError, parseConfig } from "./config";
 
 describe("parseConfig", () => {
+  test("rejects control-plane and project bridge names for legacy workloads", () => {
+    expect(() => parseConfig({ DOCKER_NETWORK: "nelcota-control" })).toThrow(InvalidConfigError);
+    expect(() => parseConfig({ DOCKER_NETWORK: "nelcota-project-existing" })).toThrow(
+      InvalidConfigError,
+    );
+  });
+
   test("applies defaults and resolves paths to absolute", () => {
     const config = parseConfig({});
 

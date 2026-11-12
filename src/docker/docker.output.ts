@@ -216,7 +216,8 @@ export function parseDockerSize(text: string): number | null {
   if (multiplier == null || Number.isFinite(amount) === false) {
     return null;
   }
-  return Math.round(amount * multiplier);
+  const bytes = Math.round(amount * multiplier);
+  return Number.isSafeInteger(bytes) ? bytes : null;
 }
 
 /**

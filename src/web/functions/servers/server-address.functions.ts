@@ -27,7 +27,11 @@ export const getDomainsDnsFn = createServerFn({ method: "GET" })
   .handler(async ({ data }) => {
     await authorizeProject("project:read", data.projectId);
     const database = getDatabase();
-    const domains = listProjectDomains(database, data.projectId, getSystemSettings(database));
+    const domains = listProjectDomains(
+      database,
+      data.projectId,
+      getSystemSettings(database, { includeSecrets: false }),
+    );
     const expected = await projectServerAddress(database, data.projectId, getConfig().PUBLIC_URL);
     return await checkDomainsDns(
       domains.map((domain) => domain.hostname),

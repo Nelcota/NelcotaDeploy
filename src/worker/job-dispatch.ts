@@ -36,7 +36,7 @@ import {
   notifyFailedDeployment,
   reportDeploymentStatus,
 } from "./notifications/deployment-notifications";
-import type { ServerHost } from "./server-host";
+import { prepareProjectNetwork, type ServerHost } from "./server-host";
 import { runConsoleCommandJob, runTaskExecution } from "./task-runner";
 import type { WorkerDependencies } from "./worker.types";
 
@@ -67,11 +67,12 @@ export type JobHandler = {
 function deployRunnerConfig(
   config: WorkerDependencies["config"],
   host: ServerHost,
+  network: string,
 ): DeployRunnerConfig {
   return {
     workspaceDir: host.workspaceDir,
     railpackBinary: host.railpackBinary,
-    network: config.DOCKER_NETWORK,
+    network,
     buildTimeoutInSeconds: config.BUILD_TIMEOUT_SECONDS,
     healthCheckTimeoutInSeconds: config.HEALTH_CHECK_TIMEOUT_SECONDS,
     imagesKeptPerProject: config.IMAGES_KEPT_PER_PROJECT,
@@ -87,7 +88,7 @@ function deployRunnerConfig(
 
 function deployRunnerDependencies(
   dependencies: WorkerDependencies,
-  host: ServerHost,
+  { host, network }: { readonly host: ServerHost; readonly network: string },
   run: JobRun,
 ): DeployRunnerDependencies {
   return {
@@ -98,7 +99,7 @@ function deployRunnerDependencies(
     git: host.git,
     probes: host.probes,
     secretBox: dependencies.secretBox,
-    config: deployRunnerConfig(dependencies.config, host),
+    config: deployRunnerConfig(dependencies.config, host, network),
     routes: host.routes,
   };
 }
@@ -146,9 +147,17 @@ async function runDeployJob(
   const deploymentId = requireId(job.deploymentId, job);
   // The server was chosen when the deployment was queued; a retry after a crash stays there.
   const host = hostOfDeployment(dependencies, deploymentId);
+  const network = await prepareProjectNetwork(
+    { config: dependencies.config, database: dependencies.database, host },
+    job.projectId,
+    () => {
+      run.signal.throwIfAborted();
+      run.assertOwnership?.();
+    },
+  );
   await reportDeploymentStatus(dependencies, deploymentId, "pending");
   const status = await runDeployment(
-    deployRunnerDependencies(dependencies, host, run),
+    deployRunnerDependencies(dependencies, { host, network }, run),
     deploymentId,
     run.signal,
   );

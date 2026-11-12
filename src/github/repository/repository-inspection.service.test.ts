@@ -235,6 +235,43 @@ test("uses the GitHub App for a private repository without requiring a manual to
   ).toBe(true);
 });
 
+test("withholds the GitHub App credential when allowGitHubApp is false", async () => {
+  await using github = githubFixture({
+    appInstalled: true,
+    details: { default_branch: "master", private: false },
+  });
+  const database = openMemoryDatabase();
+  using _connection = database.$client;
+  const secretBox = await createTestSecretBox();
+  const keys = generateKeyPairSync("rsa", {
+    modulusLength: 2048,
+    privateKeyEncoding: { type: "pkcs1", format: "pem" },
+    publicKeyEncoding: { type: "spki", format: "pem" },
+  });
+  await saveGitHubApp(database, secretBox, {
+    actor: TEST_ACTOR,
+    app: {
+      id: 42,
+      slug: "fixture-app",
+      name: "Fixture",
+      html_url: "https://github.com/apps/fixture-app",
+      owner: { login: "acme" },
+      pem: keys.privateKey,
+      webhook_secret: "fixture-webhook",
+      client_id: "fixture-client",
+      client_secret: "fixture-client-secret",
+    },
+  });
+
+  const result = await inspectRepository(
+    { database, secretBox, api: github.api },
+    { repositoryUrl: "https://github.com/acme/api", allowGitHubApp: false },
+  );
+
+  expect(result.access).toBe("public");
+  expect(github.requests.every((request) => request.authorization == null)).toBe(true);
+});
+
 test("getRepositoryAccess verifies public access without listing branches or files", async () => {
   await using github = githubFixture();
   const database = openMemoryDatabase();

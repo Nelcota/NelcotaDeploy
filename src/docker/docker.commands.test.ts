@@ -250,13 +250,14 @@ const PROXY_BASE = {
 };
 
 describe("proxyContainerArgs", () => {
-  test("publishes ports 80 and 443 and routes only platform containers", () => {
+  test("publishes ports 80 and 443 without Docker discovery or socket access", () => {
     const args = proxyContainerArgs(PROXY_BASE);
 
     expect(args).toContain("80:80");
     expect(args).toContain("443:443");
     expect(args).toContain("io.nelcota.proxy=true");
-    expect(args).toContain("--providers.docker.constraints=Label(`io.nelcota.managed`,`true`)");
+    expect(args.some((argument) => argument.startsWith("--providers.docker"))).toBe(false);
+    expect(args.some((argument) => argument.includes("/var/run/docker.sock"))).toBe(false);
     expect(args).toContain("--certificatesresolvers.letsencrypt.acme.email=ops@example.com");
   });
 
@@ -265,7 +266,7 @@ describe("proxyContainerArgs", () => {
 
     expect(args).toContain("/var/lib/nelcota/routes:/routes:ro");
     expect(args).toContain("--providers.file.directory=/routes");
-    expect(args).toContain("io.nelcota.proxy-version=2");
+    expect(args).toContain("io.nelcota.proxy-version=3");
   });
 
   test.each([["relative"], ["/var/lib/../etc"], ["/var/lib/nelcota/routes:/etc"]])(

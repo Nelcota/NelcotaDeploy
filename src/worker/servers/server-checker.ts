@@ -4,7 +4,7 @@ import { isPublicIpAddress, lookupWithTimeout } from "@/domains";
 import { sharedRouteConfig } from "@/routing";
 import { REMOTE_ROUTES_DIR, type Server, type ServerCheck } from "@/servers";
 
-import type { ServerHost } from "../server-host";
+import { restoreProjectNetworkPeers, type ServerHost } from "../server-host";
 import { REMOTE_DOCKER_BINARY } from "./server-hosts";
 
 const COMMAND_TIMEOUT_IN_MS = 10_000;
@@ -109,14 +109,17 @@ export async function checkServer(
     if (server.kind === "local") {
       // The panel's proxy compresses on its entrypoint, so its routes do not.
       await host.routes?.writeShared(sharedRouteConfig(false));
+      await restoreProjectNetworkPeers(config, host);
       return { status: "ready", message: null, dockerVersion };
     }
     if (server.status === "ready") {
       // Cheap when nothing changed; replaces a proxy left by an older version of the panel.
       await ensureRouting(config, host);
+      await restoreProjectNetworkPeers(config, host);
       return { status: "ready", message: null, dockerVersion };
     }
     await prepareRemoteServer(config, host);
+    await restoreProjectNetworkPeers(config, host);
     return {
       status: "ready",
       message: null,

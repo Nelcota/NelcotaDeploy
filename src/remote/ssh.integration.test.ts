@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 
 import { runProcess } from "@/process";
 
+import { RemoteFiles } from "./remote-files";
 import { createRemoteRunner } from "./remote-runner";
 import { HostKeyMismatchError } from "./remote.errors";
 import { SshConnection, type SshTarget } from "./ssh-connection";
@@ -15,6 +16,7 @@ const POLL_INTERVAL_IN_MS = 500;
 const SHORT_TIMEOUT_IN_MS = 500;
 const KILL_SETTLE_IN_MS = 200;
 const ABORT_AFTER_IN_MS = 300;
+const FILE_TRANSFER_BYTES = 128 * 1024;
 const keys = generateSshKeyPair();
 
 // Alpine with sshd and a tiny HTTP server, reachable only from inside the container.
@@ -136,6 +138,20 @@ describe("remote runner over SSH", () => {
 
     expect(result.stdout).toBe("it's $(id) `id`|/tmp\n");
   });
+});
+
+test("transfers a binary file over a real SSH channel at its byte limit", async () => {
+  const files = new RemoteFiles(connection);
+  const path = "/tmp/nelcota-transfer.dump";
+  const content = Buffer.alloc(FILE_TRANSFER_BYTES, 173);
+
+  await files.write(path, content, COMMAND_TIMEOUT_IN_MS);
+  const received = await files.read(path, {
+    maxBytes: FILE_TRANSFER_BYTES,
+    timeoutInMs: COMMAND_TIMEOUT_IN_MS,
+  });
+
+  expect(received).toEqual(content);
 });
 
 describe("stopping remote commands", () => {

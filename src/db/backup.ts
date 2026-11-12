@@ -1,9 +1,10 @@
-import { link, mkdir, open, readdir, rm } from "node:fs/promises";
+import { mkdir, readdir, rm } from "node:fs/promises";
 import { join } from "node:path";
+
+import { publishPrivateFile } from "@/shared/private-file";
 
 import type { Database } from "./database";
 
-const OWNER_READ_WRITE = 0o600;
 const BACKUP_PREFIX = "nelcota-";
 const BACKUP_SUFFIX = ".db";
 const BACKUP_NAME = /^nelcota-(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})Z\.db$/;
@@ -36,7 +37,7 @@ function backupCreatedAt(name: string): string | null {
  * @param name - File name without any directory prefix.
  * @returns Whether it is a panel backup name.
  */
-function isPanelBackupName(name: string): boolean {
+export function isPanelBackupName(name: string): boolean {
   return backupCreatedAt(name) != null;
 }
 
@@ -97,7 +98,9 @@ export async function backupDatabase(
   assertValidRetention(target.kept);
   const path = join(target.directory, backupName(target.now ?? new Date()));
   await mkdir(target.directory, { recursive: true });
-  await publishBackup(database, path);
+  await publishPrivateFile(path, (temporaryPath) => {
+    database.$client.run("VACUUM INTO ?", [temporaryPath]);
+  });
   const entries = await readdir(target.directory, { withFileTypes: true });
   const names = entries.filter((entry) => entry.isFile()).map((entry) => entry.name);
   await Promise.all(
@@ -106,16 +109,4 @@ export async function backupDatabase(
     ),
   );
   return path;
-}
-
-async function publishBackup(database: Database, path: string): Promise<void> {
-  const temporaryPath = `${path}.${Bun.randomUUIDv7()}.tmp`;
-  const reservation = await open(temporaryPath, "wx", OWNER_READ_WRITE);
-  await using _temporary = {
-    [Symbol.asyncDispose]: async () => await rm(temporaryPath, { force: true }),
-  };
-  await reservation.close();
-  database.$client.run("VACUUM INTO ?", [temporaryPath]);
-  // A same-filesystem hard link publishes the complete file and fails if the name was taken.
-  await link(temporaryPath, path);
 }

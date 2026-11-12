@@ -1,23 +1,22 @@
 # Production stack on a single VPS: Traefik (proxy + HTTPS), web (panel) and worker (jobs).
-# Only the worker and Traefik see the Docker socket; the web process never does.
+# Only the worker sees the Docker socket.
 name: nelcota
 
 services:
   traefik:
     image: traefik:v3.7.17
+    container_name: nelcota-ingress
     restart: unless-stopped
+    environment:
+      PANEL_DOMAIN: ${PANEL_DOMAIN:?set PANEL_DOMAIN in .env}
+      PANEL_CONTROL_ADDRESS: ${PANEL_CONTROL_ADDRESS:-172.29.240.10}
     command:
-      - --providers.docker=true
-      - --providers.docker.exposedbydefault=false
-      - --providers.docker.network=nelcota
-      # Only containers created by this platform (apps and the panel) are ever routed.
-      - --providers.docker.constraints=Label(`io.nelcota.managed`,`true`) || Label(`io.nelcota.panel`,`true`)
-      # App routes: the worker switches them to a new container once it is healthy.
+      # The worker switches an application route after its new containers pass health checks.
       - --providers.file.directory=/routes
       - --providers.file.watch=true
       - --entrypoints.web.address=:80
       - --entrypoints.websecure.address=:443
-      - --entrypoints.websecure.http.middlewares=nelcota-compress@docker
+      - --entrypoints.websecure.http.middlewares=nelcota-compress@file
       - --certificatesresolvers.letsencrypt.acme.email=${ACME_EMAIL:?set ACME_EMAIL in .env}
       - --certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json
       - --certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web
@@ -27,12 +26,12 @@ services:
       - "80:80"
       - "443:443"
     volumes:
-      # Read-only: Traefik only reads labels and routes.
-      - /var/run/docker.sock:/var/run/docker.sock:ro
       - routes:/routes:ro
+      - ./deploy/traefik/panel.yml:/routes/panel.yml:ro
       - letsencrypt:/letsencrypt
     networks:
       - nelcota
+      - control-plane
 
   web:
     build: .
@@ -47,24 +46,13 @@ services:
       TRAEFIK_ENABLED: "true"
     volumes:
       - data:/data
-    labels:
-      io.nelcota.panel: "true"
-      traefik.enable: "true"
-      traefik.docker.network: nelcota
-      traefik.http.routers.nelcota-panel.rule: Host(`${PANEL_DOMAIN}`)
-      traefik.http.routers.nelcota-panel.entrypoints: websecure
-      traefik.http.routers.nelcota-panel.tls.certresolver: letsencrypt
-      traefik.http.routers.nelcota-panel-http.rule: Host(`${PANEL_DOMAIN}`)
-      traefik.http.routers.nelcota-panel-http.entrypoints: web
-      traefik.http.routers.nelcota-panel-http.middlewares: nelcota-panel-https
-      traefik.http.middlewares.nelcota-panel-https.redirectscheme.scheme: https
-      traefik.http.middlewares.nelcota-compress.compress: "true"
-      traefik.http.services.nelcota-panel.loadbalancer.server.port: "3000"
     networks:
-      - nelcota
+      control-plane:
+        ipv4_address: ${PANEL_CONTROL_ADDRESS:-172.29.240.10}
 
   worker:
     image: nelcota-deploy:latest
+    container_name: nelcota-worker
     restart: unless-stopped
     depends_on:
       web:
@@ -78,6 +66,7 @@ services:
       TRAEFIK_ENABLED: "true"
       TRAEFIK_ROUTES_DIR: /routes
       WORKER_ID: worker-1
+      WORKER_DOCKER_CONTAINER: nelcota-worker
     # Access to the Docker socket is equivalent to root on the host. Only this service has it.
     group_add:
       - "${DOCKER_GID:-999}"
@@ -95,6 +84,11 @@ services:
 networks:
   nelcota:
     name: nelcota
+  control-plane:
+    name: nelcota-control
+    ipam:
+      config:
+        - subnet: ${PANEL_CONTROL_SUBNET:-172.29.240.0/24}
 
 volumes:
   data:

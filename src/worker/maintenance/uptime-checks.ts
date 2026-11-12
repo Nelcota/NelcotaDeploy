@@ -61,11 +61,11 @@ async function checkDomain(
   }
   const link = `${config.PUBLIC_URL}/projects/${domain.projectId}/domains`;
   await notify(database, logger, {
-    title: transition === "went-down" ? "Domínio fora do ar" : "Resolvido: Domínio fora do ar",
+    title: transition === "went-down" ? "Domain down" : "Resolved: Domain down",
     text:
       transition === "went-down"
-        ? `${domain.hostname} (${domain.projectName}) não responde para os visitantes.`
-        : `${domain.hostname} (${domain.projectName}) voltou a responder.`,
+        ? `${domain.hostname} (${domain.projectName}) is not responding to visitors.`
+        : `${domain.hostname} (${domain.projectName}) is responding again.`,
     link,
   });
 }
@@ -113,10 +113,10 @@ async function alertCertificate(
   const days = daysUntil(certificate.expiresAt, certificate.now);
   const text =
     days < 0
-      ? `O certificado de ${domain.hostname} (${domain.projectName}) expirou.`
-      : `O certificado de ${domain.hostname} (${domain.projectName}) expira em ${days} dia(s).`;
+      ? `The certificate for ${domain.hostname} (${domain.projectName}) has expired.`
+      : `The certificate for ${domain.hostname} (${domain.projectName}) expires in ${days} ${days === 1 ? "day" : "days"}.`;
   await notify(dependencies.database, dependencies.logger, {
-    title: "Certificado SSL perto de vencer",
+    title: "TLS certificate expiring soon",
     text,
     link: `${dependencies.config.PUBLIC_URL}/projects/${domain.projectId}/domains`,
   });
@@ -124,10 +124,12 @@ async function alertCertificate(
 
 /** Runs the work in fixed-size batches, each finishing before the next starts. */
 async function inBatches<T>(items: readonly T[], work: (item: T) => Promise<void>): Promise<void> {
-  const [batch, rest] = [items.slice(0, BATCH_SIZE), items.slice(BATCH_SIZE)];
-  if (batch.length === 0) {
-    return;
+  for (let offset = 0; offset < items.length; offset += BATCH_SIZE) {
+    const batch = items.slice(offset, offset + BATCH_SIZE);
+    const results = await Promise.allSettled(batch.map(work));
+    const failure = results.find((result) => result.status === "rejected");
+    if (failure != null) {
+      throw new Error("An uptime monitoring batch failed", { cause: failure.reason });
+    }
   }
-  await Promise.all(batch.map(async (item) => await work(item)));
-  await inBatches(rest, work);
 }

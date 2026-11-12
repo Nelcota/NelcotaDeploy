@@ -13,10 +13,10 @@ const SHORT_SHA_LENGTH = 7;
 type CommitState = "pending" | "success" | "failure" | "error";
 
 const DESCRIPTIONS: Record<CommitState, string> = {
-  pending: "Deploy em andamento",
-  success: "Deploy concluído",
-  failure: "Deploy falhou",
-  error: "Deploy cancelado",
+  pending: "Deployment in progress",
+  success: "Deployment complete",
+  failure: "Deployment failed",
+  error: "Deployment cancelled",
 };
 
 type NotificationDependencies = Pick<WorkerDependencies, "database" | "secretBox" | "logger"> & {
@@ -81,8 +81,8 @@ export async function notifyFailedDeployment(
 ): Promise<void> {
   const commit = deployment.commitSha?.slice(0, SHORT_SHA_LENGTH);
   await notify(dependencies.database, dependencies.logger, {
-    title: "Deploy falhou",
-    text: `O deploy de ${deployment.projectName}${commit == null ? "" : ` (${commit})`} falhou.`,
+    title: "Deployment failed",
+    text: `The deployment for ${deployment.projectName}${commit == null ? "" : ` (${commit})`} failed.`,
     link: deploymentLink(dependencies, deployment),
   });
 }

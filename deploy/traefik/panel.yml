@@ -1,0 +1,24 @@
+http:
+  routers:
+    nelcota-panel:
+      rule: 'Host(`{{ regexFind "^[A-Za-z0-9.-]+$" (env "PANEL_DOMAIN") }}`)'
+      entryPoints: [websecure]
+      service: nelcota-panel
+      tls:
+        certResolver: letsencrypt
+    nelcota-panel-http:
+      rule: 'Host(`{{ regexFind "^[A-Za-z0-9.-]+$" (env "PANEL_DOMAIN") }}`)'
+      entryPoints: [web]
+      middlewares: [nelcota-panel-https]
+      service: nelcota-panel
+  services:
+    nelcota-panel:
+      loadBalancer:
+        servers:
+          - url: 'http://{{ regexFind "^[0-9.]+$" (env "PANEL_CONTROL_ADDRESS") }}:3000'
+  middlewares:
+    nelcota-panel-https:
+      redirectScheme:
+        scheme: https
+    nelcota-compress:
+      compress: {}

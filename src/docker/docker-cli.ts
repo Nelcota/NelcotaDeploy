@@ -33,6 +33,7 @@ import {
   parseReclaimedBytes,
   parseStatsOutput,
 } from "./docker.output";
+import { DockerNetworks, type DockerNetworkStore } from "./networks/docker-networks";
 
 const QUICK_COMMAND_TIMEOUT_IN_MS = 30_000;
 const STOP_TIMEOUT_IN_MS = 60_000;
@@ -81,6 +82,8 @@ export class DockerCli {
   readonly images: DockerImageStore;
   /** Docker Compose projects on the same host. */
   readonly compose: DockerComposeStore;
+  /** The project's isolated bridges on the same host. */
+  readonly networks: DockerNetworkStore;
 
   /**
    * Reaches the Docker of one host.
@@ -94,6 +97,7 @@ export class DockerCli {
     this.volumes = new DockerVolumes(binary, runner);
     this.images = new DockerImages(binary, runner);
     this.compose = new DockerCompose(binary, runner);
+    this.networks = new DockerNetworks(binary, runner);
   }
 
   async #run(args: readonly string[], options: CommandOptions = {}): Promise<ProcessResult> {

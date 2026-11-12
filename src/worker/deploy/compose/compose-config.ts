@@ -37,10 +37,11 @@ const FORBIDDEN_SETTINGS = [
   "cgroup",
   "use_api_socket",
   "provider",
+  "network_mode",
   "credential_spec",
   "develop",
 ] as const;
-const NAMESPACE_SETTINGS = ["network_mode", "pid", "ipc", "uts", "userns_mode"] as const;
+const NAMESPACE_SETTINGS = ["pid", "ipc", "uts", "userns_mode"] as const;
 const FORBIDDEN_BUILD_SETTINGS = [
   "additional_contexts",
   "ssh",
@@ -112,6 +113,10 @@ export function checkComposeConfig(
     problems.push(`the service ${options.routedService} that receives the domains is missing`);
   }
   for (const [name, service] of Object.entries(model.services)) {
+    if (name.toLowerCase().startsWith("nelcota-")) {
+      problems.push(`service ${name}: the nelcota- name prefix is reserved`);
+    }
+
     problems.push(...serviceProblems(service).map((problem) => `service ${name}: ${problem}`));
     for (const path of serviceHostPaths(service)) {
       hostPaths.add(path);
@@ -200,8 +205,8 @@ function buildProblems(build: unknown): string[] {
     (setting) => `build.${setting} is not allowed`,
   );
   problems.push(...labelProblems(build["labels"]));
-  if (sharesNamespace(build["network"])) {
-    problems.push("build.network cannot be the server's");
+  if (build["network"] != null && build["network"] !== "default" && build["network"] !== "none") {
+    problems.push("build.network must be default or none");
   }
   const context = build["context"];
   if (typeof context !== "string" || posix.isAbsolute(context) === false) {

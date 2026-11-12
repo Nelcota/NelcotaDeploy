@@ -15,6 +15,8 @@ export type InspectionRequest = {
   readonly repositoryUrl: string;
   readonly branch?: string | undefined;
   readonly token?: string | null;
+  /** Whether the organization's GitHub App may be used; true unless an unapproved non-admin project is inspected. */
+  readonly allowGitHubApp?: boolean | undefined;
 };
 
 export type InspectionDependencies = {
@@ -34,7 +36,8 @@ export async function repositoryCredential(
   if (request.token != null && request.token.trim() !== "") {
     return { fullName: repository.fullName, bearer: request.token, access: "token" as const };
   }
-  const app = await readGitHubAppCredentials(database, secretBox);
+  const app =
+    request.allowGitHubApp === false ? null : await readGitHubAppCredentials(database, secretBox);
   const token = app == null ? null : await repositoryAccessToken(api, app, repository.fullName);
   return {
     fullName: repository.fullName,

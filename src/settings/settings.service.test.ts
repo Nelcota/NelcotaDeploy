@@ -19,7 +19,7 @@ describe("saveSystemSettings", () => {
 
     saveSystemSettings(database, SAVED);
 
-    expect(getSystemSettings(database)).toEqual(SAVED);
+    expect(getSystemSettings(database, { includeSecrets: true })).toEqual(SAVED);
   });
 
   test("clears optional settings saved as empty", () => {
@@ -29,7 +29,7 @@ describe("saveSystemSettings", () => {
     saveSystemSettings(database, { ...SAVED, baseDomain: null, alertWebhookUrl: null });
 
     expect(getSystemSettings(database).baseDomain).toBeNull();
-    expect(getSystemSettings(database).alertWebhookUrl).toBeNull();
+    expect(getSystemSettings(database, { includeSecrets: true }).alertWebhookUrl).toBeNull();
   });
 
   test("falls back to the defaults on a fresh database", () => {
@@ -37,15 +37,16 @@ describe("saveSystemSettings", () => {
   });
 });
 
-test("omits webhook credentials from settings exposed to readers", () => {
+test("omits webhook credentials by default and includes them only when requested", () => {
   const database = openMemoryDatabase();
   const webhook = "https://hooks.example.com/private-token";
   saveSystemSettings(database, { ...DEFAULT_SYSTEM_SETTINGS, alertWebhookUrl: webhook });
 
-  const visible = getSystemSettings(database, { includeSecrets: false });
+  const visible = getSystemSettings(database);
 
   expect(visible.alertWebhookUrl).toBeNull();
   expect(visible.organizationName).toBe(DEFAULT_SYSTEM_SETTINGS.organizationName);
-  expect(getSystemSettings(database).alertWebhookUrl).toBe(webhook);
+  expect(getSystemSettings(database, { includeSecrets: false }).alertWebhookUrl).toBeNull();
+  expect(getSystemSettings(database, { includeSecrets: true }).alertWebhookUrl).toBe(webhook);
   database.$client.close();
 });

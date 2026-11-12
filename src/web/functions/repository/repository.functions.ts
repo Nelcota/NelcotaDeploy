@@ -27,18 +27,23 @@ const inspectionSchema = z.object({
 });
 const HTTP_NOT_FOUND = 404;
 
-async function inspectionContext(data: {
-  readonly repositoryUrl: string;
-  readonly projectId?: string | undefined;
-}) {
+async function inspectionContext(
+  data: {
+    readonly repositoryUrl: string;
+    readonly projectId?: string | undefined;
+  },
+  isAdmin: boolean,
+) {
   const database = getDatabase();
   const box = await getSecretBox();
   const project = data.projectId == null ? null : getProject(database, data.projectId);
   const sameRepository =
     project?.repositoryFullName === parseGitHubRepository(data.repositoryUrl)?.fullName;
+  const allowGitHubApp =
+    isAdmin || (project != null && sameRepository && project.deploymentsApproved);
   const token =
     project != null && sameRepository ? await readRepositoryToken(database, box, project.id) : null;
-  return { database, box, token };
+  return { database, box, token, allowGitHubApp };
 }
 
 export const getRepositoryHealthCheckFn = createServerFn({ method: "GET" })
@@ -49,26 +54,36 @@ export const getRepositoryHealthCheckFn = createServerFn({ method: "GET" })
     }),
   )
   .handler(async ({ data }) => {
-    if (data.projectId == null) {
-      await authorize("project:write");
-    } else {
-      await authorizeProject("project:write", data.projectId);
-    }
-    const { database, box, token } = await inspectionContext(data);
-    return await readRepositoryHealthCheck({ database, secretBox: box }, { ...data, token });
+    const user =
+      data.projectId == null
+        ? await authorize("project:write")
+        : await authorizeProject("project:write", data.projectId);
+    const { database, box, token, allowGitHubApp } = await inspectionContext(
+      data,
+      user.role === "admin",
+    );
+    return await readRepositoryHealthCheck(
+      { database, secretBox: box },
+      { ...data, token, allowGitHubApp },
+    );
   });
 
 export const inspectRepositoryFn = createServerFn({ method: "GET" })
   .validator(inspectionSchema)
   .handler(async ({ data }) => {
-    if (data.projectId == null) {
-      await authorize("project:write");
-    } else {
-      await authorizeProject("project:write", data.projectId);
-    }
-    const { database, box, token } = await inspectionContext(data);
+    const user =
+      data.projectId == null
+        ? await authorize("project:write")
+        : await authorizeProject("project:write", data.projectId);
+    const { database, box, token, allowGitHubApp } = await inspectionContext(
+      data,
+      user.role === "admin",
+    );
     try {
-      return await inspectRepository({ database, secretBox: box }, { ...data, token });
+      return await inspectRepository(
+        { database, secretBox: box },
+        { ...data, token, allowGitHubApp },
+      );
     } catch (error) {
       if (error instanceof GitHubApiError && error.status === HTTP_NOT_FOUND) {
         throw new PublicError(

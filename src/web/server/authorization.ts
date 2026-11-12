@@ -3,15 +3,64 @@ import { getRequest } from "@tanstack/react-start/server";
 import { accessibleProjectIds, assertProjectPermission } from "@/access";
 import {
   type CurrentUser,
+  ForbiddenError,
   getCurrentUser,
   needsTwoFactorSetup,
   requireUser,
   TwoFactorRequiredError,
+  UnauthenticatedError,
 } from "@/auth";
 import { getDatabase } from "@/db";
-import { getDeployment } from "@/deployments";
+import { DeploymentNotFoundError, getDeployment } from "@/deployments";
+import { ProjectNotFoundError } from "@/projects";
 import { getSystemSettings } from "@/settings";
 import type { Permission } from "@/shared/roles";
+
+const NO_STORE = { "Cache-Control": "no-store" };
+
+/**
+ * Converts an expected access denial into an HTTP response for a raw route.
+ *
+ * @param error - Failure raised while checking access.
+ * @returns The denial, with inaccessible resources indistinguishable from missing ones.
+ * @throws The original error when it is outside the access policy.
+ */
+export function accessErrorResponse(error: unknown): Response {
+  if (error instanceof UnauthenticatedError) {
+    return new Response("Unauthorized", { status: 401, headers: NO_STORE });
+  }
+
+  if (error instanceof ForbiddenError || error instanceof TwoFactorRequiredError) {
+    return new Response("Forbidden", { status: 403, headers: NO_STORE });
+  }
+
+  if (error instanceof ProjectNotFoundError || error instanceof DeploymentNotFoundError) {
+    return new Response("Not found", { status: 404, headers: NO_STORE });
+  }
+
+  throw error;
+}
+
+/**
+ * Checks the session in the given headers and a permission of the user's global role.
+ *
+ * @param headers - Incoming request headers.
+ * @param permission - Permission the operation needs.
+ * @returns The authorized user.
+ * @throws {UnauthenticatedError} When there is no valid session.
+ * @throws {ForbiddenError} When the user's role lacks the permission.
+ * @throws {TwoFactorRequiredError} When an admin must turn on two-factor authentication first.
+ */
+export async function authorizeHeaders(
+  headers: Headers,
+  permission: Permission,
+): Promise<CurrentUser> {
+  const user = await requireUser(headers, permission);
+  if (needsTwoFactorSetup(user, getSystemSettings(getDatabase()))) {
+    throw new TwoFactorRequiredError();
+  }
+  return user;
+}
 
 /**
  * Checks the session of the current request and a permission of the user's global role.
@@ -23,11 +72,7 @@ import type { Permission } from "@/shared/roles";
  * @throws {TwoFactorRequiredError} When an admin must turn on two-factor authentication first.
  */
 export async function authorize(permission: Permission): Promise<CurrentUser> {
-  const user = await requireUser(getRequest().headers, permission);
-  if (needsTwoFactorSetup(user, getSystemSettings(getDatabase()))) {
-    throw new TwoFactorRequiredError();
-  }
-  return user;
+  return await authorizeHeaders(getRequest().headers, permission);
 }
 
 /**
@@ -58,8 +103,7 @@ export async function authorizeProject(
  * @param permission - Permission the server function needs.
  * @param deploymentId - Deployment the function acts on.
  * @returns The authorized user.
- * @throws {DeploymentNotFoundError} When the deployment does not exist.
- * @throws {ProjectNotFoundError} When the user is not a member of the deployment's project.
+ * @throws {DeploymentNotFoundError} When the deployment does not exist or the user is not a member of its project.
  * @throws {ForbiddenError} When the member's role lacks the permission.
  */
 export async function authorizeDeployment(
@@ -67,8 +111,16 @@ export async function authorizeDeployment(
   deploymentId: string,
 ): Promise<CurrentUser> {
   const user = await authorize("project:read");
-  const { projectId } = getDeployment(getDatabase(), deploymentId);
-  assertProjectPermission(getDatabase(), user, { projectId, permission });
+  const database = getDatabase();
+  const { projectId } = getDeployment(database, deploymentId);
+  try {
+    assertProjectPermission(database, user, { projectId, permission });
+  } catch (error) {
+    if (error instanceof ProjectNotFoundError) {
+      throw new DeploymentNotFoundError(deploymentId);
+    }
+    throw error;
+  }
   return user;
 }
 

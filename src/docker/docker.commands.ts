@@ -26,6 +26,8 @@ export const LABELS = {
    * services, so deployments leave these containers to it.
    */
   composeProject: "io.nelcota.compose-project",
+  /** An isolated bridge created by the worker for a project. */
+  projectNetwork: "io.nelcota.project-network",
   /** The reverse proxy the platform runs on a remote server. Never an application. */
   proxy: "io.nelcota.proxy",
   /** Version of the proxy's settings; a proxy with another version is replaced. */
@@ -34,16 +36,16 @@ export const LABELS = {
 
 /**
  * Version of the proxy settings below. Raise it whenever they change, so servers set up
- * earlier get a new proxy. Version 2 reads application routes from files.
+ * earlier get a new proxy. Version 3 serves route files without the Docker socket.
  */
-export const PROXY_VERSION = "2";
+export const PROXY_VERSION = "3";
 /** Where the proxy reads application routes, inside its container. */
 const PROXY_ROUTES_MOUNT = "/routes";
 
 /** Name of the reverse proxy container on servers the platform set up. */
 export const PROXY_CONTAINER_NAME = "nelcota-proxy";
 /** Same Traefik release the panel's own Docker Compose stack uses. */
-const PROXY_IMAGE = "traefik:v3.7.16";
+const PROXY_IMAGE = "traefik:v3.7.17";
 const PROXY_CERTIFICATE_VOLUME = "nelcota-letsencrypt";
 
 const NAME_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,127}$/;
@@ -564,8 +566,6 @@ export function proxyContainerArgs(options: ProxyOptions): string[] {
     "--label",
     `${LABELS.proxyVersion}=${PROXY_VERSION}`,
     "--volume",
-    "/var/run/docker.sock:/var/run/docker.sock:ro",
-    "--volume",
     `${options.routesDirectory}:${PROXY_ROUTES_MOUNT}:ro`,
     "--volume",
     `${PROXY_CERTIFICATE_VOLUME}:/letsencrypt`,
@@ -589,10 +589,6 @@ function traefikArgs(options: ProxyOptions): string[] {
   return [
     `--providers.file.directory=${PROXY_ROUTES_MOUNT}`,
     "--providers.file.watch=true",
-    "--providers.docker=true",
-    "--providers.docker.exposedbydefault=false",
-    `--providers.docker.network=${options.network}`,
-    `--providers.docker.constraints=Label(\`${LABELS.managed}\`,\`true\`)`,
     `--entrypoints.${options.httpEntrypoint}.address=:80`,
     `--entrypoints.${options.httpsEntrypoint}.address=:443`,
     ...email,

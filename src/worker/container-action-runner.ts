@@ -18,7 +18,7 @@ type ContainerActionDocker = Pick<
 
 type ProjectResourceDocker = Pick<
   DockerEngine,
-  "listManagedContainers" | "removeContainer" | "images" | "volumes" | "compose"
+  "listManagedContainers" | "removeContainer" | "images" | "volumes" | "compose" | "networks"
 >;
 
 /** What cleaning a project off one server needs: its Docker and its proxy's route files. */
@@ -119,6 +119,7 @@ export async function removeProjectResources(
   if (failures.length > 0) {
     throw new AggregateError(failures, `Could not remove all resources of project ${projectId}`);
   }
+  await docker.networks.remove(projectId);
   await docker.compose.removeProjectNetworks(projectId);
   return {
     containers: containers.length,

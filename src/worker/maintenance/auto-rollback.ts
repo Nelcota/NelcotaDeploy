@@ -14,7 +14,7 @@ import type { WorkerDependencies } from "../worker.types";
 /** Restarts of any container within the watch that mean a restart loop. */
 const RESTARTS_BEFORE_ROLLBACK = 3;
 const MILLISECONDS_PER_MINUTE = 60_000;
-const ACTOR = { type: "system", label: "rollback automático" } as const;
+const ACTOR = { type: "system", label: "automatic rollback" } as const;
 
 type AutoRollbackDependencies = Pick<WorkerDependencies, "database" | "logger" | "config">;
 
@@ -65,8 +65,8 @@ async function rollBack(
   if (previous == null) {
     recordAutoRollbackSkipped(database, deployment.id, now);
     await notify(database, logger, {
-      title: "Versão nova reiniciando",
-      text: `${deployment.projectName} reiniciou ${RESTARTS_BEFORE_ROLLBACK} vezes ou mais logo depois do deploy e não há versão anterior para voltar.`,
+      title: "New version restarting",
+      text: `${deployment.projectName} restarted at least ${RESTARTS_BEFORE_ROLLBACK} times shortly after deployment, and no previous version is available to restore.`,
       link,
     });
     return;
@@ -81,8 +81,8 @@ async function rollBack(
   recordAutoRollback(database, deployment.id, now);
   logger.info({ deploymentId: deployment.id, to: previous.id }, "restart loop rolled back");
   await notify(database, logger, {
-    title: "Rollback automático",
-    text: `${deployment.projectName} reiniciou ${RESTARTS_BEFORE_ROLLBACK} vezes ou mais logo depois do deploy; o painel voltou para a versão anterior.`,
+    title: "Automatic rollback",
+    text: `${deployment.projectName} restarted at least ${RESTARTS_BEFORE_ROLLBACK} times shortly after deployment. The panel restored the previous version.`,
     link,
   });
 }
