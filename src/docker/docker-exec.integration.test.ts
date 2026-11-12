@@ -13,7 +13,19 @@ test(
   async () => {
     const container = `nelcota-exec-audit-${Bun.randomUUIDv7()}`;
     const start = await runProcess(
-      ["docker", "run", "--detach", "--rm", "--name", container, "alpine:3.24", "sleep", "60"],
+      [
+        "docker",
+        "run",
+        "--detach",
+        "--rm",
+        "--user",
+        "65534:65534",
+        "--name",
+        container,
+        "alpine:3.24",
+        "sleep",
+        "60",
+      ],
       { timeoutInMs: COMMAND_TIMEOUT_IN_MS },
     );
     expect(start.exitCode).toBe(0);
@@ -46,7 +58,11 @@ test(
       {
         binary: "docker",
         containerId: container,
-        command: ["sh", "-c", 'sleep 40 & printf "%s\\n" "$!"; wait'],
+        command: [
+          "sh",
+          "-c",
+          '[ "$(id -u)" = 65534 ] || exit 91; sleep 40 & printf "%s\\n" "$!"; wait',
+        ],
       },
       { timeoutInMs: TASK_TIMEOUT_IN_MS },
     );
