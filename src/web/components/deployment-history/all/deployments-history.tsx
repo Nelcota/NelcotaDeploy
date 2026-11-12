@@ -27,7 +27,7 @@ export function DeploymentsHistory() {
   };
 
   return (
-    <section aria-labelledby="history-title" className="space-y-6">
+    <section aria-label="Histórico de deploys" className="space-y-4">
       <HistoryHeader
         projectFilter={projectFilter}
         onProjectFilterChange={setProjectFilter}

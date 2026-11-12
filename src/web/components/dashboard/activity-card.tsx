@@ -1,8 +1,7 @@
-import { Link } from "@tanstack/react-router";
 import { HistoryIcon } from "lucide-react";
 import { useState } from "react";
 
-import { CardTitleRow, TEXT_LINK } from "@/web/components/layout/layout";
+import { CardTitleRow } from "@/web/components/layout/layout";
 import { SegmentedControl } from "@/web/components/layout/overview";
 import { Card } from "@/web/components/ui/card";
 import { Skeleton } from "@/web/components/ui/skeleton";
@@ -24,11 +23,7 @@ export function ActivityCard({ data }: { readonly data: DashboardSummary | null 
   const [view, setView] = useState<ActivityView>("recent");
   return (
     <Card className="gap-4 p-5">
-      <CardTitleRow icon={HistoryIcon} title="Deploys recentes">
-        <Link to="/deployments" className={TEXT_LINK}>
-          Ver histórico de deploys
-        </Link>
-      </CardTitleRow>
+      <CardTitleRow icon={HistoryIcon} title="Últimos deploys" />
       <SegmentedControl
         label="Atividade"
         options={[
