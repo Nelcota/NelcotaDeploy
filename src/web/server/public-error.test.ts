@@ -96,6 +96,9 @@ describe("toPublicError", () => {
     expect(toPublicError(new UserOperationError("email-taken"))?.message).toBe(
       "Este e-mail já está em uso.",
     );
+    expect(toPublicError(new UserOperationError("public-setup-disabled"))?.message).toBe(
+      "O cadastro inicial pelo painel está desativado.",
+    );
     expect(toPublicError(new UserOperationError("self-role-change"))?.message).toBe(
       "Você não pode alterar o próprio papel.",
     );

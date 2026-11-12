@@ -1,0 +1,16 @@
+x-installation-labels: &installation-labels
+  io.nelcota.installation-id: ${NELCOTA_INSTALL_ID:?set by the installer}
+
+networks:
+  nelcota:
+    labels: *installation-labels
+  control-plane:
+    labels: *installation-labels
+
+volumes:
+  data:
+    labels: *installation-labels
+  routes:
+    labels: *installation-labels
+  letsencrypt:
+    labels: *installation-labels

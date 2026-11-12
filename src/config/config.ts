@@ -63,6 +63,7 @@ const configSchema = z
     WORKSPACE_DIR: z.string().trim().min(1).default("./data/workspaces"),
     PUBLIC_URL: z.url({ protocol: /^https?$/ }).default(`http://localhost:${DEFAULT_PORT}`),
     BETTER_AUTH_SECRET: z.string().min(MIN_AUTH_SECRET_LENGTH).optional(),
+    DISABLE_PUBLIC_SETUP: booleanFromString,
     NELCOTA_ENCRYPTION_KEY: encryptionKeySchema.optional(),
     GITHUB_WEBHOOK_SECRET: z.string().min(1).optional(),
     DOCKER_BINARY: z.string().trim().min(1).default("docker"),

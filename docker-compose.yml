@@ -35,7 +35,7 @@ services:
 
   web:
     build: .
-    image: nelcota-deploy:latest
+    image: ${NELCOTA_IMAGE:-nelcota-deploy:latest}
     restart: unless-stopped
     command: ["sh", "-c", "bun run db:migrate && bun run start"]
     env_file: .env
@@ -51,7 +51,7 @@ services:
         ipv4_address: ${PANEL_CONTROL_ADDRESS:-172.29.240.10}
 
   worker:
-    image: nelcota-deploy:latest
+    image: ${NELCOTA_IMAGE:-nelcota-deploy:latest}
     container_name: nelcota-worker
     restart: unless-stopped
     depends_on:

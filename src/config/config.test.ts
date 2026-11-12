@@ -17,6 +17,11 @@ describe("parseConfig", () => {
     expect(config.PORT).toBe(3000);
     expect(isAbsolute(config.DATABASE_PATH)).toBe(true);
     expect(config.TRAEFIK_ENABLED).toBe(false);
+    expect(config.DISABLE_PUBLIC_SETUP).toBe(false);
+  });
+
+  test("disables public setup when DISABLE_PUBLIC_SETUP is true", () => {
+    expect(parseConfig({ DISABLE_PUBLIC_SETUP: "true" }).DISABLE_PUBLIC_SETUP).toBe(true);
   });
 
   test("throws InvalidConfigError for an encryption key with the wrong length", () => {

@@ -73,6 +73,7 @@ const MESSAGES: readonly (readonly [ErrorClass, string])[] = [
 const USER_OPERATION_MESSAGES: Readonly<Record<UserOperationError["reason"], string>> = {
   "weak-password": "A senha precisa ter pelo menos 12 caracteres.",
   "email-taken": "Este e-mail já está em uso.",
+  "public-setup-disabled": "O cadastro inicial pelo painel está desativado.",
   "last-admin": "É preciso manter pelo menos um administrador ativo.",
   "self-role-change": "Você não pode alterar o próprio papel.",
   "self-disable": "Você não pode desativar a própria conta.",
