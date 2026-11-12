@@ -1,5 +1,6 @@
 import { posix } from "node:path";
 
+import { isPathInsideWorkspace } from "../workspace";
 import { InvalidComposeFileError } from "./compose.errors";
 
 /** A Compose model as `docker compose config --format json` prints it, already normalized. */
@@ -36,10 +37,11 @@ const FORBIDDEN_SETTINGS = [
   "cgroup",
   "use_api_socket",
   "provider",
+  "network_mode",
   "credential_spec",
   "develop",
 ] as const;
-const NAMESPACE_SETTINGS = ["network_mode", "pid", "ipc", "uts", "userns_mode"] as const;
+const NAMESPACE_SETTINGS = ["pid", "ipc", "uts", "userns_mode"] as const;
 const FORBIDDEN_BUILD_SETTINGS = [
   "additional_contexts",
   "ssh",
@@ -53,6 +55,7 @@ const FORBIDDEN_BUILD_SETTINGS = [
 const ALLOWED_MOUNT_TYPES = new Set(["volume", "tmpfs"]);
 const ALLOWED_NETWORK_DRIVERS = new Set(["bridge"]);
 const PLATFORM_LABEL_PREFIX = "io.nelcota.";
+const PROXY_LABEL_PREFIX = "traefik.";
 
 /**
  * Checks the raw Compose file before Docker reads it: includes and extended files would let
@@ -105,28 +108,36 @@ export function checkComposeConfig(
   }
   const model = toModel(config);
   const problems: string[] = [];
-  const hostPaths: string[] = [];
+  const hostPaths = new Set<string>();
   if (Object.hasOwn(model.services, options.routedService) === false) {
     problems.push(`the service ${options.routedService} that receives the domains is missing`);
   }
   for (const [name, service] of Object.entries(model.services)) {
+    if (name.toLowerCase().startsWith("nelcota-")) {
+      problems.push(`service ${name}: the nelcota- name prefix is reserved`);
+    }
+
     problems.push(...serviceProblems(service).map((problem) => `service ${name}: ${problem}`));
-    hostPaths.push(...serviceHostPaths(service));
+    for (const path of serviceHostPaths(service)) {
+      hostPaths.add(path);
+    }
   }
   problems.push(...topLevelProblems(model));
-  hostPaths.push(
+  for (const path of [
     ...fileReferences(model.other["secrets"]),
     ...fileReferences(model.other["configs"]),
-  );
+  ]) {
+    hostPaths.add(path);
+  }
   for (const path of hostPaths) {
-    if (isInside(options.repositoryPath, path) === false) {
+    if (isPathInsideWorkspace(options.repositoryPath, path) === false) {
       problems.push(`${path} is outside the repository`);
     }
   }
   if (problems.length > 0) {
     throw new InvalidComposeFileError(problems);
   }
-  return { model, hostPaths };
+  return { model, hostPaths: [...hostPaths] };
 }
 
 function serviceProblems(service: Readonly<Record<string, unknown>>): string[] {
@@ -174,7 +185,12 @@ function labelProblems(labels: unknown): string[] {
     return [];
   }
   return Object.keys(labels)
-    .filter((key) => key.startsWith(PLATFORM_LABEL_PREFIX))
+    .filter((key) => {
+      const normalized = key.toLowerCase();
+      return (
+        normalized.startsWith(PLATFORM_LABEL_PREFIX) || normalized.startsWith(PROXY_LABEL_PREFIX)
+      );
+    })
     .map((key) => `the label ${key} belongs to the platform`);
 }
 
@@ -189,8 +205,8 @@ function buildProblems(build: unknown): string[] {
     (setting) => `build.${setting} is not allowed`,
   );
   problems.push(...labelProblems(build["labels"]));
-  if (sharesNamespace(build["network"])) {
-    problems.push("build.network cannot be the server's");
+  if (build["network"] != null && build["network"] !== "default" && build["network"] !== "none") {
+    problems.push("build.network must be default or none");
   }
   const context = build["context"];
   if (typeof context !== "string" || posix.isAbsolute(context) === false) {
@@ -330,16 +346,6 @@ function isNonEmpty(value: unknown): boolean {
     return Object.keys(value).length > 0;
   }
   return value != null && value !== false;
-}
-
-function isInside(root: string, path: string): boolean {
-  if (posix.isAbsolute(path) === false) {
-    return false;
-  }
-  const relative = posix.relative(root, posix.normalize(path));
-  return (
-    relative === "" || (relative.startsWith("..") === false && posix.isAbsolute(relative) === false)
-  );
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

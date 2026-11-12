@@ -1,22 +1,26 @@
 import type { Database } from "@/db";
 import {
   completeDeployment,
+  DeploymentCancelledError,
   getDeployment,
   isCancellationRequested,
   isTerminalStatus,
+  PreviewNotActiveError,
   ProjectNotApprovedError,
+  requireActivePreview,
   transitionDeployment,
 } from "@/deployments";
 import { JobLeaseLostError } from "@/jobs";
+import { getPreview } from "@/previews";
 import { getProject } from "@/projects";
 
-import { DeploymentCancelledError } from "../worker.errors";
 import {
   discardFailedContainers,
   pruneOldImages,
   removePreviousContainers,
 } from "./deploy-cleanup";
 import {
+  assertNotCancelled,
   type DeployContext,
   type DeployRunnerDependencies,
   DeployState,
@@ -24,6 +28,7 @@ import {
 } from "./deploy-context";
 import { deploy } from "./deploy-steps";
 import { DeploymentLogWriter } from "./deployment-log-writer";
+import { buildStrategyFor } from "./image-source";
 
 const CANCEL_POLL_INTERVAL_IN_MS = 1000;
 
@@ -34,11 +39,13 @@ function watchCancellation(
   deploymentId: string,
   controller: AbortController,
 ): Disposable {
-  const timer = setInterval(() => {
+  const check = () => {
     if (isCancellationRequested(database, deploymentId)) {
       controller.abort();
     }
-  }, CANCEL_POLL_INTERVAL_IN_MS);
+  };
+  check();
+  const timer = setInterval(check, CANCEL_POLL_INTERVAL_IN_MS);
   return { [Symbol.dispose]: () => clearInterval(timer) };
 }
 
@@ -87,6 +94,11 @@ export async function runDeployment(
   };
 
   try {
+    assertNotCancelled(context.signal);
+    if (deployment.previewId != null) {
+      requireActivePreview(database, project.id, deployment.previewId);
+    }
+
     if (
       project.deploymentsApproved === false ||
       (deployment.repositoryUrl != null && deployment.repositoryUrl !== project.repositoryUrl)
@@ -102,12 +114,19 @@ export async function runDeployment(
     if (error instanceof JobLeaseLostError || jobSignal.reason instanceof JobLeaseLostError) {
       throw error;
     }
-    if (jobSignal.aborted && cancellation.signal.aborted === false) {
+
+    await restorePreviewTraffic(database, context);
+    const cancellationRequested =
+      cancellation.signal.aborted ||
+      error instanceof PreviewNotActiveError ||
+      (deployment.previewId != null && isCancellationRequested(database, deployment.id));
+    if (jobSignal.aborted && cancellationRequested === false) {
       await discardFailedContainers(dependencies.docker, context.state.containerNames, logs);
       requeueDeployment(database, deployment.id);
       throw error;
     }
-    const cancelled = cancellation.signal.aborted || error instanceof DeploymentCancelledError;
+
+    const cancelled = cancellationRequested || error instanceof DeploymentCancelledError;
     await recordFailure(dependencies, context, { error, cancelled });
     return cancelled ? "cancelled" : "failed";
   }
@@ -115,6 +134,28 @@ export async function runDeployment(
   assertOwnership();
   await finishDeployment(dependencies, context);
   return "succeeded";
+}
+
+async function restorePreviewTraffic(database: Database, context: DeployContext): Promise<void> {
+  const { deployment, logs, state } = context;
+  if (
+    deployment.previewId == null ||
+    state.restorePreviewRoute == null ||
+    getPreview(database, deployment.previewId)?.status !== "active"
+  ) {
+    return;
+  }
+
+  try {
+    await state.restorePreviewRoute();
+  } catch (error) {
+    logs.system(
+      `Could not restore the preview route: ${state.redact(errorMessageOf(error))}`,
+      "warn",
+    );
+  }
+
+  context.assertOwnership();
 }
 
 function requeueDeployment(database: Database, deploymentId: string): void {
@@ -128,7 +169,8 @@ async function finishDeployment(
   context: DeployContext,
 ): Promise<void> {
   const { deployment, project, logs, state } = context;
-  if (state.containerNames.length === 0 && project.builder !== "compose") {
+  const strategy = buildStrategyFor(project.builder);
+  if (state.containerNames.length === 0 && strategy.managesReplicaContainers) {
     throw new Error(`Successful deployment ${deployment.id} has no container`);
   }
   logs.system("Deployment succeeded");
@@ -137,7 +179,7 @@ async function finishDeployment(
       projectId: project.id,
       currentContainerNames: state.containerNames,
       previewId: deployment.previewId,
-      keepComposeServices: project.builder === "compose",
+      keepComposeServices: strategy.managesReplicaContainers === false,
     });
   } catch (error) {
     if (error instanceof JobLeaseLostError) {
@@ -145,7 +187,7 @@ async function finishDeployment(
     }
     logs.system(`Could not retire previous containers: ${errorMessageOf(error)}`, "warn");
   }
-  if (project.builder === "compose") {
+  if (strategy.prunesOldImages === false) {
     // Compose reuses its image names; the daily cleanup removes the ones it left dangling.
     return;
   }
@@ -164,9 +206,14 @@ async function recordFailure(
   const { deployment, logs, state } = context;
   await discardFailedContainers(dependencies.docker, state.containerNames, logs);
   context.assertOwnership();
-  const message = cancelled
-    ? "Deployment cancelled by a user"
-    : state.redact(errorMessageOf(error));
+  let message = state.redact(errorMessageOf(error));
+  if (cancelled) {
+    message =
+      deployment.previewId == null
+        ? "Deployment cancelled by a user"
+        : "Preview deployment cancelled";
+  }
+
   logs.system(message, "error");
   logs.flush();
   transitionDeployment(dependencies.database, deployment.id, {

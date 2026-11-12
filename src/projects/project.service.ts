@@ -3,10 +3,12 @@ import { and, eq, isNull, or, sql } from "drizzle-orm";
 import { type Actor, recordAuditEvent } from "@/audit";
 import { type Database, tables, type Transaction } from "@/db";
 import { CLEANUP_MAX_ATTEMPTS, enqueueJob } from "@/jobs";
+import { closeProjectPreviews } from "@/previews";
 import type { SecretBox } from "@/secrets";
 import { chooseServerForNewProject } from "@/servers";
 import { assertHostnameOwnership, getSystemSettings } from "@/settings";
 import {
+  BUILDER_CAPABILITIES,
   parseGitHubRepository,
   type ProjectBuilder,
   type ProjectInput,
@@ -252,7 +254,10 @@ export function updateProject(
       if (input.replicas > 1 && mountsVolumes(transaction, projectId)) {
         throw new ReplicasNeedNoVolumesError(projectId);
       }
-      if (input.builder === "compose" && mountsVolumes(transaction, projectId)) {
+      if (
+        BUILDER_CAPABILITIES[input.builder].mountsPanelVolumes === false &&
+        mountsVolumes(transaction, projectId)
+      ) {
         throw new ComposeNeedsNoVolumesError(projectId);
       }
       // A different repository is different code, so a non-admin change needs new approval.
@@ -467,26 +472,6 @@ function findActiveProjectRow(database: Database | Transaction, projectId: strin
     throw new ProjectNotFoundError(projectId);
   }
   return row;
-}
-
-/** Retires previews when their repository, branch or enablement no longer matches the project. */
-function closeProjectPreviews(transaction: Transaction, projectId: string): void {
-  const now = new Date().toISOString();
-  const closed = transaction
-    .update(tables.previews)
-    .set({ status: "closed", closedAt: now, updatedAt: now })
-    .where(and(eq(tables.previews.projectId, projectId), eq(tables.previews.status, "active")))
-    .returning({ id: tables.previews.id })
-    .all();
-  for (const preview of closed) {
-    enqueueJob(transaction, {
-      kind: "preview_cleanup",
-      maxAttempts: CLEANUP_MAX_ATTEMPTS,
-      projectId,
-      payload: { previewId: preview.id },
-      dedupeKey: `preview-cleanup:${preview.id}`,
-    });
-  }
 }
 
 /**

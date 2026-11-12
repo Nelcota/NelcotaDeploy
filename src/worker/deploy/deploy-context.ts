@@ -1,11 +1,10 @@
 import type { Database } from "@/db";
-import type { Deployment } from "@/deployments";
+import { type Deployment, DeploymentCancelledError } from "@/deployments";
 import { managedLabels } from "@/docker";
 import type { Project } from "@/projects";
 import type { SecretBox } from "@/secrets";
 
 import type { ServerHost } from "../server-host";
-import { DeploymentCancelledError } from "../worker.errors";
 import type { DeploymentLogWriter } from "./deployment-log-writer";
 
 /** Settings the deploy runner reads from configuration and from the target server. */
@@ -45,6 +44,7 @@ export type DeployRunnerDependencies = Pick<ServerHost, "runner" | "docker" | "g
 export class DeployState {
   /** Containers this deployment started, which a failure removes. */
   readonly containerNames: string[] = [];
+  restorePreviewRoute: (() => Promise<void>) | null = null;
   redact: (text: string) => string = (text) => text;
 
   useContainer(name: string): void {
@@ -88,6 +88,13 @@ export function assertNotCancelled(signal: AbortSignal): void {
   if (signal.aborted) {
     throw new DeploymentCancelledError();
   }
+}
+
+export function assertDeployActive(
+  context: Pick<DeployContext, "assertOwnership" | "signal">,
+): void {
+  context.assertOwnership();
+  assertNotCancelled(context.signal);
 }
 
 export function errorMessageOf(error: unknown): string {

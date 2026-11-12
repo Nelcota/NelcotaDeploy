@@ -5,6 +5,8 @@ import type { RouteFiles } from "@/routing";
 
 import type { Probes } from "./probes";
 
+export { prepareProjectNetwork, restoreProjectNetworkPeers } from "./servers/project-network";
+
 /** Whole files on a server as raw bytes, for binary files the command runner cannot carry. */
 export type ServerFiles = {
   readonly read: (

@@ -1,14 +1,15 @@
 import { describe, expect, test } from "bun:test";
 
 import { openMemoryDatabase } from "@/db";
-import { getDeployment, requestDeployment } from "@/deployments";
-import { openPreview } from "@/previews";
+import { getDeployment, PreviewNotActiveError, requestDeployment } from "@/deployments";
+import { closePreview, openPreview } from "@/previews";
 import { RouteFiles } from "@/routing";
 import { saveSystemSettings } from "@/settings";
 import { DEFAULT_SYSTEM_SETTINGS } from "@/shared/schemas/settings.schema";
 import { createTestProject, TEST_ACTOR } from "@/testing";
 
 import { routeTrafficTo } from "./container-start";
+import { DeployState } from "./deploy-context";
 import { DeploymentLogWriter } from "./deployment-log-writer";
 
 const CONTAINER = "nelcota-api-0c1d2e3f4a5b";
@@ -57,13 +58,14 @@ function setup(options: { readonly baseDomain: string | null; readonly preview: 
     deployment: getDeployment(database, deploymentId),
     project,
     logs,
+    state: new DeployState(),
   });
   return { database, deploymentId, project, commands, dependencies, context };
 }
 
 /** The file name and content of the route write; the content is the last argument. */
 function writtenRoutes(commands: readonly (readonly string[])[]) {
-  const write = commands.at(0) ?? [];
+  const write = commands.find((command) => command[2]?.includes("printf") === true) ?? [];
   return { fileName: write.at(-2), content: JSON.parse(write.at(-1) ?? "null") as unknown };
 }
 
@@ -100,6 +102,43 @@ describe("routeTrafficTo production", () => {
 });
 
 describe("routeTrafficTo previews", () => {
+  test("does not write routes if the preview closed before publication", async () => {
+    const { database, project, deploymentId, commands, dependencies, context } = setup({
+      baseDomain: "apps.example.com",
+      preview: true,
+    });
+    using _connection = database.$client;
+    using logs = new DeploymentLogWriter(database, deploymentId);
+    const running = context(logs);
+    closePreview(database, { projectId: project.id, number: 12 });
+
+    const result = await routeTrafficTo(dependencies, running, [CONTAINER]).catch(
+      (error: unknown) => error,
+    );
+
+    expect(result).toBeInstanceOf(PreviewNotActiveError);
+    expect(commands).toEqual([]);
+  });
+
+  test("does not fall back to production routing when the preview is missing", async () => {
+    const { database, deploymentId, commands, dependencies, context } = setup({
+      baseDomain: "apps.example.com",
+      preview: true,
+    });
+    using _connection = database.$client;
+    using logs = new DeploymentLogWriter(database, deploymentId);
+    const running = context(logs);
+
+    const result = await routeTrafficTo(
+      dependencies,
+      { ...running, deployment: { ...running.deployment, previewId: "missing-preview" } },
+      [CONTAINER],
+    ).catch((error: unknown) => error);
+
+    expect(result).toBeInstanceOf(PreviewNotActiveError);
+    expect(commands).toEqual([]);
+  });
+
   test("routes a preview at its own address, apart from production's routes", async () => {
     const { database, deploymentId, project, commands, dependencies, context } = setup({
       baseDomain: "apps.example.com",

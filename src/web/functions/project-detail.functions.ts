@@ -30,7 +30,11 @@ export const getProjectFn = createServerFn({ method: "GET" })
       project,
       /** What the interface lets the user do on this project, from their role on it. */
       permissions: uiPermissionsOf(role),
-      domains: listProjectDomains(database, project.id, getSystemSettings(database)),
+      domains: listProjectDomains(
+        database,
+        project.id,
+        getSystemSettings(database, { includeSecrets: false }),
+      ),
       containers: listProjectContainers(database, project.id),
       worker: getWorkerStatus(database),
       /** Variables or domains changed since the live container started. */

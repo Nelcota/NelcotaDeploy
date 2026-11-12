@@ -53,6 +53,32 @@ const OPTIONS = {
 };
 const GITHUB = { clientId: "Iv1.abc", clientSecret: "client-secret" };
 
+test("limits concurrent sign-in requests independently per trusted client IP", async () => {
+  const database = openMemoryDatabase();
+  using _connection = database.$client;
+  const auth = createAuth(database, OPTIONS);
+  const signIn = (address: string) =>
+    auth.handler(
+      new Request(`${OPTIONS.baseURL}/api/auth/sign-in/email`, {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-real-ip": address },
+        body: JSON.stringify({ email: "unknown@example.test", password: "test-password" }),
+      }),
+    );
+  const requestsPerClient = 6;
+
+  const attempts = await Promise.all(
+    Array.from({ length: requestsPerClient }, () => signIn("198.51.100.27")),
+  );
+  const otherClient = await signIn("203.0.113.29");
+
+  const statuses = attempts.map((attempt) => attempt.status);
+  expect(statuses.toSorted((first, second) => first - second)).toEqual([
+    401, 401, 401, 401, 401, 429,
+  ]);
+  expect(otherClient.status).toBe(401);
+});
+
 describe("createAuth GitHub sign-in", () => {
   test("offers GitHub only with an OAuth client", () => {
     const auth = createAuth(openMemoryDatabase(), OPTIONS);

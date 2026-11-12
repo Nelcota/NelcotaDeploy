@@ -1,6 +1,6 @@
 import { and, eq, isNull, type SQL } from "drizzle-orm";
 
-import { tables, type Transaction } from "@/db";
+import { type Database, tables, type Transaction } from "@/db";
 
 import { PreviewNotActiveError } from "./deployment.errors";
 
@@ -19,22 +19,25 @@ export function deploymentScope(previewId: string | null): SQL {
 }
 
 /**
- * Returns the branch an active preview of the project deploys.
+ * Returns routing and source information for an active preview of the project.
  *
- * @param transaction - Open transaction.
+ * @param database - Database or open transaction.
  * @param projectId - Project the preview must belong to.
  * @param previewId - Preview id.
- * @returns The pull request's branch.
+ * @returns The pull request's branch and number.
  * @throws {PreviewNotActiveError} When the preview does not exist, belongs to another project
  *   or was closed.
  */
-export function activePreviewBranch(
-  transaction: Transaction,
+export function requireActivePreview(
+  database: Database | Transaction,
   projectId: string,
   previewId: string,
-): string {
-  const preview = transaction
-    .select({ branch: tables.previews.branch })
+): { readonly branch: string; readonly pullRequestNumber: number } {
+  const preview = database
+    .select({
+      branch: tables.previews.branch,
+      pullRequestNumber: tables.previews.pullRequestNumber,
+    })
     .from(tables.previews)
     .where(
       and(
@@ -47,5 +50,6 @@ export function activePreviewBranch(
   if (preview == null) {
     throw new PreviewNotActiveError(previewId);
   }
-  return preview.branch;
+
+  return preview;
 }

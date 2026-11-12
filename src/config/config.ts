@@ -71,7 +71,18 @@ const configSchema = z
     DOCKER_NETWORK: z
       .string()
       .regex(/^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,62}$/)
+      .refine(
+        (name) => name !== "nelcota-control" && name.startsWith("nelcota-project-") === false,
+        "must not use a control-plane or project bridge name",
+      )
       .default("nelcota"),
+    ISOLATED_PROJECT_IDS: z
+      .string()
+      .trim()
+      .default("")
+      .transform((value) => (value === "" ? [] : value.split(",").map((id) => id.trim())))
+      .pipe(z.array(z.uuid())),
+    WORKER_DOCKER_CONTAINER: z.literal("nelcota-worker").optional(),
     TRAEFIK_HTTP_ENTRYPOINT: z.string().min(1).default("web"),
     TRAEFIK_HTTPS_ENTRYPOINT: z.string().min(1).default("websecure"),
     TRAEFIK_CERT_RESOLVER: z.string().min(1).default("letsencrypt"),

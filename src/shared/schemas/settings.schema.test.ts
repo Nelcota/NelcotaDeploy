@@ -25,10 +25,20 @@ describe("alertWebhookUrl", () => {
     ).toBeNull();
   });
 
-  test.each([["ftp://example.com/hook"], ["javascript:alert(1)"], ["not a url"]])(
-    "rejects %p",
-    (alertWebhookUrl) => {
-      expect(systemSettingsSchema.safeParse({ ...BASE, alertWebhookUrl }).success).toBe(false);
-    },
-  );
+  test.each([
+    ["ftp://example.com/hook"],
+    ["http://hooks.slack.com/services/T/B/x"],
+    ["https://localhost/hook"],
+    ["https://api.localhost/hook"],
+    ["https://service.internal/hook"],
+    ["https://node.local/hook"],
+    ["https://127.0.0.1/hook"],
+    ["https://169.254.169.254/latest/meta-data"],
+    ["https://[::1]/hook"],
+    ["https://user:secret@hooks.slack.com/services/T/B/x"],
+    ["javascript:alert(1)"],
+    ["not a url"],
+  ])("rejects %p", (alertWebhookUrl) => {
+    expect(systemSettingsSchema.safeParse({ ...BASE, alertWebhookUrl }).success).toBe(false);
+  });
 });

@@ -100,9 +100,12 @@ describe("parseDockerSize", () => {
     expect(parseDockerSize(text)).toBe(bytes);
   });
 
-  test.each(["", "--", "12 parsecs"])("returns null for %p instead of guessing", (text) => {
-    expect(parseDockerSize(text)).toBeNull();
-  });
+  test.each(["", "--", "12 parsecs", "-1B", "9007199254740992B", `${"9".repeat(300)}GiB`])(
+    "returns null for %p instead of guessing",
+    (text) => {
+      expect(parseDockerSize(text)).toBeNull();
+    },
+  );
 });
 
 describe("parseStatsOutput", () => {

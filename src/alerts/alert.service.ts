@@ -1,11 +1,20 @@
 import type { Logger } from "pino";
 
 import type { Database } from "@/db";
+import { isPublicIpAddress, lookupAllWithTimeout } from "@/domains";
 import { getSystemSettings } from "@/settings";
+import { systemSettingsSchema } from "@/shared/schemas/settings.schema";
 
 import { AlertDeliveryError } from "./alert.errors";
 
 const DELIVERY_TIMEOUT_IN_MS = 5000;
+
+type DeliveryNetwork = {
+  readonly lookup: (hostname: string) => Promise<readonly string[]>;
+  readonly fetch: (url: URL, options: BunFetchRequestInit) => Promise<Response>;
+};
+
+const deliveryNetwork: DeliveryNetwork = { lookup: lookupAllWithTimeout, fetch };
 
 /** Something an admin should know about without having the panel open. */
 export type Alert = {
@@ -30,28 +39,51 @@ export function alertPayload(alert: Alert): { content: string; text: string } {
 /**
  * Posts an alert to a webhook.
  *
- * @param webhookUrl - Discord or Slack incoming webhook URL (http or https).
+ * @param webhookUrl - Public HTTPS URL of the incoming webhook.
  * @param alert - The alert.
- * @param send - The fetch to use; the real one in production.
- * @throws {AlertDeliveryError} When the webhook cannot be reached or refuses the message.
+ * @param network - DNS and HTTP operations, replaceable in tests.
+ * @throws {AlertDeliveryError} When the destination is unsafe, unreachable, or refuses the message.
  */
 export async function sendAlert(
   webhookUrl: string,
   alert: Alert,
-  send: typeof fetch = fetch,
+  network: DeliveryNetwork = deliveryNetwork,
 ): Promise<void> {
+  const parsed = systemSettingsSchema.shape.alertWebhookUrl.safeParse(webhookUrl);
+  if (parsed.success === false || parsed.data == null) {
+    throw new AlertDeliveryError("The alert webhook must use a public HTTPS URL");
+  }
+
+  const target = new URL(parsed.data);
+  const addresses = await network.lookup(target.hostname);
+  const address = addresses[0];
+  if (address == null || addresses.some((candidate) => isPublicIpAddress(candidate) === false)) {
+    throw new AlertDeliveryError(
+      "The alert webhook did not resolve exclusively to public addresses",
+    );
+  }
+
+  const host = target.host;
+  const serverName = target.hostname;
+  // Connect to the checked address while keeping the original HTTP and TLS identity.
+  target.hostname = address.includes(":") ? `[${address}]` : address;
   let response: Response;
   try {
-    response = await send(webhookUrl, {
+    response = await network.fetch(target, {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: { "content-type": "application/json", Host: host },
       body: JSON.stringify(alertPayload(alert)),
+      tls: { serverName },
+      proxy: false,
+      redirect: "error",
       signal: AbortSignal.timeout(DELIVERY_TIMEOUT_IN_MS),
     });
-  } catch (error) {
-    throw new AlertDeliveryError("The alert webhook could not be reached", { cause: error });
+    await response.body?.cancel();
+  } catch {
+    // Fetch errors can include the URL, whose path or query may contain credentials.
+    throw new AlertDeliveryError("The alert webhook could not be reached");
   }
-  await response.body?.cancel();
+
   if (response.ok === false) {
     throw new AlertDeliveryError(`The alert webhook answered ${response.status}`);
   }
@@ -66,7 +98,7 @@ export async function sendAlert(
  * @param alert - The alert.
  */
 export async function notify(database: Database, logger: Logger, alert: Alert): Promise<void> {
-  const webhookUrl = getSystemSettings(database).alertWebhookUrl;
+  const webhookUrl = getSystemSettings(database, { includeSecrets: true }).alertWebhookUrl;
   if (webhookUrl == null) {
     return;
   }

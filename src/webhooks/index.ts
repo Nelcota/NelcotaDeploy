@@ -1,2 +1,8 @@
 export { handleGitHubDelivery, listWebhookDeliveries } from "./github-webhook.service";
-export { InvalidWebhookRequestError, InvalidWebhookSignatureError } from "./webhook.errors";
+export { readGitHubDelivery } from "./webhook-request";
+export { reconcilePullRequests } from "./pull-request-reconciliation";
+export {
+  InvalidWebhookRequestError,
+  InvalidWebhookSignatureError,
+  WebhookPayloadTooLargeError,
+} from "./webhook.errors";

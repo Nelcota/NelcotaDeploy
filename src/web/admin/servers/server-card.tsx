@@ -12,7 +12,10 @@ function serverAddress(server: ServerView): string {
   if (server.kind === "local") {
     return "A VPS onde o painel roda.";
   }
-  return `${server.username ?? ""}@${server.host ?? ""}:${server.port ?? ""}`;
+  if (server.username == null || server.port == null) {
+    return server.host ?? "";
+  }
+  return `${server.username}@${server.host ?? ""}:${server.port}`;
 }
 
 function ServerHeader({

@@ -115,7 +115,7 @@ export async function checkHealth(dependencies: HealthDependencies): Promise<voi
     ...resolved.map(
       async (problem) =>
         await notify(database, logger, {
-          title: `Resolvido: ${problem.title}`,
+          title: `Resolved: ${problem.title}`,
           text: problem.text,
           link,
         }),

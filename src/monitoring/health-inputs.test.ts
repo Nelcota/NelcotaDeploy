@@ -5,8 +5,8 @@ import { completeDeployment, requestDeployment, transitionDeployment } from "@/d
 import { LOCAL_SERVER_ID } from "@/servers";
 import { createTestProject, TEST_ACTOR } from "@/testing";
 
+import { replaceContainerSnapshots } from "./container-snapshot.service";
 import { listLiveAppContainers } from "./health-inputs";
-import { replaceContainerSnapshots } from "./monitoring.service";
 
 function deployLive(database: Database, projectId: string): string {
   const { deploymentId } = requestDeployment(database, {

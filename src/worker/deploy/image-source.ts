@@ -1,9 +1,10 @@
 import { type Deployment, transitionDeployment } from "@/deployments";
 import { type DockerEngine, imageTagFor, railpackBaseTagFor } from "@/docker";
 import { recordDetectedPort } from "@/projects";
+import type { ProjectBuilder } from "@/shared/schemas/project.schema";
 
 import {
-  assertNotCancelled,
+  assertDeployActive,
   type DeployContext,
   type DeployRunnerDependencies,
   deploymentLabels,
@@ -19,6 +20,41 @@ const DISPLAYED_SHA_LENGTH = 12;
 export type BuildSecrets = {
   readonly buildValues: Readonly<Record<string, string>>;
   readonly repositoryToken: string | null;
+};
+
+/** Input for building an image from a cloned workspace. */
+type WorkspaceBuildInput = {
+  readonly workspace: DeploymentWorkspace;
+  readonly buildValues: Readonly<Record<string, string>>;
+};
+
+/** Result of building an image from source. */
+type BuiltImage = {
+  readonly imageTag: string;
+  readonly detectedPort: number | null;
+};
+
+/** Strategy for one {@link ProjectBuilder} in the worker deployment pipeline. */
+export type BuildStrategy = {
+  /** Whether a redeploy or rollback reuses the source deployment's image when present. */
+  readonly reusesPreviousImage: boolean;
+  /** Whether older images of the project are pruned after a successful deployment. */
+  readonly prunesOldImages: boolean;
+  /** Whether the deployment starts its containers through `state.containerNames` rather than Compose services. */
+  readonly managesReplicaContainers: boolean;
+  /** Prepares the runtime environment variables for the started container. */
+  readonly runtimeVariables: (
+    values: Readonly<Record<string, string>>,
+    internalPort: number,
+  ) => Readonly<Record<string, string>>;
+  /** Builds a container image from a checked-out workspace, or null when the builder starts services directly. */
+  readonly buildImage:
+    | ((
+        dependencies: DeployRunnerDependencies,
+        context: DeployContext,
+        input: WorkspaceBuildInput,
+      ) => Promise<BuiltImage>)
+    | null;
 };
 
 /**
@@ -40,8 +76,7 @@ export async function cloneRevision(
   const { database, git, config } = dependencies;
   const { deployment, project, logs, signal } = context;
 
-  context.assertOwnership();
-  assertNotCancelled(signal);
+  assertDeployActive(context);
   transitionDeployment(database, deployment.id, { to: "cloning" });
   // A redeploy or rollback that has to rebuild uses the exact commit of its source.
   const commitSha = deployment.requestedCommitSha ?? deployment.commitSha;
@@ -58,8 +93,7 @@ export async function cloneRevision(
     onLine: (line, stream) => logs.output(line, stream),
   });
   logs.system(`Checked out ${commit.sha.slice(0, DISPLAYED_SHA_LENGTH)}: ${commit.message}`);
-  context.assertOwnership();
-  assertNotCancelled(signal);
+  assertDeployActive(context);
   transitionDeployment(database, deployment.id, {
     to: "building",
     commitSha: commit.sha,
@@ -90,8 +124,7 @@ async function detectPort(
     }),
     dependencies.docker.images.exposedPorts(source.imageTag),
   ]);
-  context.assertOwnership();
-  assertNotCancelled(context.signal);
+  assertDeployActive(context);
   const declared = result.exitCode === 0 ? detectExposedPort(result.stdout) : null;
   const port = declared != null && exposed.includes(declared) ? declared : (exposed.at(0) ?? null);
   if (port == null) {
@@ -108,26 +141,13 @@ async function detectPort(
   return port;
 }
 
-async function buildImage(
+async function buildDockerfileImage(
   dependencies: DeployRunnerDependencies,
   context: DeployContext,
-  {
-    workspace,
-    buildValues,
-  }: {
-    readonly workspace: DeploymentWorkspace;
-    readonly buildValues: Readonly<Record<string, string>>;
-  },
-): Promise<{ imageTag: string; detectedPort: number | null }> {
+  { workspace, buildValues }: WorkspaceBuildInput,
+): Promise<BuiltImage> {
   const { docker, config, runner } = dependencies;
   const { project, logs, signal } = context;
-  if (project.builder === "railpack") {
-    return {
-      imageTag: await buildWithRailpack(dependencies, context, { workspace, buildValues }),
-      detectedPort: null,
-    };
-  }
-
   const dockerfilePath = await resolveInsideWorkspace(
     runner,
     workspace.repositoryPath,
@@ -138,8 +158,7 @@ async function buildImage(
     workspace.repositoryPath,
     project.buildContext,
   );
-  context.assertOwnership();
-  assertNotCancelled(signal);
+  assertDeployActive(context);
   // A build that outlives its lease must not overwrite the next attempt's image tag.
   const imageTag = imageTagFor(project.slug, Bun.randomUUIDv7());
   logs.system(`Building image ${imageTag} from ${project.dockerfilePath}`);
@@ -292,6 +311,44 @@ async function buildWithRailpack(
   return imageTag;
 }
 
+const BUILD_STRATEGIES = {
+  dockerfile: {
+    reusesPreviousImage: true,
+    prunesOldImages: true,
+    managesReplicaContainers: true,
+    runtimeVariables: (values) => values,
+    buildImage: buildDockerfileImage,
+  },
+  railpack: {
+    reusesPreviousImage: true,
+    prunesOldImages: true,
+    managesReplicaContainers: true,
+    runtimeVariables: (values, internalPort) =>
+      Object.hasOwn(values, "PORT") ? values : { ...values, PORT: String(internalPort) },
+    buildImage: async (dependencies, context, input) => ({
+      imageTag: await buildWithRailpack(dependencies, context, input),
+      detectedPort: null,
+    }),
+  },
+  compose: {
+    reusesPreviousImage: false,
+    prunesOldImages: false,
+    managesReplicaContainers: false,
+    runtimeVariables: (values) => values,
+    buildImage: null,
+  },
+} as const satisfies Record<ProjectBuilder, BuildStrategy>;
+
+/**
+ * Returns the build strategy for a project builder.
+ *
+ * @param builder - Project builder name.
+ * @returns The strategy.
+ */
+export function buildStrategyFor(builder: ProjectBuilder): BuildStrategy {
+  return BUILD_STRATEGIES[builder];
+}
+
 /**
  * Clones the requested revision into a fresh workspace and builds its image.
  *
@@ -302,7 +359,11 @@ export async function buildFromSource(
   dependencies: DeployRunnerDependencies,
   context: DeployContext,
   secrets: BuildSecrets,
-): Promise<{ imageTag: string; detectedPort: number | null }> {
+): Promise<BuiltImage> {
+  const buildImage = buildStrategyFor(context.project.builder).buildImage;
+  if (buildImage == null) {
+    throw new Error(`Builder ${context.project.builder} does not build a single container image`);
+  }
   await using workspace = await DeploymentWorkspace.create(dependencies.runner, {
     root: dependencies.config.workspaceDir,
     prefix: context.project.slug,

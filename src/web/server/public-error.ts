@@ -11,6 +11,7 @@ import { InvalidConfigError } from "@/config";
 import { CloudflareApiError, DnsConfigurationError } from "@/domains";
 import { GitHubApiError } from "@/github";
 import {
+  ComposeProjectMoveError,
   NoServerAvailableError,
   ProjectMoveInProgressError,
   ProjectMoveReviewChangedError,
@@ -53,6 +54,7 @@ const MESSAGES: readonly (readonly [ErrorClass, string])[] = [
     ProjectMoveInProgressError,
     "Há um deploy em andamento. Aguarde o término antes de mudar o servidor.",
   ],
+  [ComposeProjectMoveError, "Projetos Docker Compose não podem mudar de servidor."],
   [
     ServerInUseError,
     "Este servidor não pode ser removido: ainda há projetos nele ou ele é o servidor do painel.",
@@ -68,9 +70,12 @@ const MESSAGES: readonly (readonly [ErrorClass, string])[] = [
   ],
 ];
 
-const USER_OPERATION_MESSAGES: Readonly<Record<string, string>> = {
-  "Email already in use": "Este e-mail já está em uso.",
-  "At least one active admin must remain": "É preciso manter pelo menos um administrador ativo.",
+const USER_OPERATION_MESSAGES: Readonly<Record<UserOperationError["reason"], string>> = {
+  "weak-password": "A senha precisa ter pelo menos 12 caracteres.",
+  "email-taken": "Este e-mail já está em uso.",
+  "last-admin": "É preciso manter pelo menos um administrador ativo.",
+  "self-role-change": "Você não pode alterar o próprio papel.",
+  "self-disable": "Você não pode desativar a própria conta.",
 };
 
 /** Error whose message is safe and meant to be shown to the user. */
@@ -108,8 +113,7 @@ export function toPublicError(error: unknown): PublicError | null {
     }
   }
   if (error instanceof UserOperationError) {
-    const translated = USER_OPERATION_MESSAGES[error.message];
-    return new PublicError(translated ?? "A senha precisa ter pelo menos 12 caracteres.");
+    return new PublicError(USER_OPERATION_MESSAGES[error.reason]);
   }
   if (error instanceof InvalidConfigError) {
     return new PublicError(

@@ -3,6 +3,7 @@ import { describe, expect, test } from "bun:test";
 import type { CommandRunner, ProcessResult } from "@/process";
 
 import { ensureProxy } from "./docker-proxy";
+import { PROXY_VERSION } from "./docker.commands";
 import { DockerCommandError } from "./docker.errors";
 
 const OPTIONS = {
@@ -25,10 +26,10 @@ function fakeDocker(state: "running" | "stopped" | "missing" | "outdated", failR
     aborted: false,
   });
   const inspectReplies = {
-    running: reply(0, "true 2\n"),
-    stopped: reply(0, "false 2\n"),
-    // Proxies created before route files carry no version label.
-    outdated: reply(0, "true <no value>\n"),
+    running: reply(0, `true ${PROXY_VERSION}\n`),
+    stopped: reply(0, `false ${PROXY_VERSION}\n`),
+    // Version 2 still mounted the Docker socket.
+    outdated: reply(0, "true 2\n"),
     missing: reply(1),
   };
   const runner: CommandRunner = async (command) => {

@@ -38,7 +38,7 @@ case "$(uname -m)" in
 esac
 RAILPACK_MARKER=/usr/local/lib/nelcota-railpack-version
 if [ -z "$RAILPACK_ARCH" ]; then
-  echo "Railpack não tem versão para esta arquitetura; projetos sem Dockerfile não vão construir aqui." >&2
+  echo "Railpack is unavailable for this architecture. Projects without a Dockerfile cannot build here." >&2
 elif [ "$(cat "$RAILPACK_MARKER" 2>/dev/null)" != "${RAILPACK_VERSION}" ]; then
   RAILPACK_TMP=$(mktemp -d)
   fetch "${RAILPACK_RELEASE_URL}/railpack-v${RAILPACK_VERSION}-$RAILPACK_ARCH-unknown-linux-musl.tar.gz" > "$RAILPACK_TMP/railpack.tar.gz"
@@ -59,7 +59,7 @@ if grep -qx "Match User $USER_NAME" "$CONFIG"; then :; else
   printf '\\n# Added by Nelcota Deploy\\nMatch User %s\\n    AllowTcpForwarding local\\n    MaxSessions 200\\n' "$USER_NAME" >> "$CONFIG"
   if sshd -t; then :; else
     cp "$CONFIG.nelcota-backup" "$CONFIG"
-    echo "A configuração do SSH ficou inválida e foi restaurada." >&2
+    echo "The SSH configuration was invalid and has been restored." >&2
     exit 1
   fi
   systemctl reload ssh 2>/dev/null || systemctl reload sshd 2>/dev/null || service ssh reload 2>/dev/null || service sshd reload
@@ -72,8 +72,8 @@ touch "$KEYS"
 grep -qxF "$PUBLIC_KEY" "$KEYS" || printf '%s\\n' "$PUBLIC_KEY" >> "$KEYS"
 chown "$USER_NAME:$USER_NAME" "$KEYS"
 chmod 600 "$KEYS"
-echo "Servidor pronto. O painel vai se conectar sozinho em alguns segundos."
-echo "Impressão digital deste servidor (confira no painel):"
+echo "Server ready. The panel will connect automatically in a few seconds."
+echo "Server fingerprint (verify it in the panel):"
 ssh-keygen -l -E sha256 -f /etc/ssh/ssh_host_ed25519_key.pub`;
 
 /**

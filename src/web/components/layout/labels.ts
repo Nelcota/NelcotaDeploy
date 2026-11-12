@@ -87,6 +87,19 @@ export const WEBHOOK_REASON_LABELS: Record<string, string> = {
   ping: "Ping de teste do GitHub",
   processing: "Em processamento",
   "deployments queued": "Deploys colocados na fila",
+  "pull request reconciliation queued": "Verificação do pull request colocada na fila",
+  "superseded by a newer reconciliation request": "Substituída por uma verificação mais recente",
+  "pull request state already reconciled": "Estado do pull request já atualizado",
+  "pull request payload is missing required fields": "Pull request sem os campos obrigatórios",
+  "pull request closed; its previews are being removed":
+    "Pull request fechado. As prévias estão sendo removidas.",
+  "pull requests from forks never get previews": "Pull requests de forks não geram prévias",
+  "no approved project with previews for this pull request":
+    "Nenhum projeto aprovado com prévias para este pull request",
+  "no approved project with previews for this repository and branch":
+    "Nenhum projeto aprovado com prévias para este repositório e branch",
+  "previews need a base domain for their address": "As prévias precisam de um domínio base",
+  "every project already runs its maximum of previews": "Os projetos atingiram o limite de prévias",
   "payload is not valid JSON": "Conteúdo inválido (não é JSON)",
   "push payload is missing required fields": "Push sem os campos obrigatórios",
   "branch deletion": "Branch apagada",

@@ -10,7 +10,7 @@ import { authorizeProject } from "@/web/server/authorization";
 
 import { projectIdInput } from "../ids";
 
-async function repositoryContext(projectId: string) {
+async function repositoryContext(projectId: string, isAdmin: boolean) {
   const database = getDatabase();
   const project = getProject(database, projectId);
   const secretBox = await getSecretBox();
@@ -23,6 +23,7 @@ async function repositoryContext(projectId: string) {
       buildContext: project.buildContext,
       dockerfilePath: project.dockerfilePath,
       token,
+      allowGitHubApp: isAdmin || project.deploymentsApproved,
     },
   };
 }
@@ -34,8 +35,8 @@ export const getRepositoryTasksFn = createServerFn({ method: "GET" })
     }),
   )
   .handler(async ({ data }) => {
-    await authorizeProject("task:write", data.projectId);
-    const context = await repositoryContext(data.projectId);
+    const user = await authorizeProject("task:write", data.projectId);
+    const context = await repositoryContext(data.projectId, user.role === "admin");
     return await readRepositoryTaskScripts(context.dependencies, {
       ...context.request,
       packagePath: data.packagePath,
@@ -45,7 +46,7 @@ export const getRepositoryTasksFn = createServerFn({ method: "GET" })
 export const getRepositoryVolumesFn = createServerFn({ method: "GET" })
   .validator(projectIdInput)
   .handler(async ({ data }) => {
-    await authorizeProject("project:write", data.projectId);
-    const context = await repositoryContext(data.projectId);
+    const user = await authorizeProject("project:write", data.projectId);
+    const context = await repositoryContext(data.projectId, user.role === "admin");
     return await readRepositoryVolumeHints(context.dependencies, context.request);
   });

@@ -13,6 +13,18 @@ export class FakeDocker implements DockerEngine {
   readonly environments = new Map<string, Readonly<Record<string, string>>>();
   readonly definitions = new Map<string, Parameters<DockerEngine["runContainer"]>[0]>();
   readonly images = new FakeImages(this.calls);
+  readonly networks = {
+    ensure: async (projectId: string) => {
+      this.calls.push(`ensure project network ${projectId}`);
+      await Promise.resolve();
+    },
+    attach: async (projectId: string, container: string) => {
+      this.calls.push(`attach project network ${projectId} ${container}`);
+      await Promise.resolve();
+    },
+    projects: async () => await Promise.resolve([]),
+    remove: async (_projectId: string) => await Promise.resolve(),
+  };
   readonly compose = new FakeCompose(
     this.calls,
     this.containers,

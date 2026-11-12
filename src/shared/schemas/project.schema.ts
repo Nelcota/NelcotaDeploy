@@ -10,6 +10,21 @@ const MAX_TOKEN_LENGTH = 512;
 export const PROJECT_BUILDERS = ["dockerfile", "railpack", "compose"] as const;
 
 export type ProjectBuilder = (typeof PROJECT_BUILDERS)[number];
+
+/** Capabilities of each project builder. */
+export type BuilderCapabilities = {
+  /** Whether the project can mount panel-managed persistent volumes. */
+  readonly mountsPanelVolumes: boolean;
+  /** Whether the project can be moved between servers. */
+  readonly movesBetweenServers: boolean;
+};
+
+/** Declared capabilities for every supported {@link ProjectBuilder}. */
+export const BUILDER_CAPABILITIES = {
+  dockerfile: { mountsPanelVolumes: true, movesBetweenServers: true },
+  railpack: { mountsPanelVolumes: true, movesBetweenServers: true },
+  compose: { mountsPanelVolumes: false, movesBetweenServers: false },
+} as const satisfies Record<ProjectBuilder, BuilderCapabilities>;
 const DEFAULT_COMPOSE_FILE = "compose.yaml";
 const MAX_COMPOSE_SERVICE_LENGTH = 63;
 // Lowercase Compose service names, so the container Compose creates has a predictable name.

@@ -5,6 +5,7 @@ import { eq } from "drizzle-orm";
 
 import { openMemoryDatabase, tables } from "@/db";
 import {
+  cancelDeployment,
   completeDeployment,
   getDeployment,
   hasPendingRuntimeChanges,
@@ -14,7 +15,8 @@ import {
 import { imageTagFor } from "@/docker";
 import { resolveEnvironment, saveEnvironmentVariable } from "@/environments";
 import { saveGitHubApp } from "@/github";
-import { JobLeaseLostError } from "@/jobs";
+import { claimNextJob, JobLeaseLostError } from "@/jobs";
+import { closePreview, openPreview } from "@/previews";
 import type { CommandRunner } from "@/process";
 import { getProject, updateProject } from "@/projects";
 import { projectInputSchema } from "@/shared/schemas/project.schema";
@@ -25,16 +27,24 @@ import { runDeployment } from "./deploy-runner";
 const runner: CommandRunner = async (command) => {
   let stdout = "";
   if (command[0] === "mktemp") {
-    stdout = "/review/workspace\n";
+    const template = command.at(-1);
+    if (template == null || template.endsWith("XXXXXXXX") === false) {
+      throw new Error("Missing workspace template in test runner");
+    }
+
+    stdout = `${template.replace(/XXXXXXXX$/, "fixture1")}\n`;
   }
+
   if (command[0] === "sh") {
     const root = command.at(-2);
     const path = command.at(-1);
     if (root == null || path == null) {
       throw new Error("Missing workspace arguments in test runner");
     }
-    stdout = `${root}\n${path}\n`;
+
+    stdout = `${root}.\n${path}.\n`;
   }
+
   return await Promise.resolve({
     exitCode: 0,
     stdout,
@@ -85,6 +95,42 @@ async function setup() {
   }).deploymentId;
   return { database, project, dependencies, docker, deploymentId };
 }
+
+test("stops a claimed preview deployment before checkout even if its preview reopened", async () => {
+  const { database, project, dependencies, deploymentId: production } = await setup();
+  using _connection = database.$client;
+  cancelDeployment(database, production, TEST_ACTOR);
+  const target = { projectId: project.id, number: 12, branch: "feature", headSha: "a".repeat(40) };
+  const previewId = openPreview(database, target);
+  const { deploymentId } = requestDeployment(database, {
+    projectId: project.id,
+    trigger: "manual",
+    actor: TEST_ACTOR,
+    triggeredByUserId: null,
+    previewId,
+  });
+  expect(claimNextJob(database, "worker")?.deploymentId).toBe(deploymentId);
+  closePreview(database, target);
+  openPreview(database, target);
+  let checkoutStarted = false;
+
+  const result = await runDeployment(
+    {
+      ...dependencies,
+      git: {
+        checkoutRevision: () => {
+          checkoutStarted = true;
+          return Promise.reject(new Error("unexpected checkout"));
+        },
+      },
+    },
+    deploymentId,
+    new AbortController().signal,
+  );
+
+  expect(result).toBe("cancelled");
+  expect(checkoutStarted).toBe(false);
+});
 
 test("a lost lease never marks the replacement deployment failed or cleans its container", async () => {
   const { database, deploymentId, dependencies, docker } = await setup();

@@ -3,6 +3,7 @@ import { z } from "zod";
 
 import { type Database, tables } from "@/db";
 import { requestDeployment } from "@/deployments";
+import { pullRequestFields } from "@/github";
 import { createLogger } from "@/logging";
 import { closePreview, openPreview, PreviewLimitError } from "@/previews";
 import { getSystemSettings } from "@/settings";
@@ -15,35 +16,24 @@ import {
   type ProcessedEvent,
 } from "./webhook-event";
 
-const MAX_REF_LENGTH = 300;
 const MAX_GITHUB_NAME_LENGTH = 200;
 const MAX_PULL_REQUEST_NUMBER = 9_999_999;
-const DEPLOYING_ACTIONS = new Set(["opened", "reopened", "synchronize"]);
+const DEPLOYING_ACTIONS = new Set(["opened", "reopened", "synchronize", "edited"]);
 const logger = createLogger("github-webhook");
 
-const repositorySchema = z.object({ full_name: z.string().max(MAX_GITHUB_NAME_LENGTH) });
 const pullRequestPayloadSchema = z.object({
   action: z.string().max(MAX_GITHUB_NAME_LENGTH),
   number: z.number().int().min(1).max(MAX_PULL_REQUEST_NUMBER),
-  pull_request: z.object({
-    title: z.string(),
-    head: z.object({
-      sha: z.string().regex(/^[a-f0-9]{40}$/),
-      ref: z.string().min(1).max(MAX_REF_LENGTH),
-      // GitHub sends null when the fork the pull request came from was deleted.
-      repo: repositorySchema.nullable(),
-    }),
-    base: z.object({ ref: z.string().min(1).max(MAX_REF_LENGTH), repo: repositorySchema }),
-  }),
+  pull_request: pullRequestFields,
   sender: z.object({ login: z.string().max(MAX_GITHUB_NAME_LENGTH) }).optional(),
 });
 
-type PullRequestPayload = z.infer<typeof pullRequestPayloadSchema>;
+export type PullRequestPayload = z.infer<typeof pullRequestPayloadSchema>;
 
 /** Approved projects with previews on that follow the repository and branch the pull request targets. */
-function findPreviewProjects(database: Database, payload: PullRequestPayload): string[] {
+export function findPreviewProjects(database: Database, payload: PullRequestPayload): string[] {
   const projects = database
-    .select({ id: tables.projects.id, approved: tables.projects.deploymentsApproved })
+    .select({ id: tables.projects.id })
     .from(tables.projects)
     .where(
       and(
@@ -53,11 +43,12 @@ function findPreviewProjects(database: Database, payload: PullRequestPayload): s
         ),
         eq(tables.projects.branch, payload.pull_request.base.ref),
         eq(tables.projects.previewsEnabled, true),
+        eq(tables.projects.deploymentsApproved, true),
         isNull(tables.projects.deletionRequestedAt),
       ),
     )
     .all();
-  return projects.filter((project) => project.approved).map((project) => project.id);
+  return projects.map((project) => project.id);
 }
 
 /** Opens or updates a project's preview and queues its deployment; null when it is full. */
@@ -120,13 +111,65 @@ function deployPreviews(
   };
 }
 
-function parsePullRequest(rawBody: string): PullRequestPayload | null {
+export function parsePullRequest(rawBody: string): PullRequestPayload | null {
   const json = parseJsonBody(rawBody);
   if (json === INVALID_JSON) {
     return null;
   }
   const parsed = pullRequestPayloadSchema.safeParse(json);
   return parsed.success ? parsed.data : null;
+}
+
+export function pullRequestDetails(payload: PullRequestPayload) {
+  const { head, base } = payload.pull_request;
+  return {
+    repositoryFullName: base.repo.full_name.toLowerCase(),
+    ref: head.ref,
+    commitSha: head.sha,
+  };
+}
+
+export function hasPreviewForPullRequest(
+  database: Database,
+  repositoryFullName: string,
+  number: number,
+): boolean {
+  return activePreviewsForPullRequest(database, repositoryFullName, number).get() != null;
+}
+
+function activePreviewsForPullRequest(
+  database: Database,
+  repositoryFullName: string,
+  number: number,
+) {
+  return database
+    .select({ projectId: tables.previews.projectId })
+    .from(tables.previews)
+    .innerJoin(tables.projects, eq(tables.projects.id, tables.previews.projectId))
+    .where(
+      and(
+        eq(tables.projects.repositoryFullName, repositoryFullName),
+        eq(tables.previews.pullRequestNumber, number),
+        eq(tables.previews.status, "active"),
+      ),
+    );
+}
+
+function closeIneligiblePreviews(
+  database: Database,
+  target: { readonly repositoryFullName: string; readonly number: number },
+  eligible: readonly string[],
+): void {
+  const eligibleIds = new Set(eligible);
+  for (const preview of activePreviewsForPullRequest(
+    database,
+    target.repositoryFullName,
+    target.number,
+  ).all()) {
+    if (eligibleIds.has(preview.projectId) === false) {
+      closePreview(database, { projectId: preview.projectId, number: target.number });
+    }
+  }
 }
 
 /**
@@ -147,34 +190,33 @@ export function processPullRequest(database: Database, rawBody: string): Process
   if (payload == null) {
     return ignored("pull request payload is missing required fields");
   }
-  const { head, base } = payload.pull_request;
-  const details = {
-    repositoryFullName: base.repo.full_name.toLowerCase(),
-    ref: head.ref,
-    commitSha: head.sha,
-  };
-  if (head.repo?.full_name.toLowerCase() !== details.repositoryFullName) {
-    return ignored("pull requests from forks never get previews", details);
-  }
+  return applyPullRequest(database, payload);
+}
+
+export function appliesToPreviews(payload: PullRequestPayload): boolean {
+  return payload.action === "closed" || DEPLOYING_ACTIONS.has(payload.action);
+}
+
+export function applyPullRequest(database: Database, payload: PullRequestPayload): ProcessedEvent {
+  const { head } = payload.pull_request;
+  const details = pullRequestDetails(payload);
+  const target = { repositoryFullName: details.repositoryFullName, number: payload.number };
   if (payload.action === "closed") {
-    const existing = database
-      .select({ projectId: tables.previews.projectId })
-      .from(tables.previews)
-      .innerJoin(tables.projects, eq(tables.projects.id, tables.previews.projectId))
-      .where(
-        and(
-          eq(tables.projects.repositoryFullName, details.repositoryFullName),
-          eq(tables.previews.pullRequestNumber, payload.number),
-          eq(tables.previews.status, "active"),
-        ),
-      )
-      .all();
-    for (const preview of existing) {
-      closePreview(database, { projectId: preview.projectId, number: payload.number });
-    }
+    closeIneligiblePreviews(database, target, []);
     return ignored("pull request closed; its previews are being removed", details);
   }
+
+  if (DEPLOYING_ACTIONS.has(payload.action) === false) {
+    return ignored(`pull request ${payload.action} is not handled`, details);
+  }
+
+  if (head.repo?.full_name.toLowerCase() !== details.repositoryFullName) {
+    closeIneligiblePreviews(database, target, []);
+    return ignored("pull requests from forks never get previews", details);
+  }
+
   const projectIds = findPreviewProjects(database, payload);
+  closeIneligiblePreviews(database, target, projectIds);
   if (projectIds.length === 0) {
     return ignored("no approved project with previews for this repository and branch", details);
   }

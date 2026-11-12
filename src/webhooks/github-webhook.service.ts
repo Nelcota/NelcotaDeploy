@@ -6,13 +6,15 @@ import { type Database, tables } from "@/db";
 import { requestDeployment } from "@/deployments";
 import { createLogger, singleLine } from "@/logging";
 
-import { processPullRequest } from "./pull-request-event";
+import { queuePullRequestReconciliation } from "./pull-request-reconciliation";
 import {
   commitSubject,
   ignored,
   INVALID_JSON,
   parseJsonBody,
+  recordWebhookOutcome,
   type ProcessedEvent,
+  requireGitHubSignature,
   type WebhookOutcome,
 } from "./webhook-event";
 import { InvalidWebhookRequestError, InvalidWebhookSignatureError } from "./webhook.errors";
@@ -73,8 +75,8 @@ export async function handleGitHubDelivery(
       if (claimed === false) {
         return { status: "duplicate" };
       }
-      const outcome = processEvent(database, event, delivery.rawBody);
-      recordOutcome(database, deliveryId, outcome);
+      const outcome = processEvent(database, { event, deliveryId, rawBody: delivery.rawBody });
+      recordWebhookOutcome(database, deliveryId, outcome);
       return outcome.result;
     },
     { behavior: "immediate" },
@@ -97,10 +99,12 @@ async function verifyDelivery(
   delivery: GitHubDelivery,
   secrets: readonly string[],
 ): Promise<{ readonly deliveryId: string; readonly event: string }> {
-  if (delivery.signature == null || delivery.signature === "") {
-    throw new InvalidWebhookSignatureError();
+  const signature = requireGitHubSignature(delivery.signature);
+  if (delivery.rawBody === "") {
+    throw new InvalidWebhookRequestError("Webhook body is empty");
   }
-  const valid = await isSignedWithAny({ ...delivery, signature: delivery.signature }, secrets);
+
+  const valid = await isSignedWithAny({ ...delivery, signature }, secrets);
   if (valid === false) {
     throw new InvalidWebhookSignatureError();
   }
@@ -133,30 +137,21 @@ function claimDelivery(database: Database, deliveryId: string, event: string): b
   return claimed != null;
 }
 
-function recordOutcome(database: Database, deliveryId: string, outcome: ProcessedEvent): void {
-  const { result } = outcome;
-  database
-    .update(tables.webhookDeliveries)
-    .set({
-      status: result.status === "accepted" ? "accepted" : "ignored",
-      reason: result.status === "ignored" ? result.reason : "deployments queued",
-      deploymentIds: result.status === "accepted" ? [...result.deploymentIds] : [],
-      repositoryFullName: outcome.repositoryFullName,
-      ref: outcome.ref,
-      commitSha: outcome.commitSha,
-    })
-    .where(eq(tables.webhookDeliveries.id, deliveryId))
-    .run();
-}
-
 type PushPayload = z.infer<typeof pushPayloadSchema>;
 
-function processEvent(database: Database, event: string, rawBody: string): ProcessedEvent {
+function processEvent(
+  database: Database,
+  {
+    event,
+    deliveryId,
+    rawBody,
+  }: { readonly event: string; readonly deliveryId: string; readonly rawBody: string },
+): ProcessedEvent {
   if (event === "ping") {
     return ignored("ping");
   }
   if (event === "pull_request") {
-    return processPullRequest(database, rawBody);
+    return queuePullRequestReconciliation(database, deliveryId, rawBody);
   }
   if (event !== "push") {
     return ignored(`event ${event} is not handled`);
@@ -217,18 +212,19 @@ function findAutoDeployProjects(
   branch: string,
 ): string[] {
   const projects = database
-    .select({ id: tables.projects.id, deploymentsApproved: tables.projects.deploymentsApproved })
+    .select({ id: tables.projects.id })
     .from(tables.projects)
     .where(
       and(
         eq(tables.projects.repositoryFullName, repositoryFullName),
         eq(tables.projects.branch, branch),
         eq(tables.projects.autoDeploy, true),
+        eq(tables.projects.deploymentsApproved, true),
         isNull(tables.projects.deletionRequestedAt),
       ),
     )
     .all();
-  return projects.filter((project) => project.deploymentsApproved).map((project) => project.id);
+  return projects.map((project) => project.id);
 }
 
 function queueDeployments(
@@ -259,6 +255,9 @@ function queueDeployments(
  * @returns Deliveries.
  */
 export function listWebhookDeliveries(database: Database, limit: number) {
+  const pageSize = Number.isNaN(limit)
+    ? 1
+    : Math.min(Math.max(Math.trunc(limit), 1), MAX_LIST_SIZE);
   return database
     .select({
       id: tables.webhookDeliveries.id,
@@ -273,6 +272,6 @@ export function listWebhookDeliveries(database: Database, limit: number) {
     })
     .from(tables.webhookDeliveries)
     .orderBy(desc(tables.webhookDeliveries.receivedAt))
-    .limit(Math.min(Math.max(Math.trunc(limit), 1), MAX_LIST_SIZE))
+    .limit(pageSize)
     .all();
 }

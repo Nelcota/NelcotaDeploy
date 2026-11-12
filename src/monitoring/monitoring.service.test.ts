@@ -6,13 +6,11 @@ import { type Database, openMemoryDatabase, tables } from "@/db";
 import { createTestProject } from "@/testing";
 
 import {
-  combineSamplesByProject,
   highestRestartCounts,
-  listHostSamples,
   listMoveLeftovers,
-  listProjectSamples,
   replaceContainerSnapshots,
-} from "./monitoring.service";
+} from "./container-snapshot.service";
+import { combineSamplesByProject, listHostSamples, listProjectSamples } from "./monitoring.service";
 
 const OLD_SERVER = "local";
 const NEW_SERVER = "apps";

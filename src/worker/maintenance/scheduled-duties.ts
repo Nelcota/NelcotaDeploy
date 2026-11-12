@@ -3,10 +3,11 @@ import { pruneLogs } from "@/logs";
 import { pruneMetricSamples } from "@/monitoring";
 import { scheduleDueTasks } from "@/tasks";
 import { pruneUptimeChecks } from "@/uptime";
+import { reconcilePullRequests } from "@/webhooks";
 
 import type { WorkerDependencies } from "../worker.types";
 import { rollBackRestartLoops } from "./auto-rollback";
-import { backupDatabaseIfDue, runDatabaseBackup } from "./database-backup";
+import { backupDatabaseIfDue, PANEL_BACKUP_SCHEDULE, runDatabaseBackup } from "./database-backup";
 import { checkHealth } from "./health-alerts";
 import { cleanUpServers } from "./server-cleanup";
 import { checkCertificates, checkUptime } from "./uptime-checks";
@@ -45,6 +46,26 @@ function applyRetention({ database, config, logger }: WorkerDependencies): void 
   logger.info(pruned, "retention applied");
 }
 
+function startPanelBackup(dependencies: WorkerDependencies, guard: Guard): () => Promise<void> {
+  let startupBackupCompletedAt: number | null = null;
+  const startup = guard("backup at startup", async () => {
+    if (await backupDatabaseIfDue(dependencies)) {
+      startupBackupCompletedAt = performance.now();
+    }
+  })();
+
+  return guard("backup", async () => {
+    const scheduledAt = performance.now();
+    await startup;
+    // If startup produced a backup while this invocation waited, it covers this run.
+    if (startupBackupCompletedAt != null && startupBackupCompletedAt >= scheduledAt) {
+      return;
+    }
+
+    await runDatabaseBackup(dependencies);
+  });
+}
+
 /**
  * Starts the clock-based duties: scheduled tasks, restart loop rollbacks and uptime checks every minute,
  * health checks every five minutes, domain certificates daily, retention and project database
@@ -59,8 +80,13 @@ export function startScheduledDuties(
   dependencies: WorkerDependencies,
   guard: Guard,
 ): Bun.CronJob[] {
-  void guard("backup", async () => await backupDatabaseIfDue(dependencies))();
+  const panelBackup = startPanelBackup(dependencies, guard);
+  const reconcile = guard(
+    "pull request reconciliation",
+    async () => await reconcilePullRequests(dependencies.database, dependencies.secretBox),
+  );
   return [
+    Bun.cron("* * * * *", reconcile),
     Bun.cron(
       "* * * * *",
       guard("scheduler", () => scheduleTasks(dependencies)),
@@ -98,10 +124,6 @@ export function startScheduledDuties(
       { tz: "UTC" },
     ),
     // Daily at 03:30 UTC, when panels are usually quiet.
-    Bun.cron(
-      "30 3 * * *",
-      guard("backup", async () => await runDatabaseBackup(dependencies)),
-      { tz: "UTC" },
-    ),
+    Bun.cron(PANEL_BACKUP_SCHEDULE, panelBackup, { tz: "UTC" }),
   ];
 }

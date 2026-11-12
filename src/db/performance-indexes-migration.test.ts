@@ -40,7 +40,7 @@ test("upgrades main's migration history without losing projects or existing feat
   expect(database.$client.query("SELECT id FROM projects").all()).toEqual([{ id: project.id }]);
   expect(
     database.$client.query("SELECT count(*) AS total FROM __drizzle_migrations").get(),
-  ).toEqual({ total: MAIN_MIGRATION_COUNT + 1 });
+  ).toEqual({ total: journal.entries.length });
   const tables = database.$client
     .query<{ name: string }, []>("SELECT name FROM sqlite_master WHERE type = 'table'")
     .all()
@@ -54,5 +54,6 @@ test("upgrades main's migration history without losing projects or existing feat
     .map((row) => row.name);
   expect(indexes).toContain("deployments_preview_created_idx");
   expect(indexes).toContain("runtime_logs_deployment_id_idx");
+  expect(indexes).toContain("jobs_dedupe_history_idx");
   expect(indexes).not.toContain("deployments_preview_idx");
 });

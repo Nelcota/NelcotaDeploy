@@ -1,4 +1,5 @@
 export {
+  ComposeProjectMoveError,
   NoServerAvailableError,
   ProjectMoveInProgressError,
   ProjectMoveReviewChangedError,

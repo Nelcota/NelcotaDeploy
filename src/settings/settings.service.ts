@@ -36,7 +36,7 @@ export function getSystemSettings(
       DEFAULT_SYSTEM_SETTINGS.httpsByDefault,
     ),
     alertWebhookUrl:
-      options.includeSecrets === false ? null : readNullableString(stored.get("alertWebhookUrl")),
+      options.includeSecrets === true ? readNullableString(stored.get("alertWebhookUrl")) : null,
     requireAdminTwoFactor: readBoolean(
       stored.get("requireAdminTwoFactor"),
       DEFAULT_SYSTEM_SETTINGS.requireAdminTwoFactor,
@@ -91,7 +91,7 @@ export function saveSystemSettingsSection(
 ): SystemSettings {
   return database.transaction(
     (transaction) => {
-      const current = getSystemSettings(transaction);
+      const current = getSystemSettings(transaction, { includeSecrets: true });
       const settings = {
         ...current,
         ...change.settings,

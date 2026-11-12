@@ -1,3 +1,7 @@
+import { Database as SqliteDatabase, SQLiteError } from "bun:sqlite";
+import { mkdir } from "node:fs/promises";
+import { join } from "node:path";
+
 import { notify } from "@/alerts";
 import { recordOffsiteStatus, uploadBackup } from "@/backups";
 import { backupDatabase, listBackups } from "@/db";
@@ -12,6 +16,14 @@ type BackupDependencies = Pick<
 
 /** A backup older than this is replaced when the worker starts. */
 const MAX_BACKUP_AGE_IN_MS = 86_400_000;
+const PANEL_BACKUP_UTC_HOUR = 3;
+const PANEL_BACKUP_UTC_MINUTE = 30;
+const PANEL_BACKUP_LOCK_FILE = ".nelcota-panel-backup-lock.sqlite";
+export const PANEL_BACKUP_SCHEDULE = `${PANEL_BACKUP_UTC_MINUTE} ${PANEL_BACKUP_UTC_HOUR} * * *`;
+
+function errorType(error: unknown): string {
+  return error instanceof Error ? "Error" : typeof error;
+}
 
 /**
  * Tells whether a new backup is due: there is none yet, or the newest is a day old.
@@ -32,8 +44,7 @@ export function isBackupDue(newestCreatedAt: string | null, now: Date): boolean 
 }
 
 /**
- * Sends an encrypted copy of a local backup to the configured bucket and records the outcome.
- * A failure is recorded and alerted, never thrown: the local backup already exists.
+ * Sends an encrypted copy to the configured bucket and records the upload separately from retention.
  */
 async function sendOffsite(
   dependencies: BackupDependencies,
@@ -43,42 +54,110 @@ async function sendOffsite(
   if (store == null) {
     return;
   }
+
+  let uploaded: Awaited<ReturnType<typeof uploadBackup>> | undefined;
   try {
-    const key = await uploadBackup(store, secretBox, {
+    uploaded = await uploadBackup(store, secretBox, {
       path: backup.path,
       prefix: config.BACKUP_S3_PREFIX,
       kept: config.BACKUP_S3_KEPT,
     });
-    await recordOffsiteStatus(backup.directory, { at: new Date(), key });
-    logger.info({ key }, "database backup sent off-site");
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    await recordOffsiteStatus(backup.directory, { at: new Date(), error: message });
-    logger.error({ err: error }, "off-site backup failed");
+    logger.error({ errorType: errorType(error) }, "off-site backup upload failed");
+  }
+
+  const at = new Date();
+  try {
+    const outcome = uploaded == null ? { at, failed: true as const } : { at, key: uploaded.key };
+    await recordOffsiteStatus(backup.directory, outcome);
+  } catch (error) {
+    logger.error({ errorType: errorType(error) }, "could not record off-site backup status");
+  }
+
+  if (uploaded == null) {
     await notify(database, logger, {
-      title: "Backup externo falhou",
-      text: "O backup do banco foi feito no servidor, mas não chegou ao bucket. Veja Configurações → Sistema.",
+      title: "Offsite backup failed",
+      text: "The database backup completed on the server, but the upload to the bucket failed. Check the off-site backup status in the panel.",
     });
+    return;
+  }
+
+  logger.info({ key: uploaded.key }, "database backup sent off-site");
+  if (uploaded.retention != null) {
+    logger.warn(
+      { errorType: errorType(uploaded.retention.error) },
+      "off-site backup retention failed",
+    );
   }
 }
 
-/**
- * Backs up the database, keeps only the newest copies and sends one off-site when a bucket
- * is configured.
- *
- * @param dependencies - Worker dependencies; nothing happens without a backup directory.
- */
-export async function runDatabaseBackup(dependencies: BackupDependencies): Promise<void> {
-  const { database, config, logger } = dependencies;
-  if (config.BACKUP_DIR == null) {
-    return;
+async function backupWhen(
+  dependencies: BackupDependencies,
+  due: (newest: string | null) => boolean,
+  now: Date,
+): Promise<boolean> {
+  if (Number.isFinite(now.getTime()) === false) {
+    throw new RangeError("The panel backup time must be a valid date");
   }
+
+  const { database, config, logger } = dependencies;
+  const directory = config.BACKUP_DIR;
+  if (directory == null) {
+    return false;
+  }
+
+  await mkdir(directory, { recursive: true });
+  // Use a separate SQLite file so an upload never holds the panel's write lock.
+  // The OS releases the lock if the owning worker exits.
+  using lock = new SqliteDatabase(join(directory, PANEL_BACKUP_LOCK_FILE));
+  lock.run("PRAGMA busy_timeout = 0");
+  try {
+    lock.run("BEGIN IMMEDIATE");
+  } catch (error) {
+    if (error instanceof SQLiteError && error.code === "SQLITE_BUSY") {
+      return false;
+    }
+
+    throw error;
+  }
+
+  const [newest] = await listBackups(directory);
+  if (due(newest?.createdAt ?? null) === false) {
+    return false;
+  }
+
   const path = await backupDatabase(database, {
-    directory: config.BACKUP_DIR,
+    directory,
     kept: config.BACKUPS_KEPT,
+    now,
   });
   logger.info({ path, kept: config.BACKUPS_KEPT }, "database backed up");
-  await sendOffsite(dependencies, { path, directory: config.BACKUP_DIR });
+  await sendOffsite(dependencies, { path, directory });
+  return true;
+}
+
+/**
+ * Creates at most one panel backup for the current daily UTC occurrence.
+ *
+ * @param dependencies - Worker dependencies.
+ * @param now - The time when the schedule fired.
+ * @returns Whether a backup was created.
+ */
+export async function runDatabaseBackup(
+  dependencies: BackupDependencies,
+  now: Date = new Date(),
+): Promise<boolean> {
+  const scheduledAt = new Date(now);
+  scheduledAt.setUTCHours(PANEL_BACKUP_UTC_HOUR, PANEL_BACKUP_UTC_MINUTE, 0, 0);
+  if (scheduledAt > now) {
+    scheduledAt.setUTCDate(scheduledAt.getUTCDate() - 1);
+  }
+
+  return await backupWhen(
+    dependencies,
+    (newest) => newest == null || new Date(newest) < scheduledAt,
+    now,
+  );
 }
 
 /**
@@ -86,14 +165,12 @@ export async function runDatabaseBackup(dependencies: BackupDependencies): Promi
  * is none, so restarts never leave the database without a recent copy.
  *
  * @param dependencies - Worker dependencies.
+ * @param now - The current time.
+ * @returns Whether a backup was created.
  */
-export async function backupDatabaseIfDue(dependencies: BackupDependencies): Promise<void> {
-  const directory = dependencies.config.BACKUP_DIR;
-  if (directory == null) {
-    return;
-  }
-  const [newest] = await listBackups(directory);
-  if (isBackupDue(newest?.createdAt ?? null, new Date())) {
-    await runDatabaseBackup(dependencies);
-  }
+export async function backupDatabaseIfDue(
+  dependencies: BackupDependencies,
+  now: Date = new Date(),
+): Promise<boolean> {
+  return await backupWhen(dependencies, (newest) => isBackupDue(newest, now), now);
 }

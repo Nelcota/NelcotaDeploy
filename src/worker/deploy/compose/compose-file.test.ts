@@ -58,8 +58,12 @@ describe("composeFileFor", () => {
       "io.nelcota.managed": "true",
       "io.nelcota.project-id": "p1",
       "io.nelcota.deployment-id": "d1",
+      "traefik.enable": "false",
     });
-    expect(serviceOf(file, "worker")["labels"]).toEqual(OPTIONS.projectLabels);
+    expect(serviceOf(file, "worker")["labels"]).toEqual({
+      ...OPTIONS.projectLabels,
+      "traefik.enable": "false",
+    });
   });
 
   test("puts every service on the platform network as well as its own", () => {

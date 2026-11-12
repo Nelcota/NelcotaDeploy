@@ -19,4 +19,9 @@ export {
 export { listProjects } from "./project-listing.service";
 export { suggestProjectSlug } from "./project-identity";
 export { updateProjectSettings } from "./project-settings.service";
-export { listProjectIds, recordDetectedPort } from "./project-worker.service";
+export {
+  deleteProjectRecord,
+  findProjectServerId,
+  listProjectIds,
+  recordDetectedPort,
+} from "./project-worker.service";

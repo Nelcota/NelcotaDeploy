@@ -1,4 +1,13 @@
 export {
+  highestRestartCounts,
+  listMoveLeftovers,
+  listProjectContainers,
+  type MoveLeftover,
+  replaceContainerSnapshots,
+} from "./container-snapshot.service";
+export { getDashboardSummary } from "./dashboard.service";
+export { listLiveAppContainers } from "./health-inputs";
+export {
   cpuPercentBetween,
   type CpuTimes,
   parseDiskUsage,
@@ -6,22 +15,14 @@ export {
   parseProcStat,
 } from "./host-metrics";
 export {
+  combineSamplesByProject,
   type ContainerSample,
   getLatestHostSample,
-  getWorkerStatus,
   listHostSamples,
   listLatestHostSamples,
-  listMoveLeftovers,
-  type MoveLeftover,
-  highestRestartCounts,
-  listProjectContainers,
   listProjectSamples,
   pruneMetricSamples,
-  combineSamplesByProject,
   recordContainerSamples,
   recordHostSample,
-  recordWorkerHeartbeat,
-  replaceContainerSnapshots,
 } from "./monitoring.service";
-export { getDashboardSummary } from "./dashboard.service";
-export { listLiveAppContainers } from "./health-inputs";
+export { getWorkerStatus, recordWorkerHeartbeat } from "./worker-heartbeat.service";

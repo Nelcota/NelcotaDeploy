@@ -1,9 +1,10 @@
-import { and, asc, eq, isNull } from "drizzle-orm";
+import { and, asc, count, eq, isNull } from "drizzle-orm";
 
 import { type Actor, recordAuditEvent } from "@/audit";
 import { type Database, tables, type Transaction } from "@/db";
 import { enqueueJob } from "@/jobs";
 import { getProject } from "@/projects";
+import { BUILDER_CAPABILITIES, type ProjectBuilder } from "@/shared/schemas/project.schema";
 import {
   MAX_VOLUMES_PER_PROJECT,
   mountPathsOverlap,
@@ -51,6 +52,22 @@ type VolumeChange = {
   readonly volumeId: string;
   readonly actor: Actor;
 };
+
+/**
+ * Counts a project's volumes, attached or detached.
+ *
+ * @param database - Database or open transaction.
+ * @param projectId - Project id.
+ * @returns Number of volumes belonging to the project.
+ */
+export function countProjectVolumes(database: Database | Transaction, projectId: string): number {
+  const row = database
+    .select({ total: count() })
+    .from(tables.projectVolumes)
+    .where(eq(tables.projectVolumes.projectId, projectId))
+    .get();
+  return row?.total ?? 0;
+}
 
 /**
  * Lists a project's volumes, by path.
@@ -170,12 +187,12 @@ export function addProjectVolume(
 function assertSingleReplica(project: {
   readonly id: string;
   readonly replicas: number;
-  readonly builder: string;
+  readonly builder: ProjectBuilder;
 }): void {
   if (project.replicas > 1) {
     throw new ReplicatedProjectVolumeError(project.id);
   }
-  if (project.builder === "compose") {
+  if (BUILDER_CAPABILITIES[project.builder].mountsPanelVolumes === false) {
     throw new ComposeProjectVolumeError(project.id);
   }
 }
@@ -310,6 +327,38 @@ export function failVolumeDeletion(database: Database, volumeId: string, reason:
 }
 
 /**
+ * Checks whether a volume still has a pending deletion request.
+ *
+ * @param database - Database or open transaction.
+ * @param volumeId - Volume id.
+ * @returns True when `deletionRequestedAt` is set on the volume.
+ */
+export function isVolumeDeletionPending(
+  database: Database | Transaction,
+  volumeId: string,
+): boolean {
+  const volume = database
+    .select({ deletionRequestedAt: tables.projectVolumes.deletionRequestedAt })
+    .from(tables.projectVolumes)
+    .where(eq(tables.projectVolumes.id, volumeId))
+    .get();
+  return volume?.deletionRequestedAt != null;
+}
+
+/**
+ * Finishes a volume deletion job whose worker stopped before completing it.
+ *
+ * @param database - Database.
+ * @param volumeId - Volume id.
+ * @param reason - Interruption or failure reason.
+ */
+export function recoverVolumeDeletion(database: Database, volumeId: string, reason: string): void {
+  if (isVolumeDeletionPending(database, volumeId)) {
+    failVolumeDeletion(database, volumeId, reason);
+  }
+}
+
+/**
  * Refuses to move a project that has volumes: their data lives on the current server.
  *
  * @param database - Database or open transaction.
@@ -320,7 +369,7 @@ export function assertProjectHasNoVolumes(
   database: Database | Transaction,
   projectId: string,
 ): void {
-  if (listProjectVolumes(database, projectId).length > 0) {
+  if (countProjectVolumes(database, projectId) > 0) {
     throw new ProjectHasVolumesError(projectId);
   }
 }

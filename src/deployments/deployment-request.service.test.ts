@@ -7,10 +7,11 @@ import { claimNextJob } from "@/jobs";
 import { createProject, updateProject } from "@/projects";
 import { createTestProject, TEST_ACTOR } from "@/testing";
 
-import { requestDeployment, retryDeployment } from "./deployment-request.service";
+import { redeployProject, requestDeployment, retryDeployment } from "./deployment-request.service";
 import {
-  RetryUnavailableError,
   ProjectNotApprovedError,
+  RedeployUnavailableError,
+  RetryUnavailableError,
   RollbackUnavailableError,
 } from "./deployment.errors";
 import { completeDeployment, getDeployment, transitionDeployment } from "./deployment.service";
@@ -270,5 +271,34 @@ describe("requestDeployment servers", () => {
     expect(second.created).toBe(true);
     expect(second.deploymentId).not.toBe(first.deploymentId);
     expect(getDeployment(database, second.deploymentId).serverId).toBe("apps");
+  });
+});
+
+describe("redeployProject", () => {
+  test("queues a redeploy from the project's current deployment", () => {
+    const database = openMemoryDatabase();
+    const project = createTestProject(database);
+    const { deploymentId } = requestDeployment(database, { projectId: project.id, ...manual });
+    finishSuccessfully(database, deploymentId);
+
+    const redeploy = redeployProject(database, project.id, {
+      actor: TEST_ACTOR,
+      triggeredByUserId: null,
+    });
+
+    expect(redeploy.created).toBe(true);
+    expect(getDeployment(database, redeploy.deploymentId)).toMatchObject({
+      trigger: "redeploy",
+      sourceDeploymentId: deploymentId,
+    });
+  });
+
+  test("throws RedeployUnavailableError when the project has no current deployment", () => {
+    const database = openMemoryDatabase();
+    const project = createTestProject(database);
+
+    expect(() =>
+      redeployProject(database, project.id, { actor: TEST_ACTOR, triggeredByUserId: null }),
+    ).toThrow(RedeployUnavailableError);
   });
 });

@@ -9,12 +9,17 @@ const IDLE_FIELD_INDEX = 3;
 const IOWAIT_FIELD_INDEX = 4;
 const DF_TOTAL_FIELD_INDEX = 1;
 const DF_AVAILABLE_FIELD_INDEX = 3;
+const PERCENT = 100;
+
+function isNonNegativeSafeInteger(value: number): boolean {
+  return Number.isSafeInteger(value) && value >= 0;
+}
 
 /**
  * Parses the aggregate "cpu" line of /proc/stat.
  *
  * @param text - Contents of /proc/stat.
- * @returns Idle and total jiffies, or null when the line is missing.
+ * @returns Idle and total jiffies, or null when the counters are missing or invalid.
  */
 export function parseProcStat(text: string): CpuTimes | null {
   const line = text.split("\n").find((candidate) => candidate.startsWith("cpu "));
@@ -24,12 +29,16 @@ export function parseProcStat(text: string): CpuTimes | null {
   const values = line.trim().split(/\s+/).slice(1).map(Number);
   if (
     values.length <= IOWAIT_FIELD_INDEX ||
-    values.some((value) => Number.isFinite(value) === false)
+    values.some((value) => isNonNegativeSafeInteger(value) === false)
   ) {
     return null;
   }
   const idle = (values[IDLE_FIELD_INDEX] ?? 0) + (values[IOWAIT_FIELD_INDEX] ?? 0);
   const total = values.reduce((sum, value) => sum + value, 0);
+  if (Number.isSafeInteger(total) === false) {
+    return null;
+  }
+
   return { idle, total };
 }
 
@@ -38,35 +47,43 @@ export function parseProcStat(text: string): CpuTimes | null {
  *
  * @param previous - Earlier reading.
  * @param current - Later reading.
- * @returns Usage between 0 and 100, or null when no time elapsed.
+ * @returns Usage between 0 and 100, or null when the counters are invalid or no time elapsed.
  */
 export function cpuPercentBetween(previous: CpuTimes, current: CpuTimes): number | null {
   const totalDelta = current.total - previous.total;
   const idleDelta = current.idle - previous.idle;
-  if (totalDelta <= 0 || idleDelta < 0) {
+  if (
+    isNonNegativeSafeInteger(totalDelta) === false ||
+    isNonNegativeSafeInteger(idleDelta) === false ||
+    totalDelta === 0
+  ) {
     return null;
   }
-  const percent = ((totalDelta - idleDelta) / totalDelta) * 100;
-  return Math.min(Math.max(percent, 0), 100);
+  const percent = ((totalDelta - idleDelta) / totalDelta) * PERCENT;
+  return Math.min(Math.max(percent, 0), PERCENT);
+}
+
+function bytesFromBlocks(value: string | undefined): number | null {
+  if (value == null || /^\d+$/.test(value) === false) {
+    return null;
+  }
+
+  const bytes = Number(value) * KIBIBYTE;
+  return Number.isSafeInteger(bytes) ? bytes : null;
 }
 
 /**
  * Parses /proc/meminfo. Used memory is total minus available, as `free` reports it.
  *
  * @param text - Contents of /proc/meminfo.
- * @returns Memory usage in bytes, or null when fields are missing.
+ * @returns Memory usage in bytes, or null when fields are missing or invalid.
  */
 export function parseMeminfo(text: string): MemoryUsage | null {
-  const fields = new Map<string, number>();
-  for (const line of text.split("\n")) {
-    const match = /^(\w+):\s+(\d+)\s*kB$/.exec(line.trim());
-    if (match?.[1] != null && match[2] != null) {
-      fields.set(match[1], Number(match[2]) * KIBIBYTE);
-    }
-  }
-  const total = fields.get("MemTotal");
-  const available = fields.get("MemAvailable");
-  if (total == null || available == null || total <= 0) {
+  const total = bytesFromBlocks(/^[ \t]*MemTotal:[ \t]+(\d+)[ \t]+kB[ \t]*$/m.exec(text)?.[1]);
+  const available = bytesFromBlocks(
+    /^[ \t]*MemAvailable:[ \t]+(\d+)[ \t]+kB[ \t]*$/m.exec(text)?.[1],
+  );
+  if (total == null || available == null || total === 0) {
     return null;
   }
   return { totalBytes: total, usedBytes: Math.max(total - available, 0) };
@@ -82,16 +99,10 @@ export function parseMeminfo(text: string): MemoryUsage | null {
 export function parseDiskUsage(text: string): DiskUsage | null {
   const line = text.trim().split("\n").at(-1) ?? "";
   const fields = line.trim().split(/\s+/);
-  const totalBlocks = Number(fields[DF_TOTAL_FIELD_INDEX]);
-  const availableBlocks = Number(fields[DF_AVAILABLE_FIELD_INDEX]);
-  if (
-    Number.isFinite(totalBlocks) === false ||
-    Number.isFinite(availableBlocks) === false ||
-    totalBlocks <= 0 ||
-    availableBlocks < 0
-  ) {
+  const totalBytes = bytesFromBlocks(fields[DF_TOTAL_FIELD_INDEX]);
+  const availableBytes = bytesFromBlocks(fields[DF_AVAILABLE_FIELD_INDEX]);
+  if (totalBytes == null || availableBytes == null || totalBytes === 0) {
     return null;
   }
-  const totalBytes = totalBlocks * KIBIBYTE;
-  return { totalBytes, usedBytes: Math.max(totalBytes - availableBlocks * KIBIBYTE, 0) };
+  return { totalBytes, usedBytes: Math.max(totalBytes - availableBytes, 0) };
 }

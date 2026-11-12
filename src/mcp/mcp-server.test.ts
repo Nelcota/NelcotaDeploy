@@ -3,7 +3,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { createApiToken } from "@/auth";
+import { createApiToken, revokeApiToken } from "@/auth";
 import { type Database, migrateDatabase, openDatabase } from "@/db";
 import { createTestProject, TEST_ACTOR } from "@/testing";
 
@@ -76,7 +76,7 @@ async function setup(scopes: ("read" | "deploy")[]) {
   const database: Database = openDatabase(databasePath);
   migrateDatabase(database);
   createTestProject(database);
-  const { token } = createApiToken(
+  const { id, token } = createApiToken(
     database,
     { name: "claude", scopes, expiresAt: null, createdByUserId: null },
     TEST_ACTOR,
@@ -94,6 +94,8 @@ async function setup(scopes: ("read" | "deploy")[]) {
   client.notify("notifications/initialized");
   return {
     client,
+    database,
+    tokenId: id,
     cleanup: async () => {
       {
         using _connection = database.$client;
@@ -168,3 +170,32 @@ describe("MCP server token permissions", () => {
     await cleanup();
   }, 20_000);
 });
+
+test("an already connected MCP client loses access when its token is revoked", async () => {
+  const { client, cleanup, database, tokenId } = await setup(["read", "deploy"]);
+  await using _fixture = { [Symbol.asyncDispose]: cleanup };
+  const beforeRevocation = await client.callTool("list_projects", {});
+
+  revokeApiToken(database, tokenId, TEST_ACTOR);
+  const read = await client.callTool("list_projects", {});
+  const deploy = await client.callTool("deploy_project", { project: "api" });
+
+  expect(beforeRevocation.isError).toBe(false);
+  expect(read).toEqual({ isError: true, text: "The MCP token is invalid, revoked or expired" });
+  expect(deploy).toEqual(read);
+}, 20_000);
+
+test("reports an unexpected database failure without exposing query details", async () => {
+  const { client, cleanup, database } = await setup(["read"]);
+  await using _fixture = { [Symbol.asyncDispose]: cleanup };
+  database.$client.exec(`
+    CREATE TRIGGER reject_token_use BEFORE UPDATE OF last_used_at ON api_tokens
+    BEGIN
+      SELECT RAISE(ABORT, 'internal test detail');
+    END;
+  `);
+
+  const result = await client.callTool("list_projects", {});
+
+  expect(result).toEqual({ isError: true, text: "The tool could not complete the operation" });
+}, 20_000);

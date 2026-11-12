@@ -25,9 +25,22 @@ describe("resolveInsideWorkspace", () => {
     expect(path.endsWith("apps/Dockerfile")).toBe(true);
   });
 
+  test("resolves files whose names start with two dots", async () => {
+    const root = await repository();
+    await writeFile(fromShellPath(posix.join(root, "..notes")), "example");
+
+    const path = await resolveInsideWorkspace(runProcess, root, "..notes");
+
+    expect(posix.basename(path)).toBe("..notes");
+  });
+
   test("throws PathOutsideWorkspaceError for a symlink pointing outside", async () => {
     const root = await repository();
-    await symlink("/etc/passwd", fromShellPath(posix.join(root, "Dockerfile")));
+    const outside = await repository();
+    await symlink(
+      fromShellPath(posix.join(outside, "apps/Dockerfile")),
+      fromShellPath(posix.join(root, "Dockerfile")),
+    );
 
     const error = await resolveInsideWorkspace(runProcess, root, "Dockerfile").catch(
       (caught: unknown) => caught,
@@ -44,6 +57,53 @@ describe("resolveInsideWorkspace", () => {
     );
 
     expect(error).toBeInstanceOf(PathOutsideWorkspaceError);
+  });
+
+  test.each(["", " ", "../Dockerfile", "/Dockerfile", "notes\n.txt", "notes\r.txt", "notes\0.txt"])(
+    "rejects an invalid repository path before running a command",
+    async (path) => {
+      const run: CommandRunner = () => Promise.reject(new Error("unexpected command"));
+
+      const error = await resolveInsideWorkspace(run, "/repository", path).catch(
+        (caught: unknown) => caught,
+      );
+
+      expect(error).toBeInstanceOf(PathOutsideWorkspaceError);
+    },
+  );
+
+  test.each([
+    "/repository.\n/repository/Dockerfile.\nextra.\n",
+    "/repository\n/repository/Dockerfile\n",
+    "/repository.\nrelative.\n",
+    "",
+  ])("rejects incomplete or ambiguous realpath output", async (stdout) => {
+    const run: CommandRunner = () =>
+      Promise.resolve({ exitCode: 0, stdout, stderr: "", timedOut: false, aborted: false });
+
+    const error = await resolveInsideWorkspace(run, "/repository", "Dockerfile").catch(
+      (caught: unknown) => caught,
+    );
+
+    expect(error).toBeInstanceOf(WorkspaceCommandError);
+  });
+
+  test("reports a path command timeout without copying its diagnostic", async () => {
+    const run: CommandRunner = () =>
+      Promise.resolve({
+        exitCode: 44,
+        stdout: "",
+        stderr: "private command diagnostic",
+        timedOut: true,
+        aborted: false,
+      });
+
+    const error = await resolveInsideWorkspace(run, "/repository", "Dockerfile").catch(
+      (caught: unknown) => caught,
+    );
+
+    expect(error).toBeInstanceOf(WorkspaceCommandError);
+    expect(error).toHaveProperty("message", "Workspace command failed: realpath timed out");
   });
 });
 
@@ -75,6 +135,32 @@ describe("DeploymentWorkspace", () => {
 
     expect(error).toBeInstanceOf(WorkspaceCommandError);
   });
+
+  test.each(["", "/other/api-test\n", "/checkout/api-test/child\n", "/checkout/other-test\n"])(
+    "rejects unexpected mktemp output before creating a disposable workspace",
+    async (stdout) => {
+      const run: CommandRunner = ([command]) =>
+        Promise.resolve({
+          exitCode: 0,
+          stdout: command === "mktemp" ? stdout : "",
+          stderr: "",
+          timedOut: false,
+          aborted: false,
+        });
+
+      const error = await DeploymentWorkspace.create(run, {
+        root: "/checkout",
+        prefix: "api",
+        onCleanupError: () => undefined,
+      }).catch((caught: unknown) => caught);
+
+      expect(error).toBeInstanceOf(WorkspaceCommandError);
+      expect(error).toHaveProperty(
+        "message",
+        "Workspace command failed: mktemp returned an invalid workspace directory",
+      );
+    },
+  );
 });
 
 describe("DeploymentWorkspace cleanup", () => {

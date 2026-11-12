@@ -13,6 +13,7 @@ import {
   type Server,
   setServerAcceptsApplications,
 } from "@/servers";
+import { hasPermission } from "@/shared/roles";
 import { serverInputSchema } from "@/shared/schemas/server.schema";
 import { authorize } from "@/web/server/authorization";
 
@@ -27,7 +28,8 @@ function installCommandFor(server: Server, publicKey: string | null): string | n
 }
 
 export const listServersFn = createServerFn({ method: "GET" }).handler(async () => {
-  await authorize("project:read");
+  const user = await authorize("project:read");
+  const canEdit = hasPermission(user.role, "settings:write");
   const database = getDatabase();
   const publicKey = getPanelPublicKey(database);
   const samples = listLatestHostSamples(database);
@@ -35,8 +37,11 @@ export const listServersFn = createServerFn({ method: "GET" }).handler(async () 
   for (const server of listServers(database)) {
     servers.push({
       ...server,
+      username: canEdit ? server.username : null,
+      port: canEdit ? server.port : null,
+      hostKeyFingerprint: canEdit ? server.hostKeyFingerprint : null,
       hostSample: samples.get(server.id) ?? null,
-      installCommand: installCommandFor(server, publicKey),
+      installCommand: canEdit ? installCommandFor(server, publicKey) : null,
     });
   }
   // The key pair exists once the worker started for the first time.

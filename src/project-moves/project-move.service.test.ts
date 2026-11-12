@@ -16,6 +16,7 @@ import { openPreview } from "@/previews";
 import { getProject, ProjectNotFoundError } from "@/projects";
 import {
   addServer,
+  ComposeProjectMoveError,
   ProjectMoveInProgressError,
   ProjectMoveReviewChangedError,
   recordServerCheck,
@@ -127,6 +128,17 @@ describe("moveProject source review", () => {
       ProjectNotFoundError,
     );
     expect(writeCounts(database)).toEqual(before);
+  });
+
+  test("rejects moving a Docker Compose project", () => {
+    const { database, project, review } = setup();
+    database
+      .update(tables.projects)
+      .set({ builder: "compose", composeService: "web" })
+      .where(eq(tables.projects.id, project.id))
+      .run();
+
+    expect(() => moveProject(database, review(), context)).toThrow(ComposeProjectMoveError);
   });
 
   test("moves an undeployed project without queuing work", () => {

@@ -1,12 +1,17 @@
+import { once } from "node:events";
+
 import type { ClientChannel } from "ssh2";
 
 import { quoteForShell } from "./remote-script";
 import { RemoteFileError } from "./remote.errors";
+import { waitForSshChannel } from "./ssh-channel";
 import type { SshConnection } from "./ssh-connection";
 
 // Absolute, with no ".." segment and only plain characters, like the directories the platform
 // creates on servers.
 const FILE_PATH_PATTERN = /^(?:\/(?!\.\.(?:\/|$))[A-Za-z0-9._-]+)+$/;
+const MAX_ERROR_BYTES = 4096;
+const MAX_TIMER_DELAY_IN_MS = 2_147_483_647;
 
 /**
  * Validates a file path on a server before it reaches a remote shell.
@@ -23,29 +28,54 @@ export function assertServerFilePath(path: string): string {
   return path;
 }
 
-/** Waits for a channel to finish and returns its exit code; null when the connection dropped. */
-async function exitCodeOf(channel: ClientChannel, timeoutInMs: number): Promise<number | null> {
-  const exit = Promise.withResolvers<number | null>();
-  const timer = setTimeout(() => {
-    channel.close();
-    exit.reject(new RemoteFileError(`File transfer timed out after ${timeoutInMs} ms`));
-  }, timeoutInMs);
-  channel.on("exit", (code: number | null) => exit.resolve(code));
-  channel.on("close", () => exit.resolve(null));
+function transferDeadline(timeoutInMs: number) {
+  if (
+    Number.isSafeInteger(timeoutInMs) === false ||
+    timeoutInMs < 1 ||
+    timeoutInMs > MAX_TIMER_DELAY_IN_MS
+  ) {
+    throw new RemoteFileError(`Invalid remote file transfer timeout: ${timeoutInMs}`);
+  }
+
+  const controller = new AbortController();
+  const timer = setTimeout(
+    () => controller.abort(new RemoteFileError(`File transfer timed out after ${timeoutInMs} ms`)),
+    timeoutInMs,
+  );
+  return { signal: controller.signal, [Symbol.dispose]: () => clearTimeout(timer) };
+}
+
+/** Waits for both streams to finish; ssh2 supplies the process status with close. */
+async function exitCodeOf(channel: ClientChannel, signal: AbortSignal): Promise<number | null> {
   try {
-    return await exit.promise;
-  } finally {
-    clearTimeout(timer);
+    const arguments_: readonly unknown[] = await once(channel, "close", { signal });
+    const code = arguments_[0];
+    return typeof code === "number" ? code : null;
+  } catch (error) {
+    signal.throwIfAborted();
+    throw error;
   }
 }
 
-/** Collects a stream and returns a function giving its last line, or a fallback when empty. */
-function collectReason(stream: NodeJS.ReadableStream): () => string {
-  const chunks: Buffer[] = [];
-  stream.on("data", (chunk: Buffer) => chunks.push(chunk));
-  return () => {
-    const lastLine = Buffer.concat(chunks).toString("utf8").trim().split("\n").at(-1) ?? "";
-    return lastLine === "" ? "connection lost" : lastLine;
+/** Retains only the tail of stderr so diagnostics cannot consume the transfer budget. */
+function collectReason(stream: NodeJS.ReadableStream) {
+  let tail: Buffer | undefined;
+  let size = 0;
+  const onData = (chunk: Buffer) => {
+    tail ??= Buffer.alloc(MAX_ERROR_BYTES);
+    const bytes = Math.min(chunk.byteLength, MAX_ERROR_BYTES);
+    const retained = Math.min(size, MAX_ERROR_BYTES - bytes);
+    tail.copyWithin(0, size - retained, size);
+    tail.set(chunk.subarray(chunk.byteLength - bytes), retained);
+    size = retained + bytes;
+  };
+  stream.on("data", onData);
+  return {
+    reason() {
+      const lastLine = tail?.toString("utf8", 0, size).trim().split("\n").at(-1) ?? "";
+      return lastLine === "" ? "connection lost" : lastLine;
+    },
+    [Symbol.dispose]: () => stream.off("data", onData),
   };
 }
 
@@ -78,29 +108,44 @@ export class RemoteFiles {
     path: string,
     limits: { readonly maxBytes: number; readonly timeoutInMs: number },
   ): Promise<Uint8Array<ArrayBuffer>> {
-    const channel = await this.#connection.exec(
-      `cat -- ${quoteForShell(assertServerFilePath(path))}`,
-    );
-    // Mutated by the data handler, so it is read through an object.
-    const received = { chunks: [] as Buffer[], size: 0, tooLarge: false };
-    channel.on("data", (chunk: Buffer) => {
-      received.size += chunk.length;
-      if (received.size > limits.maxBytes) {
-        received.tooLarge = true;
-        channel.close();
+    if (Number.isSafeInteger(limits.maxBytes) === false || limits.maxBytes < 1) {
+      throw new RemoteFileError(`Invalid remote file read limit: ${limits.maxBytes}`);
+    }
+
+    const command = `cat -- ${quoteForShell(assertServerFilePath(path))}`;
+    using deadline = transferDeadline(limits.timeoutInMs);
+    const channel = await waitForSshChannel(this.#connection.exec(command), deadline.signal);
+    using _channel = { [Symbol.dispose]: () => channel.destroy() };
+    const byteLimit = new AbortController();
+    const signal = AbortSignal.any([deadline.signal, byteLimit.signal]);
+    const exit = exitCodeOf(channel, signal);
+    using stderr = collectReason(channel.stderr);
+    const chunks: Buffer[] = [];
+    let size = 0;
+    const onData = (chunk: Buffer) => {
+      if (signal.aborted) {
         return;
       }
-      received.chunks.push(chunk);
-    });
-    const reason = collectReason(channel.stderr);
-    const code = await exitCodeOf(channel, limits.timeoutInMs);
-    if (received.tooLarge) {
-      throw new RemoteFileError(`File ${path} is larger than ${limits.maxBytes} bytes`);
-    }
+
+      if (chunk.byteLength > limits.maxBytes - size) {
+        byteLimit.abort(
+          new RemoteFileError(`File ${path} is larger than ${limits.maxBytes} bytes`),
+        );
+        return;
+      }
+
+      size += chunk.byteLength;
+      chunks.push(chunk);
+    };
+    channel.on("data", onData);
+    using _stdout = { [Symbol.dispose]: () => channel.off("data", onData) };
+
+    const code = await exit;
     if (code !== 0) {
-      throw new RemoteFileError(`Cannot read ${path}: ${reason()}`);
+      throw new RemoteFileError(`Cannot read ${path}: ${stderr.reason()}`);
     }
-    return Buffer.concat(received.chunks, received.size);
+
+    return Buffer.concat(chunks, size);
   }
 
   /**
@@ -113,15 +158,17 @@ export class RemoteFiles {
    *   transfer times out.
    */
   async write(path: string, data: Uint8Array, timeoutInMs: number): Promise<void> {
-    const channel = await this.#connection.exec(
-      `cat > ${quoteForShell(assertServerFilePath(path))}`,
-    );
-    const reason = collectReason(channel.stderr);
-    const exit = exitCodeOf(channel, timeoutInMs);
-    channel.end(Buffer.from(data));
+    const command = `cat > ${quoteForShell(assertServerFilePath(path))}`;
+    using deadline = transferDeadline(timeoutInMs);
+    const channel = await waitForSshChannel(this.#connection.exec(command), deadline.signal);
+    using _channel = { [Symbol.dispose]: () => channel.destroy() };
+    const exit = exitCodeOf(channel, deadline.signal);
+    using stderr = collectReason(channel.stderr);
+    channel.resume();
+    channel.end(data);
     const code = await exit;
     if (code !== 0) {
-      throw new RemoteFileError(`Cannot write ${path}: ${reason()}`);
+      throw new RemoteFileError(`Cannot write ${path}: ${stderr.reason()}`);
     }
   }
 }

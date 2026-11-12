@@ -1,5 +1,5 @@
 export { databaseEngine } from "./database-engines";
-export { recoverDatabaseJob } from "./database-job-recovery";
+export { isDatabaseJobStranded, recoverDatabaseJob } from "./database-job-recovery";
 export {
   DatabaseServerChangedError,
   DatabaseBackupInProgressError,
@@ -24,6 +24,7 @@ export {
 } from "./database-provisioning.service";
 export {
   assertProjectHasNoDatabases,
+  countProjectDatabases,
   createProjectDatabase,
   listProjectDatabases,
   requestDatabaseDeletion,

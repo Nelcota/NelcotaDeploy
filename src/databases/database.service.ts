@@ -1,4 +1,4 @@
-import { asc, eq } from "drizzle-orm";
+import { asc, count, eq } from "drizzle-orm";
 
 import { type Actor, recordAuditEvent } from "@/audit";
 import { type Database, tables, type Transaction } from "@/db";
@@ -93,6 +93,22 @@ function toView(row: {
     databaseName: engine.databaseName,
     backupsAvailable: engine.backup != null,
   };
+}
+
+/**
+ * Counts a project's databases.
+ *
+ * @param database - Database or open transaction.
+ * @param projectId - Project id.
+ * @returns Number of databases belonging to the project.
+ */
+export function countProjectDatabases(database: Database | Transaction, projectId: string): number {
+  const row = database
+    .select({ total: count() })
+    .from(tables.projectDatabases)
+    .where(eq(tables.projectDatabases.projectId, projectId))
+    .get();
+  return row?.total ?? 0;
 }
 
 /**
@@ -377,7 +393,7 @@ export function assertProjectHasNoDatabases(
   database: Database | Transaction,
   projectId: string,
 ): void {
-  if (listProjectDatabases(database, projectId).length > 0) {
+  if (countProjectDatabases(database, projectId) > 0) {
     throw new ProjectHasDatabasesError(projectId);
   }
 }

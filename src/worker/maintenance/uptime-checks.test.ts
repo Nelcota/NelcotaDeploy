@@ -105,6 +105,32 @@ describe("checkUptime", () => {
 
     expect(listUptimeSummaries(database, project.id, new Date())[0]?.status).toBe("down");
   });
+
+  test("waits for the active batch before propagating a failure", async () => {
+    const { database, dependencies } = setup();
+    using _connection = database.$client;
+    liveProject(database, "failing", "failing.example.com");
+    const healthy = liveProject(database, "healthy", "healthy.example.com");
+    const healthyLookup = Promise.withResolvers<string[]>();
+    const failure = new Error("DNS lookup failed");
+    const outcome = checkUptime(dependencies, {
+      ...answering(200),
+      lookup: (hostname) =>
+        hostname === "failing.example.com" ? Promise.reject(failure) : healthyLookup.promise,
+    }).then(
+      () => null,
+      (error: unknown) => error,
+    );
+    const pending = Symbol("pending");
+
+    const beforeRelease = await Promise.race([outcome, Bun.sleep(0).then(() => pending)]);
+    healthyLookup.resolve([PUBLIC_ADDRESS]);
+    const afterRelease = await outcome;
+
+    expect(beforeRelease).toBe(pending);
+    expect(afterRelease).toMatchObject({ cause: failure });
+    expect(listUptimeSummaries(database, healthy.id, new Date())[0]?.status).toBe("up");
+  });
 });
 
 describe("checkCertificates", () => {
