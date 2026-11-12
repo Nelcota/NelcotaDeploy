@@ -23,6 +23,7 @@ export class ForbiddenError extends Error {
 export type UserOperationReason =
   | "weak-password"
   | "email-taken"
+  | "public-setup-disabled"
   | "last-admin"
   | "self-role-change"
   | "self-disable";
@@ -30,6 +31,7 @@ export type UserOperationReason =
 const USER_OPERATION_MESSAGES: Readonly<Record<UserOperationReason, string>> = {
   "weak-password": "Password does not meet the minimum length requirement",
   "email-taken": "Email already in use",
+  "public-setup-disabled": "Public first-admin setup is disabled",
   "last-admin": "At least one active admin must remain",
   "self-role-change": "Users cannot change their own role",
   "self-disable": "Users cannot disable their own account",

@@ -11,6 +11,7 @@ import {
   removeUserAvatar,
   saveUserAvatar,
 } from "@/auth";
+import { getConfig } from "@/config";
 import { getDatabase } from "@/db";
 import { getSystemSettings } from "@/settings";
 import { firstAdminSchema } from "@/shared/schemas/user.schema";
@@ -69,7 +70,7 @@ export const removeAvatarFn = createServerFn({ method: "POST" }).handler(async (
  * GitHub when the GitHub App allows it.
  */
 export const getLoginOptionsFn = createServerFn({ method: "GET" }).handler(() => ({
-  needsFirstAdmin: needsFirstAdmin(getDatabase()),
+  needsFirstAdmin: needsFirstAdmin(getDatabase(), getConfig().DISABLE_PUBLIC_SETUP),
   githubLogin: isGitHubLoginEnabled(),
 }));
 
@@ -77,5 +78,8 @@ export const getLoginOptionsFn = createServerFn({ method: "GET" }).handler(() =>
 export const createFirstAdminFn = createServerFn({ method: "POST" })
   .validator(firstAdminSchema)
   .handler(async ({ data }) => {
-    await createFirstAdmin(getAuth(), getDatabase(), data);
+    await createFirstAdmin(getAuth(), getDatabase(), {
+      ...data,
+      publicSetupDisabled: getConfig().DISABLE_PUBLIC_SETUP,
+    });
   });

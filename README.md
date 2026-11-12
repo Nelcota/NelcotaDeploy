@@ -83,14 +83,34 @@ bun run worker   # in another terminal: builds, tasks, metrics, uptime checks, b
 
 ## Production
 
-Docker Compose starts Traefik, the panel and the worker. The panel never touches the Docker
-socket: the worker uses it, and Traefik only reads it.
+Point a DNS record such as `deploy.example.com` at a Linux VPS and allow inbound TCP ports 80 and 443. The installer supports `amd64` and `arm64`. It installs Docker Engine and Compose on Ubuntu
+and Debian when Docker is absent. On other distributions, install Docker and Compose first.
+
+From an empty directory on the VPS, download the installer and checksum from the latest release:
 
 ```bash
-bun run setup        # then set PANEL_DOMAIN and ACME_EMAIL in .env
-sed -i "s/^DOCKER_GID=.*/DOCKER_GID=$(stat -c %g /var/run/docker.sock)/" .env
-docker compose up -d --build   # then open https://PANEL_DOMAIN and create the admin
+curl -fSLO --retry 3 https://github.com/Nelcota/NelcotaDeploy/releases/latest/download/nelcota-deploy.tar.gz &&
+curl -fSLO --retry 3 https://github.com/Nelcota/NelcotaDeploy/releases/latest/download/nelcota-deploy.tar.gz.sha256 &&
+sha256sum -c nelcota-deploy.tar.gz.sha256 &&
+tar -xzf nelcota-deploy.tar.gz &&
+sudo bash nelcota-deploy/install.sh
 ```
+
+The installer asks for the panel domain and administrator email. Pass `--domain deploy.example.com`
+and `--email admin@example.com` for unattended installation. It pulls the release image by digest,
+creates the first administrator before starting Traefik, and checks `/api/health` over HTTPS.
+The initial password is in `/opt/nelcota-deploy/initial-admin-password`, readable by root. Remove
+that file after signing in. Back up `/opt/nelcota-deploy/.env` securely with the panel database.
+
+If a step fails, fix the reported issue and run the installer again. It resumes using the same
+configuration, image and Docker volumes. The same command also works from a complete source
+checkout before a release is available (`sudo bash install.sh`). That path builds the image on
+the VPS. Manage existing manual Compose installations from their original checkout.
+
+Use `sudo docker compose --project-directory /opt/nelcota-deploy logs` for installer deployments.
+Publishing a `vX.Y.Z` tag triggers the release workflow. For the first release, set the
+`nelcotadeploy` GHCR package visibility to **Public** after the image has been pushed, then rerun
+the publish job if it reported that the image was unavailable anonymously.
 
 ## Development
 

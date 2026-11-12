@@ -5,7 +5,7 @@ import { eq } from "drizzle-orm";
 import { openMemoryDatabase, tables } from "@/db";
 
 import { createAuth } from "./auth";
-import { SetupAlreadyDoneError } from "./auth.errors";
+import { SetupAlreadyDoneError, UserOperationError } from "./auth.errors";
 import { createFirstAdmin, needsFirstAdmin } from "./first-admin.service";
 
 const ADMIN = { name: "Ana", email: "Ana@Example.com", password: "a-long-password-1" };
@@ -18,6 +18,21 @@ function setup() {
   });
   return { auth, database };
 }
+
+test("refuses public provisioning on a fresh database when disabled", async () => {
+  const { auth, database } = setup();
+  using _connection = database.$client;
+
+  const provisioning = createFirstAdmin(auth, database, {
+    ...ADMIN,
+    publicSetupDisabled: true,
+  });
+
+  const error = await provisioning.catch((reason: unknown) => reason);
+  expect(error).toBeInstanceOf(UserOperationError);
+  expect(error).toMatchObject({ reason: "public-setup-disabled" });
+  expect(database.select({ id: tables.users.id }).from(tables.users).all()).toHaveLength(0);
+});
 
 describe("createFirstAdmin", () => {
   test("admits exactly one admin when first-run requests race", async () => {
@@ -77,6 +92,15 @@ describe("createFirstAdmin", () => {
 });
 
 describe("needsFirstAdmin", () => {
+  test("hides public setup on a fresh database when disabled", () => {
+    const database = openMemoryDatabase();
+
+    const shouldShowSetup = needsFirstAdmin(database, true);
+
+    expect(shouldShowSetup).toBe(false);
+    database.$client.close();
+  });
+
   test("is true on a fresh database", () => {
     expect(needsFirstAdmin(openMemoryDatabase())).toBe(true);
   });
