@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 
 import { openMemoryDatabase, tables } from "@/db";
-import type { GitHubPullRequest } from "@/github";
+import { GitHubApiError, type GitHubPullRequest } from "@/github";
 import { listActivePreviews } from "@/previews";
 import { saveSystemSettings } from "@/settings";
 import { DEFAULT_SYSTEM_SETTINGS } from "@/shared/schemas/settings.schema";
@@ -124,7 +124,7 @@ test("persists a retry when GitHub is unavailable and applies its later snapshot
   const now = new Date();
   await reconcilePullRequests(database, secretBox, {
     now,
-    readSnapshot: async () => await Promise.reject(new Error("GitHub unavailable")),
+    readSnapshot: async () => await Promise.reject(new GitHubApiError("GitHub rate limit", 429)),
   });
   const pending = database.select().from(tables.pullRequestReconciliations).get();
 
@@ -137,5 +137,40 @@ test("persists a retry when GitHub is unavailable and applies its later snapshot
   });
 
   expect(active()).toHaveLength(1);
+  const completed = database.select().from(tables.pullRequestReconciliations).get();
+  expect(completed?.attempts).toBe(0);
+  expect(completed?.observedState).toBe("open");
+});
+
+test("rechecks an active preview when GitHub never delivered the closure", async () => {
+  const { database, secretBox, accept, active, reconcile } = await fixture();
+  using _connection = database.$client;
+  await accept("opened", "opened");
+  await reconcile(snapshot("open"));
+  const nextCheck = database.select().from(tables.pullRequestReconciliations).get()?.nextAttemptAt;
+  if (nextCheck == null) {
+    throw new Error("Expected the preview to have a scheduled recheck");
+  }
+
+  await reconcilePullRequests(database, secretBox, {
+    now: new Date(nextCheck),
+    readSnapshot: async () => await Promise.resolve(snapshot("closed")),
+  });
+
+  expect(active()).toEqual([]);
   expect(database.select().from(tables.pullRequestReconciliations).get()?.nextAttemptAt).toBeNull();
+  const receipt = database.select().from(tables.webhookDeliveries).get();
+  expect(receipt?.status).toBe("accepted");
+  expect(receipt?.deploymentIds).toHaveLength(1);
+});
+
+test("claims one reconciliation for a duplicate delivery", async () => {
+  const { database, accept, reconcile } = await fixture();
+  using _connection = database.$client;
+  await accept("duplicate", "opened");
+
+  expect(await accept("duplicate", "opened")).toEqual({ status: "duplicate" });
+  await reconcile(snapshot("open"));
+
+  expect(database.select().from(tables.deployments).all()).toHaveLength(1);
 });

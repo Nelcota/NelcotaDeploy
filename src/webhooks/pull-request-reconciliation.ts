@@ -1,4 +1,4 @@
-import { and, asc, eq, isNotNull, isNull, lte } from "drizzle-orm";
+import { and, asc, eq, gt, isNotNull, isNull, lte } from "drizzle-orm";
 
 import { type Database, tables } from "@/db";
 import { appCloneToken, getGitHubPullRequest, type GitHubPullRequest } from "@/github";
@@ -24,8 +24,10 @@ type ReadSnapshot = (target: PullRequestTarget) => Promise<GitHubPullRequest>;
 
 const BATCH_SIZE = 8;
 const CLAIM_IN_MS = 120_000;
+const ACTIVE_PREVIEW_RECHECK_IN_MS = 15 * 60_000;
 const RETRY_BASE_IN_MS = 15_000;
 const MAX_RETRY_EXPONENT = 7;
+const QUEUED_REASON = "pull request reconciliation queued";
 const logger = createLogger("preview-reconciliation");
 
 function targetCondition(target: PullRequestTarget) {
@@ -35,11 +37,19 @@ function targetCondition(target: PullRequestTarget) {
   );
 }
 
-function claimCondition(claim: ClaimedReconciliation) {
+function claimCondition(claim: ClaimedReconciliation, now: Date) {
   return and(
     targetCondition(claim),
     eq(reconciliations.deliveryId, claim.deliveryId),
     eq(reconciliations.nextAttemptAt, claim.nextAttemptAt),
+    gt(reconciliations.nextAttemptAt, now.toISOString()),
+  );
+}
+
+function pendingReceipt(deliveryId: string) {
+  return and(
+    eq(tables.webhookDeliveries.id, deliveryId),
+    eq(tables.webhookDeliveries.reason, QUEUED_REASON),
   );
 }
 
@@ -88,7 +98,7 @@ export function queuePullRequestReconciliation(
     database
       .update(tables.webhookDeliveries)
       .set({ status: "ignored", reason: "superseded by a newer reconciliation request" })
-      .where(eq(tables.webhookDeliveries.id, known.deliveryId))
+      .where(pendingReceipt(known.deliveryId))
       .run();
   }
 
@@ -103,7 +113,7 @@ export function queuePullRequestReconciliation(
   return {
     ...details,
     result: { status: "accepted", deploymentIds: [] },
-    acceptedReason: "pull request reconciliation queued",
+    acceptedReason: QUEUED_REASON,
   };
 }
 
@@ -138,7 +148,7 @@ function claimDue(database: Database, now: Date): ClaimedReconciliation[] {
 function applySnapshot(
   database: Database,
   claim: ClaimedReconciliation,
-  snapshot: GitHubPullRequest,
+  { snapshot, now }: { readonly snapshot: GitHubPullRequest; readonly now: Date },
 ): void {
   const observation = {
     observedState: snapshot.state,
@@ -156,7 +166,7 @@ function applySnapshot(
           nextAttemptAt: null,
           attempts: 0,
         })
-        .where(claimCondition(claim))
+        .where(claimCondition(claim, now))
         .returning({ deliveryId: reconciliations.deliveryId })
         .all();
       if (applied.length === 0) {
@@ -178,7 +188,27 @@ function applySnapshot(
       const outcome = unchanged
         ? ignored("pull request state already reconciled", pullRequestDetails(payload))
         : applyPullRequest(database, payload);
-      recordWebhookOutcome(transaction, claim.deliveryId, outcome);
+      const receipt = transaction
+        .select({ id: tables.webhookDeliveries.id })
+        .from(tables.webhookDeliveries)
+        .where(pendingReceipt(claim.deliveryId))
+        .get();
+      if (receipt != null) {
+        recordWebhookOutcome(transaction, receipt.id, outcome);
+      }
+
+      if (
+        snapshot.state === "open" &&
+        hasPreviewForPullRequest(database, claim.repositoryFullName, claim.pullRequestNumber)
+      ) {
+        transaction
+          .update(reconciliations)
+          .set({
+            nextAttemptAt: new Date(now.getTime() + ACTIVE_PREVIEW_RECHECK_IN_MS).toISOString(),
+          })
+          .where(targetCondition(claim))
+          .run();
+      }
     },
     { behavior: "immediate" },
   );
@@ -197,7 +227,7 @@ function retry(
       attempts,
       nextAttemptAt: new Date(now.getTime() + delay).toISOString(),
     })
-    .where(claimCondition(claim))
+    .where(claimCondition(claim, now))
     .returning({ deliveryId: reconciliations.deliveryId })
     .all();
   if (updated.length > 0) {
@@ -265,7 +295,7 @@ export async function reconcilePullRequests(
     claimed.map(async (claim) => {
       try {
         const snapshot = await readSnapshot(claim);
-        applySnapshot(database, claim, snapshot);
+        applySnapshot(database, claim, { snapshot, now: options.now ?? new Date() });
       } catch (error) {
         retry(database, claim, { error, now: options.now ?? new Date() });
       }
