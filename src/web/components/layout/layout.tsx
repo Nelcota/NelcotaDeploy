@@ -98,7 +98,7 @@ export function StatRow({
   return (
     <div
       className={cn(
-        "flex flex-col gap-4 rounded-2xl bg-card p-5 text-card-foreground ring-1 ring-border/70",
+        "flex flex-col gap-4 rounded-xl bg-card p-4 text-card-foreground ring-1 ring-border/70 sm:p-5",
         className,
       )}
     >
@@ -132,7 +132,7 @@ export function List({
   return (
     <div
       className={cn(
-        "divide-y divide-border overflow-hidden rounded-2xl bg-card ring-1 ring-border/70",
+        "divide-y divide-border overflow-hidden rounded-xl bg-card ring-1 ring-border/70",
         className,
       )}
     >
@@ -152,7 +152,7 @@ export function ListRow({
   return (
     <div
       className={cn(
-        "relative flex items-center gap-4 px-5 py-4 transition-colors hover:bg-well/50",
+        "relative flex items-center gap-3 px-4 py-3 transition-colors hover:bg-well/50 sm:px-5",
         className,
       )}
     >
