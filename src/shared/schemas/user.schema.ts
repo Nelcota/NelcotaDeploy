@@ -24,7 +24,7 @@ export const firstAdminSchema = z.object({
   password: passwordSchema,
 });
 
-/** Fields of the "Novo usuário" form, validated in the browser and again on the server. */
+/** Fields of the user creation form, validated in the browser and again on the server. */
 export const newUserSchema = z.object({
   name: z
     .string()
