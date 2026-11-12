@@ -9,7 +9,13 @@ import {
   listDeploymentServerIds,
   transitionDeployment,
 } from "@/deployments";
-import { type Job, type JobKind, type RecoveredJob, requireJobPayloadString } from "@/jobs";
+import {
+  cancelQueuedDeploymentJobs,
+  type Job,
+  type JobKind,
+  type RecoveredJob,
+  requireJobPayloadString,
+} from "@/jobs";
 import { appendDeploymentLogs } from "@/logs";
 import { findProjectServerId, getProject } from "@/projects";
 import { failTaskExecutions } from "@/tasks";
@@ -245,18 +251,31 @@ async function runConsoleJob(
   }
 }
 
-function recoverDeployment(
-  database: Database,
-  deploymentId: string | null,
-  outcome: RecoveredJob["outcome"],
-): void {
+function recoverDeployment(database: Database, job: RecoveredJob): void {
+  const { deploymentId, outcome } = job;
   if (deploymentId == null) {
     return;
   }
+
   const deployment = getDeployment(database, deploymentId);
   if (isTerminalStatus(deployment.status)) {
     return;
   }
+
+  if (deployment.previewId != null && deployment.cancelRequestedAt != null) {
+    database.transaction(
+      (transaction) => {
+        transitionDeployment(transaction, deploymentId, {
+          to: "cancelled",
+          errorMessage: "Preview deployment cancelled",
+        });
+        cancelQueuedDeploymentJobs(transaction, [deploymentId]);
+      },
+      { behavior: "immediate" },
+    );
+    return;
+  }
+
   const message =
     outcome === "requeued"
       ? "The worker stopped during this deployment; it will run again"
@@ -302,7 +321,7 @@ const JOB_HANDLERS = {
   deploy: {
     run: runDeployJob,
     retriesOnFailure: false,
-    recover: (database, job) => recoverDeployment(database, job.deploymentId, job.outcome),
+    recover: recoverDeployment,
     isStranded: neverStranded,
   },
   container_action: {
@@ -330,7 +349,11 @@ const JOB_HANDLERS = {
     isStranded: isVolumeJobStranded,
   },
   preview_cleanup: {
-    run: async (dependencies, job) => await runPreviewCleanupJob(dependencies, job),
+    run: async (dependencies, job, run) =>
+      await runPreviewCleanupJob(dependencies, job, () => {
+        run.signal.throwIfAborted();
+        run.assertOwnership?.();
+      }),
     retriesOnFailure: true,
     recover: noRecovery,
     isStranded: neverStranded,

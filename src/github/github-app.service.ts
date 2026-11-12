@@ -41,7 +41,6 @@ export type GitHubAppSummary = {
 export type GitHubAppCredentials = {
   readonly appId: string;
   readonly privateKey: string;
-  readonly webhookSecret: string | null;
 };
 
 function privateKeyContext(appId: string): string {
@@ -180,7 +179,7 @@ export function getGitHubApp(database: Database): GitHubAppSummary | null {
 }
 
 /**
- * Decrypts the credentials of the connected app.
+ * Decrypts the signing key used to authenticate as the connected app.
  *
  * @param database - Database.
  * @param secretBox - Encryption box.
@@ -195,20 +194,41 @@ export async function readGitHubAppCredentials(
     .select({
       id: tables.githubApps.id,
       encryptedPrivateKey: tables.githubApps.encryptedPrivateKey,
-      encryptedWebhookSecret: tables.githubApps.encryptedWebhookSecret,
     })
     .from(tables.githubApps)
     .get();
   if (row == null) {
     return null;
   }
-  const [privateKey, webhookSecret] = await Promise.all([
-    secretBox.decrypt(row.encryptedPrivateKey, privateKeyContext(row.id)),
-    row.encryptedWebhookSecret == null
-      ? null
-      : secretBox.decrypt(row.encryptedWebhookSecret, webhookSecretContext(row.id)),
-  ]);
-  return { appId: row.id, privateKey, webhookSecret };
+  const privateKey = await secretBox.decrypt(row.encryptedPrivateKey, privateKeyContext(row.id));
+  return { appId: row.id, privateKey };
+}
+
+/**
+ * Decrypts only the secret used to verify deliveries from the connected app.
+ *
+ * @param database - Database.
+ * @param getSecretBox - Loads the encryption box when there is a secret to decrypt.
+ * @returns The webhook secret, or null when none is stored.
+ * @throws {SecretDecryptionError} When the stored secret cannot be decrypted.
+ */
+export async function readGitHubAppWebhookSecret(
+  database: Database,
+  getSecretBox: () => Promise<SecretBox>,
+): Promise<string | null> {
+  const row = database
+    .select({
+      id: tables.githubApps.id,
+      encryptedWebhookSecret: tables.githubApps.encryptedWebhookSecret,
+    })
+    .from(tables.githubApps)
+    .get();
+  if (row?.encryptedWebhookSecret == null) {
+    return null;
+  }
+
+  const secretBox = await getSecretBox();
+  return await secretBox.decrypt(row.encryptedWebhookSecret, webhookSecretContext(row.id));
 }
 
 /**

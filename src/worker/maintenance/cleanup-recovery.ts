@@ -1,6 +1,48 @@
-import type { Database, Transaction } from "@/db";
-import { CLEANUP_MAX_ATTEMPTS, enqueueJob, type Job, listLatestFailedJobs } from "@/jobs";
+import { and, eq, inArray, notExists, or, gt, sql } from "drizzle-orm";
+import { alias } from "drizzle-orm/sqlite-core";
+
+import { type Database, tables, type Transaction } from "@/db";
+import { CLEANUP_MAX_ATTEMPTS, enqueueJob, type Job } from "@/jobs";
 import { getPreview } from "@/previews";
+
+function latestFailedCleanups(transaction: Transaction): Job[] {
+  const newer = alias(tables.jobs, "newer_cleanup");
+  return transaction
+    .select()
+    .from(tables.jobs)
+    .where(
+      and(
+        eq(tables.jobs.status, "failed"),
+        inArray(tables.jobs.kind, ["project_cleanup", "preview_cleanup"]),
+        notExists(
+          transaction
+            .select({ id: newer.id })
+            .from(newer)
+            .where(
+              and(
+                eq(newer.projectId, tables.jobs.projectId),
+                eq(newer.kind, tables.jobs.kind),
+                or(
+                  eq(newer.dedupeKey, tables.jobs.dedupeKey),
+                  and(
+                    eq(tables.jobs.kind, "preview_cleanup"),
+                    eq(
+                      sql`json_extract(${newer.payload}, '$.previewId')`,
+                      sql`json_extract(${tables.jobs.payload}, '$.previewId')`,
+                    ),
+                  ),
+                ),
+                or(
+                  gt(newer.createdAt, tables.jobs.createdAt),
+                  and(eq(newer.createdAt, tables.jobs.createdAt), gt(newer.id, tables.jobs.id)),
+                ),
+              ),
+            ),
+        ),
+      ),
+    )
+    .all();
+}
 
 function cleanupStillRequested(transaction: Transaction, job: Job): boolean {
   if (job.kind !== "preview_cleanup") {
@@ -14,7 +56,7 @@ function cleanupStillRequested(transaction: Transaction, job: Job): boolean {
 export function requeueFailedCleanups(database: Database): number {
   return database.transaction(
     (transaction) => {
-      const failed = listLatestFailedJobs(transaction, ["project_cleanup", "preview_cleanup"]);
+      const failed = latestFailedCleanups(transaction);
       let queued = 0;
       for (const job of failed) {
         if (cleanupStillRequested(transaction, job) === false) {

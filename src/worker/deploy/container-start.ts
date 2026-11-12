@@ -1,7 +1,12 @@
-import { transitionDeployment } from "@/deployments";
+import {
+  DeploymentCancelledError,
+  isCancellationRequested,
+  requireActivePreview,
+  transitionDeployment,
+} from "@/deployments";
 import { replicaContainerNameFor, volumeNameFor } from "@/docker";
 import { listProjectDomains } from "@/domains";
-import { getPreview, previewHostname, previewRouteName } from "@/previews";
+import { previewHostname, previewRouteName } from "@/previews";
 import { projectRouteConfig } from "@/routing";
 import { getSystemSettings } from "@/settings";
 import { listMountedVolumes } from "@/volumes";
@@ -24,6 +29,7 @@ import {
  * @param containerNames - The healthy new replicas.
  * @throws {RouteFileError} When the routes cannot be written on the server.
  * @throws {InvalidRouteError} When a hostname or name could not go into the routes.
+ * @throws {PreviewNotActiveError} When the target preview has closed or is missing.
  */
 export async function routeTrafficTo(
   dependencies: Pick<DeployRunnerDependencies, "database" | "routes"> & {
@@ -74,15 +80,23 @@ function routeTarget(
   { deployment, project }: Pick<DeployContext, "deployment" | "project">,
 ) {
   const settings = getSystemSettings(database);
-  const preview = deployment.previewId == null ? null : getPreview(database, deployment.previewId);
-  if (preview == null) {
+  if (deployment.previewId == null) {
     return {
       fileName: project.id,
       routeName: project.slug,
       domains: listProjectDomains(database, project.id, settings),
     };
   }
-  const number = preview.pullRequestNumber;
+
+  if (isCancellationRequested(database, deployment.id)) {
+    throw new DeploymentCancelledError();
+  }
+
+  const { pullRequestNumber: number } = requireActivePreview(
+    database,
+    project.id,
+    deployment.previewId,
+  );
   // Without a base domain a preview has no address; the webhook refuses to create one then.
   const domains =
     settings.baseDomain == null

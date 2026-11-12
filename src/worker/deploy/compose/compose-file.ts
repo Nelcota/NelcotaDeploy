@@ -86,7 +86,8 @@ function serviceFor(
   const build = service["build"];
   return {
     ...service,
-    labels: { ...recordOf(service["labels"]), ...options.labels },
+    // The worker publishes routes separately. Override discovery metadata inherited from images.
+    labels: { ...recordOf(service["labels"]), ...options.labels, "traefik.enable": "false" },
     // The model always lists a service's networks; "default" when the file named none.
     networks: { ...recordOf(service["networks"]), [PLATFORM_NETWORK_KEY]: null },
     environment: { ...inherited, ...recordOf(service["environment"]) },

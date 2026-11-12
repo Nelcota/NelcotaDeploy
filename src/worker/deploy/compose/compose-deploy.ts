@@ -2,7 +2,7 @@ import { posix } from "node:path";
 
 import { transitionDeployment } from "@/deployments";
 import { composeContainerNameFor, composeProjectNameFor, LABELS, managedLabels } from "@/docker";
-import { failureReason } from "@/process";
+import { type CommandRunner, DEFAULT_MAX_CAPTURED_BYTES, failureReason } from "@/process";
 
 import {
   assertNotCancelled,
@@ -17,8 +17,20 @@ import { composeFileFor } from "./compose-file";
 import { ComposeWorkspaceError } from "./compose.errors";
 
 const FILE_COMMAND_TIMEOUT_IN_MS = 30_000;
-/** Largest Compose file the platform writes; far above any real project's. */
+const HOST_PATH_CHECK_BATCH_SIZE = 8;
+/** Largest Compose file the platform writes. */
 const MAX_COMPOSE_FILE_BYTES = 100_000;
+const MAX_COMPOSE_SOURCE_BYTES = DEFAULT_MAX_CAPTURED_BYTES;
+const MAX_COMPOSE_CAPTURE_BYTES = MAX_COMPOSE_SOURCE_BYTES * 2;
+const COMPOSE_FILE_TOO_LARGE_EXIT_CODE = 45;
+const COMPOSE_READ_FOOTER = /^\.[ \t]*(\d+)\n$/;
+// Wrap the encoded data within the runner's per-line limit. Only print the footer on success.
+const READ_COMPOSE_SCRIPT = [
+  '[ -f "$1" ] || exit 1',
+  'size=$(wc -c < "$1") || exit "$?"',
+  `[ "$size" -le ${MAX_COMPOSE_SOURCE_BYTES} ] || exit ${COMPOSE_FILE_TOO_LARGE_EXIT_CODE}`,
+  'base64 -w 76 "$1" && printf ".%s\\n" "$size"',
+].join("\n");
 const GENERATED_FILE = "nelcota-compose.json";
 const COMPOSE_SERVICE_LABEL = "com.docker.compose.service";
 
@@ -102,12 +114,7 @@ async function checkedComposeFile(
     repositoryPath,
   });
   // The text check above cannot see symlinks; each file must really be in the repository.
-  await Promise.all(
-    checked.hostPaths.map(
-      async (path) =>
-        await resolveInsideWorkspace(runner, repositoryPath, relativeInside(repositoryPath, path)),
-    ),
-  );
+  await verifyHostPaths(runner, context, { repositoryPath, paths: checked.hostPaths });
   const projectLabels = {
     [LABELS.managed]: "true",
     [LABELS.projectId]: project.id,
@@ -129,6 +136,33 @@ async function checkedComposeFile(
     memoryLimitInMb: project.memoryLimitInMb,
     cpuLimitInMillicores: project.cpuLimitInMillicores,
   });
+}
+
+async function verifyHostPaths(
+  runner: CommandRunner,
+  context: DeployContext,
+  { repositoryPath, paths }: { readonly repositoryPath: string; readonly paths: readonly string[] },
+): Promise<void> {
+  for (let offset = 0; offset < paths.length; offset += HOST_PATH_CHECK_BATCH_SIZE) {
+    context.assertOwnership();
+    assertNotCancelled(context.signal);
+    const batch = paths.slice(offset, offset + HOST_PATH_CHECK_BATCH_SIZE);
+    // Wait for the whole batch before a failure can release and remove the checkout.
+    const checks = await Promise.allSettled(
+      batch.map(
+        async (path) =>
+          await resolveInsideWorkspace(
+            runner,
+            repositoryPath,
+            relativeInside(repositoryPath, path),
+          ),
+      ),
+    );
+    const failure = checks.find((check) => check.status === "rejected");
+    if (failure != null) {
+      throw failure.reason;
+    }
+  }
 }
 
 async function startCompose(
@@ -184,11 +218,45 @@ async function startCompose(
 }
 
 async function readFile(runner: DeployRunnerDependencies["runner"], path: string): Promise<string> {
-  const result = await runner(["cat", "--", path], { timeoutInMs: FILE_COMMAND_TIMEOUT_IN_MS });
+  const result = await runner(["sh", "-c", READ_COMPOSE_SCRIPT, "sh", path], {
+    timeoutInMs: FILE_COMMAND_TIMEOUT_IN_MS,
+    maxCapturedBytes: MAX_COMPOSE_CAPTURE_BYTES,
+  });
+  if (result.timedOut || result.aborted) {
+    throw new ComposeWorkspaceError(`reading ${path} ${failureReason(result)}`);
+  }
+
+  if (result.exitCode === COMPOSE_FILE_TOO_LARGE_EXIT_CODE) {
+    throw new ComposeWorkspaceError(
+      `the Compose source is larger than ${MAX_COMPOSE_SOURCE_BYTES} bytes`,
+    );
+  }
+
   if (result.exitCode !== 0) {
     throw new ComposeWorkspaceError(`reading ${path} failed: ${failureReason(result)}`);
   }
-  return result.stdout;
+
+  const footerOffset = result.stdout.lastIndexOf("\n", result.stdout.length - 2) + 1;
+  const footer = COMPOSE_READ_FOOTER.exec(result.stdout.slice(footerOffset));
+  const size = Number(footer?.[1]);
+  if (Number.isSafeInteger(size) === false || size < 0 || size > MAX_COMPOSE_SOURCE_BYTES) {
+    throw new ComposeWorkspaceError("the Compose source read did not complete");
+  }
+
+  const bytes = Buffer.from(result.stdout.slice(0, footerOffset), "base64");
+  if (bytes.byteLength !== size) {
+    throw new ComposeWorkspaceError("the Compose source changed during its read");
+  }
+
+  try {
+    return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+  } catch (error) {
+    if (error instanceof TypeError) {
+      throw new ComposeWorkspaceError("the Compose source is not valid UTF-8");
+    }
+
+    throw error;
+  }
 }
 
 /**

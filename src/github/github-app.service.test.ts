@@ -1,12 +1,13 @@
 import { afterAll, describe, expect, test } from "bun:test";
 
-import { openMemoryDatabase } from "@/db";
+import { openMemoryDatabase, tables } from "@/db";
 import { createTestSecretBox, TEST_ACTOR } from "@/testing";
 
 import {
   convertManifestCode,
   getGitHubApp,
   readGitHubAppCredentials,
+  readGitHubAppWebhookSecret,
   removeGitHubApp,
   saveGitHubApp,
 } from "./github-app.service";
@@ -71,8 +72,10 @@ describe("saveGitHubApp", () => {
     expect(await readGitHubAppCredentials(database, box)).toEqual({
       appId: "42",
       privateKey: CONVERSION.pem,
-      webhookSecret: "hook-secret",
     });
+    expect(await readGitHubAppWebhookSecret(database, () => Promise.resolve(box))).toBe(
+      CONVERSION.webhook_secret,
+    );
   });
 
   test("replaces the app connected before", async () => {
@@ -84,6 +87,34 @@ describe("saveGitHubApp", () => {
 
     expect(getGitHubApp(database)?.id).toBe("43");
   });
+});
+
+test("reads a webhook secret even if the app signing key cannot be decrypted", async () => {
+  const database = openMemoryDatabase();
+  using _connection = database.$client;
+  const box = await createTestSecretBox();
+  await saveGitHubApp(database, box, { app: CONVERSION, actor: TEST_ACTOR });
+  database.update(tables.githubApps).set({ encryptedPrivateKey: "invalid" }).run();
+
+  const secret = await readGitHubAppWebhookSecret(database, () => Promise.resolve(box));
+
+  expect(secret).toBe(CONVERSION.webhook_secret);
+});
+
+test("does not load an encryption box when the app has no webhook secret", async () => {
+  const database = openMemoryDatabase();
+  using _connection = database.$client;
+  const box = await createTestSecretBox();
+  await saveGitHubApp(database, box, {
+    app: { ...CONVERSION, webhook_secret: null },
+    actor: TEST_ACTOR,
+  });
+
+  const secret = await readGitHubAppWebhookSecret(database, () =>
+    Promise.reject(new Error("Unexpected encryption box request")),
+  );
+
+  expect(secret).toBeNull();
 });
 
 describe("readGitHubLoginCredentials", () => {

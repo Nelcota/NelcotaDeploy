@@ -1,10 +1,13 @@
 import { describe, expect, test } from "bun:test";
+import { mkdtemp, rm, rmdir } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
-import { openMemoryDatabase, tables } from "@/db";
+import { migrateDatabase, openDatabase, openMemoryDatabase, tables } from "@/db";
 import { listDeployments } from "@/deployments";
 import { createTestProject } from "@/testing";
 
-import { handleGitHubDelivery } from "./github-webhook.service";
+import { handleGitHubDelivery, listWebhookDeliveries } from "./github-webhook.service";
 import { InvalidWebhookSignatureError } from "./webhook.errors";
 
 const SECRET = "webhook-test-secret";
@@ -163,6 +166,58 @@ describe("handleGitHubDelivery push events", () => {
     expect(second.status).toBe("duplicate");
     expect(listDeployments(database, { projectId: project.id, limit: 10 })).toHaveLength(1);
   });
+
+  test("claims a concurrent delivery once across two database connections", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "nelcota-webhook-claim-"));
+    const path = join(directory, "delivery.db");
+    await using _files = {
+      async [Symbol.asyncDispose]() {
+        await Promise.all(
+          [path, `${path}-wal`, `${path}-shm`].map(async (file) => await rm(file, { force: true })),
+        );
+        await rmdir(directory);
+      },
+    };
+    const database = openDatabase(path);
+    using _connection = database.$client;
+    migrateDatabase(database);
+    const contender = openDatabase(path);
+    using _contender = contender.$client;
+    const project = createTestProject(database);
+    const request = delivery(pushBody());
+
+    const outcomes = await Promise.all([
+      handleGitHubDelivery(database, request, [SECRET]),
+      handleGitHubDelivery(contender, request, [SECRET]),
+    ]);
+
+    expect(outcomes.map(({ status }) => status).toSorted()).toEqual(["accepted", "duplicate"]);
+    expect(listDeployments(database, { projectId: project.id, limit: 10 })).toHaveLength(1);
+    expect(listWebhookDeliveries(database, 10)).toHaveLength(1);
+  });
+});
+
+test("bounds the delivery page size for non-finite limits", () => {
+  const database = openMemoryDatabase();
+  using _connection = database.$client;
+  const maxPage = 100;
+  database
+    .insert(tables.webhookDeliveries)
+    .values(
+      Array.from({ length: maxPage + 1 }, (_, index) => ({
+        id: `delivery-${index}`,
+        event: "ping",
+        status: "ignored" as const,
+        reason: "ping",
+        deploymentIds: [],
+        receivedAt: "2026-11-12T00:00:00Z",
+      })),
+    )
+    .run();
+
+  expect(listWebhookDeliveries(database, Number.NaN)).toHaveLength(1);
+  expect(listWebhookDeliveries(database, Number.NEGATIVE_INFINITY)).toHaveLength(1);
+  expect(listWebhookDeliveries(database, Number.POSITIVE_INFINITY)).toHaveLength(maxPage);
 });
 
 describe("handleGitHubDelivery ignored events", () => {

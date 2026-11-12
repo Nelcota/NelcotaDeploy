@@ -18,6 +18,7 @@ import { openMemoryDatabase } from "@/db";
 import { getDeployment, requestDeployment } from "@/deployments";
 import { claimNextJob, completeJob, failJob, releaseWorkerJobs } from "@/jobs";
 import { createLogger } from "@/logging";
+import { closePreview, openPreview } from "@/previews";
 import { createTestProject, createTestSecretBox, TEST_ACTOR } from "@/testing";
 import {
   addProjectVolume,
@@ -52,6 +53,28 @@ test("marks an interrupted queued deployment failed when its retry allowance is 
   ]);
 
   expect(getDeployment(database, deploymentId).status).toBe("failed");
+});
+
+test("cancels the recovered attempt of a preview that closed while its job was claimed", () => {
+  const database = openMemoryDatabase();
+  using _connection = database.$client;
+  const project = createTestProject(database);
+  const target = { projectId: project.id, number: 12, branch: "feature", headSha: "a".repeat(40) };
+  const previewId = openPreview(database, target);
+  const { deploymentId } = requestDeployment(database, {
+    projectId: project.id,
+    trigger: "manual",
+    actor: TEST_ACTOR,
+    triggeredByUserId: null,
+    previewId,
+  });
+  expect(claimNextJob(database, "interrupted")?.deploymentId).toBe(deploymentId);
+  closePreview(database, target);
+
+  handleRecoveredJobs(database, createLogger("test"), releaseWorkerJobs(database, "interrupted"));
+
+  expect(getDeployment(database, deploymentId).status).toBe("cancelled");
+  expect(claimNextJob(database, "replacement")?.kind).toBe("preview_cleanup");
 });
 
 test("makes an interrupted database provisioning retryable from its failed state", async () => {

@@ -53,3 +53,10 @@ export class RedeployUnavailableError extends Error {
     this.name = "RedeployUnavailableError";
   }
 }
+/** Thrown when a deployment is cancelled at a checkpoint. */
+export class DeploymentCancelledError extends Error {
+  constructor() {
+    super("Deployment cancelled");
+    this.name = "DeploymentCancelledError";
+  }
+}

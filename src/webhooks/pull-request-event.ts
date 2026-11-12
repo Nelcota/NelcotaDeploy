@@ -43,7 +43,7 @@ type PullRequestPayload = z.infer<typeof pullRequestPayloadSchema>;
 /** Approved projects with previews on that follow the repository and branch the pull request targets. */
 function findPreviewProjects(database: Database, payload: PullRequestPayload): string[] {
   const projects = database
-    .select({ id: tables.projects.id, approved: tables.projects.deploymentsApproved })
+    .select({ id: tables.projects.id })
     .from(tables.projects)
     .where(
       and(
@@ -53,11 +53,12 @@ function findPreviewProjects(database: Database, payload: PullRequestPayload): s
         ),
         eq(tables.projects.branch, payload.pull_request.base.ref),
         eq(tables.projects.previewsEnabled, true),
+        eq(tables.projects.deploymentsApproved, true),
         isNull(tables.projects.deletionRequestedAt),
       ),
     )
     .all();
-  return projects.filter((project) => project.approved).map((project) => project.id);
+  return projects.map((project) => project.id);
 }
 
 /** Opens or updates a project's preview and queues its deployment; null when it is full. */
@@ -153,9 +154,6 @@ export function processPullRequest(database: Database, rawBody: string): Process
     ref: head.ref,
     commitSha: head.sha,
   };
-  if (head.repo?.full_name.toLowerCase() !== details.repositoryFullName) {
-    return ignored("pull requests from forks never get previews", details);
-  }
   if (payload.action === "closed") {
     const existing = database
       .select({ projectId: tables.previews.projectId })
@@ -174,6 +172,11 @@ export function processPullRequest(database: Database, rawBody: string): Process
     }
     return ignored("pull request closed; its previews are being removed", details);
   }
+
+  if (head.repo?.full_name.toLowerCase() !== details.repositoryFullName) {
+    return ignored("pull requests from forks never get previews", details);
+  }
+
   const projectIds = findPreviewProjects(database, payload);
   if (projectIds.length === 0) {
     return ignored("no approved project with previews for this repository and branch", details);

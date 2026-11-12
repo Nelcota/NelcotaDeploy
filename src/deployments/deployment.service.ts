@@ -25,7 +25,8 @@ import {
   type DeploymentStatus,
   isTerminalStatus,
 } from "./deployment-status";
-import { DeploymentNotFoundError } from "./deployment.errors";
+import { DeploymentCancelledError, DeploymentNotFoundError } from "./deployment.errors";
+import { requireActivePreview } from "./preview-scope";
 
 export type DeploymentTrigger = (typeof tables.deployments.$inferSelect)["trigger"];
 
@@ -313,15 +314,17 @@ export function transitionDeployment(
  * @param database - Database.
  * @param deploymentId - Deployment id.
  * @throws {InvalidDeploymentTransitionError} When it is not health checking.
+ * @throws {PreviewNotActiveError} When the target preview has closed.
+ * @throws {DeploymentCancelledError} When cancellation was requested for the preview deployment.
  */
 export function completeDeployment(database: Database, deploymentId: string): void {
   database.transaction(
     (transaction) => {
-      transitionDeployment(transaction, deploymentId, { to: "succeeded", errorMessage: null });
       const deployment = transaction
         .select({
           projectId: tables.deployments.projectId,
           previewId: tables.deployments.previewId,
+          cancelRequestedAt: tables.deployments.cancelRequestedAt,
         })
         .from(tables.deployments)
         .where(eq(tables.deployments.id, deploymentId))
@@ -329,6 +332,15 @@ export function completeDeployment(database: Database, deploymentId: string): vo
       if (deployment == null) {
         throw new DeploymentNotFoundError(deploymentId);
       }
+
+      if (deployment.previewId != null) {
+        requireActivePreview(transaction, deployment.projectId, deployment.previewId);
+        if (deployment.cancelRequestedAt != null) {
+          throw new DeploymentCancelledError();
+        }
+      }
+
+      transitionDeployment(transaction, deploymentId, { to: "succeeded", errorMessage: null });
       // A preview serves its own address; production keeps serving the project's domains.
       if (deployment.previewId != null) {
         transaction
@@ -338,6 +350,7 @@ export function completeDeployment(database: Database, deploymentId: string): vo
           .run();
         return;
       }
+
       transaction
         .update(tables.projects)
         .set({ currentDeploymentId: deploymentId })

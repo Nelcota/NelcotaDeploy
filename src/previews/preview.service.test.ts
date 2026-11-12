@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import { openMemoryDatabase } from "@/db";
-import { claimNextJob } from "@/jobs";
+import { claimNextJob, completeJob } from "@/jobs";
 import { createTestProject } from "@/testing";
 
 import { PreviewLimitError } from "./preview.errors";
@@ -86,5 +86,27 @@ describe("closePreview", () => {
     open(12);
 
     expect(getPreview(database, previewId)?.status).toBe("active");
+  });
+
+  test("queues a new cleanup when a reopened preview closes during the first cleanup", () => {
+    const { database, project, open } = setup();
+    using _connection = database.$client;
+    const previewId = open(12);
+    const target = { projectId: project.id, number: 12 };
+    closePreview(database, target);
+    const first = claimNextJob(database, "first-worker");
+    if (first == null) {
+      throw new Error("Expected the first preview cleanup");
+    }
+
+    open(12);
+    closePreview(database, target);
+
+    expect(claimNextJob(database, "second-worker")).toBeNull();
+    expect(completeJob(database, first)).toBe(true);
+    const next = claimNextJob(database, "second-worker");
+    expect(next?.kind).toBe("preview_cleanup");
+    expect(next?.id).not.toBe(first.id);
+    expect(next?.payload).toEqual({ previewId });
   });
 });

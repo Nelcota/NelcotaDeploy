@@ -1,4 +1,16 @@
+import { InvalidWebhookSignatureError } from "./webhook.errors";
+
 const MAX_COMMIT_SUBJECT_LENGTH = 500;
+const GITHUB_SIGNATURE_PATTERN = /^sha256=[0-9a-f]{64}$/;
+
+/** Checks the signature header format before hashing the request. */
+export function requireGitHubSignature(signature: string | null): string {
+  if (signature == null || GITHUB_SIGNATURE_PATTERN.test(signature) === false) {
+    throw new InvalidWebhookSignatureError();
+  }
+
+  return signature;
+}
 
 /** Returned by {@link parseJsonBody} for a body that is not JSON. */
 export const INVALID_JSON = Symbol("invalid JSON");
@@ -55,5 +67,7 @@ export function parseJsonBody(rawBody: string): unknown {
  * @returns The first line, trimmed and at most 500 characters.
  */
 export function commitSubject(message: string): string {
-  return (message.split("\n")[0] ?? "").trim().slice(0, MAX_COMMIT_SUBJECT_LENGTH);
+  const newline = message.indexOf("\n");
+  const subject = newline < 0 ? message : message.slice(0, newline);
+  return subject.trim().slice(0, MAX_COMMIT_SUBJECT_LENGTH);
 }

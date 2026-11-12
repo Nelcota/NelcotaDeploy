@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test";
+import { expect, setSystemTime, test } from "bun:test";
 
 import { openMemoryDatabase } from "@/db";
 import { claimNextJob, completeJob, failJob } from "@/jobs";
@@ -42,5 +42,33 @@ test.each([false, true])("retries a closed preview but skips a reopened one: %s"
     openPreview(database, input);
   }
   expect(requeueFailedCleanups(database)).toBe(reopened ? 0 : 1);
+  expect(requeueFailedCleanups(database)).toBe(0);
+});
+
+test("does not retry a failed cleanup superseded by a later close of the same preview", () => {
+  const database = openMemoryDatabase();
+  using _connection = database.$client;
+  using _clock = { [Symbol.dispose]: () => setSystemTime() };
+  setSystemTime(new Date("2026-11-12T12:00:00Z"));
+  const project = createTestProject(database);
+  const target = { projectId: project.id, number: 1, branch: "feature", headSha: "a".repeat(40) };
+  openPreview(database, target);
+  closePreview(database, target);
+  const first = claimNextJob(database, "worker");
+  if (first == null) {
+    throw new Error("Expected the first cleanup");
+  }
+
+  failJob(database, first, { errorMessage: "SSH unavailable", retryable: false });
+  setSystemTime(new Date("2026-11-12T12:01:00Z"));
+  openPreview(database, target);
+  closePreview(database, target);
+  const second = claimNextJob(database, "worker");
+  if (second == null) {
+    throw new Error("Expected the second cleanup");
+  }
+
+  expect(second.id).not.toBe(first.id);
+  expect(completeJob(database, second)).toBe(true);
   expect(requeueFailedCleanups(database)).toBe(0);
 });

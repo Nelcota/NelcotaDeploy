@@ -8,8 +8,16 @@ export class InvalidWebhookSignatureError extends Error {
 
 /** Thrown when required webhook headers are missing or malformed. */
 export class InvalidWebhookRequestError extends Error {
-  constructor(message: string) {
-    super(message);
+  constructor(message: string, options?: ErrorOptions) {
+    super(message, options);
     this.name = "InvalidWebhookRequestError";
+  }
+}
+
+/** Thrown when a webhook body exceeds the endpoint's byte limit. */
+export class WebhookPayloadTooLargeError extends Error {
+  constructor() {
+    super("Webhook payload is too large");
+    this.name = "WebhookPayloadTooLargeError";
   }
 }

@@ -1,4 +1,4 @@
-import { and, count, desc, eq } from "drizzle-orm";
+import { and, count, desc, eq, inArray, isNull, ne, notInArray } from "drizzle-orm";
 
 import { type Database, tables, type Transaction } from "@/db";
 import { CLEANUP_MAX_ATTEMPTS, enqueueJob } from "@/jobs";
@@ -58,6 +58,91 @@ function countActive(transaction: Transaction, projectId: string): number {
     .where(and(eq(tables.previews.projectId, projectId), eq(tables.previews.status, "active")))
     .get();
   return row?.total ?? 0;
+}
+
+function cancelQueuedPreviewDeployments(
+  database: Transaction,
+  target: { readonly projectId: string; readonly previewId: string },
+  timestamp: string,
+): void {
+  const preview = eq(tables.deployments.previewId, target.previewId);
+  const projectJobs = eq(tables.jobs.projectId, target.projectId);
+  const runningDeploymentId = database
+    .select({ deploymentId: tables.jobs.deploymentId })
+    .from(tables.jobs)
+    .where(and(projectJobs, eq(tables.jobs.status, "running"), eq(tables.jobs.kind, "deploy")))
+    .get()?.deploymentId;
+  database
+    .update(tables.deployments)
+    .set({
+      status: "cancelled",
+      errorMessage: "Preview closed before deployment started",
+      finishedAt: timestamp,
+    })
+    .where(
+      and(
+        preview,
+        eq(tables.deployments.status, "queued"),
+        runningDeploymentId == null ? undefined : ne(tables.deployments.id, runningDeploymentId),
+      ),
+    )
+    .run();
+  const cancelled = database
+    .select({ id: tables.deployments.id })
+    .from(tables.deployments)
+    .where(and(preview, eq(tables.deployments.status, "cancelled")));
+  database
+    .update(tables.jobs)
+    .set({ status: "cancelled", finishedAt: timestamp })
+    .where(
+      and(
+        projectJobs,
+        eq(tables.jobs.kind, "deploy"),
+        eq(tables.jobs.status, "queued"),
+        inArray(tables.jobs.deploymentId, cancelled),
+      ),
+    )
+    .run();
+}
+
+function cancelPreviewDeployments(
+  database: Transaction,
+  target: { readonly projectId: string; readonly previewId: string },
+  now: Date,
+): void {
+  const timestamp = now.toISOString();
+  cancelQueuedPreviewDeployments(database, target, timestamp);
+
+  database
+    .update(tables.deployments)
+    .set({ cancelRequestedAt: timestamp })
+    .where(
+      and(
+        eq(tables.deployments.previewId, target.previewId),
+        isNull(tables.deployments.cancelRequestedAt),
+        notInArray(tables.deployments.status, ["succeeded", "failed", "cancelled"]),
+      ),
+    )
+    .run();
+}
+
+function queuePreviewCleanup(
+  database: Database | Transaction,
+  target: { readonly projectId: string; readonly previewId: string },
+  now: Date,
+): void {
+  enqueueJob(
+    database,
+    {
+      kind: "preview_cleanup",
+      maxAttempts: CLEANUP_MAX_ATTEMPTS,
+      projectId: target.projectId,
+      payload: { previewId: target.previewId },
+      // A preview can close again while the previous cleanup is still running.
+      dedupeKey: `preview-cleanup:${target.previewId}:${Bun.randomUUIDv7()}`,
+    },
+    now,
+  );
 }
 
 /**
@@ -147,17 +232,9 @@ export function closePreview(
         .set({ status: "closed", closedAt: now.toISOString(), updatedAt: now.toISOString() })
         .where(eq(tables.previews.id, preview.id))
         .run();
-      enqueueJob(
-        transaction,
-        {
-          kind: "preview_cleanup",
-          maxAttempts: CLEANUP_MAX_ATTEMPTS,
-          projectId: pullRequest.projectId,
-          payload: { previewId: preview.id },
-          dedupeKey: `preview-cleanup:${preview.id}`,
-        },
-        now,
-      );
+      const target = { projectId: preview.projectId, previewId: preview.id };
+      cancelPreviewDeployments(transaction, target, now);
+      queuePreviewCleanup(transaction, target, now);
       return preview.id;
     },
     { behavior: "immediate" },
@@ -167,10 +244,10 @@ export function closePreview(
 /**
  * Closes every active preview of a project and queues cleanup jobs for their resources.
  *
- * @param database - Database or open transaction.
+ * @param database - Open transaction.
  * @param projectId - Project id.
  */
-export function closeProjectPreviews(database: Database | Transaction, projectId: string): void {
+export function closeProjectPreviews(database: Transaction, projectId: string): void {
   const now = new Date();
   const nowIso = now.toISOString();
   const closed = database
@@ -180,17 +257,9 @@ export function closeProjectPreviews(database: Database | Transaction, projectId
     .returning({ id: tables.previews.id })
     .all();
   for (const preview of closed) {
-    enqueueJob(
-      database,
-      {
-        kind: "preview_cleanup",
-        maxAttempts: CLEANUP_MAX_ATTEMPTS,
-        projectId,
-        payload: { previewId: preview.id },
-        dedupeKey: `preview-cleanup:${preview.id}`,
-      },
-      now,
-    );
+    const target = { projectId, previewId: preview.id };
+    cancelPreviewDeployments(database, target, now);
+    queuePreviewCleanup(database, target, now);
   }
 }
 

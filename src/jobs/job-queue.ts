@@ -1,4 +1,4 @@
-import { and, eq, gt, inArray, lt, notExists, or, sql } from "drizzle-orm";
+import { and, eq, gt, inArray, lte, notExists, or, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/sqlite-core";
 
 import { type Database, tables, type Transaction } from "@/db";
@@ -220,21 +220,42 @@ export function completeJob(
  * @param lease - Claimed job and its worker and attempt number.
  * @param failure - `errorMessage`, the reason without secrets; `retryable` allows another
  *   attempt while attempts remain; `now` is the current time.
- * @returns "requeued", "failed", or "lost" when another attempt now owns the job.
+ * @returns "requeued", "failed", or "lost" when the attempt no longer owns a live lease.
  */
 export function failJob(
+  database: Database | Transaction,
+  lease: JobLease,
+  failure: { readonly errorMessage: string; readonly retryable: boolean; readonly now?: Date },
+): "requeued" | "failed" | "lost" {
+  return settleJobFailure(database, lease, { ...failure, leaseState: "active" });
+}
+
+function settleJobFailure(
   database: Database | Transaction,
   lease: JobLease,
   {
     errorMessage,
     retryable,
     now = new Date(),
-  }: { readonly errorMessage: string; readonly retryable: boolean; readonly now?: Date },
+    leaseState,
+  }: {
+    readonly errorMessage: string;
+    readonly retryable: boolean;
+    readonly now?: Date;
+    readonly leaseState: "active" | "expired";
+  },
 ): "requeued" | "failed" | "lost" {
+  const nowIso = now.toISOString();
+  const condition = and(
+    ownershipCondition(lease),
+    leaseState === "active"
+      ? gt(tables.jobs.leaseExpiresAt, nowIso)
+      : lte(tables.jobs.leaseExpiresAt, nowIso),
+  );
   const job = database
     .select({ attempts: tables.jobs.attempts, maxAttempts: tables.jobs.maxAttempts })
     .from(tables.jobs)
-    .where(ownershipCondition(lease))
+    .where(condition)
     .get();
   if (job == null) {
     return "lost";
@@ -249,7 +270,7 @@ export function failJob(
         leaseExpiresAt: null,
         runAfter: new Date(now.getTime() + RETRY_DELAY_IN_MS).toISOString(),
       })
-      .where(ownershipCondition(lease))
+      .where(condition)
       .returning({ id: tables.jobs.id })
       .all();
     return rows.length > 0 ? "requeued" : "lost";
@@ -259,10 +280,10 @@ export function failJob(
     .set({
       status: "failed",
       lastError: errorMessage,
-      finishedAt: now.toISOString(),
+      finishedAt: nowIso,
       leaseExpiresAt: null,
     })
-    .where(ownershipCondition(lease))
+    .where(condition)
     .returning({ id: tables.jobs.id })
     .all();
   return rows.length > 0 ? "failed" : "lost";
@@ -325,14 +346,18 @@ export function recoverExpiredJobs(database: Database, now: Date = new Date()): 
         })
         .from(tables.jobs)
         .where(
-          and(eq(tables.jobs.status, "running"), lt(tables.jobs.leaseExpiresAt, now.toISOString())),
+          and(
+            eq(tables.jobs.status, "running"),
+            lte(tables.jobs.leaseExpiresAt, now.toISOString()),
+          ),
         )
         .all();
       return expired.flatMap((job) => {
-        const outcome = failJob(transaction, job, {
+        const outcome = settleJobFailure(transaction, job, {
           errorMessage: "Worker stopped while the job was running",
           retryable: true,
           now,
+          leaseState: "expired",
         });
         if (outcome === "lost") {
           return [];
@@ -354,8 +379,7 @@ export function recoverExpiredJobs(database: Database, now: Date = new Date()): 
 }
 
 /**
- * Releases every running job of a worker, used at startup when the previous process of the
- * same worker id died without finishing them.
+ * Releases every running job of a worker after its process is known to have stopped.
  *
  * @param database - Database.
  * @param workerId - Worker whose jobs are released.
