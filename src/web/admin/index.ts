@@ -1,6 +1,7 @@
 export { AuditTab } from "./audit/audit-tab";
 export { WebhookDeliveriesSection } from "./audit/webhook-deliveries-section";
 export { AdministrationPage } from "./administration-page";
+export { AdministrationNavigation } from "./navigation/administration-navigation";
 export { CloudflareConnection } from "./organization/cloudflare/cloudflare-connection";
 export { GitHubPage } from "./server/github/github-page";
 export { OrganizationTab } from "./organization/organization-tab";

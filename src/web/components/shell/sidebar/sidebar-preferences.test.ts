@@ -14,9 +14,41 @@ describe("parseSidebarPreferences", () => {
 
     const preferences = parseSidebarPreferences(saved);
 
-    expect(preferences).toEqual({ collapsed: true, pinnedProjectIds: ["api", "site"] });
+    expect(preferences).toEqual({
+      collapsed: true,
+      closedGroups: [],
+      pinnedProjectIds: ["api", "site"],
+    });
+  });
+});
+
+describe("saved sidebar groups", () => {
+  test("restores the groups closed by the user", () => {
+    const saved = JSON.stringify({
+      collapsed: false,
+      closedGroups: ["infrastructure", "pinned"],
+      pinnedProjectIds: ["api"],
+    });
+
+    expect(parseSidebarPreferences(saved).closedGroups).toEqual(["infrastructure", "pinned"]);
   });
 
+  test("keeps valid pins when the saved groups are invalid", () => {
+    const saved = JSON.stringify({
+      collapsed: true,
+      closedGroups: ["unknown"],
+      pinnedProjectIds: ["api"],
+    });
+
+    expect(parseSidebarPreferences(saved)).toEqual({
+      collapsed: true,
+      closedGroups: [],
+      pinnedProjectIds: ["api"],
+    });
+  });
+});
+
+describe("invalid or duplicate saved sidebar preferences", () => {
   test.each([
     null,
     "",
@@ -68,16 +100,21 @@ describe("visiblePinnedProjectIds", () => {
 
 describe("togglePinnedProject", () => {
   test("pins an accessible project without changing the input preferences", () => {
-    const preferences = { collapsed: true, pinnedProjectIds: ["api"] };
+    const preferences = {
+      ...defaultSidebarPreferences(),
+      collapsed: true,
+      closedGroups: ["deployments"] as const,
+      pinnedProjectIds: ["api"],
+    };
 
     const updated = togglePinnedProject(preferences, "site", ["api", "site"]);
 
-    expect(updated).toEqual({ collapsed: true, pinnedProjectIds: ["api", "site"] });
+    expect(updated).toEqual({ ...preferences, pinnedProjectIds: ["api", "site"] });
     expect(preferences.pinnedProjectIds).toEqual(["api"]);
   });
 
   test("unpins an already selected project", () => {
-    const preferences = { collapsed: false, pinnedProjectIds: ["api", "site"] };
+    const preferences = { ...defaultSidebarPreferences(), pinnedProjectIds: ["api", "site"] };
 
     const updated = togglePinnedProject(preferences, "api", ["api", "site"]);
 
@@ -85,15 +122,17 @@ describe("togglePinnedProject", () => {
   });
 
   test("refuses a fifth pinned project", () => {
-    const preferences = { collapsed: false, pinnedProjectIds: ["a", "b", "c", "d"] };
+    const preferences = { ...defaultSidebarPreferences(), pinnedProjectIds: ["a", "b", "c", "d"] };
 
     const updated = togglePinnedProject(preferences, "e", ["a", "b", "c", "d", "e"]);
 
     expect(updated.pinnedProjectIds).toEqual(preferences.pinnedProjectIds);
   });
+});
 
+describe("pin availability and limits", () => {
   test("allows unpinning when the limit has been reached", () => {
-    const preferences = { collapsed: false, pinnedProjectIds: ["a", "b", "c", "d"] };
+    const preferences = { ...defaultSidebarPreferences(), pinnedProjectIds: ["a", "b", "c", "d"] };
 
     const updated = togglePinnedProject(preferences, "c", ["a", "b", "c", "d"]);
 
@@ -101,7 +140,10 @@ describe("togglePinnedProject", () => {
   });
 
   test("reclaims pin slots after a project is removed or access is revoked", () => {
-    const preferences = { collapsed: false, pinnedProjectIds: ["a", "b", "c", "removed"] };
+    const preferences = {
+      ...defaultSidebarPreferences(),
+      pinnedProjectIds: ["a", "b", "c", "removed"],
+    };
 
     const updated = togglePinnedProject(preferences, "new", ["a", "b", "c", "new"]);
 

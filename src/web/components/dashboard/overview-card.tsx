@@ -1,16 +1,11 @@
-import {
-  ActivityIcon,
-  CircleAlertIcon,
-  CircleCheckIcon,
-  CircleDashedIcon,
-  CircleXIcon,
-  LoaderCircleIcon,
-  RocketIcon,
-} from "lucide-react";
+import { Link } from "@tanstack/react-router";
+import { CircleXIcon, LoaderCircleIcon, RocketIcon } from "lucide-react";
 
 import { CardTitleRow, StatusTile } from "@/web/components/layout/layout";
+import { STATUS_FILTERS, type StatusFilter } from "@/web/components/project-list/project-list";
 import { useSystemStatus } from "@/web/components/shell/use-shell-queries";
 import { Card } from "@/web/components/ui/card";
+import { cn } from "@/web/components/ui/class-names";
 import { Skeleton } from "@/web/components/ui/skeleton";
 
 import type { DashboardSummary } from "./dashboard";
@@ -20,43 +15,70 @@ function toneWhenPositive(count: number, className: string): string {
   return count > 0 ? className : "";
 }
 
-/** Top card: how many applications there are, and the state of each group at a glance. */
+/** Application health and direct links to the matching project lists. */
 export function OverviewCard({ data }: { readonly data: DashboardSummary | null }) {
   if (data == null) {
-    return <Skeleton className="h-52 rounded-2xl" />;
+    return <Skeleton className="h-40 rounded-xl" />;
   }
+
   return (
-    <Card className="gap-4 p-5">
-      <div className="flex min-w-0 flex-col gap-4">
-        {/* The system health is the status button in the top bar, on every page. */}
-        <CardTitleRow icon={ActivityIcon} title="Status das aplicações" count={data.projectCount} />
-        <dl className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-          <ApplicationTiles data={data} />
-        </dl>
-      </div>
-    </Card>
+    <section aria-label="Status das aplicações">
+      <ul className="grid gap-3 sm:grid-cols-3">
+        <ApplicationTile
+          value={data.onlineCount}
+          status="online"
+          icon="solar-[check-circle-bold-duotone]"
+          tone="text-success"
+        />
+        <ApplicationTile
+          value={data.offlineCount + data.unhealthyCount}
+          status="offline"
+          icon="solar-[danger-circle-bold-duotone]"
+          tone="text-warning"
+        />
+        <ApplicationTile
+          value={data.neverDeployedCount}
+          status="never"
+          icon="solar-[minus-circle-bold-duotone]"
+        />
+      </ul>
+    </section>
   );
 }
 
-function ApplicationTiles({ data }: { readonly data: DashboardSummary }) {
-  // Same rule as the "Precisam de atenção" filter of the project list: down, or running but failing its check.
-  const attention = data.offlineCount + data.unhealthyCount;
+function ApplicationTile({
+  value,
+  status,
+  icon,
+  tone = "",
+}: {
+  readonly value: number;
+  readonly status: StatusFilter;
+  readonly icon: string;
+  readonly tone?: string;
+}) {
   return (
-    <>
-      <StatusTile
-        value={data.onlineCount}
-        label="Online"
-        icon={CircleCheckIcon}
-        iconClassName={toneWhenPositive(data.onlineCount, "text-success")}
-      />
-      <StatusTile
-        value={attention}
-        label="Com problema"
-        icon={CircleAlertIcon}
-        iconClassName={toneWhenPositive(attention, "text-warning")}
-      />
-      <StatusTile value={data.neverDeployedCount} label="Sem deploy" icon={CircleDashedIcon} />
-    </>
+    <li className="min-w-0">
+      <Link
+        to="/projects"
+        search={{ status }}
+        className="flex h-full min-h-20 items-center gap-3 rounded-xl border border-border bg-surface-raised p-3.5 transition-colors hover:bg-well focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none sm:p-4"
+      >
+        <span
+          aria-hidden
+          className={cn(
+            "size-5 shrink-0 text-muted-foreground",
+            icon,
+            toneWhenPositive(value, tone),
+          )}
+        />
+        <span className="min-w-0 flex-1">
+          <span className="block text-sm font-medium">{STATUS_FILTERS[status]}</span>
+          <span className="block text-2xl leading-tight font-semibold tabular-nums">{value}</span>
+        </span>
+        <span aria-hidden className="solar-[alt-arrow-right-linear] size-4 shrink-0 text-faint" />
+      </Link>
+    </li>
   );
 }
 

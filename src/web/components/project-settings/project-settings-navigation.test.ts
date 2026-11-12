@@ -14,9 +14,11 @@ test("keeps read-only settings visible without offering restricted destinations"
   ]);
 });
 
+test.each(["", "#unknown", "#toString"])("opens the settings index for %j", (hash) => {
+  expect(legacySettingsDestination(hash)).toBe("/projects/$projectId/settings");
+});
+
 test.each([
-  ["", "identity"],
-  ["#unknown", "identity"],
   ["#settings-general", "identity"],
   ["settings-build", "build"],
   ["#settings-repository", "repository"],

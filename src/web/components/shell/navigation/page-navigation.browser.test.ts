@@ -19,11 +19,13 @@ import { PageNavigation } from ${navigationPath};
 const params = new URL(location.href).searchParams;
 const projectId = params.get("projectId") ?? "app";
 const destinations = [
-  { to: "/projects/$projectId", label: "Status", group: "Aplicação", exact: true },
-  { to: "/projects/$projectId/settings", label: "Configurações", group: "Configuração", exact: false },
-  { to: "/projects/$projectId/settings/build", label: "Construção", group: "Configuração", exact: true },
+  { to: "/projects/$projectId", label: "Status", group: "Aplicação", primary: true, exact: true },
+  { to: "/projects/$projectId/settings", label: "Configurações", group: "Configuração", primary: true, exact: false },
+  { to: "/projects/$projectId/previews", label: "Ambientes de teste", group: "Publicação", primary: false, exact: true },
+  { to: "/projects/$projectId/settings/build", label: "Construção", group: "Configuração", primary: false, exact: true },
+  { to: "/projects/$projectId/databases", label: "Bancos de dados", group: "Dados e tarefas", primary: false, exact: true },
 ];
-const items = destinations.map((item) => ({ ...item, params: { projectId }, href: item.to.replace("$projectId", encodeURIComponent(projectId)), link: <Link to={item.to} params={{ projectId }} activeOptions={{ exact: item.exact }} preload={false}>{item.label}</Link> }));
+const items = destinations.map((item) => ({ ...item, params: { projectId }, href: item.to.replace("$projectId", encodeURIComponent(projectId)), renderLink: (current) => <Link to={item.to} params={{ projectId }} activeOptions={{ exact: true, includeSearch: false }} aria-current={current ? "page" : undefined} preload={false}>{item.label}</Link> }));
 function App() {
   const [empty, setEmpty] = useState(false);
   return <main>
@@ -35,9 +37,11 @@ const root = createRootRoute({ component: App });
 const project = createRoute({ getParentRoute: () => root, path: "/projects/$projectId" });
 const settings = createRoute({ getParentRoute: () => project, path: "settings" });
 const build = createRoute({ getParentRoute: () => settings, path: "build" });
+const previews = createRoute({ getParentRoute: () => project, path: "previews" });
+const databases = createRoute({ getParentRoute: () => project, path: "databases" });
 const fallback = createRoute({ getParentRoute: () => root, path: "$" });
 const router = createRouter({
-  routeTree: root.addChildren([project.addChildren([settings.addChildren([build])]), fallback]),
+  routeTree: root.addChildren([project.addChildren([settings.addChildren([build]), previews, databases]), fallback]),
   history: createMemoryHistory({ initialEntries: [params.get("path") ?? "/projects/app"] }),
 });
 createRoot(document.getElementById("root")).render(<RouterProvider router={router} />);
@@ -62,7 +66,7 @@ beforeAll(async () => {
         return new Response(script, { headers: { "Content-Type": "application/javascript" } });
       }
       return new Response(
-        '<!doctype html><html lang="pt-BR"><head><title>Navegação</title></head><body><div id="root"></div><script type="module" src="/fixture.js"></script></body></html>',
+        '<!doctype html><html lang="pt-BR"><head><title>Navegação</title><style>.hidden{display:none}@media(min-width:640px){[class~="sm:hidden"]{display:none}[class~="sm:block"]{display:block}}</style></head><body><div id="root"></div><script type="module" src="/fixture.js"></script></body></html>',
         {
           headers: { "Content-Type": "text/html; charset=utf-8" },
         },
@@ -105,38 +109,65 @@ test.each([
 ])("selects the deepest destination through the router at %s", async (path, projectId) => {
   await using session = await openNavigation(path, projectId);
   const { page } = session;
+  const resources = page.getByRole("button", { name: "Recursos", exact: true });
+  expect(await resources.getAttribute("aria-description")).toBe("Página atual: Construção");
   expect(
-    await page
-      .getByRole("button", { name: "Páginas do projeto: Construção", exact: true })
-      .isVisible(),
-  ).toBe(true);
+    await page.getByRole("link", { name: "Configurações" }).getAttribute("aria-current"),
+  ).toBeNull();
+  await resources.click();
   expect(
-    await page
-      .getByRole("button", { name: "Páginas do projeto: Configuração", exact: true })
-      .getAttribute("aria-description"),
-  ).toBe("Página atual: Construção");
+    await page.getByRole("menuitem", { name: "Construção" }).getAttribute("aria-current"),
+  ).toBe("page");
   expect(session.errors()).toEqual([]);
 });
 
-test("updates the active label and group after navigating through menu links", async () => {
+test("opens desktop resources by keyboard in the same order as mobile", async () => {
   await using session = await openNavigation();
   const { page } = session;
-  await page.getByRole("button", { name: "Páginas do projeto: Status", exact: true }).click();
-  await page.getByRole("menuitem", { name: "Construção", exact: true }).click();
-  await page.getByRole("button", { name: "Páginas do projeto: Construção", exact: true }).waitFor();
+  const resources = page.getByRole("button", { name: "Recursos", exact: true });
+  const menu = page.getByRole("menu", { name: "Recursos", exact: true });
+  await resources.press("Enter");
+  await menu.waitFor();
   expect(
-    await page
-      .getByRole("button", { name: "Páginas do projeto: Configuração", exact: true })
-      .getAttribute("aria-description"),
-  ).toBe("Página atual: Construção");
-  await page.getByRole("button", { name: "Páginas do projeto: Construção", exact: true }).click();
-  await page.getByRole("menuitem", { name: "Status", exact: true }).click();
-  await page.getByRole("button", { name: "Páginas do projeto: Status", exact: true }).waitFor();
-  expect(
-    await page
-      .getByRole("button", { name: "Páginas do projeto: Aplicação", exact: true })
-      .getAttribute("aria-description"),
-  ).toBe("Página atual: Status");
+    await menu
+      .getByRole("group")
+      .evaluateAll((groups) => groups.map((group) => group.getAttribute("aria-label"))),
+  ).toEqual(["Configuração", "Dados e tarefas", "Publicação"]);
+  expect(await menu.getByRole("menuitem").allTextContents()).toEqual([
+    "Construção",
+    "Bancos de dados",
+    "Ambientes de teste",
+  ]);
+  await page.keyboard.press("ArrowDown");
+  await page.keyboard.press("Enter");
+  await menu.waitFor({ state: "hidden" });
+  expect(await resources.getAttribute("aria-description")).toBe("Página atual: Bancos de dados");
+  expect(session.errors()).toEqual([]);
+});
+
+test("keeps primary links directly available on mobile and updates the active destination", async () => {
+  await using session = await openNavigation();
+  const { page } = session;
+  await page.setViewportSize({ width: 320, height: 740 });
+  const status = page.getByRole("link", { name: "Status", exact: true });
+  const settings = page.getByRole("link", { name: "Configurações", exact: true });
+  expect(await status.getAttribute("aria-current")).toBe("page");
+  await settings.click();
+  expect(await settings.getAttribute("aria-current")).toBe("page");
+  const resources = page.getByRole("button", { name: "Recursos", exact: true });
+  const sheet = page.getByRole("dialog", { name: "Recursos do projeto" });
+  await resources.click();
+  await sheet.getByRole("link", { name: "Construção", exact: true }).click();
+  await sheet.waitFor({ state: "hidden" });
+  expect(await resources.getAttribute("aria-description")).toBe("Página atual: Construção");
+  await resources.click();
+  const current = sheet.getByRole("link", { name: "Construção", exact: true });
+  expect(await current.getAttribute("aria-current")).toBe("page");
+  await page.keyboard.press("Escape");
+  await sheet.waitFor({ state: "hidden" });
+  expect(await resources.evaluate((element) => document.activeElement === element)).toBe(true);
+  await status.click();
+  expect(await status.getAttribute("aria-current")).toBe("page");
   expect(session.errors()).toEqual([]);
 });
 
@@ -144,20 +175,17 @@ test("keeps only the parent active for a child of an exact destination", async (
   await using session = await openNavigation("/projects/app/settings/build/details");
   expect(
     await session.page
-      .getByRole("button", { name: "Páginas do projeto: Configurações", exact: true })
-      .isVisible(),
-  ).toBe(true);
+      .getByRole("link", { name: "Configurações", exact: true })
+      .getAttribute("aria-current"),
+  ).toBe("page");
   expect(session.errors()).toEqual([]);
 });
 
 test("does not match partial segments and handles an empty catalog without changing hook order", async () => {
   await using session = await openNavigation("/projects/app/settings-old");
   const { page } = session;
-  expect(
-    await page
-      .getByRole("button", { name: "Páginas do projeto: Escolher página", exact: true })
-      .isVisible(),
-  ).toBe(true);
+  expect(await page.locator("nav [aria-current]").count()).toBe(0);
+  expect(await page.getByRole("button", { name: "Recursos", exact: true }).isVisible()).toBe(true);
   await page.getByRole("button", { name: "Alternar catálogo" }).click();
   expect(await page.getByRole("navigation", { name: "Páginas do projeto" }).count()).toBe(0);
   await page.getByRole("button", { name: "Alternar catálogo" }).click();

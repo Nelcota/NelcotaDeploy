@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 
+import { DeploymentNavigation } from "@/web/components/deployment-history/all/deployment-navigation";
 import { DeploymentsHistory } from "@/web/components/deployment-history/all/deployments-history";
 import { PageHeader } from "@/web/components/shell/page-header";
 
@@ -11,7 +12,11 @@ export const Route = createFileRoute("/_app/deployments")({
 function DeploymentsPage() {
   return (
     <>
-      <PageHeader title="Histórico de deploys" />
+      <PageHeader
+        title="Histórico de deploys"
+        description="Consulte os deploys por projeto e status."
+      />
+      <DeploymentNavigation />
       <DeploymentsHistory />
     </>
   );

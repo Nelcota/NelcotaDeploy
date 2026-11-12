@@ -2,7 +2,7 @@ import { Link } from "@tanstack/react-router";
 
 import { CONTAINER_STATE_LABELS } from "@/web/components/layout/labels";
 import { containerAccent, type RowAccent } from "@/web/components/projects/project-accent";
-import { SidebarHint } from "@/web/components/shell/sidebar/sidebar-link";
+import { SidebarHint, sidebarLinkClass } from "@/web/components/shell/sidebar/sidebar-link";
 import type { useProjectList } from "@/web/components/shell/use-shell-queries";
 import { cn } from "@/web/components/ui/class-names";
 
@@ -35,7 +35,7 @@ export function SidebarProjectLink({
         params={{ projectId: project.id }}
         onClick={onNavigate}
         aria-label={`${project.name}, ${stateLabel}`}
-        className="relative flex h-10 items-center gap-3 rounded-xl px-3 text-sm text-muted-foreground transition-colors hover:bg-well hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none data-[status=active]:bg-well data-[status=active]:text-foreground"
+        className={cn(sidebarLinkClass, "relative", collapsed && "justify-center px-0")}
       >
         <span
           aria-hidden

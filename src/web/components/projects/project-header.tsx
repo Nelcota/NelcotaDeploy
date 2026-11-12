@@ -1,4 +1,4 @@
-import { Link } from "@tanstack/react-router";
+import { Link, useMatchRoute } from "@tanstack/react-router";
 import { ChevronLeftIcon, GitBranchIcon, GlobeIcon } from "lucide-react";
 import type { ReactNode } from "react";
 
@@ -77,10 +77,13 @@ function ProjectLinks({
  */
 export function ProjectBand({ details }: { readonly details: ProjectDetails }) {
   const { project } = details;
+  const matchRoute = useMatchRoute();
+  const overview =
+    matchRoute({ to: "/projects/$projectId", params: { projectId: project.id } }) !== false;
   const container = currentContainer(details);
   const url = publicUrl(details);
   return (
-    <div className="space-y-5">
+    <div className="space-y-3">
       <Link
         to="/projects"
         className="inline-flex items-center gap-1 rounded-sm text-sm text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
@@ -88,7 +91,7 @@ export function ProjectBand({ details }: { readonly details: ProjectDetails }) {
         <ChevronLeftIcon aria-hidden className="size-4" />
         Todos os projetos
       </Link>
-      <header className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+      <header className="flex flex-col gap-2 xl:flex-row xl:items-start xl:justify-between xl:gap-5">
         <div className="min-w-0 space-y-1.5">
           <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
             <h1 className="max-w-full min-w-0 text-2xl leading-tight font-semibold tracking-tight [overflow-wrap:anywhere]">
@@ -103,7 +106,9 @@ export function ProjectBand({ details }: { readonly details: ProjectDetails }) {
               environments={details.environments}
             />
           </div>
-          <ProjectLinks url={url} project={project} />
+          <div className={overview ? undefined : "hidden sm:block"}>
+            <ProjectLinks url={url} project={project} />
+          </div>
         </div>
         <ProjectActions details={details} containerState={container?.state ?? null} url={url} />
       </header>
@@ -117,18 +122,24 @@ function ProjectTabs({ projectId }: { readonly projectId: string }) {
     href: section.to.replace("$projectId", encodeURIComponent(projectId)),
     to: section.to,
     params: { projectId },
-    label: section.label,
+    label: section.navigationLabel,
     group: section.group,
+    primary: section.primary,
     exact: section.exact,
-    link: (
+    renderLink: (current: boolean) => (
       <Link
         to={section.to}
         params={{ projectId }}
-        activeOptions={{ exact: section.exact }}
+        activeOptions={{ exact: true, includeSearch: false }}
+        aria-current={current ? "page" : undefined}
+        className="flex min-h-9 w-full items-center gap-1.5 rounded-lg px-1.5 py-1 text-xs font-medium text-muted-foreground hover:bg-well hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none aria-[current=page]:bg-well aria-[current=page]:font-semibold aria-[current=page]:text-foreground sm:px-2 sm:text-sm"
         preload={false}
       >
-        <section.icon aria-hidden />
-        {section.label}
+        <span
+          aria-hidden
+          className={`size-4 shrink-0 ${section.solarIcon} ${section.primary ? "max-sm:hidden" : ""}`}
+        />
+        {section.navigationLabel}
       </Link>
     ),
   }));
@@ -155,7 +166,7 @@ export function TabHeader({
     <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
       <div className="min-w-0 flex-1">
         <div className="min-w-0 space-y-0.5">
-          <h2 className="flex min-w-0 flex-wrap items-center gap-2.5 text-xl leading-tight font-semibold tracking-tight break-words">
+          <h2 className="flex min-w-0 flex-wrap items-center gap-2 text-xl leading-tight font-semibold tracking-tight break-words">
             {title}
             {count == null ? null : (
               <span className="rounded-md bg-well px-1.5 py-0.5 text-xs font-medium text-muted-foreground tabular-nums">

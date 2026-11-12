@@ -8,11 +8,13 @@ export function SegmentedControl<TValue extends string | number>({
   options,
   value,
   onChange,
+  wrap = false,
 }: {
   readonly label: string;
   readonly options: readonly { readonly value: TValue; readonly label: string }[];
   readonly value: TValue;
   readonly onChange: (value: TValue) => void;
+  readonly wrap?: boolean;
 }) {
   return (
     <RadioGroup.Root
@@ -35,9 +37,12 @@ export function SegmentedControl<TValue extends string | number>({
           onChange(option.value);
         }
       }}
-      // On phones the options scroll sideways in one line instead of wrapping into a second
-      // row. Elsewhere the group keeps its natural width, so it never squeezes into a column.
-      className="flex max-w-full shrink-0 items-center gap-2 max-sm:-m-1 max-sm:shrink max-sm:overflow-x-auto max-sm:p-1 max-sm:[scrollbar-width:none]"
+      className={cn(
+        "flex max-w-full items-center gap-2",
+        wrap
+          ? "flex-wrap"
+          : "shrink-0 max-sm:-m-1 max-sm:shrink max-sm:overflow-x-auto max-sm:p-1 max-sm:[scrollbar-width:none]",
+      )}
     >
       {options.map((option) => (
         <RadioGroup.Item

@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { FilterXIcon, ListIcon, RocketIcon } from "lucide-react";
+import { FilterXIcon, RocketIcon } from "lucide-react";
 
 import { SegmentedControl } from "@/web/components/layout/overview";
 import { EmptyState } from "@/web/components/layout/states";
@@ -30,20 +30,15 @@ export function HistoryHeader({
   readonly onStatusFilterChange: (filter: StatusFilter) => void;
 }) {
   return (
-    <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-      <h2 id="history-title" className="flex items-center gap-3 text-base font-semibold">
-        <ListIcon aria-hidden className="size-[1.15rem] text-muted-foreground" />
-        Histórico
-      </h2>
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-        <ProjectFilter value={projectFilter} onChange={onProjectFilterChange} />
-        <SegmentedControl
-          label="Filtrar deploys por status"
-          options={STATUS_FILTERS}
-          value={statusFilter}
-          onChange={onStatusFilterChange}
-        />
-      </div>
+    <div className="flex flex-col gap-3 xl:flex-row xl:items-center">
+      <ProjectFilter value={projectFilter} onChange={onProjectFilterChange} />
+      <SegmentedControl
+        label="Filtrar deploys por status"
+        options={STATUS_FILTERS}
+        value={statusFilter}
+        onChange={onStatusFilterChange}
+        wrap
+      />
     </div>
   );
 }

@@ -23,6 +23,7 @@ export function ProjectHistoryHeader({
           options={STATUS_FILTERS}
           value={statusFilter}
           onChange={onStatusFilterChange}
+          wrap
         />
       }
     />
@@ -41,7 +42,7 @@ export function EmptyHistory({
       <EmptyState
         icon={RocketIcon}
         title="Nenhum deploy ainda"
-        description="Use o botão Deploy acima para publicar a primeira versão."
+        description="Use o botão Publicar acima para enviar a primeira versão."
       />
     );
   }

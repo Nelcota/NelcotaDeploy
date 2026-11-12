@@ -3,13 +3,15 @@
 @import "@fontsource-variable/manrope";
 @import "@fontsource-variable/jetbrains-mono";
 
+@plugin "./components/shell/sidebar/icons/solar-icons.plugin.ts";
+
 @custom-variant dark (&:is(.dark *));
 
 /*
  * Nelcota Deploy — same family as Nelcota PRs.
  * The sidebar and top bar sit on the background; pages live on a raised panel holding
- * cards, and cards hold tiles. Nelcota blue marks the active item and primary actions;
- * green/amber/red are reserved for status.
+ * cards, and cards hold tiles. Nelcota blue marks primary actions and focus.
+ * Green, amber and red are reserved for status.
  */
 :root {
   --radius: 0.625rem;

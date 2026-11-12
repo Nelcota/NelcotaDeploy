@@ -35,11 +35,11 @@ export function SettingsSection({
       tabIndex={id == null ? undefined : -1}
       aria-labelledby={headingId}
       className={cn(
-        "scroll-mt-4 rounded-2xl bg-card ring-1 focus-visible:outline-2 focus-visible:outline-ring",
+        "scroll-mt-4 rounded-xl bg-card ring-1 focus-visible:outline-2 focus-visible:outline-ring",
         SECTION_TONES[tone],
       )}
     >
-      <header className="flex items-start gap-3 border-b border-border/60 px-5 py-4 md:px-6">
+      <header className="flex items-start gap-3 border-b border-border/60 px-4 py-3 md:px-5">
         <Icon
           aria-hidden
           className={cn(
@@ -59,7 +59,7 @@ export function SettingsSection({
           )}
         </div>
       </header>
-      <div className="px-5 py-5 md:px-6">{children}</div>
+      <div className="p-4 md:p-5">{children}</div>
     </section>
   );
 }

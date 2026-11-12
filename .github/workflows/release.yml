@@ -31,6 +31,7 @@ jobs:
       - run: bun install --frozen-lockfile
       - run: bun run check
       - run: bash -n install.sh
+      - run: bash -n deploy/update.sh
 
   image:
     needs: check
@@ -108,8 +109,8 @@ jobs:
           fi
 
           mkdir -p bundle/nelcota-deploy/deploy/traefik
-          cp install.sh docker-compose.yml bundle/nelcota-deploy/
-          cp deploy/compose.install.yml bundle/nelcota-deploy/deploy/
+          cp install.sh docker-compose.yml README.md bundle/nelcota-deploy/
+          cp deploy/compose.install.yml deploy/update.sh bundle/nelcota-deploy/deploy/
           cp deploy/traefik/panel.yml bundle/nelcota-deploy/deploy/traefik/
           printf '%s@%s\n' "$image" "$digest" > bundle/nelcota-deploy/deploy/release-image
           tar --sort=name --mtime=@0 --owner=0 --group=0 --numeric-owner \

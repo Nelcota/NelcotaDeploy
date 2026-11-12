@@ -1,9 +1,5 @@
-import { Link } from "@tanstack/react-router";
-import { ArrowRightIcon } from "lucide-react";
-
 import { PinnedProjectPicker } from "@/web/components/shell/sidebar/pinned-project-picker";
 import { SidebarGroup } from "@/web/components/shell/sidebar/sidebar-group";
-import { SidebarHint } from "@/web/components/shell/sidebar/sidebar-link";
 import { visiblePinnedProjectIds } from "@/web/components/shell/sidebar/sidebar-preferences";
 import {
   SidebarProjectLink,
@@ -21,32 +17,7 @@ function ProjectsNotice({
   readonly collapsed: boolean;
 }) {
   return message == null ? null : (
-    <p className={collapsed ? "sr-only" : "px-3 py-2 text-sm text-muted-foreground"}>{message}</p>
-  );
-}
-
-function AllProjectsLink({
-  collapsed,
-  onNavigate,
-}: {
-  readonly collapsed: boolean;
-  readonly onNavigate: () => void;
-}) {
-  return (
-    <SidebarHint label="Ver todos os projetos">
-      <Link
-        to="/projects"
-        onClick={onNavigate}
-        aria-label="Ver todos os projetos"
-        className="flex h-9 items-center gap-3 rounded-xl px-3 text-sm text-muted-foreground transition-colors hover:bg-well hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
-      >
-        {collapsed ? (
-          <ArrowRightIcon aria-hidden className="size-4 shrink-0" />
-        ) : (
-          <span>Ver todos</span>
-        )}
-      </Link>
-    </SidebarHint>
+    <p className={collapsed ? "sr-only" : "px-2.5 py-1.5 text-xs text-faint"}>{message}</p>
   );
 }
 
@@ -81,7 +52,7 @@ type SidebarProjectsProps = {
   readonly onNavigate: () => void;
 };
 
-/** Shows up to four user-selected projects and keeps the complete list one click away. */
+/** Shows up to four user-selected project shortcuts. */
 export function SidebarProjects({ sidebar, collapsed, onNavigate }: SidebarProjectsProps) {
   const projects = useProjectList();
   const list = (projects.data ?? []).filter((project) => project.parentProjectId == null);
@@ -99,8 +70,10 @@ export function SidebarProjects({ sidebar, collapsed, onNavigate }: SidebarProje
       : emptyMessage;
   return (
     <SidebarGroup
+      group="pinned"
       label="Fixados"
       collapsed={collapsed}
+      sidebar={sidebar}
       actions={
         <PinnedProjectPicker
           projects={list}
@@ -111,7 +84,7 @@ export function SidebarProjects({ sidebar, collapsed, onNavigate }: SidebarProje
       }
     >
       {projects.isPending ? (
-        <Skeleton className="h-10 rounded-xl" aria-label="Carregando projetos" />
+        <Skeleton className="h-10 rounded-lg" aria-label="Carregando projetos" />
       ) : null}
       <ProjectsNotice message={message} collapsed={collapsed} />
       <PinnedProjects
@@ -120,7 +93,6 @@ export function SidebarProjects({ sidebar, collapsed, onNavigate }: SidebarProje
         collapsed={collapsed}
         onNavigate={onNavigate}
       />
-      <AllProjectsLink collapsed={collapsed} onNavigate={onNavigate} />
     </SidebarGroup>
   );
 }
