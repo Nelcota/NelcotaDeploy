@@ -1,5 +1,4 @@
 import { Link } from "@tanstack/react-router";
-import { PinIcon, PlusIcon } from "lucide-react";
 
 import { ProjectChoices } from "@/web/components/shell/sidebar/project-choices";
 import { SidebarHint } from "@/web/components/shell/sidebar/sidebar-link";
@@ -41,7 +40,7 @@ export function PinnedProjectPicker({
               aria-label="Gerenciar projetos fixados"
               disabled={projects.length === 0}
             >
-              <PinIcon aria-hidden />
+              <span aria-hidden className="solar-[pin-linear] size-4" />
             </Button>
           </DialogTrigger>
         </SidebarHint>
@@ -60,7 +59,7 @@ export function PinnedProjectPicker({
         <SidebarHint label="Novo projeto">
           <Button asChild variant="ghost" size="icon-xs">
             <Link to="/projects/new" aria-label="Novo projeto" onClick={onNavigate}>
-              <PlusIcon aria-hidden />
+              <span aria-hidden className="solar-[add-linear] size-4" />
             </Link>
           </Button>
         </SidebarHint>

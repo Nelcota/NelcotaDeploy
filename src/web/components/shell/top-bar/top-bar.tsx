@@ -2,31 +2,26 @@ import { Link } from "@tanstack/react-router";
 import type { ReactNode } from "react";
 
 import { NelcotaMark } from "@/web/components/shell/brand-logo";
-import { AccountMenu } from "@/web/components/shell/top-bar/account-menu";
 import {
   RefreshButton,
   SearchButton,
   SystemStatusButton,
 } from "@/web/components/shell/top-bar/top-bar-buttons";
-import type { SessionUser } from "@/web/functions/session.functions";
 
 /**
- * Bar above the page: navigation on narrow screens, search, refresh, system status and the
- * account menu.
+ * Bar above the page with mobile navigation, search, refresh and system status.
  *
  * @param props - `navigation` is the menu button shown on narrow screens.
  */
 export function TopBar({
-  user,
   navigation,
   onSearch,
 }: {
-  readonly user: SessionUser;
   readonly navigation: ReactNode;
   readonly onSearch: () => void;
 }) {
   return (
-    <header className="flex h-20 shrink-0 items-center gap-3 bg-background px-4 lg:px-6">
+    <header className="flex h-14 shrink-0 items-center gap-3 bg-background px-4 lg:px-6">
       {navigation}
       <Link
         to="/"
@@ -39,7 +34,6 @@ export function TopBar({
         <SearchButton onSearch={onSearch} />
         <RefreshButton />
         <SystemStatusButton />
-        <AccountMenu user={user} />
       </div>
     </header>
   );

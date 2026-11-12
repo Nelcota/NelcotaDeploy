@@ -7,7 +7,7 @@ import {
 } from "@/web/components/shell/command-palette/command-palette";
 import { useDeploymentNotifications } from "@/web/components/shell/notifications/deployment-notifications";
 import { DesktopSidebar } from "@/web/components/shell/sidebar/desktop-sidebar";
-import { MobileNavigation } from "@/web/components/shell/sidebar/sidebar";
+import { MobileSidebar } from "@/web/components/shell/sidebar/mobile/mobile-sidebar";
 import { useSidebarPreferences } from "@/web/components/shell/sidebar/use-sidebar-preferences";
 import { TopBar } from "@/web/components/shell/top-bar/top-bar";
 import { cn } from "@/web/components/ui/class-names";
@@ -25,9 +25,8 @@ function SkipLink() {
 }
 
 /**
- * Application frame: a sidebar with the areas and projects, a top bar with shortcuts,
- * search, refresh, system status and account, and the page on a raised panel. Only the
- * panel scrolls, so the bars stay put and page content never slides under them.
+ * Application frame with navigation and account controls in the sidebar. Page content
+ * and navigation scroll independently, keeping the account and top bar in place.
  */
 export function AppShell({
   user,
@@ -45,11 +44,10 @@ export function AppShell({
     // the clipped frame instead of growing the document and letting the whole page scroll.
     <div className="relative flex h-svh overflow-hidden bg-background">
       <SkipLink />
-      <DesktopSidebar sidebar={sidebar} />
+      <DesktopSidebar sidebar={sidebar} user={user} onSearch={() => setSearchOpen(true)} />
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         <TopBar
-          user={user}
-          navigation={<MobileNavigation sidebar={sidebar} />}
+          navigation={<MobileSidebar sidebar={sidebar} user={user} />}
           onSearch={() => setSearchOpen(true)}
         />
         <main
@@ -79,7 +77,7 @@ export function PageBody({
   readonly className?: string;
 }) {
   return (
-    <div className={cn("mx-auto w-full max-w-[110rem] space-y-6 p-4 md:p-6", className)}>
+    <div className={cn("mx-auto w-full max-w-[110rem] space-y-5 p-4 md:p-6", className)}>
       {children}
     </div>
   );

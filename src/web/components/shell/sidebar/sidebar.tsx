@@ -1,80 +1,94 @@
 import { Link } from "@tanstack/react-router";
-import { MenuIcon } from "lucide-react";
-import { useState } from "react";
+import type { ReactNode } from "react";
 
 import { NelcotaMark } from "@/web/components/shell/brand-logo";
 import { MAIN_GROUPS } from "@/web/components/shell/navigation";
+import { AccountMenu } from "@/web/components/shell/sidebar/account/account-menu";
 import { SidebarAreas } from "@/web/components/shell/sidebar/sidebar-link";
 import { SidebarProjects } from "@/web/components/shell/sidebar/sidebar-projects";
 import type { SidebarState } from "@/web/components/shell/sidebar/use-sidebar-preferences";
-import { Button } from "@/web/components/ui/button";
 import { cn } from "@/web/components/ui/class-names";
-import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/web/components/ui/sheet";
+import type { SessionUser } from "@/web/functions/session.functions";
 
-function Brand({ collapsed }: { readonly collapsed: boolean }) {
+function Brand({
+  collapsed,
+  onNavigate,
+}: {
+  readonly collapsed: boolean;
+  readonly onNavigate: () => void;
+}) {
   return (
     <Link
       to="/"
+      activeOptions={{ exact: true }}
       aria-label="Nelcota Deploy — Painel"
-      className="flex min-w-0 shrink-0 items-center gap-3 rounded-lg px-2 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+      onClick={onNavigate}
+      className="flex min-w-0 items-center gap-1.5 rounded-lg px-0.5 py-1 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
     >
-      <NelcotaMark aria-hidden className="h-8 w-auto shrink-0" />
-      <span className={collapsed ? "sr-only" : "truncate text-xl font-semibold tracking-tight"}>
+      <NelcotaMark aria-hidden className="h-5 w-auto shrink-0" />
+      <span className={collapsed ? "sr-only" : "truncate text-sm font-bold tracking-tight"}>
         Nelcota Deploy
       </span>
     </Link>
   );
 }
 
+type SidebarContentProps = {
+  readonly sidebar: SidebarState;
+  readonly user: SessionUser;
+  readonly collapsed?: boolean;
+  readonly actions: ReactNode;
+  readonly navigationId?: string;
+  readonly onNavigate: () => void;
+};
+
 export function SidebarContent({
   sidebar,
+  user,
   collapsed = false,
+  actions,
+  navigationId,
   onNavigate,
-}: {
-  readonly sidebar: SidebarState;
-  readonly collapsed?: boolean;
-  readonly onNavigate: () => void;
-}) {
+}: SidebarContentProps) {
   return (
-    <div className={cn("flex h-full w-full flex-col pb-5", collapsed ? "px-2" : "px-4")}>
-      <div className="flex h-20 shrink-0 items-center">
-        <Brand collapsed={collapsed} />
-      </div>
+    <div className="flex h-full w-full flex-col py-2.5">
+      <header
+        className={cn(
+          "flex shrink-0 items-center justify-between gap-1 px-2",
+          collapsed ? "flex-col" : "min-h-10",
+        )}
+      >
+        <Brand collapsed={collapsed} onNavigate={onNavigate} />
+        {actions}
+      </header>
       <nav
+        id={navigationId}
         aria-label="Principal"
-        className="flex min-h-0 flex-1 flex-col gap-7 overflow-y-auto pt-4"
+        className={cn(
+          "mt-2 min-h-0 flex-1 overflow-y-auto px-2 pb-2",
+          collapsed ? "space-y-1.5" : "space-y-2",
+        )}
       >
         {MAIN_GROUPS.map((group) => (
           <SidebarAreas
             key={group.id}
             group={group.id}
+            sidebar={sidebar}
             collapsed={collapsed}
             onNavigate={onNavigate}
           />
         ))}
         <SidebarProjects sidebar={sidebar} collapsed={collapsed} onNavigate={onNavigate} />
+        <SidebarAreas
+          group="account"
+          sidebar={sidebar}
+          collapsed={collapsed}
+          onNavigate={onNavigate}
+        />
       </nav>
-      <div className="shrink-0 border-t border-border pt-5">
-        <SidebarAreas group="account" collapsed={collapsed} onNavigate={onNavigate} />
-      </div>
+      <footer className="shrink-0 border-t border-sidebar-border px-2 pt-2">
+        <AccountMenu user={user} collapsed={collapsed} />
+      </footer>
     </div>
-  );
-}
-
-/** Menu button that opens the full sidebar in a sheet on narrow screens. */
-export function MobileNavigation({ sidebar }: { readonly sidebar: SidebarState }) {
-  const [open, setOpen] = useState(false);
-  return (
-    <Sheet open={open} onOpenChange={setOpen}>
-      <SheetTrigger asChild>
-        <Button variant="ghost" size="icon" aria-label="Abrir menu" className="lg:hidden">
-          <MenuIcon aria-hidden />
-        </Button>
-      </SheetTrigger>
-      <SheetContent side="left" className="w-72 bg-background p-0">
-        <SheetTitle className="sr-only">Menu</SheetTitle>
-        <SidebarContent sidebar={sidebar} onNavigate={() => setOpen(false)} />
-      </SheetContent>
-    </Sheet>
   );
 }

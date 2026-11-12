@@ -4,20 +4,27 @@ export const PINNED_PROJECT_LIMIT = 4;
 const MAX_PROJECT_ID_LENGTH = 128;
 const MAX_PREFERENCES_LENGTH = 2048;
 
+const sidebarGroupSchema = z.enum(["deployments", "infrastructure", "pinned"]);
+const MAX_CLOSED_GROUPS = sidebarGroupSchema.options.length;
+
 const preferencesSchema = z.object({
   collapsed: z.boolean(),
+  closedGroups: z.array(sidebarGroupSchema).max(MAX_CLOSED_GROUPS).default([]).catch([]),
   pinnedProjectIds: z
     .array(z.string().trim().min(1).max(MAX_PROJECT_ID_LENGTH))
     .max(PINNED_PROJECT_LIMIT),
 });
 
+export type SidebarGroupId = z.infer<typeof sidebarGroupSchema>;
+
 export type SidebarPreferences = {
   readonly collapsed: boolean;
+  readonly closedGroups: readonly SidebarGroupId[];
   readonly pinnedProjectIds: readonly string[];
 };
 
 export function defaultSidebarPreferences(): SidebarPreferences {
-  return { collapsed: false, pinnedProjectIds: [] };
+  return { collapsed: false, closedGroups: [], pinnedProjectIds: [] };
 }
 
 /** Rejects malformed browser preferences without preventing navigation. */
@@ -36,7 +43,11 @@ export function parseSidebarPreferences(value: string | null): SidebarPreference
   if (result.success === false) {
     return defaultSidebarPreferences();
   }
-  return { ...result.data, pinnedProjectIds: [...new Set(result.data.pinnedProjectIds)] };
+  return {
+    ...result.data,
+    closedGroups: [...new Set(result.data.closedGroups)],
+    pinnedProjectIds: [...new Set(result.data.pinnedProjectIds)],
+  };
 }
 
 /** Keeps only visible projects, preserving the user's pin order after deletions or access changes. */

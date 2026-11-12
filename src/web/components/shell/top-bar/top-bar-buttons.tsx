@@ -1,6 +1,6 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { ActivityIcon, RefreshCwIcon, SearchIcon } from "lucide-react";
+import { ActivityIcon, RefreshCwIcon } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
@@ -12,18 +12,17 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/web/components/ui/too
 const ROUND_ICON_BUTTON =
   "relative flex size-10 shrink-0 items-center justify-center rounded-full bg-well text-muted-foreground ring-1 ring-border transition-colors hover:bg-well-hover hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none";
 
-/** Wide search field look-alike that opens the command palette. */
+/** Opens the command palette on screens without a persistent sidebar. */
 export function SearchButton({ onSearch }: { readonly onSearch: () => void }) {
   return (
     <button
       type="button"
       onClick={onSearch}
       aria-label="Buscar projetos e páginas"
-      className="flex size-10 shrink-0 items-center justify-center gap-3 rounded-full bg-well text-sm text-muted-foreground ring-1 ring-border transition-colors hover:bg-well-hover hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none sm:w-auto sm:min-w-0 sm:max-w-md sm:flex-1 sm:shrink sm:justify-start sm:px-4"
+      className="flex size-10 shrink-0 items-center justify-center gap-3 rounded-full bg-well text-sm text-muted-foreground ring-1 ring-border transition-colors hover:bg-well-hover hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none sm:w-auto sm:min-w-0 sm:max-w-md sm:flex-1 sm:shrink sm:justify-start sm:px-4 lg:hidden"
     >
-      <SearchIcon aria-hidden className="size-4 shrink-0" />
-      <span className="hidden truncate sm:inline 2xl:hidden">Buscar…</span>
-      <span className="hidden truncate 2xl:inline">Buscar projetos e páginas</span>
+      <span aria-hidden className="solar-[magnifier-linear] size-4 shrink-0" />
+      <span className="hidden truncate sm:inline">Buscar…</span>
       <kbd className="ml-auto hidden rounded border border-border px-1.5 font-mono text-xs whitespace-nowrap text-faint sm:inline">
         Ctrl K
       </kbd>
