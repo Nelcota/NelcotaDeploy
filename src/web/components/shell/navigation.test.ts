@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 
 import { legacyAdministrationDestination, SETTINGS_SECTIONS } from "./navigation";
+import { visibleAdministrationSections } from "./navigation/administration-destinations";
 
 test.each([
   [undefined, "/settings/organization"],
@@ -29,4 +30,19 @@ test("gives every administration function its own route", () => {
   expect(new Set(SETTINGS_SECTIONS.map((section) => section.to)).size).toBe(
     SETTINGS_SECTIONS.length,
   );
+});
+
+test("lists only readable administration sections and keeps related settings together", () => {
+  const visible = visibleAdministrationSections((permission) => permission === "audit:read");
+
+  const groups = Map.groupBy(visible, (section) => section.group);
+
+  expect(
+    Array.from(groups, ([group, sections]) => [group, sections.map((section) => section.tab)]),
+  ).toEqual([
+    ["Organização", ["organization", "domains", "alerts"]],
+    ["Infraestrutura", ["servers", "server"]],
+    ["Integrações", ["github", "cloudflare", "webhooks"]],
+    ["Acesso e auditoria", ["audit"]],
+  ]);
 });

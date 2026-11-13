@@ -24,19 +24,19 @@ import { type OrganizationFormApi, useOrganizationForm } from "./use-organizatio
 
 const SECTIONS = {
   organization: {
-    title: "Nome da organização",
-    saveLabel: "Salvar nome da organização",
+    title: "Identidade e acesso ao painel",
+    saveLabel: "Salvar alterações",
     icon: Building2Icon,
     fields: OrganizationNameField,
   },
   domains: {
-    title: "Domínios automáticos",
+    title: "Endereços dos projetos",
     saveLabel: "Salvar domínios automáticos",
     icon: GlobeIcon,
     fields: AutomaticDomainFields,
   },
   alerts: {
-    title: "Notificações por webhook",
+    title: "Destino dos alertas",
     saveLabel: "Salvar webhook de notificações",
     icon: BellIcon,
     fields: AlertWebhookField,

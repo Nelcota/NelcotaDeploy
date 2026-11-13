@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 
-import { AdministrationPage, OrganizationTab } from "@/web/admin";
+import { OrganizationTab } from "@/web/admin";
 import { useCan } from "@/web/components/shell/use-permissions";
 
 export const Route = createFileRoute("/_app/settings/domains")({
@@ -10,9 +10,5 @@ export const Route = createFileRoute("/_app/settings/domains")({
 
 function AdministrationRoute() {
   const can = useCan();
-  return (
-    <AdministrationPage title="Domínios automáticos">
-      <OrganizationTab canEdit={can("settings:write")} section="domains" />
-    </AdministrationPage>
-  );
+  return <OrganizationTab canEdit={can("settings:write")} section="domains" />;
 }

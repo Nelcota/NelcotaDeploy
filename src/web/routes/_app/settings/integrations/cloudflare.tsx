@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 
-import { AdministrationPage, CloudflareConnection } from "@/web/admin";
+import { CloudflareConnection } from "@/web/admin";
 import { useCan } from "@/web/components/shell/use-permissions";
 
 export const Route = createFileRoute("/_app/settings/integrations/cloudflare")({
@@ -10,9 +10,5 @@ export const Route = createFileRoute("/_app/settings/integrations/cloudflare")({
 
 function AdministrationRoute() {
   const can = useCan();
-  return (
-    <AdministrationPage title="Conexão com a Cloudflare">
-      <CloudflareConnection canEdit={can("settings:write")} />
-    </AdministrationPage>
-  );
+  return <CloudflareConnection canEdit={can("settings:write")} />;
 }
