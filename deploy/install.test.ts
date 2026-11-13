@@ -57,9 +57,13 @@ case " $* " in
     fi
 
     if test -f "$0.public-timeout"; then
-      rm -- "$0.public-timeout"
-      printf '{"status":'
-      exit 28
+      case " $* " in
+        *' --ipv4 '*) rm -- "$0.public-timeout" ;;
+        *)
+          printf '{"status":'
+          exit 28
+          ;;
+      esac
     fi
     ;;
 esac
@@ -160,7 +164,7 @@ test(
 
       const retry = await runInstaller(bin, [], { previousIngressStart: initialIngressStart });
       expect(retry.exitCode, retry.stderr).toBe(0);
-      expect(retry.stdout).toContain("Public HTTPS check timed out. Retrying");
+      expect(retry.stdout).toContain("Public HTTPS check timed out. Retrying over IPv4");
       expect(retry.stdout).toContain(`Panel ready at https://${DOMAIN}`);
       expect((await readFile(environmentPath, "utf8")) === savedEnvironment).toBe(true);
       expect((await readFile(passwordPath, "utf8")) === savedPassword).toBe(true);

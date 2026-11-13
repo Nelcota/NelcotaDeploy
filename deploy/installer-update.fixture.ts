@@ -170,10 +170,12 @@ export async function checkReleaseUpdate(fixture: UpdateFixture) {
   expect((await stat(environment)).mode & PERMISSION_BITS).toBe(PRIVATE_MODE);
   await checkLiveMigration("applied");
   await rm(publicError);
+  await writeFile(join(fixture.bin, "curl.public-timeout"), "");
 
   const recovered = await fixture.runUpdate(script);
   expect(recovered.exitCode, recovered.stderr).toBe(0);
   expect(recovered.stdout).toContain(`Resuming update with backup ${backup}`);
+  expect(recovered.stdout).toContain("Public HTTPS check timed out. Retrying over IPv4");
   expect(recovered.stdout).toContain("Update complete.");
   await fixture.checkLogin();
 

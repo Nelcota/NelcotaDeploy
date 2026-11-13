@@ -18,6 +18,7 @@ readonly public_health_retry_delay_seconds=2
 readonly secret_bytes=32
 readonly password_bytes=24
 readonly installation_id_bytes=16
+readonly curl_resolve_error=6
 readonly curl_timeout_error=28
 readonly curl_certificate_error=60
 
@@ -314,6 +315,8 @@ start_worker() {
 start_ingress() {
   local health_url="https://$domain/api/health" health_response previous_ingress running_ingress probe_status=0
   local public_probe_status=0 attempt
+  local -a public_address_options=()
+
   previous_ingress=$(compose ps --status running -q traefik)
   printf 'Starting Traefik. Waiting for HTTPS.\n'
   compose up --detach --no-build "$@" traefik ||
@@ -337,13 +340,23 @@ start_ingress() {
 
   for ((attempt = 1; attempt <= public_health_attempts; attempt++)); do
     public_probe_status=0
-    health_response=$(curl --disable --noproxy '*' --fail --silent --show-error \
+    health_response=$(curl --disable "${public_address_options[@]}" --noproxy '*' --fail --silent --show-error \
       --max-time "$public_health_timeout_seconds" "$health_url") || public_probe_status=$?
-    if ((public_probe_status != curl_timeout_error || attempt == public_health_attempts)); then
+    if ((attempt == public_health_attempts)); then
       break
     fi
 
-    printf 'Public HTTPS check timed out. Retrying in %s seconds.\n' "$public_health_retry_delay_seconds"
+    if ((public_probe_status == curl_timeout_error && ${#public_address_options[@]} == 0)); then
+      public_address_options=(--ipv4)
+      printf 'Public HTTPS check timed out. Retrying over IPv4 in %s seconds.\n' "$public_health_retry_delay_seconds"
+    elif ((${#public_address_options[@]} > 0)) &&
+      ((public_probe_status == curl_timeout_error || public_probe_status == curl_resolve_error)); then
+      public_address_options=()
+      printf 'Public HTTPS check over IPv4 could not reach the host. Retrying with normal DNS resolution in %s seconds.\n' "$public_health_retry_delay_seconds"
+    else
+      break
+    fi
+
     sleep "$public_health_retry_delay_seconds"
   done
 
