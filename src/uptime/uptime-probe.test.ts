@@ -157,6 +157,14 @@ describe("reasonOf", () => {
     );
   });
 
+  test("recognizes a certificate whose chain cannot be verified", () => {
+    const error = Object.assign(new Error("Invalid chain"), {
+      code: "UNABLE_TO_VERIFY_LEAF_SIGNATURE",
+    });
+
+    expect(reasonOf(error)).toBe("certificate");
+  });
+
   test("reports anything else as a connection problem", () => {
     expect(reasonOf("something")).toBe("connection");
   });

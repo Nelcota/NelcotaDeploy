@@ -26,30 +26,31 @@ describe("containerAccent", () => {
 
 describe("matchesApplicationFilter", () => {
   test("lists every project under all", () => {
-    expect(matchesApplicationFilter("all", null, null)).toBe(true);
+    expect(matchesApplicationFilter("all", "never-deployed")).toBe(true);
   });
 
   test("lists a healthy running container as online", () => {
-    expect(matchesApplicationFilter("online", "running", "healthy")).toBe(true);
+    expect(matchesApplicationFilter("online", "online")).toBe(true);
   });
 
   test("does not list an unhealthy container as online", () => {
-    expect(matchesApplicationFilter("online", "running", "unhealthy")).toBe(false);
+    expect(matchesApplicationFilter("online", "unhealthy")).toBe(false);
   });
 
   test("lists a stopped container under attention", () => {
-    expect(matchesApplicationFilter("attention", "exited", null)).toBe(true);
+    expect(matchesApplicationFilter("attention", "offline")).toBe(true);
   });
 
-  test("lists a restarting container under attention", () => {
-    expect(matchesApplicationFilter("attention", "restarting", null)).toBe(true);
+  test("lists a published project with no monitoring under attention", () => {
+    expect(matchesApplicationFilter("attention", "unmonitored")).toBe(true);
   });
 
   test("does not list a project never deployed under attention", () => {
-    expect(matchesApplicationFilter("attention", null, null)).toBe(false);
+    expect(matchesApplicationFilter("attention", "never-deployed")).toBe(false);
   });
 
-  test("lists a project without container as never deployed", () => {
-    expect(matchesApplicationFilter("never-deployed", null, null)).toBe(true);
+  test("only lists a project without a published release as never deployed", () => {
+    expect(matchesApplicationFilter("never-deployed", "never-deployed")).toBe(true);
+    expect(matchesApplicationFilter("never-deployed", "unmonitored")).toBe(false);
   });
 });

@@ -7,6 +7,14 @@ import { type ProjectBuilder, projectInputSchema } from "@/shared/schemas/projec
 import { ProjectFormSections } from "@/web/components/forms/project-form-sections";
 import { Button } from "@/web/components/ui/button";
 
+import { newProjectValues } from "./new-project-values";
+import {
+  isProjectField,
+  type ProjectFieldFailure,
+  type ProjectFieldName,
+  ProjectFormErrorSummary,
+  useProjectFormSubmission,
+} from "./project-validation";
 import { useProjectAutomation } from "./repository/use-project-automation";
 
 /** Values as typed in the form; the server parses them with `projectInputSchema`. */
@@ -43,19 +51,47 @@ export type ProjectFormInput = z.input<typeof projectInputSchema>;
  *
  * @returns Field errors, or undefined when the values are valid.
  */
-function validateProject(values: ProjectFormValues) {
+export function validateProject(values: ProjectFormValues) {
   const result = projectInputSchema.safeParse(values);
   if (result.success) {
     return undefined;
   }
-  const fields: Record<string, string> = {};
+  const fields: Partial<Record<ProjectFieldName, string>> = {};
   for (const issue of result.error.issues) {
     const field = String(issue.path[0] ?? "");
-    if (field !== "" && Object.hasOwn(fields, field) === false) {
-      fields[field] = issue.message;
+    if (isProjectField(field) && fields[field] == null) {
+      fields[field] =
+        issue.code === "invalid_union" ? invalidNumberMessage(field, issue.errors) : issue.message;
     }
   }
   return { fields };
+}
+
+function invalidNumberMessage(
+  field: ProjectFieldName,
+  errors: readonly z.core.$ZodIssue[][],
+): string {
+  const issue = errors
+    .flat()
+    .find(
+      (candidate) =>
+        candidate.code === "too_big" ||
+        candidate.code === "too_small" ||
+        (candidate.code === "invalid_type" && candidate.expected === "int"),
+    );
+  if (issue != null) {
+    return issue.message;
+  }
+
+  if (field === "internalPort") {
+    return "Informe uma porta com números ou deixe em branco para detectar automaticamente";
+  }
+
+  if (field === "memoryLimitInMb") {
+    return "Informe o limite de memória com números ou deixe em branco para remover o limite";
+  }
+
+  return "Informe um número válido";
 }
 
 export const EMPTY_PROJECT_FORM: ProjectFormValues = {
@@ -140,15 +176,22 @@ export function projectToFormValues(project: {
 function useBaseProjectForm({
   initialValues,
   onSubmit,
+  prepareValues,
 }: {
   readonly initialValues: ProjectFormValues;
-  readonly onSubmit: (values: ProjectFormInput) => Promise<unknown>;
+  readonly onSubmit: (values: ProjectFormInput) => Promise<ProjectFieldFailure | undefined>;
+  readonly prepareValues?: (values: ProjectFormValues) => ProjectFormValues;
 }) {
+  const validate = ({ value }: { readonly value: ProjectFormValues }) =>
+    validateProject(prepareValues?.(value) ?? value);
   return useForm({
     defaultValues: initialValues,
-    validators: { onChange: ({ value }) => validateProject(value) },
-    onSubmit: async ({ value }) => {
-      await onSubmit(value);
+    validators: { onChange: validate, onSubmit: validate },
+    onSubmit: async ({ value, formApi }) => {
+      const failure = await onSubmit(prepareValues?.(value) ?? value);
+      if (failure != null) {
+        formApi.setErrorMap({ onSubmit: { fields: { [failure.field]: failure.message } } });
+      }
     },
   });
 }
@@ -181,19 +224,21 @@ function FormActions({
   readonly disabled: boolean;
 }) {
   return (
-    <div className="flex flex-col-reverse gap-3 rounded-2xl bg-card px-5 py-4 ring-1 ring-border/70 sm:flex-row sm:items-center sm:justify-between md:px-6">
-      <p className="text-xs text-muted-foreground">
-        Depois de criar o projeto, você pode alterar esses dados em Configurações do projeto.
-      </p>
+    <div className="flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <p className="text-sm text-muted-foreground">Criar o projeto não inicia um deploy.</p>
       <div className="flex justify-end gap-2">
         <Button variant="ghost" asChild>
           <Link to="/projects">Cancelar</Link>
         </Button>
         <form.Subscribe selector={(state) => state.isSubmitting}>
           {(isSubmitting) => (
-            <Button type="submit" disabled={disabled || isSubmitting}>
+            <Button
+              type="submit"
+              className="min-h-11 flex-1 sm:flex-none"
+              disabled={disabled || isSubmitting}
+            >
               {isSubmitting ? <LoaderCircleIcon aria-hidden className="animate-spin" /> : null}
-              {submitLabel}
+              {isSubmitting ? "Criando projeto…" : submitLabel}
             </Button>
           )}
         </form.Subscribe>
@@ -203,8 +248,7 @@ function FormActions({
 }
 
 /**
- * Project fields in titled sections, in the order people fill them: the repository first,
- * which also suggests the name. Rarely changed build settings stay folded.
+ * Creates a project from the repository and build choice, with optional settings folded.
  */
 export function ProjectForm({
   initialValues,
@@ -214,32 +258,38 @@ export function ProjectForm({
 }: {
   readonly initialValues: ProjectFormValues;
   readonly submitLabel: string;
-  readonly onSubmit: (values: ProjectFormInput) => Promise<unknown>;
+  readonly onSubmit: (values: ProjectFormInput) => Promise<ProjectFieldFailure | undefined>;
   readonly disabled?: boolean;
 }) {
   const { form, automation } = useProjectForm({
     initialValues,
     onSubmit,
+    prepareValues: (values) => newProjectValues(values, initialValues),
     canDetect: disabled === false,
   });
+  const submission = useProjectFormSubmission(form, "Não foi possível criar o projeto.");
+  const submitDisabled = disabled || automation.isDetecting;
 
   return (
     <form
       noValidate
-      className="space-y-6"
+      className="space-y-4"
       onSubmit={(event) => {
         event.preventDefault();
-        void form.handleSubmit();
+        if (submitDisabled === false) {
+          void submission.submit();
+        }
       }}
     >
-      <fieldset disabled={disabled} className="min-w-0 space-y-6">
-        <ProjectFormSections form={form} automation={automation} />
-      </fieldset>
-      <FormActions
-        form={form}
-        submitLabel={submitLabel}
-        disabled={disabled || automation.isDetecting}
-      />
+      <ProjectFormErrorSummary form={form} submission={submission} retryDisabled={submitDisabled} />
+      <form.Subscribe selector={(state) => state.isSubmitting}>
+        {(isSubmitting) => (
+          <fieldset disabled={disabled || isSubmitting} className="min-w-0 space-y-4">
+            <ProjectFormSections form={form} automation={automation} />
+          </fieldset>
+        )}
+      </form.Subscribe>
+      <FormActions form={form} submitLabel={submitLabel} disabled={submitDisabled} />
     </form>
   );
 }

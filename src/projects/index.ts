@@ -18,6 +18,11 @@ export {
 } from "./project.service";
 export { listProjects } from "./project-listing.service";
 export { suggestProjectSlug } from "./project-identity";
+export {
+  listCurrentProjectSnapshots,
+  projectRuntimeStatus,
+  type ProjectRuntimeStatus,
+} from "./project-runtime.service";
 export { updateProjectSettings } from "./project-settings.service";
 export {
   deleteProjectRecord,

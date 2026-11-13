@@ -32,7 +32,9 @@ export {
   completeDeployment,
   countActiveDeployments,
   type Deployment,
+  type DeploymentFailureCause,
   type DeploymentTrigger,
+  firstPublishedDeploymentId,
   getDeployment,
   isCancellationRequested,
   listDeployments,
@@ -45,7 +47,9 @@ export {
   transitionDeployment,
 } from "./deployment.service";
 export {
+  ACTIVE_STATUSES,
   DEPLOYMENT_STATUSES,
+  type DeploymentStage,
   type DeploymentStatus,
   InvalidDeploymentTransitionError,
   isTerminalStatus,

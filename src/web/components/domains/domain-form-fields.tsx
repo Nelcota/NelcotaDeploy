@@ -9,12 +9,17 @@ export function HostnameInput({
   form,
   error,
   onDetect,
+  hintId,
 }: {
   readonly form: AddDomainFormApi;
   /** Validation message shown below the form, or null when the hostname is valid. */
   readonly error: string | null;
   readonly onDetect: (value: string) => boolean;
+  readonly hintId?: string | undefined;
 }) {
+  const describedBy = [hintId, error == null ? undefined : "domain-hostname-error"]
+    .filter((id) => id != null)
+    .join(" ");
   return (
     <div
       className={cn(
@@ -33,11 +38,13 @@ export function HostnameInput({
         {(field) => (
           <Input
             id="domain-hostname"
+            inputMode="url"
+            autoCapitalize="none"
             placeholder="app.exemplo.com"
             autoComplete="off"
             spellCheck={false}
             aria-invalid={error != null}
-            aria-describedby="domain-hostname-error"
+            aria-describedby={describedBy === "" ? undefined : describedBy}
             className="h-full rounded-none bg-transparent pl-0.5 font-mono ring-0 hover:ring-0 focus-visible:bg-transparent focus-visible:ring-0"
             value={field.state.value}
             onBlur={() => {

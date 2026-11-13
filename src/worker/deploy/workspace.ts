@@ -2,7 +2,7 @@ import { posix } from "node:path";
 
 import { type CommandRunner, failureReason, type ProcessResult } from "@/process";
 
-import { PathOutsideWorkspaceError, WorkspaceCommandError } from "../worker.errors";
+import { BuildPathError, PathOutsideWorkspaceError, WorkspaceCommandError } from "../worker.errors";
 
 const COMMAND_TIMEOUT_IN_MS = 30_000;
 // Deleting a large checkout with node_modules can take a while on a slow disk.
@@ -137,6 +137,23 @@ export async function resolveInsideWorkspace(
   }
 
   return realCandidate;
+}
+
+/** Resolves a path selected in the project's build settings. */
+export async function resolveBuildPath(
+  runner: CommandRunner,
+  root: string,
+  relativePath: string,
+): Promise<string> {
+  try {
+    return await resolveInsideWorkspace(runner, root, relativePath);
+  } catch (error) {
+    if (error instanceof PathOutsideWorkspaceError) {
+      throw new BuildPathError(error);
+    }
+
+    throw error;
+  }
 }
 
 /** Called when the workspace could not be removed; the deployment itself goes on. */

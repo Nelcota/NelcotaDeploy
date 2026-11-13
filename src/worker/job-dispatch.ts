@@ -18,6 +18,7 @@ import {
 } from "@/jobs";
 import { appendDeploymentLogs } from "@/logs";
 import { findProjectServerId, getProject } from "@/projects";
+import { ServerNotFoundError } from "@/servers";
 import { failTaskExecutions } from "@/tasks";
 import { isVolumeDeletionPending, recoverVolumeDeletion } from "@/volumes";
 
@@ -36,6 +37,7 @@ import {
   notifyFailedDeployment,
   reportDeploymentStatus,
 } from "./notifications/deployment-notifications";
+import { runProxyLogJob } from "./proxy-logs/proxy-log-runner";
 import { prepareProjectNetwork, type ServerHost } from "./server-host";
 import { runConsoleCommandJob, runTaskExecution } from "./task-runner";
 import type { WorkerDependencies } from "./worker.types";
@@ -125,6 +127,7 @@ function hostOfDeployment(dependencies: WorkerDependencies, deploymentId: string
       transitionDeployment(database, deploymentId, {
         to: "failed",
         errorMessage: `The server ${deployment.serverId} of this deployment no longer exists`,
+        failureCause: error instanceof ServerNotFoundError ? "server_unavailable" : null,
       });
     }
     throw error;
@@ -395,6 +398,12 @@ const JOB_HANDLERS = {
     run: runConsoleJob,
     retriesOnFailure: false,
     recover: (database, job) => recoverConsoleJob(database, job),
+    isStranded: neverStranded,
+  },
+  proxy_certificate_logs: {
+    run: async (dependencies, job, run) => await runProxyLogJob(dependencies, job, run.signal),
+    retriesOnFailure: false,
+    recover: noRecovery,
     isStranded: neverStranded,
   },
 } as const satisfies Record<JobKind, JobHandler>;

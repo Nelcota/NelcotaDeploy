@@ -1,7 +1,12 @@
-import { and, asc, desc, eq, inArray, isNull, like, or, type SQL, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, like, or, type SQL, sql } from "drizzle-orm";
 
 import { type Database, tables } from "@/db";
 
+import {
+  listCurrentProjectSnapshots,
+  projectRuntimeStatus,
+  type ProjectRuntimeStatus,
+} from "./project-runtime.service";
 import { type Project, projectColumns } from "./project.service";
 
 const MAX_SEARCH_LENGTH = 100;
@@ -17,6 +22,7 @@ export type ProjectSummary = Project & {
   } | null;
   readonly containerState: string | null;
   readonly containerHealth: string | null;
+  readonly runtimeStatus: ProjectRuntimeStatus;
 };
 
 /**
@@ -53,14 +59,15 @@ export function listProjects(
       deployment,
     ]),
   );
-  const snapshotByDeployment = findLatestSnapshots(database, projectIds);
+  const snapshotsByDeployment = listCurrentProjectSnapshots(database, projects);
   return projects.map((project) => {
-    const snapshot =
-      snapshotByDeployment.get(`${project.id}:${project.currentDeploymentId}`) ?? null;
+    const snapshots = snapshotsByDeployment.get(project.currentDeploymentId) ?? [];
+    const snapshot = snapshots.at(0);
     return Object.assign(project, {
       latestDeployment: latestByProject.get(project.id) ?? null,
       containerState: snapshot?.state ?? null,
       containerHealth: snapshot?.health ?? null,
+      runtimeStatus: projectRuntimeStatus(project.currentDeploymentId, snapshots),
     });
   });
 }
@@ -106,25 +113,4 @@ function findLatestDeployments(database: Database, projectIds: readonly string[]
       ),
     )
     .all();
-}
-
-/** Newest container snapshot per project and deployment, keyed by "projectId:deploymentId". */
-function findLatestSnapshots(database: Database, projectIds: readonly string[]) {
-  const snapshots = database
-    .select({
-      projectId: tables.containerSnapshots.projectId,
-      deploymentId: tables.containerSnapshots.deploymentId,
-      state: tables.containerSnapshots.state,
-      health: tables.containerSnapshots.health,
-    })
-    .from(tables.containerSnapshots)
-    .where(inArray(tables.containerSnapshots.projectId, projectIds))
-    .orderBy(desc(tables.containerSnapshots.observedAt))
-    .all();
-  // Oldest first, so the newest snapshot of each key wins in the Map.
-  return new Map(
-    snapshots
-      .toReversed()
-      .map((snapshot) => [`${snapshot.projectId}:${snapshot.deploymentId}`, snapshot]),
-  );
 }

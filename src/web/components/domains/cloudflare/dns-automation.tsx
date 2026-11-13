@@ -5,19 +5,16 @@ import { toUserMessage } from "@/web/components/layout/error-message";
 import { Button } from "@/web/components/ui/button";
 import { getCloudflareConnectionFn } from "@/web/functions/domains/cloudflare.functions";
 
-import { DnsCard } from "../dns-card";
-import type { DomainDns, DomainItem } from "../domains";
+import type { DomainItem } from "../domains";
 import { CloudflareDnsCard } from "./cloudflare-dns-card";
 
 export function DnsAutomation({
   projectId,
   domains,
-  dns,
   canEdit,
 }: {
   readonly projectId: string;
   readonly domains: readonly DomainItem[];
-  readonly dns: ReadonlyMap<string, DomainDns>;
   readonly canEdit: boolean;
 }) {
   const connection = useQuery({
@@ -33,7 +30,6 @@ export function DnsAutomation({
       />
     );
   }
-  const automaticHostname = domains.find((domain) => domain.automatic)?.hostname ?? null;
   return (
     <div className="space-y-4">
       {connection.isError ? (
@@ -63,12 +59,6 @@ export function DnsAutomation({
           .
         </p>
       ) : null}
-      <DnsCard
-        projectId={projectId}
-        automaticHostname={automaticHostname}
-        domains={domains}
-        dns={dns}
-      />
     </div>
   );
 }

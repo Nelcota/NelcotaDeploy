@@ -1,6 +1,9 @@
 import { expect, test } from "bun:test";
 
-import { legacySettingsDestination, visibleSettingsSections } from "./project-settings-navigation";
+import {
+  legacySettingsDestination,
+  visibleSettingsSections,
+} from "./navigation/settings-destinations";
 
 test("keeps read-only settings visible without offering restricted destinations", () => {
   expect(visibleSettingsSections(() => false).map((section) => section.id)).toEqual([
@@ -9,8 +12,8 @@ test("keeps read-only settings visible without offering restricted destinations"
     "build",
     "runtime",
     "automation",
-    "volumes",
     "staging",
+    "volumes",
   ]);
 });
 
@@ -55,4 +58,20 @@ test("offers a unique route for each function to administrators", () => {
   expect(links).toHaveLength(10);
   expect(new Set(links.map((section) => section.id)).size).toBe(links.length);
   expect(new Set(links.map((section) => section.to)).size).toBe(links.length);
+});
+
+test("groups related settings in task order with a description for each destination", () => {
+  const destinations = visibleSettingsSections(() => true);
+
+  const grouped = Map.groupBy(destinations, (destination) => destination.group);
+
+  expect(
+    Array.from(grouped, ([group, sections]) => [group, sections.map((section) => section.id)]),
+  ).toEqual([
+    ["Projeto", ["identity", "repository", "team"]],
+    ["Deploy e execução", ["build", "runtime", "automation", "staging"]],
+    ["Infraestrutura", ["volumes", "server"]],
+    ["Zona de risco", ["deletion"]],
+  ]);
+  expect(destinations.every((destination) => destination.description.trim() !== "")).toBe(true);
 });

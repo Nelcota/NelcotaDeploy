@@ -21,6 +21,7 @@ import {
 // Radix reserves the empty value, so "no limit" travels as this word inside the select.
 const NO_CPU_LIMIT = "none";
 
+import { PROJECT_FORM_FIELDS } from "./project-validation";
 import { DetectedProjectField } from "./repository/detected-project-field";
 import { HealthCheckDiscovery } from "./repository/health-check-discovery";
 import type { ProjectAutomation } from "./repository/use-project-automation";
@@ -35,50 +36,73 @@ export function IdentityFields({
 }) {
   return (
     <>
-      <form.Field name="name">
-        {(field) => (
-          <FormField id="project-name" label="Nome" errors={visibleErrors(form, field.state.meta)}>
-            {(props) => (
-              <Input
-                {...props}
-                value={field.state.value}
-                onBlur={field.handleBlur}
-                onChange={(event) => {
-                  field.handleChange(event.target.value);
-                  automation.markEdited("name");
-                  if (automation.manualFields.has("slug") === false) {
-                    form.setFieldValue("slug", slugify(event.target.value));
-                  }
-                }}
-              />
-            )}
-          </FormField>
-        )}
-      </form.Field>
-      <form.Field name="slug">
-        {(field) => (
-          <FormField
-            id="project-slug"
-            label="Identificador"
-            hint="Usado no nome do contêiner e no domínio automático."
-            errors={visibleErrors(form, field.state.meta)}
-          >
-            {(props) => (
-              <Input
-                {...props}
-                className="font-mono"
-                value={field.state.value}
-                onBlur={field.handleBlur}
-                onChange={(event) => {
-                  automation.markEdited("slug");
-                  field.handleChange(event.target.value);
-                }}
-              />
-            )}
-          </FormField>
-        )}
-      </form.Field>
+      <ProjectNameField form={form} automation={automation} />
+      <ProjectSlugField form={form} automation={automation} />
     </>
+  );
+}
+
+export function ProjectNameField({
+  form,
+  automation,
+}: {
+  readonly form: ProjectFormApi;
+  readonly automation: ProjectAutomation;
+}) {
+  return (
+    <form.Field name="name">
+      {(field) => (
+        <FormField {...PROJECT_FORM_FIELDS.name} errors={visibleErrors(form, field.state.meta)}>
+          {(props) => (
+            <Input
+              {...props}
+              value={field.state.value}
+              onBlur={field.handleBlur}
+              onChange={(event) => {
+                field.handleChange(event.target.value);
+                automation.markEdited("name");
+                if (automation.manualFields.has("slug") === false) {
+                  form.setFieldValue("slug", slugify(event.target.value));
+                }
+              }}
+            />
+          )}
+        </FormField>
+      )}
+    </form.Field>
+  );
+}
+
+export function ProjectSlugField({
+  form,
+  automation,
+}: {
+  readonly form: ProjectFormApi;
+  readonly automation: ProjectAutomation;
+}) {
+  return (
+    <form.Field name="slug">
+      {(field) => (
+        <FormField
+          {...PROJECT_FORM_FIELDS.slug}
+          hint="Usado no nome do contêiner e no domínio automático."
+          errors={visibleErrors(form, field.state.meta)}
+        >
+          {(props) => (
+            <Input
+              {...props}
+              className="font-mono"
+              value={field.state.value}
+              onBlur={field.handleBlur}
+              onChange={(event) => {
+                automation.markEdited("slug");
+                field.handleChange(event.target.value);
+              }}
+            />
+          )}
+        </FormField>
+      )}
+    </form.Field>
   );
 }
 
@@ -95,8 +119,7 @@ export function RepositoryFields({
       <form.Field name="repositoryUrl">
         {(field) => (
           <FormField
-            id="project-repository"
-            label="Repositório GitHub"
+            {...PROJECT_FORM_FIELDS.repositoryUrl}
             hint="A URL HTTPS do repositório no GitHub."
             errors={visibleErrors(form, field.state.meta)}
           >
@@ -118,7 +141,6 @@ export function RepositoryFields({
         form={form}
         automation={automation}
         name="branch"
-        label="Branch"
         hint="Detectada pelo GitHub. Escolha uma sugestão ou personalize."
         suggestions={automation.inspection.data?.branches ?? []}
       />
@@ -132,8 +154,7 @@ export function PortField({ form }: { readonly form: ProjectFormApi }) {
     <form.Field name="internalPort">
       {(field) => (
         <FormField
-          id="project-port"
-          label="Porta interna"
+          {...PROJECT_FORM_FIELDS.internalPort}
           hint="Em branco, cada deploy usa a porta do EXPOSE do Dockerfile."
           errors={visibleErrors(form, field.state.meta)}
         >
@@ -166,8 +187,7 @@ export function HealthCheckField({
     <form.Field name="healthCheckPath">
       {(field) => (
         <FormField
-          id="project-health"
-          label="Caminho do health check (opcional)"
+          {...PROJECT_FORM_FIELDS.healthCheckPath}
           hint="Detectado a partir de um HEALTHCHECK HTTP local no Dockerfile. Sem caminho, basta a porta aceitar conexões."
           errors={visibleErrors(form, field.state.meta)}
         >
@@ -197,9 +217,11 @@ export function HealthCheckField({
 export function BuildFields({
   form,
   automation,
+  hideUnusedDockerfile = false,
 }: {
   readonly form: ProjectFormApi;
   readonly automation: ProjectAutomation;
+  readonly hideUnusedDockerfile?: boolean;
 }) {
   return (
     <form.Subscribe selector={(state) => state.values.builder}>
@@ -207,7 +229,11 @@ export function BuildFields({
         builder === "compose" ? (
           <ComposeFields form={form} />
         ) : (
-          <DockerfileFields form={form} automation={automation} />
+          <DockerfileFields
+            form={form}
+            automation={automation}
+            showDockerfile={builder === "dockerfile" || hideUnusedDockerfile === false}
+          />
         )
       }
     </form.Subscribe>
@@ -217,25 +243,27 @@ export function BuildFields({
 function DockerfileFields({
   form,
   automation,
+  showDockerfile,
 }: {
   readonly form: ProjectFormApi;
   readonly automation: ProjectAutomation;
+  readonly showDockerfile: boolean;
 }) {
   return (
     <>
-      <DetectedProjectField
-        form={form}
-        automation={automation}
-        name="dockerfilePath"
-        label="Caminho do Dockerfile"
-        hint="Escolha um arquivo encontrado ou personalize o caminho."
-        suggestions={automation.inspection.data?.dockerfiles ?? []}
-      />
+      {showDockerfile ? (
+        <DetectedProjectField
+          form={form}
+          automation={automation}
+          name="dockerfilePath"
+          hint="Escolha um arquivo encontrado ou personalize o caminho."
+          suggestions={automation.inspection.data?.dockerfiles ?? []}
+        />
+      ) : null}
       <DetectedProjectField
         form={form}
         automation={automation}
         name="buildContext"
-        label="Diretório de build"
         hint="Relativo à raiz. A raiz é mantida até você escolher outro diretório."
         suggestions={automation.inspection.data?.directories ?? []}
       />
@@ -253,8 +281,7 @@ export function ResourceLimitFields({ form }: { readonly form: ProjectFormApi })
       <form.Field name="memoryLimitInMb">
         {(field) => (
           <FormField
-            id="project-memory-limit"
-            label="Limite de memória (MB)"
+            {...PROJECT_FORM_FIELDS.memoryLimitInMb}
             hint="Em branco, sem limite. Acima dele, o contêiner é reiniciado."
             errors={visibleErrors(form, field.state.meta)}
           >
@@ -275,8 +302,7 @@ export function ResourceLimitFields({ form }: { readonly form: ProjectFormApi })
       <form.Field name="cpuLimitInMillicores">
         {(field) => (
           <FormField
-            id="project-cpu-limit"
-            label="Limite de CPU"
+            {...PROJECT_FORM_FIELDS.cpuLimitInMillicores}
             hint="Quanto do processador do servidor a aplicação pode usar."
             errors={visibleErrors(form, field.state.meta)}
           >
@@ -287,7 +313,7 @@ export function ResourceLimitFields({ form }: { readonly form: ProjectFormApi })
                   field.handleChange(selected === NO_CPU_LIMIT ? "" : selected)
                 }
               >
-                <SelectTrigger {...props} className="w-full">
+                <SelectTrigger {...props} onBlur={field.handleBlur} className="w-full">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -306,8 +332,7 @@ export function ResourceLimitFields({ form }: { readonly form: ProjectFormApi })
       <form.Field name="replicas">
         {(field) => (
           <FormField
-            id="project-replicas"
-            label="Réplicas"
+            {...PROJECT_FORM_FIELDS.replicas}
             hint={`De 1 a ${MAX_REPLICAS}. As requisições são divididas entre elas; os limites valem para cada uma. Projetos com volumes usam só 1.`}
             errors={visibleErrors(form, field.state.meta)}
           >
@@ -348,8 +373,7 @@ export function BuilderField({ form }: { readonly form: ProjectFormApi }) {
     <form.Field name="builder">
       {(field) => (
         <FormField
-          id="project-builder"
-          label="Como construir a imagem"
+          {...PROJECT_FORM_FIELDS.builder}
           hint={BUILDER_HINTS[field.state.value]}
           errors={visibleErrors(form, field.state.meta)}
         >
@@ -363,7 +387,7 @@ export function BuilderField({ form }: { readonly form: ProjectFormApi }) {
                 }
               }}
             >
-              <SelectTrigger {...props} className="w-full">
+              <SelectTrigger {...props} onBlur={field.handleBlur} className="w-full">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>

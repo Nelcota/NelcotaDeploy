@@ -4,9 +4,11 @@ import { tmpdir } from "node:os";
 import { type Database, openMemoryDatabase } from "@/db";
 import { getDeployment, requestDeployment } from "@/deployments";
 import { saveEnvironmentVariable } from "@/environments";
+import { GitClient } from "@/git";
 import { listDeploymentLogs } from "@/logs";
 import { type CommandRunner, runProcess } from "@/process";
 import { getProject } from "@/projects";
+import { RouteFiles } from "@/routing";
 import {
   createTestProject,
   createTestSecretBox,
@@ -288,6 +290,10 @@ describe("runDeployment failures", () => {
 
     expect(status).toBe("failed");
     expect(getDeployment(database, deploymentId).errorMessage).toContain("docker build failed");
+    expect(getDeployment(database, deploymentId)).toMatchObject({
+      failureStage: "building",
+      failureCause: null,
+    });
     expect([...docker.containers.keys()]).toEqual(previousContainers);
     expect(logText(database, deploymentId)).toContain("failed to solve");
   }, 15_000);
@@ -304,6 +310,10 @@ describe("runDeployment failures", () => {
     expect(status).toBe("failed");
     expect(docker.containers.size).toBe(0);
     expect(logText(database, deploymentId)).toContain("app crashed");
+    expect(getDeployment(database, deploymentId)).toMatchObject({
+      failureStage: "health_checking",
+      failureCause: "health_port",
+    });
   }, 15_000);
 
   test("fails when the container exits right after starting", async () => {
@@ -315,6 +325,82 @@ describe("runDeployment failures", () => {
 
     expect(status).toBe("failed");
     expect(getDeployment(database, deploymentId).errorMessage).toContain("stopped");
+  }, 15_000);
+
+  test("records the branch cause from Git while the checkout is active", async () => {
+    const { database, project, dependencies } = await setup();
+    const deploymentId = deploy(database, project.id);
+    const git = new GitClient("git", () =>
+      Promise.resolve({
+        exitCode: 128,
+        stdout: "",
+        stderr: "fatal: Remote branch main not found in upstream origin",
+        aborted: false,
+        timedOut: false,
+      }),
+    );
+
+    await runDeployment({ ...dependencies, git }, deploymentId, new AbortController().signal);
+
+    expect(getDeployment(database, deploymentId)).toMatchObject({
+      failureStage: "cloning",
+      failureCause: "branch_not_found",
+    });
+  }, 15_000);
+
+  test("identifies an invalid Dockerfile path as a build configuration failure", async () => {
+    const { database, dependencies } = await setup();
+    const project = createTestProject(database, {
+      name: "Missing Dockerfile",
+      slug: "missing-dockerfile",
+      dockerfilePath: "missing/Dockerfile",
+    });
+    const deploymentId = deploy(database, project.id);
+
+    await runDeployment(dependencies, deploymentId, new AbortController().signal);
+
+    expect(getDeployment(database, deploymentId)).toMatchObject({
+      failureStage: "building",
+      failureCause: "build_path",
+    });
+  }, 15_000);
+
+  test("records startup failure even after assigning the candidate container name", async () => {
+    const { database, project, docker, dependencies } = await setup();
+    docker.runContainer = () => Promise.reject(new Error("Docker could not start the container"));
+    const deploymentId = deploy(database, project.id);
+
+    await runDeployment(dependencies, deploymentId, new AbortController().signal);
+
+    const deployment = getDeployment(database, deploymentId);
+    expect(deployment).toMatchObject({
+      failureStage: "starting",
+      failureCause: null,
+    });
+    expect(deployment.containerName).toStartWith("nelcota-api-");
+  }, 15_000);
+
+  test("records a failure in publication after health checks pass", async () => {
+    const { database, project, dependencies } = await setup();
+    const deploymentId = deploy(database, project.id);
+    const routes = new RouteFiles(
+      () =>
+        Promise.resolve({
+          exitCode: 1,
+          stdout: "",
+          stderr: "proxy unavailable",
+          aborted: false,
+          timedOut: false,
+        }),
+      "/routes",
+    );
+
+    await runDeployment({ ...dependencies, routes }, deploymentId, new AbortController().signal);
+
+    expect(getDeployment(database, deploymentId)).toMatchObject({
+      failureStage: "publishing",
+      failureCause: null,
+    });
   }, 15_000);
 });
 

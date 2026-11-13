@@ -20,6 +20,7 @@ import {
   previewCloudflareDnsFn,
 } from "@/web/functions/domains/cloudflare.functions";
 
+import { DnsRecordFields } from "../dns-record-fields";
 import type { DomainItem } from "../domains";
 import { DnsReviewDialog, type DnsReview } from "./dns-review-dialog";
 
@@ -101,9 +102,11 @@ export function CloudflareDnsCard({
           <p>
             Zona detectada: <span className="font-mono">{plan.data.zone}</span>
           </p>
-          <p>
-            Destino: <span className="font-mono break-all">{plan.data.desired.content}</span>
-          </p>
+          <DnsRecordFields
+            hostname={plan.data.desired.name}
+            type={plan.data.desired.type}
+            value={plan.data.desired.content}
+          />
           {plan.data.changes.length === 0 ? (
             <p className="text-success">
               Os registros já apontam para o servidor do projeto.

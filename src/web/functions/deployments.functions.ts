@@ -17,6 +17,7 @@ import {
   retryDeployment,
   summarizeDeployments,
 } from "@/deployments";
+import { getPreview } from "@/previews";
 import { pageCursorSchema } from "@/shared/pagination";
 import {
   authorizeDeployment,
@@ -33,7 +34,7 @@ export const listDeploymentsFn = createServerFn({ method: "GET" })
   .validator(
     z.object({
       projectId: idSchema.optional(),
-      status: z.enum(DEPLOYMENT_STATUSES).optional(),
+      status: z.enum([...DEPLOYMENT_STATUSES, "active"]).optional(),
       limit: z.number().int().min(1).max(MAX_PAGE_SIZE),
       before: pageCursorSchema.optional(),
     }),
@@ -55,7 +56,16 @@ export const getDeploymentFn = createServerFn({ method: "GET" })
   .validator(z.object({ deploymentId: idSchema }))
   .handler(async ({ data }) => {
     await authorizeDeployment("project:read", data.deploymentId);
-    return getDeployment(getDatabase(), data.deploymentId);
+    const database = getDatabase();
+    const deployment = getDeployment(database, data.deploymentId);
+    const preview =
+      deployment.status === "failed" && deployment.previewId != null
+        ? getPreview(database, deployment.previewId)
+        : null;
+    return {
+      ...deployment,
+      previewDeploymentId: preview?.status === "active" ? preview.currentDeploymentId : null,
+    };
   });
 
 export const deployProjectFn = createServerFn({ method: "POST" })

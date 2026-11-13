@@ -11,10 +11,10 @@ import {
   MILLISECONDS_PER_SECOND,
 } from "../deploy-context";
 import { cloneRevision } from "../image-source";
-import { DeploymentWorkspace, resolveInsideWorkspace } from "../workspace";
+import { DeploymentWorkspace, resolveBuildPath, resolveInsideWorkspace } from "../workspace";
 import { checkComposeConfig, checkComposeSource } from "./compose-config";
 import { composeFileFor } from "./compose-file";
-import { ComposeWorkspaceError } from "./compose.errors";
+import { ComposeWorkspaceError, InvalidComposeFileError } from "./compose.errors";
 
 const FILE_COMMAND_TIMEOUT_IN_MS = 30_000;
 const HOST_PATH_CHECK_BATCH_SIZE = 8;
@@ -65,7 +65,9 @@ export async function deployCompose(
   const { project, logs } = context;
   const routedService = project.composeService;
   if (routedService == null) {
-    throw new Error(`Project ${project.id} has no Compose service to receive its domains`);
+    throw new InvalidComposeFileError([
+      "no service is configured to receive the project's domains",
+    ]);
   }
   await using workspace = await DeploymentWorkspace.create(runner, {
     root: dependencies.config.workspaceDir,
@@ -99,7 +101,7 @@ async function checkedComposeFile(
   const repositoryPath = input.workspace.repositoryPath;
   context.assertOwnership();
   assertNotCancelled(context.signal);
-  const composePath = await resolveInsideWorkspace(runner, repositoryPath, project.composeFilePath);
+  const composePath = await resolveBuildPath(runner, repositoryPath, project.composeFilePath);
   logs.system(`Checking ${project.composeFilePath}`);
   checkComposeSource(await readFile(runner, composePath));
   const projectName = composeProjectNameFor(project.id);

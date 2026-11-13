@@ -3,7 +3,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { ProjectSettingsPage } from "@/web/components/project-settings/project-settings-page";
 
 export const Route = createFileRoute("/_app/projects/$projectId/settings/runtime")({
-  head: () => ({ meta: [{ title: "Porta e verificação de saúde · Nelcota Deploy" }] }),
+  head: () => ({ meta: [{ title: "Porta, saúde e recursos · Nelcota Deploy" }] }),
   component: SettingsRoute,
 });
 

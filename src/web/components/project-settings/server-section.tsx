@@ -19,7 +19,7 @@ export function ServerSection(props: {
   const state = useServerMove(props);
   const active = state.status.data?.activeDeployment;
   return (
-    <SettingsSection id="settings-server" icon={ServerIcon} title="Trocar servidor">
+    <SettingsSection id="settings-server" icon={ServerIcon} title="Servidor atual e migração">
       <div className="space-y-4">
         <p className="text-sm break-all">
           Servidor configurado: <strong>{state.sourceName}</strong>

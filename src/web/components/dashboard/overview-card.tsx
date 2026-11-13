@@ -25,13 +25,13 @@ export function OverviewCard({ data }: { readonly data: DashboardSummary | null 
     <section aria-label="Status das aplicações">
       <ul className="grid gap-3 sm:grid-cols-3">
         <ApplicationTile
-          value={data.onlineCount}
+          value={data.onlineCount - data.unhealthyCount}
           status="online"
           icon="solar-[check-circle-bold-duotone]"
           tone="text-success"
         />
         <ApplicationTile
-          value={data.offlineCount + data.unhealthyCount}
+          value={data.offlineCount + data.unhealthyCount + data.unmonitoredCount}
           status="offline"
           icon="solar-[danger-circle-bold-duotone]"
           tone="text-warning"

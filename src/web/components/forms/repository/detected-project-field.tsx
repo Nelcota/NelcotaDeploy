@@ -2,6 +2,7 @@ import { Input } from "@/web/components/ui/input";
 
 import { FormField, visibleErrors } from "../form-field";
 import type { ProjectFormApi } from "../project-form";
+import { PROJECT_FORM_FIELDS } from "../project-validation";
 import type { ProjectAutomation } from "./use-project-automation";
 
 /** Editable field backed by repository suggestions; selecting or typing makes it user-owned. */
@@ -9,18 +10,16 @@ export function DetectedProjectField({
   form,
   automation,
   name,
-  label,
   hint,
   suggestions,
 }: {
   readonly form: ProjectFormApi;
   readonly automation: ProjectAutomation;
   readonly name: "branch" | "dockerfilePath" | "buildContext";
-  readonly label: string;
   readonly hint: string;
   readonly suggestions: readonly string[];
 }) {
-  const id = `project-${name}`;
+  const { id, label } = PROJECT_FORM_FIELDS[name];
   return (
     <form.Field name={name}>
       {(field) => (

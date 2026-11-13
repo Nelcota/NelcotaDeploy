@@ -1,3 +1,5 @@
+import type { ProjectRuntimeStatus } from "@/projects";
+
 /** Left-bar color of a list row for a project's current container. */
 export type RowAccent = "none" | "success" | "warning" | "danger" | "progress" | "neutral";
 
@@ -29,24 +31,24 @@ export type ApplicationFilter = "all" | "online" | "attention" | "never-deployed
  * Tells whether a project's current container belongs in a list filter.
  *
  * @param filter - Selected filter.
- * @param state - Docker state of the current container, or null when there is none.
- * @param health - Docker health status, when the image defines a HEALTHCHECK.
+ * @param status - Runtime status of the current release.
  * @returns True when the project should be listed.
  */
 export function matchesApplicationFilter(
   filter: ApplicationFilter,
-  state: string | null,
-  health: string | null,
+  status: ProjectRuntimeStatus,
 ): boolean {
-  const accent = containerAccent(state, health);
   if (filter === "online") {
-    return accent === "success";
+    return status === "online";
   }
+
   if (filter === "never-deployed") {
-    return accent === "neutral";
+    return status === "never-deployed";
   }
+
   if (filter === "attention") {
-    return accent === "warning" || accent === "danger";
+    return status !== "online" && status !== "never-deployed";
   }
+
   return true;
 }

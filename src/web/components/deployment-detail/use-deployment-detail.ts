@@ -8,6 +8,7 @@ import { getDeploymentFn } from "@/web/functions/deployments.functions";
 import { finalStatusOf, isActiveDeployment } from "./deployment-detail";
 
 const ACTIVE_REFRESH_INTERVAL_IN_MS = 2000;
+const FAILED_PREVIEW_REFRESH_INTERVAL_IN_MS = 15_000;
 const CLOCK_TICK_IN_MS = 1000;
 
 /** Current time that updates every second while enabled, for live durations. */
@@ -63,8 +64,16 @@ export function useDeploymentDetail(projectId: string, deploymentId: string) {
   const deployment = useQuery({
     queryKey: ["deployment", deploymentId],
     queryFn: () => getDeploymentFn({ data: { deploymentId } }),
-    refetchInterval: (query) =>
-      isActiveDeployment(query.state.data?.status) ? ACTIVE_REFRESH_INTERVAL_IN_MS : false,
+    refetchInterval: (query) => {
+      const data = query.state.data;
+      if (isActiveDeployment(data?.status)) {
+        return ACTIVE_REFRESH_INTERVAL_IN_MS;
+      }
+
+      return data?.status === "failed" && data.previewId != null
+        ? FAILED_PREVIEW_REFRESH_INTERVAL_IN_MS
+        : false;
+    },
   });
   const active = isActiveDeployment(deployment.data?.status);
   const now = useLiveClock(active);

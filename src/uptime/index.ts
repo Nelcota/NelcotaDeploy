@@ -1,4 +1,5 @@
 export { certificateAlertDue, daysUntil, readCertificateExpiry } from "./certificate";
+export { listHttpsStatus } from "./https-issues.service";
 export { probeHostname, PROBE_TIMEOUT_IN_MS, type ProbeTools } from "./uptime-probe";
 export {
   listCertificateStates,

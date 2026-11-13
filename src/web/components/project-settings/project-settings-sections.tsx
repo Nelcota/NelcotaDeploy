@@ -3,6 +3,7 @@ import {
   HammerIcon,
   IdCardIcon,
   PlayIcon,
+  SlidersHorizontalIcon,
   TriangleAlertIcon,
   ZapIcon,
 } from "lucide-react";
@@ -29,7 +30,7 @@ import type { ProjectAutomation } from "@/web/components/forms/repository/use-pr
 
 import { SettingsSection } from "./settings-section";
 
-const FIELD_GRID = "grid items-start gap-x-6 gap-y-5 sm:grid-cols-2";
+const FIELD_GRID = "grid items-start gap-x-6 gap-y-5 @min-[32rem]/fields:grid-cols-2";
 
 export function GeneralSection({
   form,
@@ -39,12 +40,7 @@ export function GeneralSection({
   readonly automation: ProjectAutomation;
 }) {
   return (
-    <SettingsSection
-      id="settings-general"
-      icon={IdCardIcon}
-      title="Nome e identificador do projeto"
-      description="Como o projeto aparece no painel e no endereço automático."
-    >
+    <SettingsSection id="settings-general" icon={IdCardIcon} title="Identificação">
       <div className={FIELD_GRID}>
         <IdentityFields form={form} automation={automation} />
       </div>
@@ -62,13 +58,8 @@ export function RepositorySection({
   readonly automation: ProjectAutomation;
 }) {
   return (
-    <SettingsSection
-      id="settings-repository"
-      icon={GitBranchIcon}
-      title="Repositório do código"
-      description="De onde vem o código."
-    >
-      <div className="grid items-start gap-x-6 gap-y-5 sm:grid-cols-[minmax(0,1fr)_minmax(0,14rem)]">
+    <SettingsSection id="settings-repository" icon={GitBranchIcon} title="Origem do código">
+      <div className="grid items-start gap-x-6 gap-y-5 @min-[32rem]/fields:grid-cols-[minmax(0,1fr)_minmax(0,14rem)]">
         <RepositoryFields form={form} automation={automation} />
         <form.Subscribe selector={(state) => state.values.repositoryUrl !== savedRepositoryUrl}>
           {(repositoryChanged) => (repositoryChanged ? <ReapprovalWarning /> : null)}
@@ -81,7 +72,7 @@ export function RepositorySection({
 
 function ReapprovalWarning() {
   return (
-    <p role="status" className="flex items-start gap-2 text-sm text-muted-foreground sm:col-span-2">
+    <p role="status" className="col-span-full flex items-start gap-2 text-sm text-muted-foreground">
       <TriangleAlertIcon aria-hidden className="mt-0.5 size-4 shrink-0 text-warning" />
       Trocar o repositório exige nova aprovação de um administrador antes do próximo deploy.
     </p>
@@ -96,12 +87,7 @@ export function BuildSection({
   readonly automation: ProjectAutomation;
 }) {
   return (
-    <SettingsSection
-      id="settings-build"
-      icon={HammerIcon}
-      title="Construção da imagem"
-      description="Como a imagem é construída no próximo deploy."
-    >
+    <SettingsSection id="settings-build" icon={HammerIcon} title="Método de construção">
       <div className={FIELD_GRID}>
         <BuilderField form={form} />
         <BuildFields form={form} automation={automation} />
@@ -118,29 +104,29 @@ export function RuntimeSection({
   readonly automation: ProjectAutomation;
 }) {
   return (
-    <SettingsSection
-      id="settings-runtime"
-      icon={PlayIcon}
-      title="Porta e verificação de saúde"
-      description="Como a aplicação recebe conexões e é verificada no próximo deploy."
-    >
-      <div className={FIELD_GRID}>
-        <PortField form={form} />
-        <HealthCheckField form={form} automation={automation} />
-        <ResourceLimitFields form={form} />
-      </div>
-    </SettingsSection>
+    <>
+      <SettingsSection id="settings-runtime" icon={PlayIcon} title="Conexão e saúde">
+        <div className={FIELD_GRID}>
+          <PortField form={form} />
+          <HealthCheckField form={form} automation={automation} />
+        </div>
+      </SettingsSection>
+      <SettingsSection
+        icon={SlidersHorizontalIcon}
+        title="Recursos do contêiner"
+        description="Defina os limites por réplica e quantas réplicas recebem as requisições."
+      >
+        <div className={FIELD_GRID}>
+          <ResourceLimitFields form={form} />
+        </div>
+      </SettingsSection>
+    </>
   );
 }
 
 export function AutomationSection({ form }: { readonly form: ProjectFormApi }) {
   return (
-    <SettingsSection
-      id="settings-automation"
-      icon={ZapIcon}
-      title="Automação de deploys"
-      description="O que o painel faz sozinho."
-    >
+    <SettingsSection id="settings-automation" icon={ZapIcon} title="O que o painel faz sozinho">
       <SwitchGroup>
         <AutoDeployField form={form} />
         <AutoApplyField form={form} />

@@ -13,12 +13,13 @@ type Project = ProjectDetails["project"];
 export function ProjectBanners({ details }: { readonly details: ProjectDetails }) {
   const { project, worker } = details;
   const workerOffline = worker == null || worker.online === false;
-  if (project.deploymentsApproved && workerOffline === false) {
+  const showApproval = project.currentDeploymentId != null && project.deploymentsApproved === false;
+  if (showApproval === false && workerOffline === false) {
     return null;
   }
   return (
     <div className="space-y-3">
-      {project.deploymentsApproved ? null : <ApprovalBanner project={project} />}
+      {showApproval ? <ApprovalBanner project={project} /> : null}
       {workerOffline ? <WorkerOfflineBanner /> : null}
     </div>
   );
@@ -41,7 +42,8 @@ function ApprovalBanner({ project }: { readonly project: Project }) {
   );
 }
 
-function ApproveButton({ project }: { readonly project: Project }) {
+/** Lets an administrator review the repository and approve its deployments. */
+export function ApproveButton({ project }: { readonly project: Project }) {
   const approve = useAction({
     action: () => approveProjectFn({ data: { projectId: project.id } }),
     successMessage: "Projeto aprovado para deploy",
@@ -50,7 +52,7 @@ function ApproveButton({ project }: { readonly project: Project }) {
   return (
     <ConfirmDialog
       trigger={
-        <Button size="sm" disabled={approve.isPending}>
+        <Button size="sm" className="min-h-11" disabled={approve.isPending}>
           {approve.isPending ? <LoaderCircleIcon aria-hidden className="animate-spin" /> : null}
           Autorizar deploys do projeto
         </Button>

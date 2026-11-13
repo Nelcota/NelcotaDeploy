@@ -12,7 +12,7 @@ import {
 } from "./deploy-context";
 import type { DeploymentLogWriter } from "./deployment-log-writer";
 import { detectExposedPort } from "./exposed-port";
-import { DeploymentWorkspace, resolveInsideWorkspace } from "./workspace";
+import { DeploymentWorkspace, resolveBuildPath } from "./workspace";
 
 const DISPLAYED_SHA_LENGTH = 12;
 
@@ -148,12 +148,12 @@ async function buildDockerfileImage(
 ): Promise<BuiltImage> {
   const { docker, config, runner } = dependencies;
   const { project, logs, signal } = context;
-  const dockerfilePath = await resolveInsideWorkspace(
+  const dockerfilePath = await resolveBuildPath(
     runner,
     workspace.repositoryPath,
     project.dockerfilePath,
   );
-  const contextPath = await resolveInsideWorkspace(
+  const contextPath = await resolveBuildPath(
     runner,
     workspace.repositoryPath,
     project.buildContext,
@@ -231,7 +231,7 @@ async function buildWithRailpack(
   const { docker, config, runner } = dependencies;
   const { deployment, project, logs, signal } = context;
   const timeoutInMs = config.buildTimeoutInSeconds * MILLISECONDS_PER_SECOND;
-  const contextPath = await resolveInsideWorkspace(
+  const contextPath = await resolveBuildPath(
     runner,
     workspace.repositoryPath,
     project.buildContext,

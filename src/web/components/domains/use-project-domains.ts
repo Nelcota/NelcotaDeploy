@@ -19,10 +19,9 @@ export function useProjectDomains(projectId: string) {
     ],
   });
   const details = project.data;
-  // Projects that apply changes on their own queue the redeploy when the change is saved.
   const canRedeploy =
     details?.project.currentDeploymentId != null &&
-    details.project.autoApplyChanges === false &&
+    details.project.deploymentsApproved &&
     can("deployment:create");
   // Routing only changes when the container is recreated; the server tracks what is pending.
   const applyChanges = useApplyChanges(

@@ -31,7 +31,7 @@ type ScheduleEditorProps = {
   readonly value: string;
   readonly onChange: (value: string) => void;
   readonly onBlur: () => void;
-  readonly "aria-describedby": string;
+  readonly "aria-describedby": string | undefined;
   readonly "aria-invalid": boolean;
 };
 

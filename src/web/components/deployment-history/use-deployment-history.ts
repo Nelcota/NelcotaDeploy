@@ -1,7 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 
-import type { DeploymentStatus } from "@/deployments";
 import type { PageCursor } from "@/shared/pagination";
 import { listDeploymentsFn } from "@/web/functions/deployments.functions";
 
@@ -10,6 +9,7 @@ import {
   historyRefreshInterval,
   nextPageCursor,
   PAGE_SIZE,
+  type StatusFilter,
 } from "./deployment-history";
 
 const MAX_CURSOR_HISTORY = 100;
@@ -26,7 +26,7 @@ export function useDeploymentHistory({
   filters,
 }: {
   readonly queryKey: readonly unknown[];
-  readonly filters: { readonly projectId?: string; readonly status?: DeploymentStatus };
+  readonly filters: { readonly projectId?: string; readonly status?: Exclude<StatusFilter, "all"> };
 }) {
   const key = JSON.stringify(queryKey);
   const [pagination, setPagination] = useState({ key, cursors: INITIAL_CURSORS });

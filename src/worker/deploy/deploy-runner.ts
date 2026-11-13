@@ -1,6 +1,7 @@
 import type { Database } from "@/db";
 import {
   completeDeployment,
+  type DeploymentFailureCause,
   DeploymentCancelledError,
   getDeployment,
   isCancellationRequested,
@@ -10,10 +11,13 @@ import {
   requireActivePreview,
   transitionDeployment,
 } from "@/deployments";
+import { GitCommandError } from "@/git";
 import { JobLeaseLostError } from "@/jobs";
 import { getPreview } from "@/previews";
 import { getProject } from "@/projects";
 
+import { BuildPathError } from "../worker.errors";
+import { InvalidComposeFileError } from "./compose";
 import {
   discardFailedContainers,
   pruneOldImages,
@@ -28,6 +32,7 @@ import {
 } from "./deploy-context";
 import { deploy } from "./deploy-steps";
 import { DeploymentLogWriter } from "./deployment-log-writer";
+import { HealthCheckFailedError } from "./health-check";
 import { buildStrategyFor } from "./image-source";
 
 const CANCEL_POLL_INTERVAL_IN_MS = 1000;
@@ -219,5 +224,26 @@ async function recordFailure(
   transitionDeployment(dependencies.database, deployment.id, {
     to: cancelled ? "cancelled" : "failed",
     errorMessage: message,
+    failureCause: cancelled ? null : failureCauseOf(error),
   });
+}
+
+function failureCauseOf(error: unknown): DeploymentFailureCause | null {
+  if (error instanceof GitCommandError) {
+    return error.checkoutFailure;
+  }
+
+  if (error instanceof BuildPathError) {
+    return "build_path";
+  }
+
+  if (error instanceof InvalidComposeFileError) {
+    return "compose_configuration";
+  }
+
+  if (error instanceof HealthCheckFailedError) {
+    return error.check;
+  }
+
+  return null;
 }

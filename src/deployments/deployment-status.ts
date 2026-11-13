@@ -5,6 +5,7 @@ export const DEPLOYMENT_STATUSES = [
   "building",
   "starting",
   "health_checking",
+  "publishing",
   "succeeded",
   "failed",
   "cancelled",
@@ -13,13 +14,20 @@ export const DEPLOYMENT_STATUSES = [
 export type DeploymentStatus = (typeof DEPLOYMENT_STATUSES)[number];
 
 /** Statuses of deployments waiting in the queue or running right now. */
-export const ACTIVE_STATUSES: readonly DeploymentStatus[] = [
+export const ACTIVE_STATUSES = [
   "queued",
   "cloning",
   "building",
   "starting",
   "health_checking",
-];
+  "publishing",
+] as const satisfies readonly DeploymentStatus[];
+
+export type DeploymentStage = (typeof ACTIVE_STATUSES)[number];
+
+export function isDeploymentStage(status: DeploymentStatus): status is DeploymentStage {
+  return ACTIVE_STATUSES.some((stage) => stage === status);
+}
 
 const TERMINAL_STATUSES: ReadonlySet<DeploymentStatus> = new Set([
   "succeeded",
@@ -33,7 +41,8 @@ const ALLOWED_TRANSITIONS: Readonly<Record<DeploymentStatus, ReadonlySet<Deploym
   cloning: new Set(["building", "queued", "failed", "cancelled"]),
   building: new Set(["starting", "queued", "failed", "cancelled"]),
   starting: new Set(["health_checking", "queued", "failed", "cancelled"]),
-  health_checking: new Set(["succeeded", "queued", "failed", "cancelled"]),
+  health_checking: new Set(["publishing", "succeeded", "queued", "failed", "cancelled"]),
+  publishing: new Set(["succeeded", "queued", "failed", "cancelled"]),
   succeeded: new Set(),
   failed: new Set(),
   cancelled: new Set(),

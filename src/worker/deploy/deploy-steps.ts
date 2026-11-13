@@ -10,7 +10,7 @@ import { createRedactor } from "@/secrets";
 import type { ProjectBuilder } from "@/shared/schemas/project.schema";
 
 import { networkProbes } from "../probes";
-import { deployCompose } from "./compose/compose-deploy";
+import { deployCompose } from "./compose";
 import { routeTrafficTo, startContainers } from "./container-start";
 import {
   assertDeployActive,
@@ -74,7 +74,7 @@ export async function deploy(
     context.assertOwnership();
     await checkHealth(dependencies, context, routed);
     context.assertOwnership();
-    await routeTrafficTo(dependencies, context, routed);
+    await publishDeployment(dependencies, context, routed);
     return;
   }
 
@@ -107,7 +107,17 @@ export async function deploy(
   context.assertOwnership();
   await checkHealth(dependencies, running, containerNames);
   context.assertOwnership();
-  await routeTrafficTo(dependencies, running, containerNames);
+  await publishDeployment(dependencies, running, containerNames);
+}
+
+async function publishDeployment(
+  dependencies: DeployRunnerDependencies,
+  context: DeployContext,
+  containerNames: readonly string[],
+): Promise<void> {
+  assertDeployActive(context);
+  transitionDeployment(dependencies.database, context.deployment.id, { to: "publishing" });
+  await routeTrafficTo(dependencies, context, containerNames);
 }
 
 /**

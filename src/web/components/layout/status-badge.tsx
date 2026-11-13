@@ -2,6 +2,7 @@ import type { LucideIcon } from "lucide-react";
 import type { ReactNode } from "react";
 
 import type { DeploymentStatus } from "@/deployments";
+import type { ProjectRuntimeStatus } from "@/projects";
 import {
   ACTIVE_DEPLOYMENT_STATUSES,
   CONTAINER_STATE_LABELS,
@@ -67,6 +68,19 @@ function deploymentTone(status: DeploymentStatus): Tone {
 
 export function DeploymentStatusBadge({ status }: { readonly status: DeploymentStatus }) {
   return <StatusPill tone={deploymentTone(status)} label={DEPLOYMENT_STATUS_LABELS[status]} />;
+}
+
+const PROJECT_RUNTIME_BADGES = {
+  "never-deployed": { tone: "neutral", label: "Sem deploy" },
+  unmonitored: { tone: "warning", label: "Sem dados de monitoramento" },
+  offline: { tone: "danger", label: "Fora do ar" },
+  unhealthy: { tone: "warning", label: "Com falha de saúde" },
+  online: { tone: "success", label: "Online" },
+} as const satisfies Record<ProjectRuntimeStatus, { readonly tone: Tone; readonly label: string }>;
+
+/** Shows the same application state on the dashboard and in project listings. */
+export function ProjectRuntimeBadge({ status }: { readonly status: ProjectRuntimeStatus }) {
+  return <StatusPill {...PROJECT_RUNTIME_BADGES[status]} className="whitespace-normal" />;
 }
 
 export function ContainerStateBadge({

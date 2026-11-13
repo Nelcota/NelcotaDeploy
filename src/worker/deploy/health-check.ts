@@ -8,10 +8,13 @@ const MS_PER_SECOND = 1000;
 const STABILITY_WINDOW_IN_MS = 3000;
 
 /** Thrown when a new container never becomes healthy. */
-class HealthCheckFailedError extends Error {
-  constructor(message: string) {
+export class HealthCheckFailedError extends Error {
+  readonly check: "health_port" | "health_endpoint" | "docker_healthcheck" | null;
+
+  constructor(message: string, check: HealthCheckFailedError["check"] = null) {
     super(message);
     this.name = "HealthCheckFailedError";
+    this.check = check;
   }
 }
 
@@ -37,7 +40,10 @@ async function isReachable(
   probes: Probes,
 ): Promise<boolean> {
   if (info.health === "unhealthy") {
-    throw new HealthCheckFailedError("Docker HEALTHCHECK reported the container as unhealthy");
+    throw new HealthCheckFailedError(
+      "Docker HEALTHCHECK reported the container as unhealthy",
+      "docker_healthcheck",
+    );
   }
   // When the image defines a HEALTHCHECK, Docker's verdict is authoritative.
   if (info.health != null) {
@@ -65,6 +71,7 @@ type PollState = {
   readonly healthySince: number | null;
   /** Restart count seen on the first poll; any change means the container crashed. */
   readonly restartCount: number | null;
+  readonly probeFailure: HealthCheckFailedError["check"];
 };
 
 async function inspectRunningContainer(
@@ -108,6 +115,7 @@ async function pollUntilHealthy(context: HealthCheckContext, state: PollState): 
     const timeoutInSeconds = Math.round(context.target.timeoutInMs / MS_PER_SECOND);
     throw new HealthCheckFailedError(
       `Container did not become healthy within ${timeoutInSeconds} seconds`,
+      state.probeFailure,
     );
   }
   const info = await inspectRunningContainer(context, state.restartCount);
@@ -121,7 +129,24 @@ async function pollUntilHealthy(context: HealthCheckContext, state: PollState): 
     deadline: state.deadline,
     healthySince,
     restartCount: info.restartCount,
+    probeFailure: probeFailureOf(info, context.target, reachable),
   });
+}
+
+function probeFailureOf(
+  info: ContainerInfo,
+  target: HealthCheckTarget,
+  reachable: boolean,
+): PollState["probeFailure"] {
+  if (reachable || info.health != null) {
+    return null;
+  }
+
+  if (info.networkAddresses[target.network] == null) {
+    return null;
+  }
+
+  return target.healthCheckPath == null ? "health_port" : "health_endpoint";
 }
 
 /**
@@ -140,6 +165,11 @@ export async function waitUntilHealthy(
 ): Promise<void> {
   await pollUntilHealthy(
     { docker, target, probes },
-    { deadline: Date.now() + target.timeoutInMs, healthySince: null, restartCount: null },
+    {
+      deadline: Date.now() + target.timeoutInMs,
+      healthySince: null,
+      restartCount: null,
+      probeFailure: null,
+    },
   );
 }

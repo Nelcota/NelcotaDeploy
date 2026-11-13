@@ -28,7 +28,7 @@ export function TeamSection({ projectId }: { readonly projectId: string }) {
   return (
     <SettingsSection
       icon={UsersIcon}
-      title="Equipe"
+      title="Membros do projeto"
       description="Administradores veem todos os projetos. As demais pessoas só veem este projeto, e o staging dele, se forem membros."
     >
       <p className="mb-4 text-sm text-muted-foreground">

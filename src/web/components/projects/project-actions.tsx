@@ -19,6 +19,7 @@ import {
 import { useCan } from "@/web/components/shell/use-permissions";
 import { PromoteButton } from "@/web/components/staging/promote-button";
 import { Button } from "@/web/components/ui/button";
+import { cn } from "@/web/components/ui/class-names";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -32,7 +33,7 @@ const STOP_DESCRIPTION =
 const REDEPLOY_DESCRIPTION =
   "Um novo contêiner será criado com a imagem atual, aplicando as variáveis e domínios salvos, sem novo build. Pode haver uma breve troca de versão durante a substituição.";
 
-type Confirmation = "stop" | "redeploy" | "deploy";
+type Confirmation = "stop" | "redeploy";
 const HEADER_ACTION_CLASS = "max-sm:px-2 max-sm:has-[>svg]:px-2";
 
 function ContainerMenuItems({
@@ -117,9 +118,20 @@ function MoreActionsMenu({
   );
 }
 
-function OpenAppButton({ url }: { readonly url: string }) {
+export function OpenAppButton({
+  url,
+  prominent = false,
+}: {
+  readonly url: string;
+  readonly prominent?: boolean;
+}) {
   return (
-    <Button variant="outline" size="sm" className={HEADER_ACTION_CLASS} asChild>
+    <Button
+      variant={prominent ? "default" : "outline"}
+      size={prominent ? "default" : "sm"}
+      className={prominent ? "min-h-11 w-full sm:w-auto" : HEADER_ACTION_CLASS}
+      asChild
+    >
       <a href={url} target="_blank" rel="noreferrer noopener">
         <ExternalLinkIcon aria-hidden />
         Abrir app
@@ -155,26 +167,14 @@ function ActionConfirmations({
   onConfirmingChange,
   onStop,
   onRedeploy,
-  onDeploy,
-  project,
 }: {
   readonly confirming: Confirmation | null;
   readonly onConfirmingChange: (confirming: Confirmation | null) => void;
   readonly onStop: () => void;
   readonly onRedeploy: () => void;
-  readonly onDeploy: () => void;
-  readonly project: Pick<ProjectDetails["project"], "repositoryFullName" | "branch">;
 }) {
   return (
     <>
-      <ConfirmDialog
-        open={confirming === "deploy"}
-        onOpenChange={(open) => onConfirmingChange(open ? "deploy" : null)}
-        title="Iniciar o primeiro deploy?"
-        description={`O painel vai construir e executar ${project.repositoryFullName}, na branch ${project.branch}, usando a configuração revisada do projeto.`}
-        confirmLabel="Publicar primeira versão"
-        onConfirm={onDeploy}
-      />
       <ConfirmDialog
         open={confirming === "stop"}
         onOpenChange={(open) => onConfirmingChange(open ? "stop" : null)}
@@ -204,11 +204,13 @@ export function ProjectActions({
   details,
   containerState,
   url,
+  className,
 }: {
   readonly details: ProjectDetails;
   /** State of the live container, or null when there is none. */
   readonly containerState: string | null;
   readonly url: string | null;
+  readonly className?: string | undefined;
 }) {
   const { project } = details;
   const can = useCan();
@@ -221,7 +223,7 @@ export function ProjectActions({
   const canRedeploy = canDeploy && hasDeployment;
 
   return (
-    <div className="flex shrink-0 flex-wrap items-center gap-1.5">
+    <div className={cn("flex shrink-0 flex-wrap items-center gap-1.5", className)}>
       {url == null ? null : <OpenAppButton url={url} />}
       {canControl || canRedeploy ? (
         <MoreActionsMenu
@@ -238,23 +240,17 @@ export function ProjectActions({
           stagingProjectId={project.id}
           productionProjectId={project.parentProjectId}
           deploymentId={project.currentDeploymentId}
-          commitSha={details.liveCommitSha}
+          commitSha={details.liveDeployment?.commitSha ?? null}
         />
       ) : null}
       {canDeploy ? (
-        <DeployButton
-          busy={busy}
-          deploying={deploy.isPending}
-          onDeploy={() => (hasDeployment ? deploy.mutate() : setConfirming("deploy"))}
-        />
+        <DeployButton busy={busy} deploying={deploy.isPending} onDeploy={() => deploy.mutate()} />
       ) : null}
       <ActionConfirmations
         confirming={confirming}
         onConfirmingChange={setConfirming}
         onStop={() => containerAction.mutate("stop")}
         onRedeploy={() => redeploy.mutate()}
-        onDeploy={() => deploy.mutate()}
-        project={project}
       />
     </div>
   );

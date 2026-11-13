@@ -39,7 +39,7 @@ function NumberSelect({
   readonly values: readonly number[];
   readonly value: number;
   readonly onChange: (value: number) => void;
-  readonly describedBy: string;
+  readonly describedBy: string | undefined;
 }) {
   return (
     <div className="min-w-0 space-y-1.5">
@@ -129,7 +129,7 @@ export function GuidedScheduleControls({
   readonly id: string;
   readonly schedule: GuidedSchedule;
   readonly onChange: (schedule: GuidedSchedule) => void;
-  readonly describedBy: string;
+  readonly describedBy: string | undefined;
 }) {
   if (schedule.frequency === "manual") {
     return null;

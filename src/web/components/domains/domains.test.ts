@@ -28,6 +28,14 @@ describe("dnsRecordType", () => {
 
     expect(type).toBe("A");
   });
+
+  test("uses the IPv6 record type when the server has a public IPv6 address", () => {
+    expect(dnsRecordType("app.base.example.com", "AAAA")).toBe("AAAA");
+  });
+
+  test("prefers the known IPv4 record when an alias is also available", () => {
+    expect(dnsRecordType("app.base.example.com", "A")).toBe("A");
+  });
 });
 
 describe("dnsTag", () => {

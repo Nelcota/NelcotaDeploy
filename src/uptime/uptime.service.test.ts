@@ -129,6 +129,7 @@ describe("listUptimeSummaries", () => {
       lastReason: null,
     });
     expect(summary?.recent.map((check) => check.up)).toEqual([true, true, false, true]);
+    expect(summary?.recent.map((check) => check.reason)).toEqual([null, null, "timeout", null]);
   });
 
   test("returns nothing for a project whose hostnames were never checked", () => {

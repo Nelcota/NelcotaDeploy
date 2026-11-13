@@ -17,6 +17,7 @@ export const DEPLOYMENT_STATUS_LABELS: Record<DeploymentStatus, string> = {
   building: "Construindo",
   starting: "Iniciando",
   health_checking: "Verificando saúde",
+  publishing: "Publicando",
   succeeded: "Concluído",
   failed: "Falhou",
   cancelled: "Cancelado",
@@ -74,6 +75,7 @@ export const ACTIVE_DEPLOYMENT_STATUSES: ReadonlySet<string> = new Set([
   "building",
   "starting",
   "health_checking",
+  "publishing",
 ]);
 
 export const CONTAINER_HEALTH_LABELS: Record<string, string> = {
