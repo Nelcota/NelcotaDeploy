@@ -6,6 +6,7 @@ export const STATUS_FILTERS = {
   all: "Todos",
   online: "Online",
   offline: "Precisam de atenção",
+  https: "Problemas no HTTPS",
   never: "Sem deploy",
   pending: "Aguardando aprovação",
 } as const;
@@ -16,6 +17,7 @@ export const STATUS_FILTER_VALUES = [
   "all",
   "online",
   "offline",
+  "https",
   "never",
   "pending",
 ] as const satisfies readonly StatusFilter[];

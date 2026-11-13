@@ -3,6 +3,7 @@ import { describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 
 import { type Database, openMemoryDatabase, tables } from "@/db";
+import { listProjects } from "@/projects";
 import { createTestProject } from "@/testing";
 
 import { replaceContainerSnapshots } from "./container-snapshot.service";
@@ -18,11 +19,12 @@ function insertDeployment(
     readonly status: (typeof tables.deployments.$inferInsert)["status"];
     readonly createdAt: string;
   },
-): void {
+): string {
+  const id = crypto.randomUUID();
   database
     .insert(tables.deployments)
     .values({
-      id: crypto.randomUUID(),
+      id,
       projectId,
       trigger: "manual",
       triggeredByLabel: "test",
@@ -31,6 +33,7 @@ function insertDeployment(
       createdAt: values.createdAt,
     })
     .run();
+  return id;
 }
 
 describe("getDashboardSummary", () => {
@@ -123,7 +126,96 @@ describe("getDashboardSummary", () => {
 
     expect(summary.unhealthyCount).toBe(1);
     expect(summary.onlineCount).toBe(1);
+    expect(summary.projectsNeedingAttention.map((project) => [project.id, project.status])).toEqual(
+      [[projectId, "unhealthy"]],
+    );
   });
+});
+
+test("lists published projects without running containers and excludes unpublished or hidden projects", () => {
+  const database = openMemoryDatabase();
+  const project = createTestProject(database);
+  const hidden = createTestProject(database, { name: "Hidden", slug: "hidden" });
+  const unpublished = createTestProject(database, { name: "New", slug: "new" });
+  for (const candidate of [project, hidden]) {
+    const deploymentId = insertDeployment(database, candidate.id, {
+      status: "succeeded",
+      createdAt: NOW.toISOString(),
+    });
+    database
+      .update(tables.projects)
+      .set({ currentDeploymentId: deploymentId })
+      .where(eq(tables.projects.id, candidate.id))
+      .run();
+  }
+
+  const summary = getDashboardSummary(database, NOW, [project.id, unpublished.id]);
+
+  expect(summary.projectsNeedingAttention).toEqual([
+    { id: project.id, name: project.name, status: "unmonitored" },
+  ]);
+  expect(summary.unmonitoredCount).toBe(1);
+  expect(summary.neverDeployedCount).toBe(1);
+});
+
+test("classifies a release consistently when its newest replica looks healthy", () => {
+  const database = openMemoryDatabase();
+  using _connection = database.$client;
+  const project = createTestProject(database);
+  const deploymentId = insertDeployment(database, project.id, {
+    status: "succeeded",
+    createdAt: "2026-10-28T14:00:00Z",
+  });
+  database.update(tables.projects).set({ currentDeploymentId: deploymentId }).run();
+  const replica = {
+    projectId: project.id,
+    deploymentId,
+    image: "nelcota/api:abc",
+    state: "running",
+  };
+  replaceContainerSnapshots(database, "local", [
+    {
+      ...replica,
+      containerId: "c1",
+      name: "api-1",
+      health: "healthy",
+      observedAt: NOW.toISOString(),
+    },
+    {
+      ...replica,
+      containerId: "c2",
+      name: "api-2",
+      health: "unhealthy",
+      observedAt: "2026-10-28T14:59:00Z",
+    },
+  ]);
+
+  const summary = getDashboardSummary(database, NOW);
+  const [listedProject] = listProjects(database);
+
+  expect(listedProject?.runtimeStatus).toBe("unhealthy");
+  expect(summary.projectsNeedingAttention).toEqual([
+    { id: project.id, name: project.name, status: "unhealthy" },
+  ]);
+});
+
+test("lists active deploys even when newer finished deploys fill the recent list", () => {
+  const database = openMemoryDatabase();
+  const visible = createTestProject(database);
+  const hidden = createTestProject(database, { name: "Hidden", slug: "hidden" });
+  const queued = insertDeployment(database, visible.id, {
+    status: "queued",
+    createdAt: "2026-10-25T14:00:00Z",
+  });
+  insertDeployment(database, hidden.id, { status: "building", createdAt: NOW.toISOString() });
+  for (let index = 0; index < DISPLAY_LIMIT; index += 1) {
+    insertDeployment(database, visible.id, { status: "succeeded", createdAt: NOW.toISOString() });
+  }
+
+  const summary = getDashboardSummary(database, NOW, [visible.id]);
+
+  expect(summary.activeDeployments.map((deployment) => deployment.id)).toEqual([queued]);
+  expect(summary.recentDeployments.some((deployment) => deployment.id === queued)).toBe(false);
 });
 
 const ONLINE_WORKER = {

@@ -30,7 +30,7 @@ export function VolumesSection({
     <SettingsSection
       id="settings-volumes"
       icon={HardDriveIcon}
-      title="Armazenamento persistente"
+      title="Pastas que mantêm os arquivos"
       description="Pastas do contêiner que guardam arquivos entre deploys, no disco do servidor do projeto."
     >
       <div className="space-y-4">

@@ -3,17 +3,16 @@ import { describe, expect, test } from "bun:test";
 import { matchesProjectFilter } from "./project-filter";
 
 const RUNNING = {
-  containerState: "running",
-  containerHealth: "healthy",
+  runtimeStatus: "online" as const,
   deploymentsApproved: true,
 };
 const FAILING = {
-  containerState: "running",
-  containerHealth: "unhealthy",
+  runtimeStatus: "unhealthy" as const,
   deploymentsApproved: true,
 };
-const STOPPED = { containerState: "exited", containerHealth: null, deploymentsApproved: true };
-const NEVER = { containerState: null, containerHealth: null, deploymentsApproved: false };
+const STOPPED = { runtimeStatus: "offline", deploymentsApproved: true } as const;
+const UNMONITORED = { runtimeStatus: "unmonitored", deploymentsApproved: true } as const;
+const NEVER = { runtimeStatus: "never-deployed", deploymentsApproved: false } as const;
 
 describe("matchesProjectFilter", () => {
   test("lists every project under all", () => {
@@ -28,16 +27,25 @@ describe("matchesProjectFilter", () => {
   test("lists stopped and failing projects as needing attention", () => {
     expect(matchesProjectFilter(STOPPED, "offline")).toBe(true);
     expect(matchesProjectFilter(FAILING, "offline")).toBe(true);
+    expect(matchesProjectFilter(UNMONITORED, "offline")).toBe(true);
     expect(matchesProjectFilter(RUNNING, "offline")).toBe(false);
   });
 
-  test("lists projects without a container as never deployed", () => {
+  test("lists projects without a published release as never deployed", () => {
     expect(matchesProjectFilter(NEVER, "never")).toBe(true);
     expect(matchesProjectFilter(RUNNING, "never")).toBe(false);
+    expect(matchesProjectFilter(UNMONITORED, "never")).toBe(false);
   });
 
   test("lists projects waiting for approval", () => {
     expect(matchesProjectFilter(NEVER, "pending")).toBe(true);
     expect(matchesProjectFilter(RUNNING, "pending")).toBe(false);
+  });
+
+  test("finds a running project with a certificate failure and excludes projects without one", () => {
+    expect(
+      matchesProjectFilter({ ...RUNNING, httpsIssueDomains: ["app.example.com"] }, "https"),
+    ).toBe(true);
+    expect(matchesProjectFilter(FAILING, "https")).toBe(false);
   });
 });

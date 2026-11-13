@@ -6,12 +6,13 @@ import { createProjectCommands } from "./project-commands";
 const navigate = () => Promise.resolve();
 
 test.each([
-  ["build", "Construção da imagem"],
+  ["construção", "Build e Dockerfile"],
   ["previews", "Ambientes de teste por pull request"],
   ["tasks", "Tarefas da aplicação"],
-  ["volumes", "Armazenamento persistente"],
-  ["identidade", "Nome e identificador do projeto"],
-  ["execução", "Porta e verificação de saúde"],
+  ["armazenamento persistente", "Volumes e arquivos"],
+  ["identidade", "Nome e identificador"],
+  ["execução", "Porta, saúde e recursos"],
+  ["réplicas", "Porta, saúde e recursos"],
   ["métricas", "Uso de recursos da aplicação"],
 ])("keeps the former term %s searchable under the descriptive name %s", (query, label) => {
   const commands = createProjectCommands({
@@ -43,13 +44,13 @@ test("offers every readable project page without restricted settings or imports"
     "Logs da aplicação",
     "Bancos de dados",
     "Tarefas da aplicação",
-    "Construção da imagem",
-    "Armazenamento persistente",
+    "Build e Dockerfile",
+    "Volumes e arquivos",
   ]) {
     expect(labels.has(label)).toBe(true);
   }
   for (const label of [
-    "Trocar servidor",
+    "Servidor do projeto",
     "Excluir projeto",
     "Importar variáveis de arquivo .env",
     "Importar variáveis do repositório",
@@ -68,7 +69,7 @@ test("shows import workflows to editors but not server moves or project deletion
 
   expect(labels.has("Importar variáveis de arquivo .env")).toBe(true);
   expect(labels.has("Importar variáveis do repositório")).toBe(true);
-  expect(labels.has("Trocar servidor")).toBe(false);
+  expect(labels.has("Servidor do projeto")).toBe(false);
   expect(labels.has("Excluir projeto")).toBe(false);
 });
 
@@ -80,7 +81,7 @@ test("keeps server and deletion permissions independent", () => {
   });
   const labels = new Set(commands.map((item) => item.label));
 
-  expect(labels.has("Trocar servidor")).toBe(true);
+  expect(labels.has("Servidor do projeto")).toBe(true);
   expect(labels.has("Excluir projeto")).toBe(false);
 });
 
@@ -93,7 +94,7 @@ test("can find a build page by Dockerfile and the project's name", async () => {
     context: { projectId: "project-a" },
   });
   const selected = filterCommands(commands, "pagamentos dockerfile").at(0);
-  expect(selected?.label).toBe("Construção da imagem");
+  expect(selected?.label).toBe("Build e Dockerfile");
   if (selected == null) {
     throw new Error("Build destination is missing");
   }
@@ -113,7 +114,7 @@ test("links a resource to the currently selected project and deployment", async 
     permissions: [],
     context: { projectId: "project-b", deploymentId: "deploy-b" },
   });
-  const selected = commands.find((item) => item.label === "Logs da construção da imagem");
+  const selected = commands.find((item) => item.label === "Logs do deploy");
   if (selected == null) {
     throw new Error("Build log destination is missing");
   }

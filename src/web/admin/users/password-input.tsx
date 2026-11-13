@@ -14,7 +14,7 @@ export function PasswordInput({
   onChange,
   readOnly,
 }: {
-  readonly props: { id: string; "aria-describedby": string; "aria-invalid": boolean };
+  readonly props: { id: string; "aria-describedby": string | undefined; "aria-invalid": boolean };
   readonly value: string;
 } & (
   | { readonly readOnly: true; readonly onChange?: never }

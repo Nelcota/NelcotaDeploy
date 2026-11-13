@@ -8,15 +8,20 @@ import { getGitHubApp, listConnectedRepositories } from "@/github";
 import {
   approveProject,
   createProject,
+  ComposeNeedsNoVolumesError,
   listProjects,
   requestProjectDeletion,
+  ProjectSlugTakenError,
+  ReplicasNeedNoVolumesError,
   setRepositoryToken,
   updateProjectSettings,
 } from "@/projects";
 import { getSecretBox } from "@/secrets";
 import { projectInputSchema, repositoryTokenSchema } from "@/shared/schemas/project.schema";
 import { projectSettingsChangeSchema } from "@/shared/schemas/settings/project-settings.schema";
+import { listHttpsStatus } from "@/uptime";
 import { authorize, authorizeProject, authorizeProjectListing } from "@/web/server/authorization";
+import { toPublicError } from "@/web/server/public-error";
 
 import { idSchema, projectIdInput } from "./ids";
 
@@ -26,7 +31,21 @@ export const listProjectsFn = createServerFn({ method: "GET" })
   .validator(z.object({ search: z.string().max(MAX_SEARCH_LENGTH).optional() }))
   .handler(async ({ data }) => {
     const { projectIds } = await authorizeProjectListing();
-    return listProjects(getDatabase(), { search: data.search ?? "", projectIds });
+    const database = getDatabase();
+    const projects = listProjects(database, { search: data.search ?? "", projectIds });
+    const https = listHttpsStatus(
+      database,
+      new Date(),
+      projects.map((project) => project.id),
+    );
+    const issues = Map.groupBy(https.issues, (domain) => domain.projectId);
+    const recoveries = Map.groupBy(https.recoveries, (domain) => domain.projectId);
+    return projects.map((project) =>
+      Object.assign(project, {
+        httpsIssueDomains: (issues.get(project.id) ?? []).map((domain) => domain.hostname),
+        httpsRecoveries: recoveries.get(project.id) ?? [],
+      }),
+    );
   });
 
 /** Repositories the GitHub App can read, for the new-project picker; null without an app. */
@@ -46,24 +65,50 @@ export const createProjectFn = createServerFn({ method: "POST" })
     const user = await authorize("project:write");
     const database = getDatabase();
     const actor = userActor(user);
-    const project = createProject(database, data, {
-      actor,
-      userId: user.id,
-      isAdmin: user.role === "admin",
-    });
+    let project;
+    try {
+      project = createProject(database, data, {
+        actor,
+        userId: user.id,
+        isAdmin: user.role === "admin",
+      });
+    } catch (error) {
+      return { failure: projectFieldFailure(error) };
+    }
+
     addProjectCreator(database, { projectId: project.id, creator: user, actor });
-    return project;
+    return { project };
   });
 
 export const updateProjectSettingsFn = createServerFn({ method: "POST" })
   .validator(z.object({ projectId: idSchema, change: projectSettingsChangeSchema }))
   .handler(async ({ data }) => {
     const user = await authorizeProject("project:write", data.projectId);
-    return updateProjectSettings(getDatabase(), {
-      ...data,
-      editor: { actor: userActor(user), isAdmin: user.role === "admin" },
-    });
+    try {
+      const project = updateProjectSettings(getDatabase(), {
+        ...data,
+        editor: { actor: userActor(user), isAdmin: user.role === "admin" },
+      });
+      return { project };
+    } catch (error) {
+      return { failure: projectFieldFailure(error) };
+    }
   });
+
+function projectFieldFailure(error: unknown) {
+  const fieldErrors = [
+    [ProjectSlugTakenError, "slug"],
+    [ReplicasNeedNoVolumesError, "replicas"],
+    [ComposeNeedsNoVolumesError, "builder"],
+  ] as const;
+  const match = fieldErrors.find(([ErrorClass]) => error instanceof ErrorClass);
+  const message = match == null ? undefined : toPublicError(error)?.message;
+  if (match == null || message == null) {
+    throw error;
+  }
+
+  return { field: match[1], message };
+}
 
 export const approveProjectFn = createServerFn({ method: "POST" })
   .validator(projectIdInput)

@@ -1,16 +1,21 @@
 import type { ReactNode } from "react";
 
 import { ErrorState } from "@/web/components/layout/states";
+import {
+  FirstPublicationConfirmation,
+  firstPublicationConfirmation,
+} from "@/web/components/projects/first-deployment/first-publication-confirmation";
 import { TabHeader } from "@/web/components/projects/project-header";
+import { cn } from "@/web/components/ui/class-names";
 
 import {
   BackToDeploymentsLink,
   DeploymentDetailSkeleton,
   DeploymentTitle,
-  FailureNotice,
   StagesCard,
 } from "./deployment-detail-parts";
 import { DeploymentDetailsCard } from "./deployment-details-card";
+import { DeploymentFailureNotice } from "./deployment-failure-notice";
 import { DeploymentHeaderAction } from "./deployment-header-action";
 import { type DeploymentDetailData, useDeploymentDetail } from "./use-deployment-detail";
 
@@ -42,15 +47,14 @@ export function DeploymentDetailPage({
     return <p role="alert">Deploy não encontrado neste projeto.</p>;
   }
   return (
-    <section aria-label="Detalhes do deploy" className="space-y-6">
+    <section
+      aria-label="Detalhes do deploy"
+      className={cn("space-y-6", data.status === "failed" && "max-sm:space-y-3")}
+    >
+      <DeploymentOutcome deployment={data} details={project.data} />
       <DeploymentHeader projectId={projectId} deployment={data} />
+      {data.status === "failed" ? <FailureActions projectId={projectId} deployment={data} /> : null}
       <StagesCard deployment={data} />
-      {data.status === "failed" && data.errorMessage != null ? (
-        <FailureNotice
-          errorMessage={data.errorMessage}
-          previousVersionLive={project.data?.project.currentDeploymentId != null}
-        />
-      ) : null}
       <DeploymentDetailsCard
         projectId={projectId}
         deployment={data}
@@ -59,6 +63,31 @@ export function DeploymentDetailPage({
         now={now}
       />
     </section>
+  );
+}
+
+function DeploymentOutcome({ deployment, details }: Parameters<typeof DeploymentFailureNotice>[0]) {
+  const failed = deployment.status === "failed";
+  const confirmation =
+    deployment.status === "succeeded" && firstPublicationConfirmation(details, deployment.id);
+  return (
+    <>
+      <p role="status" className="sr-only">
+        {failed ? "O deploy falhou. O diagnóstico está disponível acima das etapas." : null}
+        {confirmation ? "Primeira versão publicada." : null}
+      </p>
+      {failed ? <DeploymentFailureNotice deployment={deployment} details={details} /> : null}
+      {confirmation && details != null ? <FirstPublicationConfirmation details={details} /> : null}
+    </>
+  );
+}
+
+function FailureActions({ projectId, deployment }: Parameters<typeof DeploymentHeaderAction>[0]) {
+  return (
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+      <BackToDeploymentsLink projectId={projectId} />
+      <DeploymentHeaderAction projectId={projectId} deployment={deployment} />
+    </div>
   );
 }
 
@@ -90,11 +119,15 @@ function DeploymentHeader({
 }) {
   return (
     <div className="space-y-3">
-      <BackToDeploymentsLink projectId={projectId} />
+      {deployment.status === "failed" ? null : <BackToDeploymentsLink projectId={projectId} />}
       <TabHeader
         title={<DeploymentTitle deployment={deployment} />}
         description={deployment.commitMessage ?? "sem mensagem de commit"}
-        actions={<DeploymentHeaderAction projectId={projectId} deployment={deployment} />}
+        actions={
+          deployment.status === "failed" ? null : (
+            <DeploymentHeaderAction projectId={projectId} deployment={deployment} />
+          )
+        }
       />
     </div>
   );

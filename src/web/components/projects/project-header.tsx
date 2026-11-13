@@ -2,13 +2,21 @@ import { Link, useMatchRoute } from "@tanstack/react-router";
 import { ChevronLeftIcon, GitBranchIcon, GlobeIcon } from "lucide-react";
 import type { ReactNode } from "react";
 
+import { useProjectDomainAccess } from "@/web/components/domains/uptime";
 import { GitHubIcon } from "@/web/components/github/github.icon";
 import { ContainerStateBadge } from "@/web/components/layout/status-badge";
+import { ProjectReleaseSummary } from "@/web/components/project-overview/situation/project-release-summary";
 import { ProjectActions } from "@/web/components/projects/project-actions";
-import type { ProjectDetails } from "@/web/components/projects/project-query";
+import { type ProjectDetails, projectAppUrl } from "@/web/components/projects/project-query";
 import { PROJECT_SECTIONS } from "@/web/components/shell/navigation";
 import { PageNavigation } from "@/web/components/shell/navigation/page-navigation";
 import { EnvironmentSwitcher } from "@/web/components/staging/environment-switcher";
+
+import { FirstDeploymentCard } from "./first-deployment/first-deployment-card";
+import {
+  FirstPublicationConfirmation,
+  firstPublicationConfirmation,
+} from "./first-deployment/first-publication-confirmation";
 
 /** The container of the project's current deployment, if the worker has seen it. */
 export function currentContainer(details: ProjectDetails) {
@@ -17,14 +25,6 @@ export function currentContainer(details: ProjectDetails) {
       (container) => container.deploymentId === details.project.currentDeploymentId,
     ) ?? null
   );
-}
-
-function publicUrl(details: ProjectDetails): string | null {
-  const [domain] = details.domains;
-  if (domain == null) {
-    return null;
-  }
-  return `${domain.httpsEnabled ? "https" : "http"}://${domain.hostname}`;
 }
 
 const HEADER_LINK =
@@ -75,13 +75,25 @@ function ProjectLinks({
  * Header shared by every project page: where you are, the project's state, its address,
  * the actions, and the grouped navigation to each project page.
  */
-export function ProjectBand({ details }: { readonly details: ProjectDetails }) {
+export function ProjectBand({
+  details,
+  compact = false,
+}: {
+  readonly details: ProjectDetails;
+  readonly compact?: boolean;
+}) {
   const { project } = details;
   const matchRoute = useMatchRoute();
   const overview =
-    matchRoute({ to: "/projects/$projectId", params: { projectId: project.id } }) !== false;
+    matchRoute({ to: "/projects/$projectId", params: { projectId: project.id }, fuzzy: false }) !==
+    false;
   const container = currentContainer(details);
-  const url = publicUrl(details);
+  const url = projectAppUrl(details);
+  const hasLiveDeployment = project.currentDeploymentId != null;
+  const confirmation = overview && firstPublicationConfirmation(details);
+  const showHeaderAction = confirmation === false && hasLiveDeployment;
+  const { access } = useProjectDomainAccess(details, showHeaderAction);
+  const showHeaderAddress = showHeaderAction && (access === "ready" || access === "private");
   return (
     <div className="space-y-3">
       <Link
@@ -97,21 +109,42 @@ export function ProjectBand({ details }: { readonly details: ProjectDetails }) {
             <h1 className="max-w-full min-w-0 text-2xl leading-tight font-semibold tracking-tight [overflow-wrap:anywhere]">
               {project.name}
             </h1>
-            <ContainerStateBadge
-              state={container?.state ?? null}
-              health={container?.health ?? null}
-            />
+            {hasLiveDeployment && overview === false ? (
+              <ContainerStateBadge
+                state={container?.state ?? null}
+                health={container?.health ?? null}
+              />
+            ) : null}
             <EnvironmentSwitcher
               currentProjectId={project.id}
               environments={details.environments}
             />
           </div>
-          <div className={overview ? undefined : "hidden sm:block"}>
-            <ProjectLinks url={url} project={project} />
-          </div>
+          {hasLiveDeployment && overview === false ? (
+            <div className="hidden sm:block">
+              <ProjectLinks url={showHeaderAddress ? url : null} project={project} />
+            </div>
+          ) : null}
         </div>
-        <ProjectActions details={details} containerState={container?.state ?? null} url={url} />
+        {hasLiveDeployment ? (
+          <ProjectActions
+            details={details}
+            containerState={container?.state ?? null}
+            url={showHeaderAddress ? url : null}
+            className={compact ? "max-sm:hidden" : undefined}
+          />
+        ) : null}
       </header>
+      {hasLiveDeployment ? null : (
+        <div className={compact ? "max-sm:hidden" : undefined}>
+          <FirstDeploymentCard details={details} />
+        </div>
+      )}
+      {confirmation ? <FirstPublicationConfirmation details={details} /> : null}
+      {overview ? <ProjectReleaseSummary details={details} /> : null}
+      {overview && hasLiveDeployment ? (
+        <ProjectLinks url={showHeaderAddress ? url : null} project={project} />
+      ) : null}
       <ProjectTabs projectId={project.id} />
     </div>
   );

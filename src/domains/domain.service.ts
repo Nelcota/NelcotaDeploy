@@ -42,9 +42,14 @@ export type LiveDomain = {
  *
  * @param database - Database.
  * @param settings - System settings with the optional base domain.
+ * @param projectIds - Visible projects, or null for all projects.
  * @returns The hostnames, grouped by project.
  */
-export function listLiveDomains(database: Database, settings: SystemSettings): LiveDomain[] {
+export function listLiveDomains(
+  database: Database,
+  settings: SystemSettings,
+  projectIds: readonly string[] | null = null,
+): LiveDomain[] {
   const projects = database
     .select({ id: tables.projects.id, name: tables.projects.name, slug: tables.projects.slug })
     .from(tables.projects)
@@ -52,6 +57,7 @@ export function listLiveDomains(database: Database, settings: SystemSettings): L
       and(
         isNull(tables.projects.deletionRequestedAt),
         isNotNull(tables.projects.currentDeploymentId),
+        projectIds == null ? undefined : inArray(tables.projects.id, projectIds),
       ),
     )
     .all();

@@ -1,3 +1,4 @@
+import { Link } from "@tanstack/react-router";
 import {
   ExternalLinkIcon,
   GlobeIcon,
@@ -12,24 +13,32 @@ import { ConfirmDialog } from "@/web/components/layout/confirm-dialog";
 import { ListRow, Tag } from "@/web/components/layout/layout";
 import { Button } from "@/web/components/ui/button";
 
-import { type DomainItem, domainUrl } from "./domains";
+import { type DomainItem, dnsRecordId, domainUrl } from "./domains";
 import { UptimeLine } from "./uptime/uptime-line";
 import type { DomainUptime } from "./uptime/uptime-state";
 
 /** The project's domains, the first one marked as principal; a hint row when there are none. */
 export function DomainRows({
+  projectId,
   domains,
   uptime,
   canEdit,
   onRemove,
+  setupShown = false,
 }: {
+  readonly projectId: string;
   readonly domains: readonly DomainItem[];
   /** Availability of each hostname. */
   readonly uptime: ReadonlyMap<string, DomainUptime>;
   readonly canEdit: boolean;
   readonly onRemove: (domainId: string) => void;
+  readonly setupShown?: boolean;
 }) {
   if (domains.length === 0) {
+    if (setupShown) {
+      return null;
+    }
+
     return (
       <ListRow>
         <GlobeIcon aria-hidden className="size-4 shrink-0 text-faint" />
@@ -44,10 +53,18 @@ export function DomainRows({
   }
   return domains.map((domain, index) => (
     <ListRow key={domain.hostname} className="flex-wrap">
-      <div className="min-w-0 flex-1 space-y-1.5">
-        <DomainLink domain={domain} />
+      <div className="min-w-0 basis-full space-y-1.5 sm:flex-1">
+        {setupShown && index === 0 ? (
+          <span className="font-mono text-sm font-medium break-all">{domain.hostname}</span>
+        ) : (
+          <DomainLink domain={domain} />
+        )}
         <DomainTags domain={domain} principal={index === 0} />
-        {renderUptime(uptime.get(domain.hostname))}
+        <DomainAvailability
+          uptime={uptime.get(domain.hostname)}
+          projectId={projectId}
+          linkDns={setupShown === false || index !== 0}
+        />
       </div>
       {canEdit && domain.id != null ? (
         <RemoveDomainButton domainId={domain.id} hostname={domain.hostname} onRemove={onRemove} />
@@ -56,8 +73,35 @@ export function DomainRows({
   ));
 }
 
-function renderUptime(domainUptime: DomainUptime | undefined) {
-  return domainUptime == null ? null : <UptimeLine uptime={domainUptime} />;
+function DomainAvailability({
+  uptime,
+  projectId,
+  linkDns,
+}: {
+  readonly uptime: DomainUptime | undefined;
+  readonly projectId: string;
+  readonly linkDns: boolean;
+}) {
+  if (uptime == null) {
+    return null;
+  }
+
+  return (
+    <>
+      <UptimeLine uptime={uptime} />
+      {linkDns && uptime.lastReason === "dns" ? (
+        <Button asChild variant="outline" size="sm" className="min-h-11">
+          <Link
+            to="/projects/$projectId/dns"
+            params={{ projectId }}
+            hash={dnsRecordId(uptime.hostname)}
+          >
+            Ver registro DNS<span className="sr-only"> ({uptime.hostname})</span>
+          </Link>
+        </Button>
+      ) : null}
+    </>
+  );
 }
 
 function DomainLink({ domain }: { readonly domain: DomainItem }) {

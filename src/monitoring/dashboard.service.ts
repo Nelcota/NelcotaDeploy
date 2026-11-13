@@ -1,10 +1,14 @@
-import { and, count, desc, eq, gte, inArray, isNull } from "drizzle-orm";
+import { and, asc, count, desc, eq, gte, inArray, isNull } from "drizzle-orm";
 
 import { type Database, tables } from "@/db";
+import { ACTIVE_STATUSES } from "@/deployments";
+import { listCurrentProjectSnapshots, projectRuntimeStatus } from "@/projects";
+import { listHttpsStatus } from "@/uptime";
 
 import { getWorkerStatus } from "./worker-heartbeat.service";
 
 const RECENT_DEPLOYMENTS = 8;
+const DASHBOARD_LIST_LIMIT = 5;
 const RECENT_FAILURE_WINDOW_IN_MS = 86_400_000;
 
 /** Overall state shown on the dashboard. */
@@ -27,20 +31,32 @@ export function getDashboardSummary(
 ) {
   const projects = countProjectStates(database, projectIds);
   const activity = listRecentActivity(database, now, projectIds);
+  const activeDeployments = listActiveDashboardDeployments(database, projectIds);
   const worker = getWorkerStatus(database, now);
-  const offline = projects.deployed - projects.online;
+  const { issues: httpsIssues, recoveries: httpsRecoveries } = listHttpsStatus(
+    database,
+    now,
+    projectIds,
+  );
+  const { offline, unmonitored, unhealthy } = projects.counts;
   return {
     projectCount: projects.total,
-    onlineCount: projects.online,
+    onlineCount: projects.counts.online + unhealthy,
     offlineCount: offline,
-    neverDeployedCount: projects.total - projects.deployed,
-    unhealthyCount: projects.unhealthy,
+    unmonitoredCount: unmonitored,
+    neverDeployedCount: projects.counts["never-deployed"],
+    unhealthyCount: unhealthy,
+    projectsNeedingAttention: projects.needingAttention,
+    activeDeployments,
+    httpsIssueCount: httpsIssues.length,
+    httpsIssues: httpsIssues.slice(0, DASHBOARD_LIST_LIMIT),
+    httpsRecoveries: httpsRecoveries.slice(0, DASHBOARD_LIST_LIMIT),
     deploymentsLastDayCount: activity.lastDayCounts.reduce((sum, row) => sum + row.total, 0),
     failuresLastDayCount: activity.lastDayCounts.find((row) => row.status === "failed")?.total ?? 0,
     recentDeployments: activity.recentDeployments,
     recentFailures: activity.recentFailures,
     worker,
-    health: environmentHealth(worker, { offline, unhealthy: projects.unhealthy }),
+    health: environmentHealth(worker, { offline: offline + unmonitored, unhealthy }),
   };
 }
 
@@ -65,10 +81,14 @@ export function environmentHealth(
   return "healthy";
 }
 
-/** Counts active projects, how many have a deployment, and how many of those run. */
+/** Counts each project once and keeps a short preview of projects needing attention. */
 function countProjectStates(database: Database, projectIds: readonly string[] | null) {
   const projects = database
-    .select({ id: tables.projects.id, currentDeploymentId: tables.projects.currentDeploymentId })
+    .select({
+      id: tables.projects.id,
+      name: tables.projects.name,
+      currentDeploymentId: tables.projects.currentDeploymentId,
+    })
     .from(tables.projects)
     .where(
       and(
@@ -76,42 +96,36 @@ function countProjectStates(database: Database, projectIds: readonly string[] | 
         projectIds == null ? undefined : inArray(tables.projects.id, projectIds),
       ),
     )
+    .orderBy(asc(tables.projects.name), asc(tables.projects.id))
     .all();
-  const currentDeploymentIds = projects
-    .map((project) => project.currentDeploymentId)
-    .filter((id): id is string => id != null);
-  const runningCurrent = listRunningSnapshots(database, currentDeploymentIds);
-  const onlineDeployments = new Set(runningCurrent.map((snapshot) => snapshot.deploymentId));
+  const snapshots = listCurrentProjectSnapshots(database, projects);
+  const counts = { "never-deployed": 0, unmonitored: 0, offline: 0, unhealthy: 0, online: 0 };
+  const needingAttention: {
+    id: string;
+    name: string;
+    status: "offline" | "unhealthy" | "unmonitored";
+  }[] = [];
+  for (const { id, name, currentDeploymentId } of projects) {
+    const status = projectRuntimeStatus(
+      currentDeploymentId,
+      snapshots.get(currentDeploymentId) ?? [],
+    );
+    counts[status] += 1;
+
+    if (
+      needingAttention.length < DASHBOARD_LIST_LIMIT &&
+      status !== "online" &&
+      status !== "never-deployed"
+    ) {
+      needingAttention.push({ id, name, status });
+    }
+  }
+
   return {
     total: projects.length,
-    deployed: currentDeploymentIds.length,
-    online: currentDeploymentIds.filter((id) => onlineDeployments.has(id)).length,
-    // Counted per deployment: a project whose replicas are all unhealthy is one problem.
-    unhealthy: new Set(
-      runningCurrent
-        .filter((snapshot) => snapshot.health === "unhealthy")
-        .map((snapshot) => snapshot.deploymentId),
-    ).size,
+    counts,
+    needingAttention,
   };
-}
-
-function listRunningSnapshots(database: Database, deploymentIds: readonly string[]) {
-  if (deploymentIds.length === 0) {
-    return [];
-  }
-  return database
-    .select({
-      deploymentId: tables.containerSnapshots.deploymentId,
-      health: tables.containerSnapshots.health,
-    })
-    .from(tables.containerSnapshots)
-    .where(
-      and(
-        inArray(tables.containerSnapshots.deploymentId, deploymentIds),
-        eq(tables.containerSnapshots.state, "running"),
-      ),
-    )
-    .all();
 }
 
 const recentColumns = {
@@ -130,6 +144,34 @@ const recentColumns = {
 
 // The dashboard is about production; previews appear on their project's page.
 const PRODUCTION = isNull(tables.deployments.previewId);
+
+function listActiveDashboardDeployments(database: Database, projectIds: readonly string[] | null) {
+  return database
+    .select({
+      id: tables.deployments.id,
+      projectId: tables.deployments.projectId,
+      projectName: tables.projects.name,
+      status: tables.deployments.status,
+      branch: tables.deployments.branch,
+    })
+    .from(tables.deployments)
+    .innerJoin(tables.projects, eq(tables.projects.id, tables.deployments.projectId))
+    .where(
+      and(
+        PRODUCTION,
+        isNull(tables.projects.deletionRequestedAt),
+        inArray(tables.deployments.status, ACTIVE_STATUSES),
+        projectIds == null ? undefined : inArray(tables.deployments.projectId, projectIds),
+      ),
+    )
+    .orderBy(
+      desc(tables.deployments.startedAt),
+      asc(tables.deployments.createdAt),
+      asc(tables.deployments.id),
+    )
+    .limit(DASHBOARD_LIST_LIMIT)
+    .all();
+}
 
 /** Latest deployments, last-day counts per status and last-day failures. */
 function listRecentActivity(database: Database, now: Date, projectIds: readonly string[] | null) {

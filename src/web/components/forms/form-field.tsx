@@ -54,13 +54,16 @@ export function FormField({
   readonly errors?: readonly unknown[];
   readonly children: (props: {
     id: string;
-    "aria-describedby": string;
+    "aria-describedby": string | undefined;
     "aria-invalid": boolean;
   }) => ReactNode;
 }) {
   const messages = errorMessages(errors);
   const hintId = `${id}-hint`;
   const errorId = `${id}-error`;
+  const describedBy = [hint == null ? "" : hintId, messages.length === 0 ? "" : errorId]
+    .filter((reference) => reference !== "")
+    .join(" ");
   return (
     <div className="space-y-1.5">
       <Label id={`${id}-label`} htmlFor={id}>
@@ -68,7 +71,7 @@ export function FormField({
       </Label>
       {children({
         id,
-        "aria-describedby": hint == null ? errorId : `${hintId} ${errorId}`,
+        "aria-describedby": describedBy === "" ? undefined : describedBy,
         "aria-invalid": messages.length > 0,
       })}
       {hint == null ? null : (

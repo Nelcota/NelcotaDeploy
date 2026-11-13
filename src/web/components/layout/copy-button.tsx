@@ -18,8 +18,18 @@ async function copyToClipboard(text: string): Promise<boolean> {
   }
 }
 
-/** Small outline button that copies `text`, confirms with a toast and shows "Copiado" briefly. */
-export function CopyButton({ text, label }: { readonly text: string; readonly label: string }) {
+/** Copies `text`, confirms with a toast and shows "Copiado" briefly. */
+export function CopyButton({
+  text,
+  label,
+  className,
+  context,
+}: {
+  readonly text: string;
+  readonly label: string;
+  readonly className?: string;
+  readonly context?: string;
+}) {
   const [copied, setCopied] = useState(false);
   useEffect(() => {
     if (copied === false) {
@@ -33,10 +43,12 @@ export function CopyButton({ text, label }: { readonly text: string; readonly la
       type="button"
       variant="outline"
       size="sm"
+      className={className}
       onClick={() => void copyToClipboard(text).then(setCopied)}
     >
       {copied ? <CheckIcon aria-hidden /> : <CopyIcon aria-hidden />}
       {copied ? "Copiado" : label}
+      {context == null ? null : <span className="sr-only"> ({context})</span>}
     </Button>
   );
 }

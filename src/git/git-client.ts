@@ -134,6 +134,7 @@ function hasToken(token: string | null): token is string {
  */
 export function gitEnvironment(token: string | null): Record<string, string> {
   const environment: Record<string, string> = {
+    LC_ALL: "C",
     GIT_TERMINAL_PROMPT: "0",
     GIT_CONFIG_NOSYSTEM: "1",
     GIT_LFS_SKIP_SMUDGE: "1",
@@ -169,5 +170,24 @@ function assertSucceeded(result: ProcessResult, step: string): void {
     throw new GitCommandError(`git ${step} was cancelled`);
   }
   const lastLine = result.stderr.trim().split("\n").at(-1) ?? "";
-  throw new GitCommandError(`git ${step} failed: ${lastLine}`);
+  throw new GitCommandError(
+    `git ${step} failed: ${lastLine}`,
+    step === "clone" ? cloneFailure(result.stderr) : null,
+  );
+}
+
+function cloneFailure(stderr: string): GitCommandError["checkoutFailure"] {
+  if (/^fatal: Remote branch .+ not found in upstream origin\r?$/m.test(stderr)) {
+    return "branch_not_found";
+  }
+
+  if (
+    /^(?:remote: Repository not found\.|fatal: Authentication failed for .+|fatal: could not read Username for .+: terminal prompts disabled)\r?$/m.test(
+      stderr,
+    )
+  ) {
+    return "repository_access";
+  }
+
+  return null;
 }

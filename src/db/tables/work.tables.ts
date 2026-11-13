@@ -23,6 +23,7 @@ export const jobs = sqliteTable(
         "database_backup",
         "database_restore",
         "console_command",
+        "proxy_certificate_logs",
       ],
     }).notNull(),
     status: text("status", {

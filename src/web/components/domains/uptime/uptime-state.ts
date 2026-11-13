@@ -9,7 +9,11 @@ export type DomainUptime = {
   readonly lastResponseTimeInMs: number | null;
   readonly lastReason: "dns" | "timeout" | "certificate" | "connection" | "server-error" | null;
   readonly certificateExpiresAt: string | null;
-  readonly recent: readonly { readonly up: boolean; readonly checkedAt: string }[];
+  readonly recent: readonly {
+    readonly up: boolean;
+    readonly checkedAt: string;
+    readonly reason: DomainUptime["lastReason"];
+  }[];
 };
 
 /** What the domain row shows about its availability. */
@@ -34,9 +38,10 @@ const STATUS_LABELS = {
 } as const satisfies Record<DomainUptime["status"], string>;
 
 const REASON_TEXTS = {
-  dns: "O nome não resolve no DNS.",
+  dns: "O painel não encontrou o endereço no DNS. Confira o registro no provedor.",
   timeout: "Não respondeu em 10 segundos.",
-  certificate: "O certificado HTTPS é inválido.",
+  certificate:
+    "O painel não conseguiu validar o certificado HTTPS. Se a falha persistir, peça ao administrador para verificar a emissão do certificado.",
   connection: "A conexão foi recusada.",
   "server-error": "Respondeu com erro do servidor (5xx).",
 } as const satisfies Record<NonNullable<DomainUptime["lastReason"]>, string>;

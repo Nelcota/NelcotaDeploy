@@ -1,17 +1,16 @@
 import { createFileRoute, redirect } from "@tanstack/react-router";
 
+import { ProjectSettingsOverview } from "@/web/components/project-settings/navigation/project-settings-overview";
 import {
-  ProjectSettingsNavigation,
+  SETTINGS_HEADING_ID,
   legacySettingsDestination,
-} from "@/web/components/project-settings/project-settings-navigation";
-import { TabHeader } from "@/web/components/projects/project-header";
-import { useCan } from "@/web/components/shell/use-permissions";
+} from "@/web/components/project-settings/navigation/settings-destinations";
 
 export const Route = createFileRoute("/_app/projects/$projectId/settings/")({
   beforeLoad: ({ params, location }) => {
     const destination = legacySettingsDestination(location.hash);
     if (destination !== "/projects/$projectId/settings") {
-      throw redirect({ to: destination, params, replace: true });
+      throw redirect({ to: destination, params, hash: SETTINGS_HEADING_ID, replace: true });
     }
   },
   component: ProjectSettingsIndex,
@@ -19,11 +18,5 @@ export const Route = createFileRoute("/_app/projects/$projectId/settings/")({
 
 function ProjectSettingsIndex() {
   const { projectId } = Route.useParams();
-  const can = useCan();
-  return (
-    <div className="space-y-4">
-      <TabHeader title="Configurações do projeto" />
-      <ProjectSettingsNavigation projectId={projectId} can={can} overview />
-    </div>
-  );
+  return <ProjectSettingsOverview projectId={projectId} />;
 }

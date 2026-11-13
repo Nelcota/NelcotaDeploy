@@ -13,3 +13,11 @@ export class WorkspaceCommandError extends Error {
     this.name = "WorkspaceCommandError";
   }
 }
+
+/** Thrown when a configured build path cannot be resolved in the checkout. */
+export class BuildPathError extends Error {
+  constructor(cause: PathOutsideWorkspaceError) {
+    super(cause.message, { cause });
+    this.name = "BuildPathError";
+  }
+}

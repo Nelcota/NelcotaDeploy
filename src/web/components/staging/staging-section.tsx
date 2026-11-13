@@ -26,7 +26,7 @@ export function StagingSection({
   return (
     <SettingsSection
       icon={FlaskConicalIcon}
-      title="Ambiente de staging"
+      title="Teste antes de publicar"
       description="Uma cópia do projeto que faz deploy de outra branch, com domínio, variáveis e bancos próprios. O que estiver bom no staging pode ser promovido para a produção."
     >
       {stagingId == null ? null : (

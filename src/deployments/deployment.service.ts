@@ -1,5 +1,6 @@
 import {
   and,
+  asc,
   count,
   desc,
   eq,
@@ -22,7 +23,9 @@ import type { PageCursor } from "@/shared/pagination";
 import {
   ACTIVE_STATUSES,
   assertDeploymentTransition,
+  type DeploymentStage,
   type DeploymentStatus,
+  isDeploymentStage,
   isTerminalStatus,
 } from "./deployment-status";
 import { DeploymentCancelledError, DeploymentNotFoundError } from "./deployment.errors";
@@ -53,6 +56,8 @@ const deploymentColumns = {
   sourceDeploymentId: tables.deployments.sourceDeploymentId,
   previewId: tables.deployments.previewId,
   errorMessage: tables.deployments.errorMessage,
+  failureStage: tables.deployments.failureStage,
+  failureCause: tables.deployments.failureCause,
   cancelRequestedAt: tables.deployments.cancelRequestedAt,
   createdAt: tables.deployments.createdAt,
   startedAt: tables.deployments.startedAt,
@@ -89,6 +94,8 @@ export type Deployment = {
   /** Pull request preview the deployment belongs to; null for production. */
   readonly previewId: string | null;
   readonly errorMessage: string | null;
+  readonly failureStage: DeploymentStage | null;
+  readonly failureCause: DeploymentFailureCause | null;
   readonly cancelRequestedAt: string | null;
   readonly createdAt: string;
   readonly startedAt: string | null;
@@ -96,6 +103,10 @@ export type Deployment = {
   /** When the worker rolled this version back because its containers kept restarting. */
   readonly autoRolledBackAt: string | null;
 };
+
+export type DeploymentFailureCause = NonNullable<
+  (typeof tables.deployments.$inferSelect)["failureCause"]
+>;
 
 /**
  * Cancels a deployment. Queued deployments stop immediately; running ones stop at the
@@ -178,6 +189,29 @@ export function getDeployment(database: Database, deploymentId: string): Deploym
   return deployment;
 }
 
+/** Returns the project's first successful publication, excluding pull request previews. */
+export function firstPublishedDeploymentId(database: Database, projectId: string): string | null {
+  const deployments = tables.deployments;
+  return (
+    database
+      .select({ id: deployments.id })
+      .from(deployments)
+      .where(
+        and(
+          eq(deployments.projectId, projectId),
+          isNull(deployments.previewId),
+          eq(deployments.status, "succeeded"),
+        ),
+      )
+      .orderBy(
+        asc(sql`coalesce(${deployments.finishedAt}, ${deployments.createdAt})`),
+        asc(deployments.id),
+      )
+      .limit(1)
+      .get()?.id ?? null
+  );
+}
+
 /**
  * Lists deployments, newest first, with cursor pagination.
  *
@@ -190,7 +224,7 @@ export function listDeployments(
   database: Database,
   options: {
     readonly projectId?: string | undefined;
-    readonly status?: DeploymentStatus | undefined;
+    readonly status?: DeploymentStatus | "active" | undefined;
     readonly limit: number;
     readonly before?: PageCursor | undefined;
     /** Deployments of this preview; production ones when omitted. */
@@ -200,6 +234,16 @@ export function listDeployments(
   },
 ): Deployment[] {
   const limit = Math.min(Math.max(Math.trunc(options.limit), 1), MAX_PAGE_SIZE);
+  let statusCondition;
+  if (options.status === "active") {
+    statusCondition = and(
+      inArray(tables.deployments.status, ACTIVE_STATUSES),
+      isNull(tables.projects.deletionRequestedAt),
+    );
+  } else if (options.status != null) {
+    statusCondition = eq(tables.deployments.status, options.status);
+  }
+
   return database
     .select(deploymentColumns)
     .from(tables.deployments)
@@ -210,7 +254,7 @@ export function listDeployments(
         options.projectIds == null
           ? undefined
           : inArray(tables.deployments.projectId, options.projectIds),
-        options.status == null ? undefined : eq(tables.deployments.status, options.status),
+        statusCondition,
         options.before == null
           ? undefined
           : or(
@@ -269,6 +313,7 @@ export type DeploymentProgress = {
   readonly runtimeConfigHash?: string;
   readonly buildConfigHash?: string;
   readonly errorMessage?: string | null;
+  readonly failureCause?: DeploymentFailureCause | null;
 };
 
 /**
@@ -283,7 +328,7 @@ export type DeploymentProgress = {
 export function transitionDeployment(
   database: Database | Transaction,
   deploymentId: string,
-  { to, ...progress }: DeploymentProgress & { readonly to: DeploymentStatus },
+  { to, failureCause, ...progress }: DeploymentProgress & { readonly to: DeploymentStatus },
 ): void {
   const current = database
     .select({ status: tables.deployments.status, startedAt: tables.deployments.startedAt })
@@ -295,11 +340,14 @@ export function transitionDeployment(
   }
   assertDeploymentTransition(current.status, to);
   const now = new Date().toISOString();
+  const failureStage = to === "failed" && isDeploymentStage(current.status) ? current.status : null;
   database
     .update(tables.deployments)
     .set({
       ...progress,
       status: to,
+      failureStage,
+      failureCause: to === "failed" ? (failureCause ?? null) : null,
       startedAt: current.startedAt ?? (to === "queued" ? null : now),
       finishedAt: isTerminalStatus(to) ? now : null,
     })

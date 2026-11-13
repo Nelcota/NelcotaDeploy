@@ -3,6 +3,12 @@ import { isPublicIpAddress } from "@/domains";
 /** How long a visitor would wait before giving up, in milliseconds. */
 export const PROBE_TIMEOUT_IN_MS = 10_000;
 const FIRST_SERVER_ERROR = 500;
+const CERTIFICATE_VALIDATION_CODES: ReadonlySet<string> = new Set([
+  "DEPTH_ZERO_SELF_SIGNED_CERT",
+  "SELF_SIGNED_CERT_IN_CHAIN",
+  "UNABLE_TO_GET_ISSUER_CERT_LOCALLY",
+  "UNABLE_TO_VERIFY_LEAF_SIGNATURE",
+]);
 
 /** Why a hostname counted as down. */
 export type DownReason = "dns" | "timeout" | "certificate" | "connection" | "server-error";
@@ -107,7 +113,10 @@ export function reasonOf(error: unknown): DownReason {
     return "timeout";
   }
   const code = typeof error === "object" && error != null && "code" in error ? error.code : null;
-  if (typeof code === "string" && code.includes("CERT")) {
+  if (
+    typeof code === "string" &&
+    (code.includes("CERT") || CERTIFICATE_VALIDATION_CODES.has(code))
+  ) {
     return "certificate";
   }
   return "connection";

@@ -24,7 +24,7 @@ function ownershipCondition(lease: JobLease) {
 
 /** Refuses side effects after an attempt was reclaimed or its lease expired. */
 export function assertJobOwnership(
-  database: Database,
+  database: Database | Transaction,
   lease: JobLease,
   now: Date = new Date(),
 ): void {

@@ -4,6 +4,9 @@ import type { ProjectFormApi } from "@/web/components/forms/project-form";
 import { cn } from "@/web/components/ui/class-names";
 import { Switch } from "@/web/components/ui/switch";
 
+import { errorMessages, visibleErrors } from "./form-field";
+import { PROJECT_FORM_FIELDS } from "./project-validation";
+
 /** A bordered list of switches, one row each, divided by hairlines. */
 export function SwitchGroup({ children }: { readonly children: ReactNode }) {
   return (
@@ -16,37 +19,47 @@ export function SwitchGroup({ children }: { readonly children: ReactNode }) {
 function SwitchRow({
   form,
   name,
-  label,
   hint,
   className,
 }: {
   readonly form: ProjectFormApi;
   readonly name: "autoDeploy" | "autoApplyChanges" | "autoRollback" | "previewsEnabled";
-  readonly label: string;
   readonly hint: string;
   readonly className?: string | undefined;
 }) {
-  const id = `project-${name}`;
+  const { id, label } = PROJECT_FORM_FIELDS[name];
   return (
     <form.Field name={name}>
-      {(field) => (
-        <div className={cn("flex items-center justify-between gap-6 px-4 py-3.5", className)}>
-          <div className="min-w-0 space-y-0.5">
-            <label htmlFor={id} className="text-sm font-medium">
-              {label}
-            </label>
-            <p id={`${id}-hint`} className="text-xs text-muted-foreground">
-              {hint}
-            </p>
+      {(field) => {
+        const [error] = errorMessages(visibleErrors(form, field.state.meta));
+        return (
+          <div className={cn("flex items-center justify-between gap-6 px-4 py-3.5", className)}>
+            <div className="min-w-0 space-y-0.5">
+              <label htmlFor={id} className="text-sm font-medium">
+                {label}
+              </label>
+              <p id={`${id}-hint`} className="text-xs text-muted-foreground">
+                {hint}
+              </p>
+              <p
+                id={`${id}-error`}
+                aria-live="polite"
+                className="text-xs font-medium text-destructive empty:hidden"
+              >
+                {error}
+              </p>
+            </div>
+            <Switch
+              id={id}
+              checked={field.state.value}
+              onCheckedChange={(checked) => field.handleChange(checked)}
+              onBlur={field.handleBlur}
+              aria-invalid={error != null}
+              aria-describedby={error == null ? `${id}-hint` : `${id}-hint ${id}-error`}
+            />
           </div>
-          <Switch
-            id={id}
-            checked={field.state.value}
-            onCheckedChange={(checked) => field.handleChange(checked)}
-            aria-describedby={`${id}-hint`}
-          />
-        </div>
-      )}
+        );
+      }}
     </form.Field>
   );
 }
@@ -63,7 +76,6 @@ export function AutoDeployField({
     <SwitchRow
       form={form}
       name="autoDeploy"
-      label="Deploy automático"
       hint="Faz deploy a cada push na branch, via webhook do GitHub."
       className={className}
     />
@@ -82,7 +94,6 @@ export function AutoRollbackField({
     <SwitchRow
       form={form}
       name="autoRollback"
-      label="Rollback automático"
       hint="Se a versão nova reiniciar 3 vezes nos primeiros minutos depois do deploy, o painel volta para a anterior e avisa."
       className={className}
     />
@@ -101,7 +112,6 @@ export function PreviewsField({
     <SwitchRow
       form={form}
       name="previewsEnabled"
-      label="Previews de pull request"
       hint="Cada PR para a branch ganha um endereço próprio, removido quando o PR fecha. PRs de forks nunca rodam."
       className={className}
     />
@@ -120,7 +130,6 @@ export function AutoApplyField({
     <SwitchRow
       form={form}
       name="autoApplyChanges"
-      label="Aplicar mudanças automaticamente"
       hint="Recria o contêiner ao salvar variáveis, domínios ou volumes."
       className={className}
     />

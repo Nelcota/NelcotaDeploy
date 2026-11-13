@@ -4,7 +4,13 @@ import { Button } from "@/web/components/ui/button";
 import type { ProjectAutomation } from "./use-project-automation";
 
 /** Explains discovery failures and ambiguous choices instead of silently falling back to typing. */
-export function RepositoryDiscovery({ automation }: { readonly automation: ProjectAutomation }) {
+export function RepositoryDiscovery({
+  automation,
+  creating = false,
+}: {
+  readonly automation: ProjectAutomation;
+  readonly creating?: boolean;
+}) {
   const query = automation.inspection;
   if (query.isFetching) {
     return (
@@ -40,11 +46,16 @@ export function RepositoryDiscovery({ automation }: { readonly automation: Proje
       </p>
       {data.dockerfiles.length === 0 ? (
         <p className="text-warning">
-          Nenhum Dockerfile encontrado. Adicione um ao repositório ou informe o caminho em Build.
+          {creating
+            ? "Nenhum Dockerfile encontrado. Escolha Railpack para build automático ou informe o caminho em Ajustes avançados."
+            : "Nenhum Dockerfile encontrado. Adicione um ao repositório ou informe o caminho em Build."}
         </p>
       ) : null}
       {data.dockerfiles.length > 1 ? (
-        <p>Confira o Dockerfile em Build. As opções encontradas estão disponíveis no campo.</p>
+        <p>
+          Confira o Dockerfile em {creating ? "Ajustes avançados" : "Build"}. As opções encontradas
+          estão disponíveis no campo.
+        </p>
       ) : null}
       {data.pathsLimited || data.branchesLimited ? (
         <p>

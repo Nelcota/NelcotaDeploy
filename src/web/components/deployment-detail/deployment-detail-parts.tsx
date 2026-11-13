@@ -1,5 +1,5 @@
 import { Link } from "@tanstack/react-router";
-import { ChevronLeftIcon, ListChecksIcon, ScrollTextIcon } from "lucide-react";
+import { ChevronLeftIcon, ListChecksIcon } from "lucide-react";
 
 import { DeploymentStages } from "@/web/components/deployments/deployment-stages";
 import { AutoRolledBackBadge, CardTitleRow } from "@/web/components/layout/layout";
@@ -55,28 +55,6 @@ export function StagesCard({ deployment }: { readonly deployment: DeploymentDeta
   );
 }
 
-/** Why the deploy failed, and whether the previous version is still serving. */
-export function FailureNotice({
-  errorMessage,
-  previousVersionLive,
-}: {
-  readonly errorMessage: string;
-  readonly previousVersionLive: boolean;
-}) {
-  return (
-    <div className="space-y-1.5 rounded-xl bg-destructive/8 px-5 py-4 ring-1 ring-destructive/25">
-      <p className="text-sm font-medium text-destructive">
-        {previousVersionLive
-          ? "O deploy falhou. A versão anterior continua no ar."
-          : "O deploy falhou e a aplicação ainda não está no ar."}
-      </p>
-      <pre className="font-mono text-xs break-all whitespace-pre-wrap text-muted-foreground">
-        {errorMessage}
-      </pre>
-    </div>
-  );
-}
-
 export function DeploymentLogs({
   deployment,
   active,
@@ -87,22 +65,16 @@ export function DeploymentLogs({
   readonly onEnd: (summary: unknown) => void;
 }) {
   return (
-    <>
-      <h2 className="flex items-center gap-3 text-base font-semibold">
-        <ScrollTextIcon aria-hidden className="size-[1.15rem] text-muted-foreground" />
-        Logs do deploy
-      </h2>
-      <LogViewer
-        url={`/api/deployments/${deployment.id}/logs`}
-        heightClass={active ? "h-[28rem]" : "max-h-[28rem] min-h-24"}
-        downloadName={`deploy-${deployment.id}.log`}
-        emptyMessage={
-          deployment.status === "queued"
-            ? "Aguardando o worker iniciar o deploy…"
-            : "Nenhuma linha registrada."
-        }
-        onEnd={onEnd}
-      />
-    </>
+    <LogViewer
+      url={`/api/deployments/${deployment.id}/logs`}
+      heightClass={active ? "h-[28rem]" : "max-h-[28rem] min-h-24"}
+      downloadName={`deploy-${deployment.id}.log`}
+      emptyMessage={
+        deployment.status === "queued"
+          ? "Aguardando o worker iniciar o deploy…"
+          : "Nenhuma linha registrada."
+      }
+      onEnd={onEnd}
+    />
   );
 }

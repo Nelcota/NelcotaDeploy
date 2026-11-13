@@ -232,7 +232,11 @@ export type UptimeSummary = {
   readonly lastReason: DownReason | null;
   readonly certificateExpiresAt: string | null;
   /** The latest checks, oldest first. */
-  readonly recent: readonly { readonly up: boolean; readonly checkedAt: string }[];
+  readonly recent: readonly {
+    readonly up: boolean;
+    readonly checkedAt: string;
+    readonly reason: DownReason | null;
+  }[];
 };
 
 /**
@@ -300,7 +304,11 @@ export function listUptimeSummaries(
       lastResponseTimeInMs: last?.responseTimeInMs ?? null,
       lastReason: last?.reason ?? null,
       certificateExpiresAt: state.certificateExpiresAt,
-      recent: recent.map((check) => ({ up: check.up, checkedAt: check.checkedAt })),
+      recent: recent.map((check) => ({
+        up: check.up,
+        checkedAt: check.checkedAt,
+        reason: check.reason,
+      })),
     };
   });
 }

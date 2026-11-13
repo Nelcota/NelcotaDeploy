@@ -17,3 +17,13 @@ export function projectQueryOptions(projectId: string) {
 }
 
 export type ProjectDetails = Awaited<ReturnType<typeof getProjectFn>>;
+
+/** URL of the preferred configured application domain, if one exists. */
+export function projectAppUrl({ domains }: Pick<ProjectDetails, "domains">): string | null {
+  const [domain] = domains;
+  if (domain == null) {
+    return null;
+  }
+
+  return `${domain.httpsEnabled ? "https" : "http"}://${domain.hostname}`;
+}

@@ -3,7 +3,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { ProjectSettingsPage } from "@/web/components/project-settings/project-settings-page";
 
 export const Route = createFileRoute("/_app/projects/$projectId/settings/server")({
-  head: () => ({ meta: [{ title: "Trocar servidor · Nelcota Deploy" }] }),
+  head: () => ({ meta: [{ title: "Servidor do projeto · Nelcota Deploy" }] }),
   component: SettingsRoute,
 });
 

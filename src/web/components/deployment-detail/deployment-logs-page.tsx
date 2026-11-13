@@ -28,7 +28,7 @@ export function DeploymentLogsPage({
   return (
     <>
       <TabHeader
-        title="Logs da construção da imagem"
+        title="Logs do deploy"
         actions={
           <Button variant="outline" asChild>
             <Link

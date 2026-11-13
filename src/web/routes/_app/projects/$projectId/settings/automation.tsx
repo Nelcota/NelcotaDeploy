@@ -3,7 +3,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { ProjectSettingsPage } from "@/web/components/project-settings/project-settings-page";
 
 export const Route = createFileRoute("/_app/projects/$projectId/settings/automation")({
-  head: () => ({ meta: [{ title: "Automação de deploys · Nelcota Deploy" }] }),
+  head: () => ({ meta: [{ title: "Deploys automáticos · Nelcota Deploy" }] }),
   component: SettingsRoute,
 });
 

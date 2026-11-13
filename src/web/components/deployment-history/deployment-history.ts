@@ -13,15 +13,15 @@ const IDLE_REFRESH_INTERVAL_IN_MS = 15_000;
 const SHORT_SHA_LENGTH = 7;
 
 export const ALL_STATUSES = "all";
-// The statuses people look for in a history; the in-progress ones show up under "Todos".
 export const STATUS_FILTERS = [
   { value: ALL_STATUSES, label: "Todos" },
+  { value: "active", label: "Em andamento" },
   { value: "queued", label: DEPLOYMENT_STATUS_LABELS.queued },
   { value: "succeeded", label: "Concluídos" },
   { value: "failed", label: "Falharam" },
   { value: "cancelled", label: "Cancelados" },
 ] as const satisfies readonly {
-  readonly value: DeploymentStatus | typeof ALL_STATUSES;
+  readonly value: DeploymentStatus | "active" | typeof ALL_STATUSES;
   readonly label: string;
 }[];
 

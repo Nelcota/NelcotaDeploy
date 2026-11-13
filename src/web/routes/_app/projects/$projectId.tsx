@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { createFileRoute, Link, Outlet } from "@tanstack/react-router";
+import { createFileRoute, Link, Outlet, useChildMatches } from "@tanstack/react-router";
 
 import { ErrorState } from "@/web/components/layout/states";
 import { ProjectBanners } from "@/web/components/projects/project-banners";
@@ -16,6 +16,12 @@ export const Route = createFileRoute("/_app/projects/$projectId")({
 function ProjectLayout() {
   const { projectId } = Route.useParams();
   const query = useQuery(projectQueryOptions(projectId));
+  const viewingDeployment = useChildMatches({
+    select: (matches) =>
+      matches.some(
+        (match) => match.routeId === "/_app/projects/$projectId/deployments/$deploymentId",
+      ),
+  });
 
   if (query.isError) {
     return (
@@ -38,7 +44,7 @@ function ProjectLayout() {
         </div>
       ) : (
         <>
-          <ProjectBand details={query.data} />
+          <ProjectBand details={query.data} compact={viewingDeployment} />
           <ProjectBanners details={query.data} />
         </>
       )}

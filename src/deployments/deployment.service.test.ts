@@ -1,5 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
+import { eq } from "drizzle-orm";
+
 import { openMemoryDatabase, tables } from "@/db";
 import { claimNextJob } from "@/jobs";
 import { createTestProject, TEST_ACTOR } from "@/testing";
@@ -12,12 +14,127 @@ import {
   cancelDeployment,
   completeDeployment,
   countActiveDeployments,
+  firstPublishedDeploymentId,
   getDeployment,
   listDeployments,
   transitionDeployment,
 } from "./deployment.service";
 
 const manual = { trigger: "manual" as const, actor: TEST_ACTOR, triggeredByUserId: null };
+
+test("identifies the first production publication by completion time and ignores failed attempts and previews", () => {
+  const database = openMemoryDatabase();
+  using _connection = database.$client;
+  const project = createTestProject(database);
+  const createdAt = "2026-11-01T12:00:00.000Z";
+  database
+    .insert(tables.previews)
+    .values({
+      id: "preview",
+      projectId: project.id,
+      pullRequestNumber: 1,
+      branch: "feature",
+      headSha: "abc",
+      status: "active",
+      createdAt,
+      updatedAt: createdAt,
+    })
+    .run();
+  database
+    .insert(tables.deployments)
+    .values([
+      {
+        id: "failed",
+        projectId: project.id,
+        trigger: "manual",
+        triggeredByLabel: "test",
+        branch: "main",
+        status: "failed",
+        createdAt,
+        finishedAt: createdAt,
+      },
+      {
+        id: "preview",
+        projectId: project.id,
+        trigger: "manual",
+        triggeredByLabel: "test",
+        branch: "feature",
+        status: "succeeded",
+        previewId: "preview",
+        createdAt,
+        finishedAt: createdAt,
+      },
+      {
+        id: "second",
+        projectId: project.id,
+        trigger: "manual",
+        triggeredByLabel: "test",
+        branch: "main",
+        status: "succeeded",
+        createdAt,
+        finishedAt: "2026-11-01T15:00:00.000Z",
+      },
+      {
+        id: "first",
+        projectId: project.id,
+        trigger: "manual",
+        triggeredByLabel: "test",
+        branch: "main",
+        status: "succeeded",
+        createdAt: "2026-11-01T13:00:00.000Z",
+        finishedAt: "2026-11-01T14:00:00.000Z",
+      },
+    ])
+    .run();
+
+  expect(firstPublishedDeploymentId(database, project.id)).toBe("first");
+  expect(firstPublishedDeploymentId(database, "other")).toBeNull();
+});
+
+test("paginates active deploys after excluding finished deploys and deleted or hidden projects", () => {
+  const database = openMemoryDatabase();
+  using _connection = database.$client;
+  const project = createTestProject(database);
+  const deleted = createTestProject(database, { name: "Deleted", slug: "deleted" });
+  const hidden = createTestProject(database, { name: "Hidden", slug: "hidden" });
+  const rows = [
+    { id: "building", projectId: project.id, status: "building" },
+    { id: "finished", projectId: project.id, status: "succeeded" },
+    { id: "deleted", projectId: deleted.id, status: "queued" },
+    { id: "hidden", projectId: hidden.id, status: "starting" },
+    { id: "queued", projectId: project.id, status: "queued" },
+  ] as const;
+  database
+    .insert(tables.deployments)
+    .values(
+      rows.map(({ id, projectId, status }): typeof tables.deployments.$inferInsert => ({
+        id,
+        projectId,
+        status,
+        createdAt: id === "queued" ? "2026-11-01T12:00:00Z" : "2026-11-01T14:00:00Z",
+        trigger: "manual",
+        triggeredByLabel: "test",
+        branch: "main",
+      })),
+    )
+    .run();
+  database
+    .update(tables.projects)
+    .set({ deletionRequestedAt: "2026-11-01T15:00:00Z" })
+    .where(eq(tables.projects.id, deleted.id))
+    .run();
+
+  const filters = {
+    status: "active",
+    projectIds: [project.id, deleted.id],
+    limit: 1,
+  } as const;
+  const first = listDeployments(database, filters);
+  const second = listDeployments(database, { ...filters, before: first.at(0) });
+
+  expect(first.map(({ id }) => id)).toEqual(["building"]);
+  expect(second.map(({ id }) => id)).toEqual(["queued"]);
+});
 
 function finishSuccessfully(
   database: ReturnType<typeof openMemoryDatabase>,

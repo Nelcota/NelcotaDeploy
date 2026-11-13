@@ -3,7 +3,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { DeploymentLogsPage } from "@/web/components/deployment-detail/deployment-logs-page";
 
 export const Route = createFileRoute("/_app/projects/$projectId/deployments/$deploymentId/logs")({
-  head: () => ({ meta: [{ title: "Logs da construção da imagem · Nelcota Deploy" }] }),
+  head: () => ({ meta: [{ title: "Logs do deploy · Nelcota Deploy" }] }),
   component: PageRoute,
 });
 

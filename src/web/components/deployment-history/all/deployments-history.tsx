@@ -9,8 +9,13 @@ import { ALL_PROJECTS, EmptyHistory, HistoryHeader } from "./history-filters";
 import { HistoryRow } from "./history-row";
 
 /** Every deploy, newest first, split by day, filtered by status and project. */
-export function DeploymentsHistory() {
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>(ALL_STATUSES);
+export function DeploymentsHistory({
+  statusFilter,
+  onStatusFilterChange,
+}: {
+  readonly statusFilter: StatusFilter;
+  readonly onStatusFilterChange: (filter: StatusFilter) => void;
+}) {
   const [projectFilter, setProjectFilter] = useState<string>(ALL_PROJECTS);
   const status = statusFilter === ALL_STATUSES ? undefined : statusFilter;
   const projectId = projectFilter === ALL_PROJECTS ? undefined : projectFilter;
@@ -22,7 +27,7 @@ export function DeploymentsHistory() {
     },
   });
   const clearFilters = () => {
-    setStatusFilter(ALL_STATUSES);
+    onStatusFilterChange(ALL_STATUSES);
     setProjectFilter(ALL_PROJECTS);
   };
 
@@ -32,7 +37,7 @@ export function DeploymentsHistory() {
         projectFilter={projectFilter}
         onProjectFilterChange={setProjectFilter}
         statusFilter={statusFilter}
-        onStatusFilterChange={setStatusFilter}
+        onStatusFilterChange={onStatusFilterChange}
       />
       <HistoryContent
         history={history}

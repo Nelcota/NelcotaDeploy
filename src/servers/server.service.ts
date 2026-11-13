@@ -13,6 +13,7 @@ const ACTIVE_DEPLOYMENT_STATUSES = [
   "building",
   "starting",
   "health_checking",
+  "publishing",
 ] as const;
 
 /** Id of the panel's own host, which always exists. */

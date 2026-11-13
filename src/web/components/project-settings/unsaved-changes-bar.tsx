@@ -1,39 +1,45 @@
-import { LoaderCircleIcon, SaveIcon, Undo2Icon } from "lucide-react";
+import { LoaderCircleIcon } from "lucide-react";
 
 import { Button } from "@/web/components/ui/button";
+import { cn } from "@/web/components/ui/class-names";
 
-/** Sticky bar shown while the form has unsaved changes, with discard and save buttons. */
+/** Keeps save and discard in reach when the settings form has changes. */
 export function UnsavedChangesBar({
   formId,
-  canEdit,
+  changed,
   isSubmitting,
-  saveLabel,
   onDiscard,
 }: {
   /** Id of the form the save button submits; the bar sits outside it. */
   readonly formId: string;
-  readonly canEdit: boolean;
+  readonly changed: boolean;
   readonly isSubmitting: boolean;
-  readonly saveLabel: string;
   readonly onDiscard: () => void;
 }) {
+  const disabled = changed === false || isSubmitting;
   return (
-    <div className="sticky bottom-4 z-10 flex flex-col gap-3 rounded-lg bg-popover p-3 shadow-lg ring-1 ring-border sm:flex-row sm:items-center sm:justify-between">
-      <p className="text-sm font-medium" aria-live="polite">
-        Alterações não salvas
+    <div
+      className={cn(
+        "mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-xl border border-border bg-popover p-2.5",
+        changed && "sticky bottom-0 z-10 shadow-lg",
+      )}
+    >
+      <p role="status" className="min-w-0 flex-1 basis-40 text-sm font-medium empty:sr-only">
+        {changed ? "Alterações não salvas" : ""}
       </p>
-      <div className="flex flex-wrap gap-2">
-        <Button type="button" variant="outline" disabled={isSubmitting} onClick={onDiscard}>
-          <Undo2Icon aria-hidden />
-          Descartar alterações não salvas
+      <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
+        <Button
+          type="button"
+          variant="outline"
+          className="min-h-11"
+          disabled={disabled}
+          onClick={onDiscard}
+        >
+          Descartar
         </Button>
-        <Button type="submit" form={formId} disabled={canEdit === false || isSubmitting}>
-          {isSubmitting ? (
-            <LoaderCircleIcon aria-hidden className="animate-spin" />
-          ) : (
-            <SaveIcon aria-hidden />
-          )}
-          {saveLabel}
+        <Button type="submit" form={formId} className="min-h-11" disabled={disabled}>
+          {isSubmitting ? <LoaderCircleIcon aria-hidden className="animate-spin" /> : null}
+          {isSubmitting ? "Salvando…" : "Salvar alterações"}
         </Button>
       </div>
     </div>
