@@ -65,7 +65,7 @@ export function SidebarContent({
         id={navigationId}
         aria-label="Principal"
         className={cn(
-          "mt-2 min-h-0 flex-1 overflow-y-auto px-2 pb-2",
+          "mt-3 min-h-0 flex-1 overflow-y-auto px-2 pb-2 lg:mt-6",
           collapsed ? "space-y-1.5" : "space-y-2",
         )}
       >

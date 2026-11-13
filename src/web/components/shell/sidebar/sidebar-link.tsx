@@ -64,9 +64,9 @@ function AreaLink({
         search={area.search}
         activeOptions={{ exact }}
         onClick={onNavigate}
-        className={cn(sidebarLinkClass, collapsed && "justify-center px-0")}
+        className={cn(sidebarLinkClass, "py-px", collapsed && "justify-center px-0")}
       >
-        <span aria-hidden className={cn("size-4 shrink-0", icon)} />
+        <span aria-hidden className={cn("size-5 shrink-0", icon)} />
         <span className={collapsed ? "sr-only" : "min-w-0 truncate"}>{label}</span>
         {collapsed || count == null || count === 0 ? null : (
           <span

@@ -1,16 +1,8 @@
 import { createFileRoute } from "@tanstack/react-router";
 
-import { AdministrationPage, UsersTab } from "@/web/admin";
+import { UsersTab } from "@/web/admin";
 
 export const Route = createFileRoute("/_app/settings/users")({
-  head: () => ({ meta: [{ title: "Usuários · Nelcota Deploy" }] }),
-  component: AdministrationRoute,
+  head: () => ({ meta: [{ title: "Usuários e permissões · Nelcota Deploy" }] }),
+  component: UsersTab,
 });
-
-function AdministrationRoute() {
-  return (
-    <AdministrationPage title="Usuários" permission="user:manage">
-      <UsersTab />
-    </AdministrationPage>
-  );
-}

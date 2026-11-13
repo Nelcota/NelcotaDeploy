@@ -138,7 +138,12 @@ test("opens desktop resources by keyboard in the same order as mobile", async ()
     "Bancos de dados",
     "Ambientes de teste",
   ]);
+  await menu.getByRole("menuitem", { name: "Construção" }).and(page.locator(":focus")).waitFor();
   await page.keyboard.press("ArrowDown");
+  await menu
+    .getByRole("menuitem", { name: "Bancos de dados" })
+    .and(page.locator(":focus"))
+    .waitFor();
   await page.keyboard.press("Enter");
   await menu.waitFor({ state: "hidden" });
   expect(await resources.getAttribute("aria-description")).toBe("Página atual: Bancos de dados");

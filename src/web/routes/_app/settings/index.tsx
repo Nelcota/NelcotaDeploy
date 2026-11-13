@@ -1,9 +1,8 @@
 import { createFileRoute, redirect } from "@tanstack/react-router";
 import { z } from "zod";
 
-import { AdministrationNavigation } from "@/web/admin";
+import { AdministrationOverview } from "@/web/admin";
 import { legacyAdministrationDestination } from "@/web/components/shell/navigation";
-import { PageHeader } from "@/web/components/shell/page-header";
 
 export const Route = createFileRoute("/_app/settings/")({
   head: () => ({ meta: [{ title: "Administração · Nelcota Deploy" }] }),
@@ -20,12 +19,3 @@ export const Route = createFileRoute("/_app/settings/")({
   },
   component: AdministrationOverview,
 });
-
-function AdministrationOverview() {
-  return (
-    <>
-      <PageHeader title="Administração" />
-      <AdministrationNavigation overview />
-    </>
-  );
-}

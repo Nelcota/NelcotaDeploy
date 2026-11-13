@@ -20,6 +20,8 @@ const PAGE_TERMS: Readonly<Record<string, string>> = {
   "/activity": "falhas recentes atividade deploys",
   "/deployment-statistics": "gráficos análise sucesso falhas deploys",
   "/server-metrics": "métricas cpu memória servidor consumo recursos",
+  "/settings/organization": "nome organização segurança autenticação 2FA",
+  "/settings/alerts": "notificações webhook alertas discord slack",
   "/settings/audit": "auditoria alterações usuários segurança",
 };
 
@@ -51,7 +53,7 @@ function pageCommands(navigate: Navigate, permissions: readonly string[]): Comma
     label: section.label,
     hint: null,
     icon: section.icon,
-    keywords: PAGE_TERMS[section.to] ?? "",
+    keywords: [PAGE_TERMS[section.to], section.description].join(" "),
     run: async () => await navigate({ to: section.to }),
   }));
   const canCreateProject = permissions.includes("project:write");
