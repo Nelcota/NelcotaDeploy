@@ -1,20 +1,27 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-container=$(docker run --rm --detach alpine:3.24 sleep 120)
+container=$(docker run --rm --detach python:3.15-alpine sleep 120)
 trap 'docker rm --force "$container" >/dev/null' EXIT
 
 probe_signals() {
+  docker exec --detach "$container" sh -ec 'printf "%s\n" "$$" > /tmp/docker-signal-probe.pid; sleep 30 & wait "$!"' || return 1
   docker exec "$container" sh -ec '
-    sleep 30 &
-    child=$!
-    if ! kill -s STOP "$child"; then
+    for attempt in 1 2 3 4 5; do
+      if [ -s /tmp/docker-signal-probe.pid ]; then
+        break
+      fi
+      sleep 1
+    done
+    read -r target < /tmp/docker-signal-probe.pid
+    rm /tmp/docker-signal-probe.pid
+    if ! kill -s STOP "$target"; then
       cat /proc/self/attr/current >&2
+      cat "/proc/$target/attr/current" >&2
       exit 1
     fi
-    kill -s CONT "$child"
-    kill -s TERM "$child"
-    wait "$child" || :
+    kill -s CONT "$target"
+    kill -s KILL "$target"
   '
 }
 
