@@ -54,7 +54,10 @@ jobs:
       - name: Check Docker container signals
         run: bash .github/ci/check-docker-signals.sh
 
-      - run: bun run test:docker
+      # Run the host Docker tests before nested Docker daemons can reload the host AppArmor profile.
+      - run: bun run test:docker --path-ignore-patterns='**/remote-deploy.integration.test.ts'
+
+      - run: bun test src/worker/remote-deploy.integration.test.ts
 
   installer:
     runs-on: ubuntu-24.04
