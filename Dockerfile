@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 # One image for both processes: `web` (panel) and `worker` (jobs + Docker access).
 
-FROM oven/bun:1.4.4-slim AS dependencies
+FROM oven/bun:1.4.5-slim AS dependencies
 WORKDIR /app
 COPY package.json bun.lock bunfig.toml ./
 # --ignore-scripts skips the git hook installer, which needs a git checkout.
@@ -31,7 +31,7 @@ RUN set -eu; \
   echo "$sum  /tmp/railpack.tar.gz" | sha256sum -c -; \
   tar -xzf /tmp/railpack.tar.gz -C /usr/local/bin railpack
 
-FROM oven/bun:1.4.4-slim AS runtime
+FROM oven/bun:1.4.5-slim AS runtime
 RUN apt-get update \
   && apt-get install --yes --no-install-recommends git ca-certificates \
   && rm -rf /var/lib/apt/lists/*
